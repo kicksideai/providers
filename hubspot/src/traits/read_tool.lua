@@ -10,6 +10,12 @@ type JsonValue = nil | boolean | number | string | { JsonValue } | { [string]: J
 type Query = { [string]: string | number }
 type Property = { [string]: JsonValue }
 type PropertyData = { results: { Property }? }
+type ObjectRow = { properties: { [string]: JsonValue }? }
+type ObjectPage = { results: { ObjectRow }? }
+type Owner = { [string]: JsonValue }
+type OwnerPage = { results: { Owner }? }
+type Pipeline = { [string]: JsonValue }
+type PipelinePage = { results: { Pipeline }?, next_after: string? }
 
 type Args = {
     action: string,
@@ -163,21 +169,24 @@ local function handler(args: Args): (unknown, error?)
 
     if action == "list_objects" or action == "search_objects" then
         local selected = args.properties or SUMMARY_PROPERTIES[args.object_type]
-        for _, row in ipairs(data.results or {}) do
-            local properties: any = {}
+        local page = type(data) == "table" and (data :: ObjectPage) or ({} :: ObjectPage)
+        for _, row in ipairs(page.results or {}) do
+            local properties: { [string]: JsonValue } = {}
             for _, name in ipairs(selected) do properties[name] = (row.properties or {})[name] end
             row.properties = properties
         end
     elseif action == "list_owners" then
-        local rows: {any} = {}
-        for _, owner in ipairs(data.results or {}) do
+        local page = type(data) == "table" and (data :: OwnerPage) or ({} :: OwnerPage)
+        local rows: { Owner } = {}
+        for _, owner in ipairs(page.results or {}) do
             rows[#rows + 1] = {id = owner.id, firstName = owner.firstName, lastName = owner.lastName,
                 email = owner.email, archived = owner.archived, createdAt = owner.createdAt, updatedAt = owner.updatedAt}
         end
-        data.results = rows
+        page.results = rows
     elseif action == "list_pipelines" then
-        local rows: {any} = {}
-        local source = data.results or {}
+        local page = type(data) == "table" and (data :: PipelinePage) or ({} :: PipelinePage)
+        local rows: { Pipeline } = {}
+        local source = page.results or {}
         local offset = math.max(0, math.floor(tonumber(args.after) or 0))
         local limit = clamp_limit(args)
         for index = offset + 1, math.min(#source, offset + limit) do
@@ -185,8 +194,8 @@ local function handler(args: Args): (unknown, error?)
             rows[#rows + 1] = {id = pipeline.id, label = pipeline.label, displayOrder = pipeline.displayOrder,
                 createdAt = pipeline.createdAt, updatedAt = pipeline.updatedAt, archived = pipeline.archived}
         end
-        data.results = rows
-        data.next_after = offset + #rows < #source and tostring(offset + #rows) or nil
+        page.results = rows
+        page.next_after = offset + #rows < #source and tostring(offset + #rows) or nil
     end
     return tool_result.ok(output.sanitize(data))
 end
