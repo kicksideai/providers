@@ -20,6 +20,18 @@ profiles:
 workspace:
   replacements:
     kickside/webscout-tavily: ..
+    kickside/blocks: ../../../kickside/platform/blocks
+    kickside/component: ../../../kickside/core/component
+    kickside/connection: ../../../kickside/platform/connection
+    kickside/contract: ../../../kickside/core/contract
+    kickside/core: ../../../kickside/core/core
+    kickside/execution: ../../../kickside/core/execution
+    kickside/jobs: ../../../kickside/core/jobs
+    kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
+    kickside/security: ../../../kickside/platform/security
+    kickside/settings: ../../../kickside/platform/settings
+    kickside/users: ../../../kickside/platform/users
+    kickside/webscout: ../../webscout
 
 registry:
   dispatch_internal_kinds:

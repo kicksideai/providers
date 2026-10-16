@@ -25,8 +25,8 @@ env:
   PGPASSWORD: kickside
   PYTHONDONTWRITEBYTECODE: '1'
   ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
-  RELEASE_PR: ${{ startsWith(github.head_ref, 'release-please--') || startsWith(github.ref_name,
-    'release-please--') }}
+  RELEASE_PR: ${{ startsWith(github.head_ref, 'release-please--') || startsWith(github.ref_name, 'release-please--')
+    }}
 jobs:
   secret-scan:
     uses: kicksideai/.github/.github/workflows/secret-scan.yml@5401fa65bed7d8648125957520e94206ed1ffd0b
@@ -40,1588 +40,1014 @@ jobs:
         include:
         - module: asr
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd asr/test\nwippy update\nwippy lint --ns kickside.asr\
-            \ --ns 'kickside.asr.*' \nwippy test  2>&1 | tee .wippy-test.log\nsed\
-            \ -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path asr '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config asr --version \"$version\" --dry-run --create --module-visibility\
-            \ public --module-type plugin\n"
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C asr lockrefresh
+            cd asr/test
+            wippy lint --ns kickside.asr --ns 'kickside.asr.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path asr '.[$path]' .release-please-manifest.json)
+            wippy publish --config asr --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: asr
           engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C asr lockrefresh
             cd asr/test
-
-            wippy update
-
             databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
             trap cleanup_databases EXIT
-
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
             createdb "$database"
-
             databases+=("$database")
-
-            wippy lint --ns kickside.asr --ns ''kickside.asr.*'' --profile postgres
-            --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.asr --ns 'kickside.asr.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path asr ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config asr --version "$version" --dry-run --create --module-visibility
-            public --module-type plugin
-
-            '
+            version=$(jq -er --arg path asr '.[$path]' .release-please-manifest.json)
+            wippy publish --config asr --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: atlassian
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix atlassian/ui ci\nnpm --prefix atlassian/ui\
-            \ run type-check\nnpm --prefix atlassian/ui run build\ncd atlassian/test\n\
-            wippy update\nwippy lint --ns kickside.atlassian --ns 'kickside.atlassian.*'\
-            \ \nwippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[\
-            \ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\nawk '/No tests\
-            \ found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 }\
-            \ /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty ||\
-            \ failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\nversion=$(jq\
-            \ -er --arg path atlassian '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config atlassian --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin --embed kickside.atlassian.ui:ui_fs\n"
-        - module: atlassian
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix atlassian/ui ci
-
             npm --prefix atlassian/ui run type-check
-
             npm --prefix atlassian/ui run build
-
+            make -C atlassian lockrefresh
             cd atlassian/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.atlassian --ns ''kickside.atlassian.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.atlassian --ns 'kickside.atlassian.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path atlassian ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config atlassian --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.atlassian.ui:ui_fs
-
-            '
+            version=$(jq -er --arg path atlassian '.[$path]' .release-please-manifest.json)
+            wippy publish --config atlassian --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.atlassian.ui:ui_fs
+        - module: atlassian
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix atlassian/ui ci
+            npm --prefix atlassian/ui run type-check
+            npm --prefix atlassian/ui run build
+            make -C atlassian lockrefresh
+            cd atlassian/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.atlassian --ns 'kickside.atlassian.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path atlassian '.[$path]' .release-please-manifest.json)
+            wippy publish --config atlassian --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.atlassian.ui:ui_fs
         - module: bitbucket
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd bitbucket/test\nwippy update\nwippy lint --ns\
-            \ kickside.bitbucket --ns 'kickside.bitbucket.*' \nwippy test  2>&1 |\
-            \ tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log\
-            \ > .wippy-test.clean.log\nawk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path bitbucket '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config bitbucket --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: bitbucket
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C bitbucket lockrefresh
             cd bitbucket/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.bitbucket --ns ''kickside.bitbucket.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.bitbucket --ns 'kickside.bitbucket.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path bitbucket ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config bitbucket --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path bitbucket '.[$path]' .release-please-manifest.json)
+            wippy publish --config bitbucket --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: bitbucket
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C bitbucket lockrefresh
+            cd bitbucket/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.bitbucket --ns 'kickside.bitbucket.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path bitbucket '.[$path]' .release-please-manifest.json)
+            wippy publish --config bitbucket --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: code_execution
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix code_execution/ui ci\nnpm --prefix\
-            \ code_execution/ui run type-check\nnpm --prefix code_execution/ui run\
-            \ build\ncd code_execution/test\nwippy update\nwippy lint --ns kickside.code_execution\
-            \ --ns 'kickside.code_execution.*' \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path code_execution '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config code_execution --version \"$version\" --dry-run\
-            \ --create --module-visibility public --module-type plugin --embed kickside.code_execution:ui_fs\n"
-        - module: code_execution
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix code_execution/ui ci
-
             npm --prefix code_execution/ui run type-check
-
             npm --prefix code_execution/ui run build
-
+            make -C code_execution lockrefresh
             cd code_execution/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.code_execution --ns ''kickside.code_execution.*''
-            --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.code_execution --ns 'kickside.code_execution.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path code_execution ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config code_execution --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.code_execution:ui_fs
-
-            '
+            version=$(jq -er --arg path code_execution '.[$path]' .release-please-manifest.json)
+            wippy publish --config code_execution --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.code_execution:ui_fs
+        - module: code_execution
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix code_execution/ui ci
+            npm --prefix code_execution/ui run type-check
+            npm --prefix code_execution/ui run build
+            make -C code_execution lockrefresh
+            cd code_execution/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.code_execution --ns 'kickside.code_execution.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path code_execution '.[$path]' .release-please-manifest.json)
+            wippy publish --config code_execution --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.code_execution:ui_fs
         - module: discord
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd discord/test\nwippy update\nwippy lint --ns\
-            \ kickside.discord --ns 'kickside.discord.*' \nwippy test  2>&1 | tee\
-            \ .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log\
-            \ > .wippy-test.clean.log\nawk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path discord '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config discord --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: discord
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C discord lockrefresh
             cd discord/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.discord --ns ''kickside.discord.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.discord --ns 'kickside.discord.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path discord ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config discord --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path discord '.[$path]' .release-please-manifest.json)
+            wippy publish --config discord --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: discord
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C discord lockrefresh
+            cd discord/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.discord --ns 'kickside.discord.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path discord '.[$path]' .release-please-manifest.json)
+            wippy publish --config discord --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: fireflies
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd fireflies/test\nwippy update\nwippy lint --ns\
-            \ kickside.fireflies --ns 'kickside.fireflies.*' \nwippy test  2>&1 |\
-            \ tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log\
-            \ > .wippy-test.clean.log\nawk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path fireflies '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config fireflies --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: fireflies
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C fireflies lockrefresh
             cd fireflies/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.fireflies --ns ''kickside.fireflies.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.fireflies --ns 'kickside.fireflies.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path fireflies ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config fireflies --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path fireflies '.[$path]' .release-please-manifest.json)
+            wippy publish --config fireflies --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: fireflies
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C fireflies lockrefresh
+            cd fireflies/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.fireflies --ns 'kickside.fireflies.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path fireflies '.[$path]' .release-please-manifest.json)
+            wippy publish --config fireflies --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: github
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix github/ui ci\nnpm --prefix github/ui\
-            \ run type-check\nnpm --prefix github/ui run build\ncd github/test\nwippy\
-            \ update\nwippy lint --ns kickside.github --ns 'kickside.github.*' \n\
-            wippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g'\
-            \ .wippy-test.log > .wippy-test.clean.log\nawk '/No tests found/ { empty=1\
-            \ } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/\
-            \ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log\n\
-            cd \"$source_root\"\nversion=$(jq -er --arg path github '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config github --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin --embed kickside.github.ui:ui_fs\n"
-        - module: github
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix github/ui ci
-
             npm --prefix github/ui run type-check
-
             npm --prefix github/ui run build
-
+            make -C github lockrefresh
             cd github/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.github --ns ''kickside.github.*'' --profile postgres
-            --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.github --ns 'kickside.github.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path github ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config github --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.github.ui:ui_fs
-
-            '
+            version=$(jq -er --arg path github '.[$path]' .release-please-manifest.json)
+            wippy publish --config github --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.github.ui:ui_fs
+        - module: github
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix github/ui ci
+            npm --prefix github/ui run type-check
+            npm --prefix github/ui run build
+            make -C github lockrefresh
+            cd github/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.github --ns 'kickside.github.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path github '.[$path]' .release-please-manifest.json)
+            wippy publish --config github --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.github.ui:ui_fs
         - module: gitlab
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd gitlab/test\nwippy update\nwippy lint --ns\
-            \ kickside.gitlab --ns 'kickside.gitlab.*' \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path gitlab '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config gitlab --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: gitlab
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C gitlab lockrefresh
             cd gitlab/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.gitlab --ns ''kickside.gitlab.*'' --profile postgres
-            --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.gitlab --ns 'kickside.gitlab.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path gitlab ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config gitlab --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path gitlab '.[$path]' .release-please-manifest.json)
+            wippy publish --config gitlab --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: gitlab
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C gitlab lockrefresh
+            cd gitlab/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.gitlab --ns 'kickside.gitlab.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path gitlab '.[$path]' .release-please-manifest.json)
+            wippy publish --config gitlab --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: google
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix google/ui ci\nnpm --prefix google/ui\
-            \ run type-check\nnpm --prefix google/ui run build\ncd google/test\nwippy\
-            \ update\nwippy lint --ns kickside.google --ns 'kickside.google.*' \n\
-            wippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g'\
-            \ .wippy-test.log > .wippy-test.clean.log\nawk '/No tests found/ { empty=1\
-            \ } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/\
-            \ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log\n\
-            cd \"$source_root\"\nversion=$(jq -er --arg path google '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config google --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin --embed kickside.google.ui:ui_fs\n"
-        - module: google
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix google/ui ci
-
             npm --prefix google/ui run type-check
-
             npm --prefix google/ui run build
-
+            make -C google lockrefresh
             cd google/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.google --ns ''kickside.google.*'' --profile postgres
-            --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.google --ns 'kickside.google.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path google ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config google --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.google.ui:ui_fs
-
-            '
+            version=$(jq -er --arg path google '.[$path]' .release-please-manifest.json)
+            wippy publish --config google --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.google.ui:ui_fs
+        - module: google
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix google/ui ci
+            npm --prefix google/ui run type-check
+            npm --prefix google/ui run build
+            make -C google lockrefresh
+            cd google/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.google --ns 'kickside.google.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path google '.[$path]' .release-please-manifest.json)
+            wippy publish --config google --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.google.ui:ui_fs
         - module: hubspot
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix hubspot/ui ci\nnpm --prefix hubspot/ui\
-            \ run type-check\nnpm --prefix hubspot/ui run build\ncd hubspot/test\n\
-            wippy update\nwippy lint --ns kickside.hubspot --ns 'kickside.hubspot.*'\
-            \ \nwippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[\
-            \ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\nawk '/No tests\
-            \ found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 }\
-            \ /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty ||\
-            \ failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\nversion=$(jq\
-            \ -er --arg path hubspot '.[$path]' .release-please-manifest.json)\nwippy\
-            \ publish --config hubspot --version \"$version\" --dry-run --create --module-visibility\
-            \ public --module-type plugin --embed kickside.hubspot.ui:ui_fs\n"
-        - module: hubspot
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix hubspot/ui ci
-
             npm --prefix hubspot/ui run type-check
-
             npm --prefix hubspot/ui run build
-
+            make -C hubspot lockrefresh
             cd hubspot/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.hubspot --ns ''kickside.hubspot.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.hubspot --ns 'kickside.hubspot.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path hubspot ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config hubspot --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.hubspot.ui:ui_fs
-
-            '
+            version=$(jq -er --arg path hubspot '.[$path]' .release-please-manifest.json)
+            wippy publish --config hubspot --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.hubspot.ui:ui_fs
+        - module: hubspot
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix hubspot/ui ci
+            npm --prefix hubspot/ui run type-check
+            npm --prefix hubspot/ui run build
+            make -C hubspot lockrefresh
+            cd hubspot/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.hubspot --ns 'kickside.hubspot.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path hubspot '.[$path]' .release-please-manifest.json)
+            wippy publish --config hubspot --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.hubspot.ui:ui_fs
         - module: kb10
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix kb10/ui ci\nnpm --prefix kb10/ui\
-            \ run type-check\nnpm --prefix kb10/ui run build\ncd kb10/test\nwippy\
-            \ update\nwippy lint --ns kickside.kb10 --ns 'kickside.kb10.*' --ns app\
-            \ --ns 'app.*' \nwippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\\
-            x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path kb10 '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config kb10 --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin --embed kickside.kb10.ui:ui_fs\n"
-        - module: kb10
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix kb10/ui ci
-
             npm --prefix kb10/ui run type-check
-
             npm --prefix kb10/ui run build
-
+            make -C kb10 lockrefresh
             cd kb10/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.kb10 --ns ''kickside.kb10.*'' --ns app --ns ''app.*''
-            --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.kb10 --ns 'kickside.kb10.*' --ns app --ns 'app.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path kb10 ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config kb10 --version "$version" --dry-run --create --module-visibility
-            public --module-type plugin --embed kickside.kb10.ui:ui_fs
-
-            '
+            version=$(jq -er --arg path kb10 '.[$path]' .release-please-manifest.json)
+            wippy publish --config kb10 --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.kb10.ui:ui_fs
+        - module: kb10
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix kb10/ui ci
+            npm --prefix kb10/ui run type-check
+            npm --prefix kb10/ui run build
+            make -C kb10 lockrefresh
+            cd kb10/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.kb10 --ns 'kickside.kb10.*' --ns app --ns 'app.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path kb10 '.[$path]' .release-please-manifest.json)
+            wippy publish --config kb10 --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.kb10.ui:ui_fs
         - module: llm-ocr
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd llm-ocr/test\nwippy update\nwippy lint --ns\
-            \ kickside.llm_ocr --ns 'kickside.llm_ocr.*' \nwippy test  2>&1 | tee\
-            \ .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log\
-            \ > .wippy-test.clean.log\nawk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path llm-ocr '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config llm-ocr --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: llm-ocr
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C llm-ocr lockrefresh
             cd llm-ocr/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.llm_ocr --ns ''kickside.llm_ocr.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.llm_ocr --ns 'kickside.llm_ocr.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path llm-ocr ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config llm-ocr --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path llm-ocr '.[$path]' .release-please-manifest.json)
+            wippy publish --config llm-ocr --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: llm-ocr
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C llm-ocr lockrefresh
+            cd llm-ocr/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.llm_ocr --ns 'kickside.llm_ocr.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path llm-ocr '.[$path]' .release-please-manifest.json)
+            wippy publish --config llm-ocr --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: mcp-client
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix mcp-client/ui ci\nnpm --prefix mcp-client/ui\
-            \ run type-check\nnpm --prefix mcp-client/ui run build\ncd mcp-client/test\n\
-            wippy update\nwippy lint --ns app --ns 'app.*' --ns kickside.mcp_client\
-            \ --ns 'kickside.mcp_client.*' \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path mcp-client '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config mcp-client --version \"$version\" --dry-run --create\
-            \ --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs\n"
-        - module: mcp-client
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix mcp-client/ui ci
-
             npm --prefix mcp-client/ui run type-check
-
             npm --prefix mcp-client/ui run build
-
+            make -C mcp-client lockrefresh
             cd mcp-client/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns app --ns ''app.*'' --ns kickside.mcp_client --ns ''kickside.mcp_client.*''
-            --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns app --ns 'app.*' --ns kickside.mcp_client --ns 'kickside.mcp_client.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path mcp-client ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config mcp-client --version "$version" --dry-run --create
-            --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs
-
-            '
+            version=$(jq -er --arg path mcp-client '.[$path]' .release-please-manifest.json)
+            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs
+        - module: mcp-client
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix mcp-client/ui ci
+            npm --prefix mcp-client/ui run type-check
+            npm --prefix mcp-client/ui run build
+            make -C mcp-client lockrefresh
+            cd mcp-client/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns app --ns 'app.*' --ns kickside.mcp_client --ns 'kickside.mcp_client.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path mcp-client '.[$path]' .release-please-manifest.json)
+            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs
         - module: memory
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix memory/ui ci\nnpm --prefix memory/ui\
-            \ run type-check\nnpm --prefix memory/ui run build\ncd memory/test\nbash\
-            \ ./prepare.sh\nwippy update\nwippy lint --ns app --level error \nwippy\
-            \ test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g'\
-            \ .wippy-test.log > .wippy-test.clean.log\nawk '/No tests found/ { empty=1\
-            \ } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/\
-            \ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log\n\
-            cd \"$source_root\"\nversion=$(jq -er --arg path memory '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config memory --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin --embed kickside.memory:ui_fs\n"
-        - module: memory
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix memory/ui ci
-
             npm --prefix memory/ui run type-check
-
             npm --prefix memory/ui run build
-
+            make -C memory lockrefresh
             cd memory/test
-
-            bash ./prepare.sh
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns app --level error
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path memory ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config memory --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.memory:ui_fs
-
-            '
+            version=$(jq -er --arg path memory '.[$path]' .release-please-manifest.json)
+            wippy publish --config memory --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.memory:ui_fs
+        - module: memory
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix memory/ui ci
+            npm --prefix memory/ui run type-check
+            npm --prefix memory/ui run build
+            make -C memory lockrefresh
+            cd memory/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path memory '.[$path]' .release-please-manifest.json)
+            wippy publish --config memory --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.memory:ui_fs
         - module: phantombuster
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix phantombuster/ui ci\nnpm --prefix\
-            \ phantombuster/ui run type-check\nnpm --prefix phantombuster/ui run build\n\
-            cd phantombuster/test\nwippy update\nwippy lint --ns kickside.phantombuster\
-            \ --ns 'kickside.phantombuster.*' \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path phantombuster '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config phantombuster --version \"$version\" --dry-run\
-            \ --create --module-visibility public --module-type plugin --embed kickside.phantombuster:ui_fs\n"
-        - module: phantombuster
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix phantombuster/ui ci
-
             npm --prefix phantombuster/ui run type-check
-
             npm --prefix phantombuster/ui run build
-
+            make -C phantombuster lockrefresh
             cd phantombuster/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.phantombuster --ns ''kickside.phantombuster.*''
-            --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.phantombuster --ns 'kickside.phantombuster.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path phantombuster ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config phantombuster --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.phantombuster:ui_fs
-
-            '
+            version=$(jq -er --arg path phantombuster '.[$path]' .release-please-manifest.json)
+            wippy publish --config phantombuster --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.phantombuster:ui_fs
+        - module: phantombuster
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix phantombuster/ui ci
+            npm --prefix phantombuster/ui run type-check
+            npm --prefix phantombuster/ui run build
+            make -C phantombuster lockrefresh
+            cd phantombuster/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.phantombuster --ns 'kickside.phantombuster.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path phantombuster '.[$path]' .release-please-manifest.json)
+            wippy publish --config phantombuster --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.phantombuster:ui_fs
         - module: simplefin
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\nnpm --prefix simplefin/ui ci\nnpm --prefix simplefin/ui\
-            \ run type-check\nnpm --prefix simplefin/ui run build\ncd simplefin/test\n\
-            wippy update\nwippy lint --ns kickside.simplefin --ns 'kickside.simplefin.*'\
-            \ \nwippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[\
-            \ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\nawk '/No tests\
-            \ found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 }\
-            \ /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty ||\
-            \ failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\nversion=$(jq\
-            \ -er --arg path simplefin '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config simplefin --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin --embed kickside.simplefin:ui_fs\n"
-        - module: simplefin
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
             npm --prefix simplefin/ui ci
-
             npm --prefix simplefin/ui run type-check
-
             npm --prefix simplefin/ui run build
-
+            make -C simplefin lockrefresh
             cd simplefin/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.simplefin --ns ''kickside.simplefin.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.simplefin --ns 'kickside.simplefin.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path simplefin ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config simplefin --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.simplefin:ui_fs
-
-            '
+            version=$(jq -er --arg path simplefin '.[$path]' .release-please-manifest.json)
+            wippy publish --config simplefin --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.simplefin:ui_fs
+        - module: simplefin
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            npm --prefix simplefin/ui ci
+            npm --prefix simplefin/ui run type-check
+            npm --prefix simplefin/ui run build
+            make -C simplefin lockrefresh
+            cd simplefin/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.simplefin --ns 'kickside.simplefin.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path simplefin '.[$path]' .release-please-manifest.json)
+            wippy publish --config simplefin --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.simplefin:ui_fs
         - module: slack
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd slack/test\nwippy update\nwippy lint --ns kickside.slack\
-            \ --ns 'kickside.slack.*' \nwippy test  2>&1 | tee .wippy-test.log\nsed\
-            \ -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path slack '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config slack --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: slack
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C slack lockrefresh
             cd slack/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.slack --ns ''kickside.slack.*'' --profile postgres
-            --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.slack --ns 'kickside.slack.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path slack ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config slack --version "$version" --dry-run --create --module-visibility
-            public --module-type plugin
-
-            '
+            version=$(jq -er --arg path slack '.[$path]' .release-please-manifest.json)
+            wippy publish --config slack --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: slack
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C slack lockrefresh
+            cd slack/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.slack --ns 'kickside.slack.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path slack '.[$path]' .release-please-manifest.json)
+            wippy publish --config slack --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: sso-github
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd sso-github/test\nbash ./prepare.sh\nwippy update\n\
-            wippy lint --ns app --level error \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path sso-github '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config sso-github --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: sso-github
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C sso-github lockrefresh
             cd sso-github/test
-
-            bash ./prepare.sh
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns app --level error
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path sso-github ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config sso-github --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path sso-github '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-github --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: sso-github
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C sso-github lockrefresh
+            cd sso-github/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path sso-github '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-github --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: sso-google
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd sso-google/test\nbash ./prepare.sh\nwippy update\n\
-            wippy lint --ns app --level error \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path sso-google '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config sso-google --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: sso-google
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C sso-google lockrefresh
             cd sso-google/test
-
-            bash ./prepare.sh
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns app --level error
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path sso-google ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config sso-google --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path sso-google '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-google --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: sso-google
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C sso-google lockrefresh
+            cd sso-google/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path sso-google '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-google --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: sso-microsoft
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd sso-microsoft/test\nbash ./prepare.sh\nwippy\
-            \ update\nwippy lint --ns app --level error \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path sso-microsoft '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config sso-microsoft --version \"$version\" --dry-run\
-            \ --create --module-visibility public --module-type plugin\n"
-        - module: sso-microsoft
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C sso-microsoft lockrefresh
             cd sso-microsoft/test
-
-            bash ./prepare.sh
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns app --level error
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path sso-microsoft ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config sso-microsoft --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path sso-microsoft '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-microsoft --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: sso-microsoft
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C sso-microsoft lockrefresh
+            cd sso-microsoft/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path sso-microsoft '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-microsoft --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: sso-oidc
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd sso-oidc/test\nbash ./prepare.sh\nwippy update\n\
-            wippy lint --ns app --level error \nwippy test  2>&1 | tee .wippy-test.log\n\
-            sed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\n\
-            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path sso-oidc '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config sso-oidc --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: sso-oidc
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C sso-oidc lockrefresh
             cd sso-oidc/test
-
-            bash ./prepare.sh
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns app --level error
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path sso-oidc ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config sso-oidc --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path sso-oidc '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-oidc --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: sso-oidc
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C sso-oidc lockrefresh
+            cd sso-oidc/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path sso-oidc '.[$path]' .release-please-manifest.json)
+            wippy publish --config sso-oidc --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: telegram
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd telegram/test\nwippy update\nwippy lint --ns\
-            \ kickside.telegram --ns 'kickside.telegram.*' \nwippy test  2>&1 | tee\
-            \ .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log\
-            \ > .wippy-test.clean.log\nawk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path telegram '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config telegram --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin\n"
-        - module: telegram
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C telegram lockrefresh
             cd telegram/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.telegram --ns ''kickside.telegram.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.telegram --ns 'kickside.telegram.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path telegram ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config telegram --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path telegram '.[$path]' .release-please-manifest.json)
+            wippy publish --config telegram --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: telegram
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C telegram lockrefresh
+            cd telegram/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.telegram --ns 'kickside.telegram.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path telegram '.[$path]' .release-please-manifest.json)
+            wippy publish --config telegram --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: webscout
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd webscout/test\nwippy update\nwippy lint --ns\
-            \ kickside.webscout --ns 'kickside.webscout.*' \nwippy test  2>&1 | tee\
-            \ .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log\
-            \ > .wippy-test.clean.log\nawk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/\
-            \ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END {\
-            \ exit(empty || failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\
-            \nversion=$(jq -er --arg path webscout '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config webscout --version \"$version\" --dry-run --create\
-            \ --module-visibility public --module-type plugin --embed kickside.webscout:ui_fs\n"
-        - module: webscout
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C webscout lockrefresh
             cd webscout/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.webscout --ns ''kickside.webscout.*'' --profile
-            postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.webscout --ns 'kickside.webscout.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path webscout ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config webscout --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin --embed kickside.webscout:ui_fs
-
-            '
+            version=$(jq -er --arg path webscout '.[$path]' .release-please-manifest.json)
+            wippy publish --config webscout --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.webscout:ui_fs
+        - module: webscout
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C webscout lockrefresh
+            cd webscout/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.webscout --ns 'kickside.webscout.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path webscout '.[$path]' .release-please-manifest.json)
+            wippy publish --config webscout --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.webscout:ui_fs
         - module: webscout-brave
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd webscout-brave/test\nwippy update\nwippy lint\
-            \ --ns kickside.webscout.providers.brave --ns 'kickside.webscout.providers.brave.*'\
-            \ \nwippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[\
-            \ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\nawk '/No tests\
-            \ found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 }\
-            \ /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty ||\
-            \ failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\nversion=$(jq\
-            \ -er --arg path webscout-brave '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config webscout-brave --version \"$version\" --dry-run\
-            \ --create --module-visibility public --module-type plugin\n"
-        - module: webscout-brave
-          engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C webscout-brave lockrefresh
             cd webscout-brave/test
-
-            wippy update
-
-            databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
-            trap cleanup_databases EXIT
-
-            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
-            createdb "$database"
-
-            databases+=("$database")
-
-            wippy lint --ns kickside.webscout.providers.brave --ns ''kickside.webscout.providers.brave.*''
-            --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.webscout.providers.brave --ns 'kickside.webscout.providers.brave.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path webscout-brave ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config webscout-brave --version "$version" --dry-run --create
-            --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path webscout-brave '.[$path]' .release-please-manifest.json)
+            wippy publish --config webscout-brave --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: webscout-brave
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C webscout-brave lockrefresh
+            cd webscout-brave/test
+            databases=()
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
+            trap cleanup_databases EXIT
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            createdb "$database"
+            databases+=("$database")
+            wippy lint --ns kickside.webscout.providers.brave --ns 'kickside.webscout.providers.brave.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path webscout-brave '.[$path]' .release-please-manifest.json)
+            wippy publish --config webscout-brave --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: webscout-tavily
           engine: sqlite
-          commands: "set -euo pipefail\nsource_root=\"$PWD\"\nexport TMPDIR=\"$source_root/.scratch\"\
-            \nmkdir -p \"$TMPDIR\"\ncd webscout-tavily/test\nwippy update\nwippy lint\
-            \ --ns kickside.webscout.providers.tavily --ns 'kickside.webscout.providers.tavily.*'\
-            \ \nwippy test  2>&1 | tee .wippy-test.log\nsed -E 's/\\x1B\\[[0-?]*[\
-            \ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log\nawk '/No tests\
-            \ found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 }\
-            \ /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty ||\
-            \ failed || !passed) }' .wippy-test.clean.log\ncd \"$source_root\"\nversion=$(jq\
-            \ -er --arg path webscout-tavily '.[$path]' .release-please-manifest.json)\n\
-            wippy publish --config webscout-tavily --version \"$version\" --dry-run\
-            \ --create --module-visibility public --module-type plugin\n"
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C webscout-tavily lockrefresh
+            cd webscout-tavily/test
+            wippy lint --ns kickside.webscout.providers.tavily --ns 'kickside.webscout.providers.tavily.*'
+            wippy test  2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path webscout-tavily '.[$path]' .release-please-manifest.json)
+            wippy publish --config webscout-tavily --version "$version" --dry-run --create --module-visibility public --module-type plugin
         - module: webscout-tavily
           engine: postgres
-          commands: 'set -euo pipefail
-
+          commands: |
+            set -euo pipefail
             source_root="$PWD"
-
             export TMPDIR="$source_root/.scratch"
-
             mkdir -p "$TMPDIR"
-
+            make -C webscout-tavily lockrefresh
             cd webscout-tavily/test
-
-            wippy update
-
             databases=()
-
-            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database";
-            done; }
-
+            cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
             trap cleanup_databases EXIT
-
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
-
             createdb "$database"
-
             databases+=("$database")
-
-            wippy lint --ns kickside.webscout.providers.tavily --ns ''kickside.webscout.providers.tavily.*''
-            --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1
-            --set vars.pg_port=5433
-
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}"
-            --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
-
-            sed -E ''s/\x1B\[[0-?]*[ -/]*[@-~]//g'' .wippy-test.log > .wippy-test.clean.log
-
-            awk ''/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/
-            { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty
-            || failed || !passed) }'' .wippy-test.clean.log
-
+            wippy lint --ns kickside.webscout.providers.tavily --ns 'kickside.webscout.providers.tavily.*' --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
-
-            version=$(jq -er --arg path webscout-tavily ''.[$path]'' .release-please-manifest.json)
-
-            wippy publish --config webscout-tavily --version "$version" --dry-run
-            --create --module-visibility public --module-type plugin
-
-            '
+            version=$(jq -er --arg path webscout-tavily '.[$path]' .release-please-manifest.json)
+            wippy publish --config webscout-tavily --version "$version" --dry-run --create --module-visibility public --module-type plugin
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -1631,8 +1057,8 @@ jobs:
           POSTGRES_DB: postgres
         ports:
         - 5433:5432
-        options: --health-cmd "pg_isready -U kickside -d postgres" --health-interval
-          5s --health-timeout 5s --health-retries 10
+        options: --health-cmd "pg_isready -U kickside -d postgres" --health-interval 5s --health-timeout
+          5s --health-retries 10
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
