@@ -1,0 +1,33 @@
+version: "1.0"
+namespace: app.fixtures
+
+# Harness fixtures: serves test-fixture.html on the gateway origin the
+# kb_ingest fetch_url suite hardcodes (http://localhost:8088/_kickside/_page/main).
+# In production the app's app_static http.static serves this path; the harness
+# reproduces it on its own :8088 listener so the fetch_url cases resolve a real
+# page. Harness-only; excluded from publish.
+
+entries:
+  - name: fs
+    kind: fs.directory
+    meta:
+      comment: Directory holding the kb_ingest fetch_url fixture page.
+    directory: ./fixtures
+
+  - name: gateway
+    kind: http.service
+    meta:
+      comment: Listener on the origin the fetch_url suite hardcodes.
+    addr: :8088
+    lifecycle:
+      auto_start: true
+
+  - name: page_static
+    kind: http.static
+    meta:
+      server: gateway
+    path: /_kickside/_page/main
+    fs: app.fixtures:fs
+    options:
+      mime_types:
+        .html: text/html

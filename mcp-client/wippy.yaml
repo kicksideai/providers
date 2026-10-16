@@ -1,0 +1,30 @@
+organization: kickside
+module: mcp-client
+type: plugin
+visibility: private
+description: Multi-user-safe Streamable HTTP MCP connections and dynamic agent tools for KickSide.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords: [kickside, mcp, client, agents, tools]
+embed:
+  - kickside.mcp_client:ui_fs
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "ui/node_modules/**"
+  - "ui/node_modules:**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"
+directories:
+  modules: .wippy
+  src: ./src

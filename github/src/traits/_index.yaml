@@ -1,0 +1,230 @@
+version: "1.0"
+namespace: kickside.github.traits
+
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: GitHub Reader
+      public: true
+      icon: tabler:brand-github
+      comment: Reads GitHub repositories, issues, pull requests, comments, and file contents.
+      tags: [github, git, code, issues, pull-requests, read-only]
+      web_component: kickside-connection-trait-picker
+      provider: github
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: GitHub connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can inspect GitHub through the GitHubRead tool. Use viewer to confirm
+      the connected account, get_repo to verify an owner/repo, list_issues to
+      find issues and pull requests, get_issue or get_pull for details,
+      list_issue_comments for discussion, list_pull_files for changed files, and
+      get_file for repository contents at a path/ref.
+
+      The GitHub connection is selected on this capability. Do not ask the user
+      for a connection id. Resolve owner, repo, issue number, pull request
+      number, file path, and ref with read actions before relying on them.
+    tools:
+      - kickside.github.traits:read_tool
+
+  - name: read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: GitHub Read
+      tags: [github, git, code, issues, pull-requests, read-only]
+      llm_alias: GitHubRead
+      llm_description: "Read GitHub. list_issues/list_issue_comments/list_pull_files return compact summary rows with limit/page and next_page. get_repo/get_issue/get_issue_comment/get_pull/get_file return complete records. Use get_file for file content; list_pull_files omits patch bodies."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "comment_id": {"type": "string", "description": "Comment id for get_issue_comment."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["viewer", "get_repo", "list_issues", "get_issue", "list_issue_comments", "get_pull", "list_pull_files", "get_file", "get_issue_comment"]
+            },
+            "owner": { "type": "string", "description": "Repository owner or organization" },
+            "repo": { "type": "string", "description": "Repository name" },
+            "number": { "type": "string", "description": "Issue or pull request number" },
+            "path": { "type": "string", "description": "Repository file path for get_file" },
+            "ref": { "type": "string", "description": "Branch, tag, or commit SHA for get_file" },
+            "state": { "type": "string", "description": "Issue state for list_issues", "enum": ["open", "closed", "all"] },
+            "limit": { "type": "integer", "description": "Max rows to return for list actions (default 25, max 100)" },
+            "page": { "type": "integer", "description": "GitHub page number for list actions (starts at 1); request page+1 while a page returns limit rows" },
+            "since": { "type": "string", "description": "Only list issues updated at or after this ISO timestamp" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read GitHub. list_issues/list_issue_comments/list_pull_files return compact summary rows with limit/page and next_page. get_repo/get_issue/get_issue_comment/get_pull/get_file return complete records. Use get_file for file content; list_pull_files omits patch bodies. Provider rejections return {success:false,error,status_code?,data?}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "GitHub's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "error_kind": {"type": "string", "description": "Rejection class: unauthorized, forbidden, not_found, rate_limited, server_error or request_failed."},
+            "data": {"description": "GitHub's error body of a rejected request."},
+            "issues": {"type": "array", "items": {"type": "object"}},
+            "comments": {"type": "array", "items": {"type": "object"}},
+            "files": {"type": "array", "items": {"type": "object"}},
+            "page": {"type": "integer"},
+            "next_page": {"type": "integer"}
+          }
+        }
+    source: file://_fn_read_tool.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.github.client:transport
+      output: kickside.github.client:output
+      implementation: kickside.github.traits:read_tool_lib
+
+  - name: read_tool_lib
+    kind: library.lua
+    meta: { name: read_tool_lib, comment: "GitHubRead handler module for tests." }
+    source: file://read_tool.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.github.client:transport
+      output: kickside.github.client:output
+
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: GitHub Writer
+      public: true
+      icon: tabler:brand-github
+      comment: Creates and updates GitHub issues and issue comments.
+      tags: [github, git, code, issues, write]
+      web_component: kickside-connection-trait-picker
+      provider: github
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: GitHub connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can mutate GitHub issues through the GitHubWrite tool: create_issue,
+      update_issue, and create_issue_comment. Use it only for issue workflow
+      changes the user requested. Do not use it to change repository files,
+      branches, releases, settings, collaborators, or Actions workflows; those
+      write surfaces are not part of this capability.
+
+      The GitHub connection is selected on this capability. Do not ask the user
+      for a connection id. Use GitHubRead first when you need to verify the repo,
+      find the issue number, inspect current state, or confirm a pull request.
+    tools:
+      - kickside.github.traits:write_tool
+
+  - name: manager
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: GitHub Manager
+      public: true
+      icon: tabler:brand-github
+      comment: Full read and issue-management access for GitHub repositories.
+      tags: [github, git, code, issues, pull-requests, read-write]
+      web_component: kickside-connection-trait-picker
+      provider: github
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: GitHub connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You have GitHub repository read access and issue-management write access.
+      Use GitHubRead to verify the connected account, repository, issues, pull
+      requests, comments, files, and refs. Use GitHubWrite only for
+      create_issue, update_issue, and create_issue_comment.
+
+      Preferred workflow: verify the repository with GitHubRead, list or inspect
+      the relevant issue or pull request, then perform the requested issue
+      mutation with GitHubWrite. Do not mutate repository files, branches,
+      releases, settings, collaborators, or Actions workflows; this capability
+      does not grant those operations.
+
+      The GitHub connection is selected on this capability. Do not ask the user
+      for a connection id.
+    tools:
+      - kickside.github.traits:read_tool
+      - kickside.github.traits:write_tool
+
+  - name: write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: GitHub Write
+      tags: [github, git, code, issues, write]
+      llm_alias: GitHubWrite
+      llm_description: "Create and update GitHub issues via the configured connection. Actions: create_issue, update_issue, create_issue_comment. Requires owner and repo. Returns the GitHub API payload object with secret-like keys redacted; a rejected request returns { success: false, error, status_code, error_kind, data }."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform",
+              "enum": ["create_issue", "update_issue", "create_issue_comment"]
+            },
+            "owner": { "type": "string", "description": "Repository owner or organization" },
+            "repo": { "type": "string", "description": "Repository name" },
+            "number": { "type": "string", "description": "Issue number for update_issue/create_issue_comment" },
+            "title": { "type": "string", "description": "Issue title for create_issue or update_issue" },
+            "body": { "type": "string", "description": "Issue or comment body" },
+            "state": { "type": "string", "description": "Issue state for update_issue", "enum": ["open", "closed"] },
+            "labels": { "type": "array", "items": { "type": "string" }, "description": "Labels for create_issue/update_issue" },
+            "assignees": { "type": "array", "items": { "type": "string" }, "description": "Assignees for create_issue/update_issue" }
+          },
+          "required": ["action", "owner", "repo"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected GitHub request returns { success: false, error, status_code, error_kind, data, headers }. The GitHub REST API payload for the created or updated issue or comment, with secret-like keys redacted.",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "GitHub's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "error_kind": {"type": "string", "description": "Rejection class: unauthorized, forbidden, not_found, rate_limited, server_error or request_failed."},
+            "data": {"description": "GitHub's error body of a rejected request."}
+          }
+        }
+    source: file://_fn_write_tool.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.github.client:transport
+      output: kickside.github.client:output
+      implementation: kickside.github.traits:write_tool_lib
+
+  - name: write_tool_lib
+    kind: library.lua
+    meta: { name: write_tool_lib, comment: "GitHubWrite handler module for tests." }
+    source: file://write_tool.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.github.client:transport
+      output: kickside.github.client:output

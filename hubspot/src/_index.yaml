@@ -1,0 +1,67 @@
+version: "1.0"
+namespace: kickside.hubspot
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide HubSpot
+      comment: HubSpot CRM private-app-token connection provider with read-only meetings, notes, emails, and calls, plus explicitly limited CRM writes.
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server the HubSpot picker static mount attaches to.
+      description: HTTP server the HubSpot picker static mount attaches to.
+    targets:
+      - entry: kickside.hubspot.ui:ui_static
+        path: .meta.server
+
+  - name: default_field_mapping_ref
+    kind: ns.requirement
+    meta:
+      comment: Declared default HubSpot field-map artifact loaded by the config helper before operator overrides.
+      description: Declared default HubSpot field-map artifact loaded by the config helper before operator overrides.
+    default: kickside.hubspot.client:default_field_mapping.standard
+    targets:
+      - entry: kickside.hubspot.client:config_defaults
+        path: .meta.default_field_mapping_ref
+
+  - name: dep.kickside.component
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Records and instances register as component shells and resolve access through the component service.
+    component: kickside/component
+
+  - name: dep.kickside.connection
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Resolves external connections and their OAuth credentials.
+    component: kickside/connection
+
+  - name: dep.kickside.contract
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the shared component and deletable contracts.
+    component: kickside/contract
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      api: https://api.hubapi.com
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Instance api endpoint.
+      description: Instance api endpoint.
+    default: https://api.hubapi.com
+    targets:
+    - entry: kickside.hubspot:endpoints
+      path: .endpoints.api

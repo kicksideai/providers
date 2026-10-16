@@ -1,0 +1,188 @@
+version: "1.0"
+namespace: kickside.asr
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide ASR
+      comment: Speech transcription for audio uploads — a universal upload stage that writes the transcript as the upload's text content, with the transcriber supplied by the deployment through a contract.
+
+  - name: dep.kickside.uploads
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Reads and replaces the upload's primary content through the uploads artifact repository.
+    component: kickside/uploads
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the settings definitions and the runtime settings contract.
+    component: kickside/settings
+
+  - name: transcriber
+    kind: contract.definition
+    meta:
+      name: transcriber
+      comment: |
+        Bytes in, text out. The module owns the pipeline stage and none of the
+        transcription: a deployment binds this to whatever it runs -- a local model
+        behind exec.native, a hosted speech API -- and nothing about that choice
+        reaches the stage. With no binding installed the stage is a no-op.
+    methods:
+      - name: transcribe
+        description: |
+          Transcribe one clip and return its text. The clip may be a container
+          with a video track -- the stage accepts the whole video family and
+          pulling the audio out is the implementation's job. May be called
+          concurrently; an implementation that writes scratch files must keep
+          them per-call.
+        input_schemas:
+          - format: application/schema+json
+            definition: |
+              {
+                "type": "object",
+                "properties": {
+                  "audio": { "type": "string", "description": "The audio bytes, as a byte string." },
+                  "mime": { "type": "string", "description": "Mime type of the clip, e.g. audio/ogg or video/mp4." },
+                  "language": { "type": "string", "description": "Optional language hint; empty means the transcriber decides." },
+                  "timeout_ms": { "type": "integer", "description": "Budget for the call in milliseconds." }
+                },
+                "required": ["audio"]
+              }
+        output_schemas:
+          - format: application/schema+json
+            definition: |
+              {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string", "description": "The transcript. Empty when the clip carried no speech." },
+                  "truncated": { "type": "boolean", "description": "The implementation transcribed only part of the clip -- it has its own duration limit. The transcript is real but incomplete." },
+                  "error": { "type": "string", "description": "Why transcription failed; absent on success." }
+                }
+              }
+
+  - name: stage_implementation
+    kind: library.lua
+    meta:
+      comment: Focused implementation for kickside.asr:stage; invoked by its one-method function wrapper.
+    source: file://stage.lua
+    modules: [contract, fs, logger]
+    imports:
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
+
+  - name: stage
+    kind: function.lua
+    meta:
+      type: processor
+      comment: Transcribes an audio or video upload and replaces its primary content with the text.
+    source: file://_fn_stage.lua
+    imports:
+      operation_impl: kickside.asr:stage_implementation
+    method: process
+    pool:
+      type: static
+      size: 2
+      workers: 2
+
+  - name: stage.universal
+    kind: registry.entry
+    meta:
+      type: upload.stage
+      comment: Runs on every upload; self-gates to audio and video mime types and no-ops when no transcriber is bound.
+    scope: universal
+    func: kickside.asr:stage
+    title: Transcribing speech
+    priority: 40
+
+  - name: setting.asr_enabled
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Transcribe audio uploads into the upload's text content.
+    namespace: kickside.asr
+    key: asr_enabled
+    value_type: bool
+    default: true
+    description: When an upload is audio, transcribe it and use the text as the upload's content.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.asr_language
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Optional language hint passed to the transcriber.
+    namespace: kickside.asr
+    key: asr_language
+    value_type: string
+    default: ""
+    description: Language hint for the transcriber, e.g. ru or en. Empty lets the transcriber decide.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.asr_max_bytes
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Largest audio upload that is sent to the transcriber.
+    namespace: kickside.asr
+    key: asr_max_bytes
+    value_type: int
+    default: 26214400
+    description: Audio or video larger than this many bytes is left untranscribed, because a transcriber holds the whole clip in memory.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.asr_max_transcript_bytes
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Largest transcript that the stage stores as upload content.
+    namespace: kickside.asr
+    key: asr_max_transcript_bytes
+    value_type: int
+    default: 5242880
+    description: Transcript larger than this many bytes is not stored, so a transcriber cannot replace an upload with an unbounded document.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.asr_call_timeout_ms
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Budget for one transcription call, in milliseconds.
+    namespace: kickside.asr
+    key: asr_call_timeout_ms
+    value_type: int
+    default: 120000
+    description: Budget handed to the transcriber for one call, in milliseconds. Enforcing it is the binding's job; the stage only passes it on.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: ASR settings block for the admin Settings page.
+    key: asr
+    title: Speech transcription
+    icon: tabler:microphone
+    group: Integrations
+    order: 20
+    namespace: kickside.asr
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.asr
+      title: Speech transcription
+      icon: tabler:microphone
+      help: Turns audio uploads into text, using the transcriber this deployment binds.

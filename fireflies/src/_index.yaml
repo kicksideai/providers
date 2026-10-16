@@ -1,0 +1,50 @@
+version: "1.0"
+namespace: kickside.fireflies
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Fireflies
+      comment: Fireflies.ai API-key connection provider with agent read tools for meeting transcripts.
+
+  - name: dep.kickside.component
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Records and instances register as component shells and resolve access through the component service.
+    component: kickside/component
+
+  - name: dep.kickside.connection
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Resolves external connections and their OAuth credentials.
+    component: kickside/connection
+
+  - name: dep.kickside.contract
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the shared component and deletable contracts.
+    component: kickside/contract
+
+
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      api: https://api.fireflies.ai/graphql
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Instance api endpoint.
+      description: Instance api endpoint.
+    default: https://api.fireflies.ai/graphql
+    targets:
+    - entry: kickside.fireflies:endpoints
+      path: .endpoints.api

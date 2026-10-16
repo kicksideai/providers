@@ -1,0 +1,137 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/slack. They live in the harness because the module
+# is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: reply_probe
+    kind: contract.definition
+    methods:
+      - name: run
+
+  - name: reply_probe_func
+    kind: function.lua
+    source: file://reply_probe.lua
+    method: run
+    imports:
+      connection: kickside.slack.connection:connection_lib
+
+  - name: reply_probe_binding
+    kind: contract.binding
+    contracts:
+      - contract: app.suites:reply_probe
+        context_required: [component_id]
+        methods:
+          run: app.suites:reply_probe_func
+
+  - name: reply_access_test
+    kind: function.lua
+    meta: { type: test, suite: slack }
+    source: file://reply_access_test.lua
+    method: run
+    modules: [contract, sql, json, uuid]
+    imports:
+      test: wippy.test:test
+
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.slack.client:api
+
+  - name: connection_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://connection_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: kickside.slack.connection:connection_lib
+      types: kickside.slack.client:types
+
+  - name: protocol_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://protocol_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      protocol: kickside.slack.socket:protocol
+      consts: kickside.slack.socket:consts
+
+  - name: backoff_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://backoff_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      backoff: kickside.slack.socket:backoff
+
+  - name: socket_api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://socket_api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      socket_api: kickside.slack.socket:socket_api
+
+  - name: dm_dispatch_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://dm_dispatch_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      dm_dispatch: kickside.slack.socket:dm_dispatch
+
+  - name: hub_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://hub_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      hub: kickside.slack.socket:hub
+
+  - name: slack_tools_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: slack
+    source: file://slack_tools_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      slack_get: kickside.slack.traits:slack_get_lib
+      slack_write: kickside.slack.traits:slack_write_lib
+
+  - name: hub_readiness_test
+    kind: function.lua
+    meta: {type: test, suite: slack}
+    source: file://hub_readiness_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      hub: kickside.slack.socket:hub

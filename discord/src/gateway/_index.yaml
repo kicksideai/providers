@@ -1,0 +1,191 @@
+version: "1.0"
+namespace: kickside.discord.gateway
+
+# Live Discord Gateway transport. This first layer is the pure wire protocol --
+# constants + a socket-free state machine -- that the per-bot worker (a later
+# layer) drives. Kept free of websocket/process IO so it is fully unit tested.
+
+entries:
+  - name: consts
+    kind: library.lua
+    meta:
+      name: consts
+      comment: Discord Gateway opcodes, intents and endpoint.
+    source: file://consts.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: protocol
+    kind: library.lua
+    meta:
+      name: protocol
+      comment: Pure Discord Gateway protocol state machine (no socket/process IO).
+    source: file://protocol.lua
+    imports:
+      consts: kickside.discord.gateway:consts
+
+  - name: backoff
+    kind: library.lua
+    meta:
+      name: backoff
+      comment: Reconnect exponential backoff + heartbeat jitter (pure).
+    source: file://backoff.lua
+
+  - name: gateway_api
+    kind: library.lua
+    meta:
+      name: gateway_api
+      comment: Thin websocket I/O for the gateway (connect / send / decode).
+    source: file://gateway_api.lua
+    modules: [websocket, json]
+    imports:
+      consts: kickside.discord.gateway:consts
+
+  - name: health
+    kind: library.lua
+    source: file://health.lua
+    modules: [time]
+    imports:
+      component: kickside.component:component
+
+  - name: gateway_ingress_trust
+    kind: security.policy
+    groups: [kickside.discord.gateway:ingress]
+    policy:
+      resources: kickside.discord.inbound:receive
+      actions: discord.gateway.receive
+      effect: allow
+
+  - name: gateway_health_trust
+    kind: security.policy
+    meta:
+      comment: The gateway publishes health on Discord connection components only; the component service authorizes the write against the target's stored implementation declaration.
+    groups: [kickside.discord.gateway:ingress]
+    policy:
+      resources: '*'
+      actions: component.runtime_meta.write
+      effect: allow
+      conditions:
+        - field: meta.class
+          operator: eq
+          value: connection
+        - field: meta.provider
+          operator: eq
+          value: discord
+
+  - name: channel_dispatch
+    kind: library.lua
+    meta:
+      name: channel_dispatch
+      comment: Per-guild-message handler -- normalize + hand to kickside.channel:receive (routing + installer identity live there). Spawned as its own process so agent runs never block the gateway loop.
+    source: file://channel_dispatch.lua
+    modules: [funcs, logger]
+
+  - name: channel_dispatch_proc
+    kind: process.lua
+    meta:
+      comment: One-shot process handling a single Discord guild message as the system gateway process; spawned per message by the worker for isolation.
+    source: file://channel_dispatch.lua
+    method: main
+    modules: [funcs, logger]
+
+  - name: dm_dispatch
+    kind: library.lua
+    meta:
+      name: dm_dispatch
+      comment: Per-DM handler -- run the inbound receiver as the system gateway process, passing the connection component_id as the reply route. The receiver resolves the linked user; the connection owns no DM identity. No automation, no agent.
+    source: file://dm_dispatch.lua
+    modules: [funcs, logger]
+
+  - name: dm_dispatch_proc
+    kind: process.lua
+    meta:
+      comment: One-shot process handling a single Discord DM as the system gateway process; spawned per message by the worker for isolation.
+    source: file://dm_dispatch.lua
+    method: main
+    modules: [funcs, logger]
+
+  - name: worker
+    kind: process.lua
+    meta:
+      comment: One per-bot Discord Gateway connection (connect/identify/resume/heartbeat/reconnect); forwards guild messages to kickside.channel:receive and DMs to kickside.dm:receive. Carries no routing.
+    source: file://worker.lua
+    method: main
+    modules: [time, channel, logger, process]
+    imports:
+      protocol: kickside.discord.gateway:protocol
+      backoff: kickside.discord.gateway:backoff
+      consts: kickside.discord.gateway:consts
+      gateway_api: kickside.discord.gateway:gateway_api
+      api: kickside.discord.client:api
+      preconditions: kickside.discord.client:preconditions
+      health: kickside.discord.gateway:health
+
+  - name: lifecycle_notifier
+    kind: library.lua
+    source: file://lifecycle_reconcile.lua
+    modules: [process]
+    imports:
+      connection: kickside.connection:base_connection
+      consts: kickside.discord.gateway:consts
+
+  - name: lifecycle_reconcile
+    kind: function.lua
+    meta:
+      type: projection.worker
+      title: Discord Connection Lifecycle
+    source: file://lifecycle_reconcile.lua
+    method: run
+    modules: [process]
+    imports:
+      connection: kickside.connection:base_connection
+      consts: kickside.discord.gateway:consts
+
+  - name: hub
+    kind: process.lua
+    meta:
+      comment: Gateway supervisor -- enumerates discord connections and spawns/supervises one worker per connection. Channel coverage is resolved per message by kickside.channel:receive; the hub owns no routing. Reconciles on startup, worker death and committed connection lifecycle changes.
+    source: file://hub.lua
+    method: main
+    modules: [channel, logger, env, process, registry]
+    imports:
+      component: kickside.component:component
+      connection: kickside.connection:base_connection
+      health: kickside.discord.gateway:health
+      notifier: kickside.discord.gateway:lifecycle_notifier
+
+  # Process host the gateway hub runs on. runtime_reader is resolved dynamically at
+  # runtime via contract.get, so the provider needs no static engine dependency
+  # for the hub itself.
+  - name: process_host
+    kind: ns.requirement
+    meta:
+      comment: Process host the Discord gateway hub service runs on.
+      description: Process host the Discord gateway hub service runs on.
+    targets:
+      - entry: kickside.discord.gateway:gateway.service
+        path: .host
+
+  - name: target_db
+    kind: ns.requirement
+    meta:
+      comment: Component database resource the Discord gateway supervisor waits for.
+      description: Component database resource the Discord gateway supervisor waits for.
+    targets:
+      - entry: kickside.discord.gateway:gateway.service
+        path: ".lifecycle.depends_on +="
+
+  - name: gateway.service
+    kind: process.service
+    meta:
+      comment: Supervised Discord gateway hub -- waits for the component store, then spawns/monitors per-connection bot workers from installed responder automations.
+    process: kickside.discord.gateway:hub
+    host: ""
+    lifecycle:
+      depends_on: [wippy.bootloader:bootloader.service]
+      auto_start: true
+      restart_policy: always
+      security:
+        groups:
+          - wippy.security:process
+          - kickside.discord.gateway:ingress

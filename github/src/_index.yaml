@@ -1,0 +1,228 @@
+version: "1.0"
+namespace: kickside.github
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide GitHub
+      comment: GitHub OAuth connection provider with repository issue/PR source and reader/writer/manager agent traits.
+
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: "*"
+    meta:
+      comment: Resolves GitHub connection components through the component service.
+
+  - name: dep.kickside.connection
+    kind: ns.dependency
+    component: kickside/connection
+    version: "*"
+    meta:
+      comment: Implements the shared connection contract and base connection helpers.
+
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: "*"
+    meta:
+      comment: Implements the component and deletable contracts used by GitHub connections.
+
+  - name: dep.kickside.oauth
+    kind: ns.dependency
+    component: kickside/oauth
+    version: "*"
+    meta:
+      comment: Supplies the OAuth connector and OAuth connection contracts used by the provider.
+
+  - name: dep.kickside.settings
+    kind: ns.dependency
+    component: kickside/settings
+    version: "*"
+    meta:
+      comment: Supplies the settings definitions and settings block rendered for the provider.
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server the GitHub connection UI static mount attaches to.
+      description: HTTP server the GitHub connection UI static mount attaches to.
+    targets:
+      - entry: kickside.github.ui:ui_static
+        path: .meta.server
+
+  - name: env_storage
+    kind: ns.requirement
+    meta:
+      comment: Environment storage that resolves the GitHub OAuth client credentials.
+      description: Environment storage that resolves the GitHub OAuth client credentials.
+    targets:
+      - entry: kickside.github:client_id
+        path: .storage
+      - entry: kickside.github:client_secret
+        path: .storage
+
+  - name: client_id
+    kind: env.variable
+    meta:
+      comment: GitHub OAuth client ID.
+      icon: tabler:brand-github
+    variable: GITHUB_CLIENT_ID
+
+  - name: client_secret
+    kind: env.variable
+    meta:
+      comment: GitHub OAuth client secret.
+      icon: tabler:brand-github
+    variable: GITHUB_CLIENT_SECRET
+
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: GitHub OAuth client ID (encrypted setting).
+    namespace: kickside.github
+    key: client_id
+    value_type: secret
+    default: ""
+    description: GitHub OAuth client ID. Overrides GITHUB_CLIENT_ID when set.
+    scope: global
+    editable: true
+
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: GitHub OAuth client secret (encrypted setting).
+    namespace: kickside.github
+    key: client_secret
+    value_type: secret
+    default: ""
+    description: GitHub OAuth client secret. Overrides GITHUB_CLIENT_SECRET when set.
+    scope: global
+    editable: true
+
+  - name: github
+    kind: registry.entry
+    meta:
+      type: component
+      title: GitHub
+      comment: Connect GitHub to read and manage repositories, issues, pull requests, comments, and contents.
+      group: Developer
+      tags: [github, git, code, issues, pull-requests]
+      class:
+        - connection
+        - oauth_connection
+        - github_services
+        - developer
+      component:
+        icon: tabler:brand-github
+        create: { view: kickside.github.ui:connect_view }
+      oauth_provider: github
+    description: Connect GitHub to access repositories, issues, pull requests, comments, and file contents.
+    depends_on:
+      - kickside.github:client_id
+      - kickside.github:client_secret
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://github.com/login/oauth/authorize
+        oauth_token_endpoint: https://github.com/login/oauth/access_token
+        oauth_userinfo_endpoint: https://api.github.com/user
+        oauth_client_id_env: kickside.github:client_id
+        oauth_client_secret_env: kickside.github:client_secret
+        oauth_client_id_setting: kickside.github:client_id
+        oauth_client_secret_setting: kickside.github:client_secret
+    default_scopes:
+      - read:user
+      - user:email
+    available_scopes:
+      - name: Read Profile
+        description: Read your GitHub profile.
+        scope: read:user
+      - name: Read Email
+        description: Read your GitHub account email addresses.
+        scope: user:email
+      - name: Public Repositories
+        description: Read and write public repository issues, pull requests, comments, and contents.
+        scope: public_repo
+      - name: Repositories
+        description: Read and write private and public repository issues, pull requests, comments, and contents.
+        scope: repo
+      - name: Read Organizations
+        description: Read organization and team membership needed to discover repository access.
+        scope: read:org
+
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: GitHub settings block for the admin Settings page.
+    key: github
+    title: GitHub
+    icon: tabler:brand-github
+    group: Integrations
+    order: 10
+    namespace: kickside.github
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.github
+      title: GitHub
+      icon: tabler:brand-github
+      help: OAuth app client credentials for GitHub repository access.
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      api: https://api.github.com
+      authorization: https://github.com/login/oauth/authorize
+      token: https://github.com/login/oauth/access_token
+      userinfo: https://api.github.com/user
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Instance api endpoint.
+      description: Instance api endpoint.
+    default: https://api.github.com
+    targets:
+    - entry: kickside.github:endpoints
+      path: .endpoints.api
+  - name: endpoint_authorization
+    kind: ns.requirement
+    meta:
+      comment: Instance authorization endpoint.
+      description: Instance authorization endpoint.
+    default: https://github.com/login/oauth/authorize
+    targets:
+    - entry: kickside.github:endpoints
+      path: .endpoints.authorization
+    - entry: kickside.github:github
+      path: .connector_contract.context_values.oauth_authorization_endpoint
+  - name: endpoint_token
+    kind: ns.requirement
+    meta:
+      comment: Instance token endpoint.
+      description: Instance token endpoint.
+    default: https://github.com/login/oauth/access_token
+    targets:
+    - entry: kickside.github:endpoints
+      path: .endpoints.token
+    - entry: kickside.github:github
+      path: .connector_contract.context_values.oauth_token_endpoint
+  - name: endpoint_userinfo
+    kind: ns.requirement
+    meta:
+      comment: Instance userinfo endpoint.
+      description: Instance userinfo endpoint.
+    default: https://api.github.com/user
+    targets:
+    - entry: kickside.github:endpoints
+      path: .endpoints.userinfo
+    - entry: kickside.github:github
+      path: .connector_contract.context_values.oauth_userinfo_endpoint

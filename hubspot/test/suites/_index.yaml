@@ -1,0 +1,107 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/hubspot. They live in the harness because the module
+# is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+      comment: Canonical HubSpot CRM pull pagination, cursor, hydration, and conformance coverage.
+    source: file://pull_core_test.lua
+    method: run
+    imports:
+      config: kickside.hubspot.client:config
+      pull_core: kickside.hubspot.source:pull_core
+      conformance: kickside.automation.testing:pullable_conformance
+      test: wippy.test:test
+
+  - name: writable_port_validation_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+      comment: Checks HubSpot sink declarations against the automation port ABI.
+    source: file://writable_port_validation_test.lua
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+    method: run
+
+  - name: association_pull_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+      comment: Exercises generic HubSpot association envelopes and both pagination layers.
+    source: file://hubspot_association_test.lua
+    imports:
+      conformance: kickside.automation.testing:pullable_conformance
+      source: kickside.hubspot.source:association_pull
+      test: wippy.test:test
+      types: kickside.hubspot.client:types
+    method: run
+
+  - name: object_sink_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+      comment: Exercises canonical HubSpot writable operations and destination identity.
+    source: file://object_sink_test.lua
+    imports:
+      sink: kickside.hubspot.sink:object_sink
+      config: kickside.hubspot.client:config
+      test: wippy.test:test
+    method: run
+
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+    source: file://api_test.lua
+    modules: [json, time]
+    imports:
+      api: kickside.hubspot.client:api
+      test: wippy.test:test
+      types: kickside.hubspot.client:types
+    method: run
+
+  - name: config_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+    source: file://config_test.lua
+    imports:
+      config: kickside.hubspot.client:config
+      test: wippy.test:test
+    method: run
+
+  - name: traits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+    source: file://traits_test.lua
+    modules: [json, registry, funcs]
+    imports:
+      test: wippy.test:test
+      transport: kickside.hubspot.client:transport
+      read_tool: kickside.hubspot.traits:read_tool
+    method: run
+
+  - name: engagement_intent_test
+    kind: function.lua
+    meta: { type: test, suite: hubspot, comment: Checks every read-only engagement source through paged CRM placement hydration. }
+    source: file://engagement_intent_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      core: kickside.hubspot.source:pull_core
+      config: kickside.hubspot.client:config

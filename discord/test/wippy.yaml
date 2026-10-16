@@ -1,0 +1,3 @@
+organization: kickside
+module: discord-test
+description: Standalone runnable harness that boots kickside/discord and checks provider declarations.

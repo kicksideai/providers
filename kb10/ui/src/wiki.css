@@ -1,0 +1,330 @@
+/* kx-kb-wiki — documentation-site styles, layered over the shared kb10 sheet.
+   The chrome (shell, rail header, controls, drawer, tabs, notice, loading) comes
+   from the shared kc-* layer; this file holds only the wiki-specific surfaces:
+   the concept tree rows, the reading column, breadcrumb + taxonomy tools, the
+   inline taxonomy form, the search popover, and the article body. Colors and
+   geometry come from the shared --kb-* tokens (theme-aware in light and dark). */
+
+:host { display: block; height: 100%; min-height: 0; }
+
+.wk {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  /* Fill the viewport so the nav rail runs top-to-bottom even when the reader
+     content is short: height:100% when the host chain provides it, else fall
+     back to (viewport − app nav + KB detail bar). */
+  height: 100%;
+  min-height: calc(100vh - 96px);
+}
+
+/* ── File-manager nav rail ───────────────────────────────────────────────────
+   A breadcrumb of ancestors over a flat, un-indented list of the current
+   folder's direct children. Folders (subtopics) drill in; leaves (documents)
+   open in the reader. No progressive indentation, so a deep tree never pushes
+   rows off-screen. The rail is width-resizable from its right edge. */
+
+/* The rail owns a positioning context for the right-edge resize handle, and
+   pads its body so rows clear the handle. */
+.wk .kc-rail { position: relative; }
+.wk.wk-dragging { user-select: none; }
+.wk.wk-dragging * { cursor: col-resize !important; }
+
+/* Right-edge handle that resizes the rail (persisted, clamped). */
+.wn-resizer {
+  position: absolute; z-index: 3; top: 0; right: -6px; bottom: 0; width: 12px;
+  cursor: col-resize; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.wn-resizer-grip { width: 3px; height: 56px; border-radius: 999px; background: var(--kb-border); transition: background .14s; }
+.wn-resizer:hover .wn-resizer-grip, .wk.wk-dragging .wn-resizer-grip { background: var(--kb-primary); }
+
+/* Rail filter: flatten the whole tree into a search result list. */
+.wn-filter {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  margin: 8px 8px 4px; padding: 0 9px; height: var(--kb-ctl-sm);
+  border-radius: var(--kb-r); background: var(--kb-bg); border: 1px solid var(--kb-border);
+  transition: border-color .14s, box-shadow .14s;
+}
+.wn-filter:focus-within { border-color: var(--kb-primary); box-shadow: var(--kb-ring); }
+.wn-filter-ic { width: 14px; height: 14px; flex: none; color: var(--kb-faint); }
+.wn-filter-input {
+  flex: 1; min-width: 0; border: none; background: none; outline: none;
+  font: inherit; font-size: 12.5px; color: var(--kb-text);
+}
+.wn-filter-input::placeholder { color: var(--kb-faint); }
+.wn-filter-x {
+  flex: none; display: inline-flex; width: 18px; height: 18px; border: none;
+  border-radius: 8px; background: transparent; color: var(--kb-faint); cursor: pointer;
+}
+.wn-filter-x:hover { color: var(--kb-text); background: var(--kb-surface); }
+.wn-filter-x svg { width: 13px; height: 13px; }
+
+.wn { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+/* Folder header: the current level's name with an up control. */
+.wn-folder { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 2px 6px; }
+.wn-up {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: var(--kb-r-sm);
+  border: 1px solid var(--kb-border); background: var(--kb-surface);
+  color: var(--kb-muted); cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+}
+.wn-up:hover { background: var(--kb-surface-2); color: var(--kb-text); border-color: var(--kb-border-strong); }
+.wn-up svg { width: 14px; height: 14px; }
+.wn-folder-name {
+  min-width: 0; flex: 1; font-size: 12px; font-weight: 700; color: var(--kb-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* The flat level list (and search results share these rows). */
+.wn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.wn-item {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 8px; min-height: var(--kb-row); border-radius: var(--kb-r); min-width: 0;
+  cursor: pointer; transition: background .12s, color .12s;
+}
+.wn-item:hover { background: var(--kb-surface-2); }
+.wn-item.active {
+  background: color-mix(in srgb, var(--kb-primary) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--kb-primary);
+}
+.wn-item.active .wn-label { color: var(--kb-primary); font-weight: 700; }
+.wn-ico { display: inline-flex; flex: none; }
+.wn-ico svg { width: 16px; height: 16px; }
+.wn-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 5px 0; }
+.wn-label {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 550; color: var(--kb-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wn-item-text .wn-label { flex: none; }
+.wn-item:not(.folder) .wn-label { font-weight: 500; color: var(--kb-muted); }
+/* The locating path under a search result. */
+.wn-path {
+  font-size: 10.5px; color: var(--kb-faint); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wn-path-sep { padding: 0 4px; opacity: .6; }
+.wn-count {
+  flex: none; min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: var(--kb-surface-2); color: var(--kb-faint);
+}
+.wn-item.active .wn-count { background: color-mix(in srgb, var(--kb-primary) 18%, transparent); color: var(--kb-primary); }
+/* Folder affordance: the drill-in chevron, lit on hover. */
+.wn-go { flex: none; width: 15px; height: 15px; color: var(--kb-faint); transition: color .12s, transform .12s; }
+.wn-item.folder:hover .wn-go { color: var(--kb-muted); transform: translateX(1px); }
+.wn-empty { padding: 14px 10px; font-size: 12px; color: var(--kb-faint); text-align: center; }
+
+/* ── Center: reading column ──────────────────────────────────────────────── */
+/* Content is left-aligned against the nav (no centering gutter); index grids
+   and headers use the available width, while prose bodies constrain themselves
+   to the reading measure below so reading stays easy. */
+.wk-doc-inner { max-width: 1280px; }
+/* Prose + its cross-links hold to the comfortable measure. */
+.wr-doc, .wr-foot, .wr-lede, .wk-tax { max-width: var(--kb-measure); }
+
+/* Breadcrumb trail + taxonomy tools as one slim line above the page. Back /
+   Edit / Share / Delete are in the standard KB bar; the scroll's own gap spaces
+   this off the title, so the line adds no band of its own. */
+.wk-pagebar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 24px; margin-bottom: -4px;
+}
+.wk-pagebar .wk-crumbs { flex: 1; }
+.wk-pagebar .wk-tools { flex: none; }
+
+.wk-crumbs { display: flex; align-items: center; gap: 1px; min-width: 0; flex-wrap: nowrap; overflow: hidden; }
+.wk-crumb {
+  flex: 0 1 auto; min-width: 0;
+  height: 24px; padding: 0 7px; border-radius: var(--kb-r-sm);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  background: transparent; border: none; color: var(--kb-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.wk-crumb:hover { background: var(--kb-surface-2); color: var(--kb-text); }
+.wk-crumb-sep { width: 13px; height: 13px; color: var(--kb-faint); flex: none; }
+
+/* Article header */
+.wr { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.wr-head { display: flex; flex-direction: column; gap: 9px; }
+.wr-eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--kb-muted);
+}
+.wr-eyebrow-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+/* Title row: title left, inline original toggle pinned right. */
+.wr-title-row { display: flex; align-items: flex-start; gap: 14px; }
+.wr-title { margin: 0; flex: 1; min-width: 0; font-size: 27px; font-weight: 800; line-height: 1.15; letter-spacing: -.02em; color: var(--kb-text); }
+.wr-lede { margin: 0; font-size: 15px; line-height: 1.6; color: var(--kb-muted); }
+
+/* State rows (loading / error / empty) */
+.wr-state {
+  display: flex; align-items: center; gap: 9px;
+  padding: 40px 20px; justify-content: center;
+  font-size: 13px; color: var(--kb-muted);
+}
+.wr-state.err { color: var(--kb-danger); }
+.wr-state svg { width: 17px; height: 17px; }
+.wr-state .spin.big { width: 22px; height: 22px; }
+
+/* Document body (rendered by the external resource-view component) */
+.wr-doc { display: flex; flex-direction: column; gap: 8px; }
+.wr-doc-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Page action bar: title (when stacked) left, original toggle pinned right. */
+.wr-doc-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.wr-orig-btn { margin-left: auto; flex: none; }
+.wr-orig-btn.on { border-color: var(--kb-primary); color: var(--kb-primary); background: var(--kb-primary-soft); }
+.wr-doc-toggle {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap;
+  padding: 3px 9px; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600;
+  background: var(--kb-surface-2); border: 1px solid var(--kb-border); color: var(--kb-text);
+}
+.wr-doc-toggle:hover { border-color: var(--kb-primary); color: var(--kb-primary); }
+.wr-doc-toggle svg { width: 14px; height: 14px; }
+.wr-doc-sep {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--kb-faint); padding-bottom: 4px; border-bottom: 1px solid var(--kb-border);
+}
+.wr-rv { display: block; min-width: 0; }
+.wr-doc-rule { border: none; border-top: 1px solid var(--kb-border); margin: 12px 0; }
+
+/* Chunks (indexing) view — normalized with the document KB. */
+.wr-chunks { display: flex; flex-direction: column; gap: 16px; max-width: var(--kb-measure); }
+.wr-chunks-doc { display: flex; flex-direction: column; gap: 10px; }
+.wr-chunk { padding: 12px 14px; border-radius: var(--kb-r-card); border: 1px solid var(--kb-border); background: var(--kb-surface); cursor: pointer; transition: border-color .14s; }
+.wr-chunk:hover { border-color: var(--kb-border-strong); }
+.wr-chunk-h { width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+.wr-chunk-n { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--kb-surface-2); color: var(--kb-muted); font-variant-numeric: tabular-nums; }
+.wr-chunk-label { font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--kb-muted); }
+.wr-chunk-chev { width: 16px; height: 16px; margin-left: auto; color: var(--kb-faint); }
+.wr-chunk-cx { display: flex; align-items: flex-start; gap: 7px; margin: 9px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 1.5; font-style: italic; background: color-mix(in srgb, var(--kb-primary) 6%, transparent); color: var(--kb-muted); }
+.wr-chunk-cx svg { width: 13px; height: 13px; flex: none; margin-top: 2px; color: var(--kb-primary); }
+.wr-chunk-body { margin: 10px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--kb-muted); white-space: pre-wrap; }
+.wr-chunk-body.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Provenance footer for a rendered page */
+.wr-prov {
+  display: flex; flex-wrap: wrap; gap: 6px 18px;
+  padding: 12px 14px; border-radius: var(--kb-r-card);
+  background: var(--kb-surface); border: 1px solid var(--kb-border);
+}
+.wr-prov-row { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; font-size: 12px; }
+.wr-prov-k { font-weight: 700; color: var(--kb-faint); text-transform: uppercase; letter-spacing: .03em; font-size: 10px; }
+.wr-prov-v { color: var(--kb-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+a.wr-prov-v { color: var(--kb-primary); text-decoration: none; }
+a.wr-prov-v:hover { text-decoration: underline; }
+
+/* Category index: sub-page card grid */
+.wr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.wr-card {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 14px; border-radius: var(--kb-r-card); cursor: pointer; text-align: left;
+  background: var(--kb-surface); border: 1px solid var(--kb-border);
+  transition: border-color .14s, box-shadow .14s, transform .14s;
+}
+.wr-card:hover {
+  border-color: color-mix(in srgb, var(--c, var(--kb-primary)) 45%, var(--kb-border));
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--p-text-color) 8%, transparent);
+  transform: translateY(-1px);
+}
+.wr-card-top { display: flex; align-items: center; justify-content: space-between; }
+.wr-card-ic {
+  width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--c, var(--kb-primary)) 16%, transparent);
+  color: var(--c, var(--kb-primary));
+}
+.wr-card-ic svg { width: 16px; height: 16px; }
+.wr-card-go { width: 15px; height: 15px; color: var(--kb-faint); opacity: 0; transition: opacity .14s; }
+.wr-card:hover .wr-card-go { opacity: 1; }
+.wr-card-name { font-size: 14px; font-weight: 700; color: var(--kb-text); }
+.wr-card-desc {
+  font-size: 12.5px; line-height: 1.5; color: var(--kb-muted);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.wr-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--kb-faint); margin-top: 2px; }
+
+/* Contextual page (concept) tools, shown in the content bar. */
+.wk-tools { display: inline-flex; gap: 4px; flex: none; }
+
+/* Inline taxonomy form — sits above the page, no modal, no side panel. */
+.wk-tax {
+  display: flex; flex-direction: column; gap: 9px;
+  padding: 14px; border-radius: var(--kb-r-card);
+  background: var(--kb-surface); border: 1px solid var(--kb-border);
+}
+.wk-tax-h {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; font-weight: 700; color: var(--kb-text);
+}
+.wk-tax-input, .wk-tax-textarea {
+  width: 100%; font: inherit; font-size: 13px; color: var(--kb-text);
+  background: var(--kb-bg); border: 1px solid var(--kb-border); border-radius: var(--kb-r);
+  transition: border-color .14s, box-shadow .14s;
+}
+.wk-tax-input { height: var(--kb-ctl); padding: 0 11px; }
+.wk-tax-textarea { padding: 8px 11px; resize: vertical; min-height: 56px; line-height: 1.5; }
+.wk-tax-input:focus, .wk-tax-textarea:focus { outline: none; border-color: var(--kb-primary); box-shadow: var(--kb-ring); }
+.wk-tax-del { display: flex; flex-direction: column; gap: 9px; }
+.wk-tax-counts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 11.5px; color: var(--kb-muted); }
+.wk-tax-counts span { display: inline-flex; align-items: center; gap: 5px; }
+.wk-tax-counts svg { width: 13px; height: 13px; color: var(--kb-faint); }
+.wk-tax-err { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--kb-danger); }
+.wk-tax-err svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.wk-tax-foot { display: flex; justify-content: flex-end; gap: 7px; }
+
+/* Reader footer: sub-page + related cross-links, inline (not a nav column). */
+.wr-foot {
+  display: flex; flex-direction: column; gap: 14px;
+  margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--kb-border);
+}
+.wr-foot-group { display: flex; flex-direction: column; gap: 8px; }
+.wr-foot-h {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--kb-faint);
+}
+.wr-foot-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.wr-foot-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: var(--kb-ctl-sm); padding: 0 11px; border-radius: 999px;
+  font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+  background: var(--kb-surface); color: var(--kb-text); border: 1px solid var(--kb-border);
+  transition: border-color .14s, background .14s;
+}
+.wr-foot-link:hover { background: var(--kb-surface-2); border-color: var(--kb-border-strong); }
+.wr-foot-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.wr-foot-kind { font-size: 9.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--kb-faint); }
+
+/* ── Responsive: narrow detail areas (rail stacks via the shared .kc-shell) ── */
+@media (max-width: 760px) {
+  .wk-doc-inner { padding: 20px 22px 64px; }
+  /* Single-column card index; keep provenance values from forcing overflow. */
+  .wr-grid { grid-template-columns: 1fr; }
+  .wr-prov-v { max-width: 100%; }
+  /* The rail becomes a full-width band (shared .kc-shell), so width isn't
+     draggable: hide the handle and ignore the persisted width. */
+  .wn-resizer { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wr-card, .wn-row, .wr-foot-link { transition: none; }
+}
+
+/* View switch separator in the rail header actions. */
+.kb-view-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--kc-border); }
+
+/* Hover-revealed kebab on a wiki nav row — opens the concept actions menu. */
+.wn-kebab {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: none; background: transparent;
+  border-radius: var(--kb-r-sm); cursor: pointer; color: var(--kb-faint);
+  opacity: 0; transition: opacity .12s, background .12s, color .12s;
+}
+.wn-item:hover .wn-kebab { opacity: .7; }
+.wn-kebab:hover { background: var(--kb-surface-2); color: var(--kb-text); opacity: 1; }
+.wn-kebab svg { width: 15px; height: 15px; }

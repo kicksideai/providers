@@ -1,0 +1,72 @@
+version: "1.0"
+namespace: kickside.simplefin.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared constants and type surfaces for SimpleFIN.
+    source: file://types.lua
+
+  - name: protocol
+    kind: library.lua
+    meta:
+      name: protocol
+      comment: Pure SimpleFIN protocol rules; credential forms, queries, amounts, time and answer normalization.
+    source: file://protocol.lua
+    modules: [base64]
+
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Low-level SimpleFIN Bridge HTTP client.
+    source: file://api.lua
+    modules: [http_client, json]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      types: kickside.simplefin.client:types
+      protocol: kickside.simplefin.client:protocol
+
+  - name: output
+    kind: library.lua
+    meta:
+      name: output
+      comment: SimpleFIN tool output redaction of credential-bearing keys.
+    source: file://output.lua
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Actor-scoped SimpleFIN connection resolver; claims a pending setup token on first contact.
+    source: file://transport.lua
+    imports:
+      component: kickside.component:component
+      api: kickside.simplefin.client:api
+      protocol: kickside.simplefin.client:protocol
+      types: kickside.simplefin.client:types
+
+  - name: protocol_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: simplefin
+    source: file://protocol_test.lua
+    method: run
+    modules: [base64]
+    imports:
+      test: wippy.test:test
+      protocol: kickside.simplefin.client:protocol
+
+  - name: output_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: simplefin
+    source: file://output_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      output: kickside.simplefin.client:output

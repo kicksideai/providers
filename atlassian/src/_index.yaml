@@ -1,0 +1,266 @@
+version: "1.0"
+namespace: kickside.atlassian
+
+# Atlassian provider root. Declares ONE oauth_provider registry entry (meta.oauth_provider
+# = atlassian) that kickside/oauth discovers and runs through the shared
+# kickside.oauth:base_connector — this module owns only Atlassian's endpoints, scopes and
+# credentials, never OAuth mechanics. The stored-credential path (Cloud API token / Server PAT)
+# is a single kickside.connection:connection binding under connection/ (one site + one credential
+# serves both Jira and Confluence). Both auth modes resolve to one Bearer/Basic header in
+# kickside.atlassian.client:transport, so the service and tool layers never branch on auth.
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Atlassian
+      comment: Jira and Confluence provider. OAuth (3LO) via kickside/oauth plus stored-credential connections, with agent tools over a shared transport.
+
+  # ─── Dependency interface (ns.requirement) ───────────────────────────
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server the Atlassian connection UI static mount attaches to.
+      description: HTTP server the Atlassian connection UI static mount attaches to.
+    default: app:gateway
+    targets:
+      - entry: kickside.atlassian.ui:ui_static
+        path: .meta.server
+
+  - name: env_storage
+    kind: ns.requirement
+    meta:
+      comment: Environment storage that resolves the Atlassian OAuth client credentials.
+      description: Environment storage that resolves the Atlassian OAuth client credentials.
+    targets:
+      - entry: kickside.atlassian:client_id
+        path: .storage
+      - entry: kickside.atlassian:client_secret
+        path: .storage
+
+  # ─── Credentials (env-backed) ────────────────────────────────────────
+  - name: client_id
+    kind: env.variable
+    meta:
+      comment: Atlassian OAuth client ID.
+      icon: simple-icons:atlassian
+    variable: ATLASSIAN_OAUTH_CLIENT_ID
+
+  - name: client_secret
+    kind: env.variable
+    meta:
+      comment: Atlassian OAuth client secret.
+      icon: simple-icons:atlassian
+    variable: ATLASSIAN_OAUTH_CLIENT_SECRET
+
+  # ─── Credentials (settings-backed, encrypted, admin-editable) ────────
+  # The connector prefers these and falls back to the env vars above, so a deployment
+  # can migrate creds out of .env without downtime.
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Atlassian OAuth client ID (encrypted setting).
+    namespace: kickside.atlassian
+    key: client_id
+    value_type: secret
+    default: ""
+    description: Atlassian OAuth client ID. Overrides ATLASSIAN_OAUTH_CLIENT_ID when set.
+    scope: global
+    editable: true
+
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Atlassian OAuth client secret (encrypted setting).
+    namespace: kickside.atlassian
+    key: client_secret
+    value_type: secret
+    default: ""
+    description: Atlassian OAuth client secret. Overrides ATLASSIAN_OAUTH_CLIENT_SECRET when set.
+    scope: global
+    editable: true
+
+  # ─── The OAuth provider (discovered by kickside/oauth) ───────────────
+  # Atlassian 3LO requires audience=api.atlassian.com on the authorize call and
+  # offline_access for refresh tokens. After consent the token is keyed by the
+  # created component_id; transport.connect resolves the cloudId from
+  # /oauth/token/accessible-resources to build the api.atlassian.com/ex base.
+  - name: atlassian
+    kind: registry.entry
+    meta:
+      type: component
+      title: Atlassian
+      comment: Connect Atlassian to work with Jira issues and Confluence pages.
+      group: Productivity
+      tags: [jira, confluence, issues, wiki, productivity]
+      class:
+        - connection
+        - oauth_connection
+        - atlassian_services
+        - productivity
+      component:
+        icon: simple-icons:atlassian
+        create: { view: kickside.atlassian.ui:connect_view }
+      oauth_provider: atlassian
+    description: Connect to Atlassian to access Jira projects/issues and Confluence spaces/pages.
+    depends_on:
+      - kickside.atlassian:client_id
+      - kickside.atlassian:client_secret
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://auth.atlassian.com/authorize
+        oauth_token_endpoint: https://auth.atlassian.com/oauth/token
+        oauth_userinfo_endpoint: https://api.atlassian.com/me
+        oauth_client_id_env: kickside.atlassian:client_id
+        oauth_client_secret_env: kickside.atlassian:client_secret
+        oauth_client_id_setting: kickside.atlassian:client_id
+        oauth_client_secret_setting: kickside.atlassian:client_secret
+        oauth_extra_auth_params:
+          audience: api.atlassian.com
+          prompt: consent
+    default_scopes:
+      - read:me
+      - offline_access
+    available_scopes:
+      - name: Sign In
+        description: Read your Atlassian account profile.
+        scope: read:me
+      - name: Offline Access
+        description: Keep the connection alive by refreshing access (required).
+        scope: offline_access
+      - name: Read Jira
+        description: Read Jira projects, issues, comments and transitions.
+        scope: read:jira-work
+      - name: Manage Jira
+        description: Create and update Jira issues, comments and transitions.
+        scope: write:jira-work
+      - name: Read Jira Users
+        description: Look up Jira users for assignment.
+        scope: read:jira-user
+      - name: Read Confluence
+        description: Read Confluence spaces, pages and blog posts.
+        scope: read:confluence-content.all
+      - name: Manage Confluence
+        description: Create, update and delete Confluence pages.
+        scope: write:confluence-content
+
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: Atlassian settings block for the admin Settings page.
+    key: atlassian
+    title: Atlassian
+    icon: tabler:plug-connected
+    group: Integrations
+    order: 10
+    namespace: kickside.atlassian
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.atlassian
+      title: Atlassian
+      icon: tabler:plug-connected
+      help: OAuth app client credentials for Jira and Confluence.
+
+  - name: dep.kickside.component
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Resolves provider connection components through the component service.
+    component: kickside/component
+
+  - name: dep.kickside.connection
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the shared connection contract and base connection helpers.
+    component: kickside/connection
+
+  - name: dep.kickside.contract
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the component and deletable contracts used by Atlassian connections.
+    component: kickside/contract
+
+  - name: dep.kickside.oauth
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the OAuth connector and OAuth connection contracts used by the provider.
+    component: kickside/oauth
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the settings definitions and settings block rendered for the provider.
+    component: kickside/settings
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      resources: https://api.atlassian.com/oauth/token/accessible-resources
+      gateway: https://api.atlassian.com
+      authorization: https://auth.atlassian.com/authorize
+      token: https://auth.atlassian.com/oauth/token
+      userinfo: https://api.atlassian.com/me
+  - name: endpoint_resources
+    kind: ns.requirement
+    meta:
+      comment: Instance resources endpoint.
+      description: Instance resources endpoint.
+    default: https://api.atlassian.com/oauth/token/accessible-resources
+    targets:
+    - entry: kickside.atlassian:endpoints
+      path: .endpoints.resources
+  - name: endpoint_gateway
+    kind: ns.requirement
+    meta:
+      comment: Instance gateway endpoint.
+      description: Instance gateway endpoint.
+    default: https://api.atlassian.com
+    targets:
+    - entry: kickside.atlassian:endpoints
+      path: .endpoints.gateway
+  - name: endpoint_authorization
+    kind: ns.requirement
+    meta:
+      comment: Instance authorization endpoint.
+      description: Instance authorization endpoint.
+    default: https://auth.atlassian.com/authorize
+    targets:
+    - entry: kickside.atlassian:endpoints
+      path: .endpoints.authorization
+    - entry: kickside.atlassian:atlassian
+      path: .connector_contract.context_values.oauth_authorization_endpoint
+  - name: endpoint_token
+    kind: ns.requirement
+    meta:
+      comment: Instance token endpoint.
+      description: Instance token endpoint.
+    default: https://auth.atlassian.com/oauth/token
+    targets:
+    - entry: kickside.atlassian:endpoints
+      path: .endpoints.token
+    - entry: kickside.atlassian:atlassian
+      path: .connector_contract.context_values.oauth_token_endpoint
+  - name: endpoint_userinfo
+    kind: ns.requirement
+    meta:
+      comment: Instance userinfo endpoint.
+      description: Instance userinfo endpoint.
+    default: https://api.atlassian.com/me
+    targets:
+    - entry: kickside.atlassian:endpoints
+      path: .endpoints.userinfo
+    - entry: kickside.atlassian:atlassian
+      path: .connector_contract.context_values.oauth_userinfo_endpoint

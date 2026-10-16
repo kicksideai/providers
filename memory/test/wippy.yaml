@@ -1,0 +1,6 @@
+description: Tests of the memory runtime argument and durable-memory boundaries.
+module: memory-unit-test
+organization: kickside
+directories:
+  src: .
+  modules: .wippy

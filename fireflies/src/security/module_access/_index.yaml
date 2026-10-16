@@ -1,0 +1,57 @@
+version: '1.0'
+namespace: kickside.fireflies.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Fireflies
+    surface: kickside.fireflies
+    intent: module_access
+    includes:
+    - kickside.fireflies.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.fireflies:*
+    - kickside.fireflies.client:*
+    - kickside.fireflies.connection:*
+    - kickside.fireflies.security:*
+    - kickside.fireflies.source:*
+    - kickside.fireflies.traits:*
+    - kickside.fireflies.writer:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.fireflies:*
+    - kickside.fireflies.client:*
+    - kickside.fireflies.connection:*
+    - kickside.fireflies.security:*
+    - kickside.fireflies.source:*
+    - kickside.fireflies.traits:*
+    - kickside.fireflies.writer:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

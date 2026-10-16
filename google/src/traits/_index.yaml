@@ -1,0 +1,1193 @@
+version: "1.0"
+namespace: kickside.google.traits
+
+# Agent traits + tools — the application layer. Each service is split into a
+# read-only Reader trait and a write Writer trait (read-only services expose a
+# Reader only), so a capability is granted by attaching "Google <Service> Reader"
+# and/or "Google <Service> Writer". The read/write boundary is enforced by each
+# tool's action enum; both tools share the service handler. Each tool resolves the
+# actor's Google OAuth connection through the transport. The agent editor mounts
+# the kickside-google-picker web component so a trait can pin connection_id;
+# leaving it blank uses the transport's default auto-discovery.
+
+entries:
+  # ─── Gmail ───────────────────────────────────────────────────────────
+  - name: gmail_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Gmail Reader
+      public: true
+      icon: tabler:mail
+      comment: Reads Gmail messages and threads.
+      tags: [google, gmail, email, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Gmail on the user's Google account with the GoogleGmailRead
+      tool: list_messages (optional Gmail search query, e.g.
+      "from:alice@example.com is:unread"), get_message, list_threads, get_thread,
+      list_labels, and the read draft actions (list_drafts, get_draft). The Google
+      connection is selected on the trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:gmail_read_tool
+
+  - name: gmail_tool_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://gmail_tool.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      gmail: kickside.google.client:gmail
+
+  - name: gmail_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Gmail Read
+      llm_alias: GoogleGmailRead
+      llm_description: "Read Gmail. list_messages/list_drafts return compact metadata summaries with selected addressing headers, labels, dates and provider snippets. list_threads returns id, snippet and historyId without message bodies. Use max_results and next_page_token as page_token. fields requests explicit provider fields; metadata_headers requests selected message/thread headers; the drafts API does not support this selector. list_labels uses max_results and numeric page_token offsets because Gmail returns labels in one response. get_message/get_thread/get_draft return complete provider objects with decoded bodies and attachments."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Gmail response field mask for explicit list detail; default rows are compact summaries. Paging fields are retained separately."},
+            "metadata_headers": {"type": "array", "items": {"type": "string"}, "description": "Gmail headers requested for list_messages/list_threads metadata. Defaults to Subject, From, To, Cc and Date; explicit selection returns the metadata record. The drafts API does not support this selector."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["list_messages", "get_message", "list_threads", "get_thread", "list_labels", "list_drafts", "get_draft"]
+            },
+            "query": { "type": "string", "description": "Gmail search query for list_messages/list_threads" },
+            "message_id": { "type": "string", "description": "Message ID for get_message" },
+            "thread_id": { "type": "string", "description": "Thread ID for get_thread" },
+            "draft_id": { "type": "string", "description": "Draft ID for get_draft" },
+            "max_results": { "type": "integer", "description": "Max items to list (default 10, max 500)" },
+            "page_token": { "type": "string", "description": "next_page_token from the previous list page" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Gmail. list_messages/list_drafts return compact metadata summaries with selected addressing headers, labels, dates and provider snippets. list_threads returns id, snippet and historyId without message bodies. Use max_results and next_page_token as page_token. fields requests explicit provider fields; metadata_headers requests selected message/thread headers; the drafts API does not support this selector. list_labels uses max_results and numeric page_token offsets because Gmail returns labels in one response. get_message/get_thread/get_draft return complete provider objects with decoded bodies and attachments. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "messages": {"type": "array", "items": {"type": "object", "additionalProperties": true}, "description": "Message rows (list_messages) or, for get_thread, full message records"},
+            "threads": {"type": "array", "items": {"type": "object", "additionalProperties": true, "properties": {"id": {"type": "string"}, "snippet": {"type": "string"}, "historyId": {"type": "string"}, "messages": {"type": "array", "items": {"type": "object"}, "description": "Message rows of the thread"}}}},
+            "drafts": {"type": "array", "items": {"type": "object", "additionalProperties": true, "properties": {"id": {"type": "string"}, "message": {"type": "object", "description": "Message row of the draft"}}}},
+            "labels": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "type": {"type": "string"}}}},
+            "next_page_token": {"type": "string"},
+            "result_size_estimate": {"type": "integer"},
+            "id": {"type": "string"},
+            "threadId": {"type": "string"},
+            "labelIds": {"type": "array", "items": {"type": "string"}},
+            "historyId": {"type": "string"},
+            "internalDate": {"type": "string"},
+            "sizeEstimate": {"type": "integer"},
+            "payload": {"type": "object", "description": "Gmail message payload: headers, mimeType, body and parts", "additionalProperties": true},
+            "snippet": {"type": "string"},
+            "subject": {"type": "string"},
+            "from": {"type": "string"},
+            "to": {"type": "string"},
+            "cc": {"type": "string"},
+            "date": {"type": "string"},
+            "attachments": {"type": "array", "items": {"type": "object", "properties": {"filename": {"type": "string"}, "mimeType": {"type": "string"}, "size": {"type": "integer"}, "attachmentId": {"type": "string"}}}},
+            "body": {"type": "string", "description": "Full plain-text message body"},
+            "message": {"type": "object", "description": "Draft message record (get_draft)"}
+          }
+        }
+    source: file://gmail_read_tool.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.google.client:transport
+      gmail: kickside.google.client:gmail
+      implementation: kickside.google.traits:gmail_tool_implementation
+
+  - name: gmail_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Gmail Writer
+      public: true
+      icon: tabler:mail
+      comment: Composes and drafts Gmail messages.
+      tags: [google, gmail, email, write]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can compose Gmail drafts on the user's Google account with the
+      GoogleGmailWrite tool: create_draft, update_draft, and delete_draft. Drafts
+      are never sent automatically. Pair with Google Gmail Reader to look up the
+      messages or drafts you act on. The Google connection is selected on the
+      trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:gmail_write_tool
+
+  - name: gmail_write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Google Gmail Write
+      llm_alias: GoogleGmailWrite
+      llm_description: Create, update, and delete Gmail drafts via the Google connection. Drafts are never sent automatically.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform",
+              "enum": ["create_draft", "update_draft", "delete_draft"]
+            },
+            "draft_id": { "type": "string", "description": "Draft ID for update_draft/delete_draft" },
+            "to": { "type": "string", "description": "Recipient(s) for create_draft/update_draft" },
+            "cc": { "type": "string", "description": "Cc recipient(s)" },
+            "bcc": { "type": "string", "description": "Bcc recipient(s)" },
+            "subject": { "type": "string", "description": "Subject for create_draft/update_draft" },
+            "body": { "type": "string", "description": "Plain-text body for create_draft/update_draft" },
+            "html": { "type": "string", "description": "HTML body (overrides body) for create_draft/update_draft" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected Google request returns { success: false, error, status_code, data } with Google's error body. create_draft/update_draft return the Gmail draft { id, message: { id, threadId, labelIds } }; delete_draft returns { id, deleted: true }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "id": {"type": "string"},
+            "message": {"type": "object", "properties": {"id": {"type": "string"}, "threadId": {"type": "string"}, "labelIds": {"type": "array", "items": {"type": "string"}}}},
+            "deleted": {"type": "boolean"}
+          }
+        }
+    source: file://gmail_write_tool.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.google.client:transport
+      gmail: kickside.google.client:gmail
+      implementation: kickside.google.traits:gmail_tool_implementation
+
+  # ─── Drive ───────────────────────────────────────────────────────────
+  - name: drive_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Drive Reader
+      public: true
+      icon: tabler:brand-google-drive
+      comment: Browses and reads Google Drive files.
+      tags: [google, drive, files, storage, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Google Drive with the GoogleDriveRead tool: list_files to
+      browse recent files (optional Drive query), search_files to find files by
+      name/content, get_file for metadata, and read_file to read a file's text
+      (Google Docs/Sheets/Slides export to text/CSV; other text files download).
+      The Google connection is selected on the trait, or auto-selected when none
+      is pinned.
+    tools:
+      - kickside.google.traits:drive_read_tool
+
+  - name: drive_tool_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://drive_tool.lua
+    modules: [json, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      drive: kickside.google.client:drive
+
+  - name: drive_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Drive Read
+      llm_alias: GoogleDriveRead
+      llm_description: "Read Google drive. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Comma-separated provider fields within each item, or * for all fields. The collection paging token is retained separately. Contacts uses personFields/readMask."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["list_files", "search_files", "get_file", "read_file"]
+            },
+            "query": { "type": "string", "description": "Search text for search_files; or a raw Drive query for list_files" },
+            "file_id": { "type": "string", "description": "Drive file ID — required for get_file, read_file" },
+            "max_results": { "type": "integer", "description": "Max files to list (default 20, max 100)" },
+            "page_token": { "type": "string", "description": "next_page_token from the previous list_files or search_files page" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Google drive. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "files": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "mimeType": {"type": "string"}, "modifiedTime": {"type": "string"}, "size": {"type": "string"}, "owners": {"type": "array", "items": {"type": "object"}}}}},
+            "next_page_token": {"type": "string"},
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "mimeType": {"type": "string"},
+            "modifiedTime": {"type": "string"},
+            "owners": {"type": "array", "items": {"type": "object"}},
+            "webViewLink": {"type": "string"},
+            "mime_type": {"type": "string"},
+            "content": {"type": "string", "description": "Complete file text (read_file)"}
+          }
+        }
+    source: file://drive_read_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      drive: kickside.google.client:drive
+      implementation: kickside.google.traits:drive_tool_implementation
+
+  - name: drive_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Drive Writer
+      public: true
+      icon: tabler:brand-google-drive
+      comment: Organizes Google Drive folders and moves files.
+      tags: [google, drive, files, storage, write]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can organize Google Drive with the GoogleDriveWrite tool: create_folder
+      to make a folder (optionally under a parent). Pair with Google Drive Reader
+      to look up files and parent folders. The Google connection is selected on
+      the trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:drive_write_tool
+
+  - name: drive_write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Google Drive Write
+      llm_alias: GoogleDriveWrite
+      llm_description: Organize Google Drive — create folders via the Google connection.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform",
+              "enum": ["create_folder"]
+            },
+            "name": { "type": "string", "description": "Folder name — required for create_folder" },
+            "parent_id": { "type": "string", "description": "Parent folder ID for create_folder (optional)" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected Google request returns { success: false, error, status_code, data } with Google's error body. The created Drive folder resource.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "webViewLink": {"type": "string"}
+          }
+        }
+    source: file://drive_write_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      drive: kickside.google.client:drive
+      implementation: kickside.google.traits:drive_tool_implementation
+
+  # ─── Calendar ────────────────────────────────────────────────────────
+  - name: calendar_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Calendar Reader
+      public: true
+      icon: tabler:calendar
+      comment: Reads Google Calendar calendars and events.
+      tags: [google, calendar, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Google Calendar with the GoogleCalendarRead tool:
+      list_calendars, list_events (filter by time_min/time_max RFC3339 and
+      free-text query), and get_event. The Google connection is selected on the
+      trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:calendar_read_tool
+
+  - name: calendar_tool_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://calendar_tool.lua
+    modules: [json, time, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      calendar: kickside.google.client:calendar
+
+  - name: calendar_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Calendar Read
+      llm_alias: GoogleCalendarRead
+      llm_description: "Read Google calendar. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Comma-separated provider fields within each item, or * for all fields. The collection paging token is retained separately. Contacts uses personFields/readMask."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["list_calendars", "list_events", "get_event"]
+            },
+            "calendar_id": { "type": "string", "description": "Calendar ID (defaults to 'primary')" },
+            "event_id": { "type": "string", "description": "Event ID for get_event" },
+            "time_min": { "type": "string", "description": "Lower bound for event start (RFC3339); defaults to now for list_events" },
+            "time_max": { "type": "string", "description": "Upper bound for event start (RFC3339)" },
+            "query": { "type": "string", "description": "Free-text event search" },
+            "max_results": { "type": "integer", "description": "Max calendars or events (calendar default 20; event default 10; max 250)" },
+            "page_token": { "type": "string", "description": "next_page_token from the previous list page" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Google calendar. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "calendars": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "summary": {"type": "string"}, "primary": {"type": "boolean"}, "timeZone": {"type": "string"}, "accessRole": {"type": "string"}}}},
+            "events": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "summary": {"type": "string"}, "description": {"type": "string"}, "location": {"type": "string"}, "status": {"type": "string"}, "start": {"type": "object"}, "end": {"type": "object"}, "attendees": {"type": "array", "items": {"type": "object"}}, "htmlLink": {"type": "string"}}}},
+            "next_page_token": {"type": "string"},
+            "id": {"type": "string"},
+            "summary": {"type": "string"},
+            "description": {"type": "string"},
+            "location": {"type": "string"},
+            "status": {"type": "string"},
+            "start": {"type": "object"},
+            "end": {"type": "object"},
+            "attendees": {"type": "array", "items": {"type": "object"}},
+            "htmlLink": {"type": "string"}
+          }
+        }
+    source: file://calendar_read_tool.lua
+    method: handler
+    modules: [json, time, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      calendar: kickside.google.client:calendar
+      implementation: kickside.google.traits:calendar_tool_implementation
+
+  - name: calendar_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Calendar Writer
+      public: true
+      icon: tabler:calendar
+      comment: Creates and updates Google Calendar events.
+      tags: [google, calendar, write]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can manage Google Calendar events with the GoogleCalendarWrite tool:
+      create_event, update_event, and delete_event. Pair with Google Calendar
+      Reader to find the calendar and event you act on. The Google connection is
+      selected on the trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:calendar_write_tool
+
+  - name: calendar_write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Google Calendar Write
+      llm_alias: GoogleCalendarWrite
+      llm_description: Manage Google Calendar events — create, update, and delete events via the Google connection.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform",
+              "enum": ["create_event", "update_event", "delete_event"]
+            },
+            "calendar_id": { "type": "string", "description": "Calendar ID (defaults to 'primary')" },
+            "event_id": { "type": "string", "description": "Event ID for update/delete" },
+            "summary": { "type": "string", "description": "Event title (create/update)" },
+            "description": { "type": "string", "description": "Event description (create/update)" },
+            "location": { "type": "string", "description": "Event location (create/update)" },
+            "start_time": { "type": "string", "description": "Start time RFC3339 (create/update)" },
+            "end_time": { "type": "string", "description": "End time RFC3339 (create/update)" },
+            "start_date": { "type": "string", "description": "All-day start date YYYY-MM-DD (create/update)" },
+            "end_date": { "type": "string", "description": "All-day end date YYYY-MM-DD (create/update)" },
+            "attendees": { "type": "array", "items": { "type": "string" }, "description": "Attendee emails (create/update)" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected Google request returns { success: false, error, status_code, data } with Google's error body. create_event/update_event return the full Google Calendar event resource; delete_event returns { id, deleted: true }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "id": {"type": "string"},
+            "summary": {"type": "string"},
+            "description": {"type": "string"},
+            "location": {"type": "string"},
+            "status": {"type": "string"},
+            "start": {"type": "object"},
+            "end": {"type": "object"},
+            "attendees": {"type": "array", "items": {"type": "object"}},
+            "htmlLink": {"type": "string"},
+            "deleted": {"type": "boolean"}
+          }
+        }
+    source: file://calendar_write_tool.lua
+    method: handler
+    modules: [json, time, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      calendar: kickside.google.client:calendar
+      implementation: kickside.google.traits:calendar_tool_implementation
+
+  # ─── Sheets ──────────────────────────────────────────────────────────
+  - name: sheets_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Sheets Reader
+      public: true
+      icon: tabler:table
+      comment: Reads Google Sheets values and metadata.
+      tags: [google, sheets, spreadsheets, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Google Sheets with the GoogleSheetsRead tool: list_spreadsheets
+      to browse, get_spreadsheet for tab/metadata, and read_range to read cells
+      (A1 notation, e.g. "Sheet1!A1:C10"). The Google connection is selected on
+      the trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:sheets_read_tool
+
+  - name: sheets_tool_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://sheets_tool.lua
+    modules: [json, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      sheets: kickside.google.client:sheets
+
+  - name: sheets_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Sheets Read
+      llm_alias: GoogleSheetsRead
+      llm_description: "Read Google sheets. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Comma-separated provider fields within each item, or * for all fields. The collection paging token is retained separately. Contacts uses personFields/readMask."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["list_spreadsheets", "get_spreadsheet", "read_range"]
+            },
+            "spreadsheet_id": { "type": "string", "description": "Sheet ID — required for get_spreadsheet, read_range" },
+            "range": { "type": "string", "description": "A1 notation range, e.g. \"Sheet1!A1:C10\"; read large sheets in consecutive row ranges" },
+            "max_results": { "type": "integer", "description": "Max spreadsheets to list (default 20)" },
+            "page_token": { "type": "string", "description": "next_page_token from the previous list_spreadsheets page" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Google sheets. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "spreadsheets": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "createdTime": {"type": "string"}, "modifiedTime": {"type": "string"}, "owners": {"type": "array", "items": {"type": "object"}}}}},
+            "next_page_token": {"type": "string"},
+            "spreadsheetId": {"type": "string"},
+            "spreadsheetUrl": {"type": "string"},
+            "properties": {"type": "object"},
+            "sheets": {"type": "array", "items": {"type": "object"}},
+            "range": {"type": "string"},
+            "major_dimension": {"type": "string"},
+            "values": {"type": "array", "items": {"type": "array", "items": {}}}
+          }
+        }
+    source: file://sheets_read_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      sheets: kickside.google.client:sheets
+      implementation: kickside.google.traits:sheets_tool_implementation
+
+  - name: sheets_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Sheets Writer
+      public: true
+      icon: tabler:table
+      comment: Writes rows and values to Google Sheets.
+      tags: [google, sheets, spreadsheets, write]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can write to Google Sheets with the GoogleSheetsWrite tool:
+      append_values to add rows, update_values to write cells (A1 notation), and
+      create_spreadsheet. Cell values are an array of rows, each row an array of
+      cells. Pair with Google Sheets Reader to find spreadsheets and ranges. The
+      Google connection is selected on the trait, or auto-selected when none is
+      pinned.
+    tools:
+      - kickside.google.traits:sheets_write_tool
+
+  - name: sheets_write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Google Sheets Write
+      llm_alias: GoogleSheetsWrite
+      llm_description: Append rows, update cells, and create spreadsheets in Google Sheets via the Google connection.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform",
+              "enum": ["append_values", "update_values", "create_spreadsheet"]
+            },
+            "spreadsheet_id": { "type": "string", "description": "Sheet ID — required for append_values, update_values" },
+            "range": { "type": "string", "description": "A1 notation range, e.g. \"Sheet1!A1:C10\"" },
+            "values": { "type": "array", "description": "Rows to write; each item is an array of cell values", "items": { "type": "array", "items": {} } },
+            "title": { "type": "string", "description": "Spreadsheet title — required for create_spreadsheet" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected Google request returns { success: false, error, status_code, data } with Google's error body. append_values: the Sheets append response { spreadsheetId, tableRange, updates: { updatedRange, updatedRows, updatedColumns, updatedCells } }. update_values: the update response { spreadsheetId, updatedRange, updatedRows, updatedColumns, updatedCells }. create_spreadsheet: the created spreadsheet resource.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "spreadsheetId": {"type": "string"},
+            "spreadsheetUrl": {"type": "string"},
+            "properties": {"type": "object"},
+            "tableRange": {"type": "string"},
+            "updates": {"type": "object"},
+            "updatedRange": {"type": "string"},
+            "updatedRows": {"type": "integer"},
+            "updatedColumns": {"type": "integer"},
+            "updatedCells": {"type": "integer"}
+          }
+        }
+    source: file://sheets_write_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      sheets: kickside.google.client:sheets
+      implementation: kickside.google.traits:sheets_tool_implementation
+
+  # ─── Slides ──────────────────────────────────────────────────────────
+  - name: slides_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Slides Reader
+      public: true
+      icon: tabler:presentation
+      comment: Reads Google Slides presentations.
+      tags: [google, slides, presentations, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Google Slides with the GoogleSlidesRead tool: list_presentations
+      to browse, get_presentation for title/slide count, and read_presentation to
+      read the text of every slide. The Google connection is selected on the trait,
+      or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:slides_read_tool
+
+  - name: slides_tool_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://slides_tool.lua
+    modules: [json, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      slides: kickside.google.client:slides
+
+  - name: slides_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Slides Read
+      llm_alias: GoogleSlidesRead
+      llm_description: "Read Google slides. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Comma-separated provider fields within each item, or * for all fields. The collection paging token is retained separately. Contacts uses personFields/readMask."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["list_presentations", "get_presentation", "read_presentation"]
+            },
+            "presentation_id": { "type": "string", "description": "Presentation ID — required for get_presentation, read_presentation" },
+            "max_results": { "type": "integer", "description": "Max presentations to list (default 20, max 100)" },
+            "page_token": { "type": "string", "description": "next_page_token from the previous list_presentations page" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Google slides. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "presentations": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "modifiedTime": {"type": "string"}, "owners": {"type": "array", "items": {"type": "object"}}}}},
+            "next_page_token": {"type": "string"},
+            "presentationId": {"type": "string"},
+            "presentation_id": {"type": "string"},
+            "title": {"type": "string"},
+            "slides": {"type": "array", "items": {"type": "object", "properties": {"objectId": {"type": "string"}, "index": {"type": "integer"}, "object_id": {"type": "string"}, "text": {"type": "string"}}}}
+          }
+        }
+    source: file://slides_read_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      slides: kickside.google.client:slides
+      implementation: kickside.google.traits:slides_tool_implementation
+
+  - name: slides_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Slides Writer
+      public: true
+      icon: tabler:presentation
+      comment: Creates Google Slides presentations.
+      tags: [google, slides, presentations, write]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can create Google Slides with the GoogleSlidesWrite tool:
+      create_presentation. Pair with Google Slides Reader to inspect existing
+      presentations. The Google connection is selected on the trait, or
+      auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:slides_write_tool
+
+  - name: slides_write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Google Slides Write
+      llm_alias: GoogleSlidesWrite
+      llm_description: Create Google Slides presentations via the Google connection.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform",
+              "enum": ["create_presentation"]
+            },
+            "title": { "type": "string", "description": "Presentation title — required for create_presentation" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected Google request returns { success: false, error, status_code, data } with Google's error body. The created Google Slides presentation resource; open it at https://docs.google.com/presentation/d/<presentationId>/edit.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "presentationId": {"type": "string"},
+            "title": {"type": "string"},
+            "slides": {"type": "array", "items": {"type": "object"}}
+          }
+        }
+    source: file://slides_write_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      slides: kickside.google.client:slides
+      implementation: kickside.google.traits:slides_tool_implementation
+
+  # ─── Docs ────────────────────────────────────────────────────────────
+  - name: docs_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Docs Reader
+      public: true
+      icon: tabler:file-text
+      comment: Reads Google Docs documents.
+      tags: [google, docs, documents, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Google Docs with the GoogleDocsRead tool: list_documents to
+      browse, get_document for metadata, and read_document for text content. The
+      Google connection is selected on the trait, or auto-selected when none is
+      pinned.
+    tools:
+      - kickside.google.traits:docs_read_tool
+
+  - name: docs_tool_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://docs_tool.lua
+    modules: [json, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      docs: kickside.google.client:docs
+
+  - name: docs_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Docs Read
+      llm_alias: GoogleDocsRead
+      llm_description: "Read Google docs. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Comma-separated provider fields within each item, or * for all fields. The collection paging token is retained separately. Contacts uses personFields/readMask."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["list_documents", "get_document", "read_document"]
+            },
+            "document_id": { "type": "string", "description": "Doc ID — required for get_document, read_document" },
+            "max_results": { "type": "integer", "description": "Max documents to list (default 20, max 100)" },
+            "page_token": { "type": "string", "description": "next_page_token from the previous list_documents page" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Google docs. Lists and searches return compact file/event metadata with max_results/page_token and next_page_token. fields selects item fields, including * for full records. get/detail actions return the whole object; read actions return complete content. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "documents": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "createdTime": {"type": "string"}, "modifiedTime": {"type": "string"}, "owners": {"type": "array", "items": {"type": "object"}}}}},
+            "next_page_token": {"type": "string"},
+            "documentId": {"type": "string"},
+            "title": {"type": "string"},
+            "revisionId": {"type": "string"},
+            "body": {"type": "object"},
+            "document_id": {"type": "string"},
+            "content": {"type": "string", "description": "Complete document text (read_document)"}
+          }
+        }
+    source: file://docs_read_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      docs: kickside.google.client:docs
+      implementation: kickside.google.traits:docs_tool_implementation
+
+  - name: docs_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Docs Writer
+      public: true
+      icon: tabler:file-text
+      comment: Creates Google Docs documents.
+      tags: [google, docs, documents, write]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can create Google Docs with the GoogleDocsWrite tool: create_document.
+      Pair with Google Docs Reader to inspect existing documents. The Google
+      connection is selected on the trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:docs_write_tool
+
+  - name: docs_write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Google Docs Write
+      llm_alias: GoogleDocsWrite
+      llm_description: Create Google Docs via the Google connection.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform",
+              "enum": ["create_document"]
+            },
+            "title": { "type": "string", "description": "Document title — required for create_document" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected Google request returns { success: false, error, status_code, data } with Google's error body. The created Google Docs document resource.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "documentId": {"type": "string"},
+            "title": {"type": "string"},
+            "revisionId": {"type": "string"}
+          }
+        }
+    source: file://docs_write_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      transport: kickside.google.client:transport
+      docs: kickside.google.client:docs
+      implementation: kickside.google.traits:docs_tool_implementation
+
+  # ─── Contacts (read-only) ────────────────────────────────────────────
+  - name: contacts_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Contacts Reader
+      public: true
+      icon: tabler:address-book
+      comment: Reads and searches Google Contacts.
+      tags: [google, contacts, people, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Google Contacts with the GoogleContactsRead tool: list_contacts
+      to browse the user's contacts and search_contacts to find contacts by name,
+      email, phone, or organization. The Google connection is selected on the
+      trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:contacts_read_tool
+
+  - name: contacts_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Contacts Read
+      llm_alias: GoogleContactsRead
+      llm_description: "Read Google contacts. list_contacts returns names, emails, phones and organizations with max_results/page_token paging. search_contacts uses the provider search page size (maximum 30; the provider has no continuation token). fields selects People API personFields/readMask. get_contact returns the full Person."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Comma-separated provider fields within each item, or * for all fields. The collection paging token is retained separately. Contacts uses personFields/readMask."},
+            "resource_name": {"type": "string", "description": "people/<id> from a contact summary, for get_contact."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform",
+              "enum": ["list_contacts", "search_contacts", "get_contact"]
+            },
+            "query": { "type": "string", "description": "Search text for search_contacts" },
+            "max_results": { "type": "integer", "description": "Max contacts to return (list default 25, search max 30)" },
+            "page_token": { "type": "string", "description": "Page token for list_contacts pagination; search_contacts returns its provider-bounded top matches" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Google contacts. list_contacts returns names, emails, phones and organizations with max_results/page_token paging. search_contacts uses the provider search page size (maximum 30; the provider has no continuation token). fields selects People API personFields/readMask. get_contact returns the full Person. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "contacts": {"type": "array", "items": {"type": "object", "properties": {"resourceName": {"type": "string"}, "names": {"type": "array", "items": {"type": "object"}}, "emailAddresses": {"type": "array", "items": {"type": "object"}}, "phoneNumbers": {"type": "array", "items": {"type": "object"}}, "organizations": {"type": "array", "items": {"type": "object"}}}}},
+            "next_page_token": {"type": "string"},
+            "total_people": {"type": "integer"}
+          }
+        }
+    source: file://contacts_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      contacts: kickside.google.client:contacts
+
+  # ─── Analytics (read-only) ───────────────────────────────────────────
+  - name: analytics_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Analytics Reader
+      public: true
+      icon: tabler:chart-line
+      comment: Reads Google Analytics properties and reports.
+      tags: [google, analytics, reporting, read-only]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection component id selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read Google Analytics with the GoogleAnalyticsRead tool:
+      list_properties to find Analytics accounts and GA4 property IDs visible to
+      the user, then run_report with a property_id, date range, metrics, and
+      dimensions for a read-only GA4 report. The Google connection is selected on
+      the trait, or auto-selected when none is pinned.
+    tools:
+      - kickside.google.traits:analytics_read_tool
+
+  - name: analytics_read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Google Analytics Read
+      llm_alias: GoogleAnalyticsRead
+      llm_description: "Read Google Analytics. list_properties returns compact property or account summaries with max_results/page_token paging; fields selects property fields. run_report returns the requested dimensions and metrics with limit/offset and next_offset."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "string", "description": "Comma-separated provider fields within each item, or * for all fields. The collection paging token is retained separately. Contacts uses personFields/readMask."},
+            "action": {"type": "string", "description": "The read action to perform", "enum": ["list_properties", "run_report"]},
+            "property_id": {"type": "string", "description": "GA4 property ID, e.g. 123456789 or properties/123456789"},
+            "account_id": {"type": "string", "description": "Optional Analytics account ID; list_properties then uses the provider's native account filter"},
+            "date_start": {"type": "string", "description": "Report start date YYYY-MM-DD or relative date such as 28daysAgo"},
+            "date_end": {"type": "string", "description": "Report end date YYYY-MM-DD or relative date such as yesterday"},
+            "metrics": {"type": "array", "description": "Metric names, e.g. activeUsers, sessions, screenPageViews", "items": {"type": "string"}},
+            "dimensions": {"type": "array", "description": "Dimension names, e.g. date, country, pageTitle", "items": {"type": "string"}},
+            "limit": {"type": "integer", "description": "Max report rows (default 50, max 1000)"},
+            "max_results": {"type": "integer", "description": "Max properties for list_properties (default 50, max 200)"},
+            "page_token": {"type": "string", "description": "next_page_token from the previous list_properties page"},
+            "offset": {"type": "integer", "description": "Report row offset; pass next_offset from the previous report page (default 0)"}
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Google Analytics. list_properties returns compact property or account summaries with max_results/page_token paging; fields selects property fields. run_report returns the requested dimensions and metrics with limit/offset and next_offset. A provider rejection returns {success:false,error,status_code,data}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Google rejected the request."},
+            "error": {"type": "string", "description": "Google's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Google's error body of a rejected request."},
+            "accounts": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "account": {"type": "string"}, "displayName": {"type": "string"}, "propertySummaries": {"type": "array", "items": {"type": "object"}}}}},
+            "properties": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "displayName": {"type": "string"}, "propertyType": {"type": "string"}, "parent": {"type": "string"}}}},
+            "next_page_token": {"type": "string"},
+            "property": {"type": "string"},
+            "dimension_headers": {"type": "array", "items": {"type": "object"}},
+            "metric_headers": {"type": "array", "items": {"type": "object"}},
+            "rows": {"type": "array", "items": {"type": "object", "properties": {"dimensionValues": {"type": "array", "items": {"type": "object"}}, "metricValues": {"type": "array", "items": {"type": "object"}}}}},
+            "row_count": {"type": "integer"},
+            "offset": {"type": "integer"},
+            "next_offset": {"type": "integer"}
+          }
+        }
+    source: file://analytics_tool.lua
+    method: handler
+    modules: [json, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      analytics: kickside.google.client:analytics
+      pagination: kickside.google.client:pagination

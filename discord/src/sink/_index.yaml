@@ -1,0 +1,96 @@
+version: "1.0"
+namespace: kickside.discord.sink
+
+# Discord channel-message sink: a kickside.data:writable binding that converges
+# items onto messages in a chosen channel. upsert with no dest_ref posts and
+# returns the created message id as the dest_ref for the engine id-map; upsert
+# with a dest_ref edits that message; delete removes the dest_ref's message.
+# Discord messages carry no source-identity metadata, so there is no list_keys
+# operation (destination-side reconcile cannot map messages back to source dedup
+# keys) and delete declares requires_dest_ref -- the engine refuses key-only
+# deletes instead of this sink guessing at a message.
+
+entries:
+  - name: message_write
+    kind: function.lua
+    meta:
+      comment: kickside.data:writable.write — post/edit/delete a Discord channel message keyed by dest_ref.
+    source: file://_fn_message_write.lua
+    method: write
+    imports:
+      data_error: kickside.discord.client:data_error
+      transport: kickside.discord.client:transport
+      types: kickside.discord.client:types
+      implementation: kickside.discord.sink:message_sink_lib
+
+  # The library view of the write handler so the convergence matrix is unit-tested
+  # as one module (the function entry above only exposes the bare handler).
+  - name: message_sink_lib
+    kind: library.lua
+    meta:
+      name: message_sink_lib
+      comment: Discord message sink implementation (for tests).
+    source: file://message_sink.lua
+    imports:
+      data_error: kickside.discord.client:data_error
+      transport: kickside.discord.client:transport
+      types: kickside.discord.client:types
+
+  # The message SINK. It implements kickside.data:writable; its published port (below)
+  # makes it a sink the poller catalog offers. The write method IS the backing -- the
+  # poller opens this binding's writable directly and calls write({config, sink_op,
+  # input, ...}).
+  - name: message_sink
+    kind: contract.binding
+    meta:
+      title: Send Discord Message
+      icon: tabler:brand-discord
+      comment: Post each item as a message in a chosen Discord channel; redelivery with a dest_ref edits the message, delete removes it.
+      provider: discord
+      group: Messaging
+      delivery: at_most_once
+      input_shape: content
+    contracts:
+      - contract: kickside.data:writable
+        methods:
+          write: kickside.discord.sink:message_write
+
+  # Published store port. upsert posts a new message (returning dest_ref = { channel_id,
+  # message_id }) or edits the message an engine-supplied dest_ref names. delete requires
+  # a dest_ref: a Discord message stores no source dedup key, so a key-only delete has
+  # nothing to resolve against and must be refused upstream.
+  - name: channel_message
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Send Discord Message
+      comment: Post or update a message in a selected Discord channel.
+      icon: tabler:brand-discord
+    binding: kickside.discord.sink:message_sink
+    operations:
+      upsert: {}
+      delete:
+        requires_dest_ref: true
+    # The upsert (default) input envelope the write handler reads (input.*). content is
+    # posted verbatim (or patched onto the dest_ref message). No chunking: convergence
+    # needs one message per item, so content past the 2000-character Discord cap fails
+    # with invalid_request instead of splitting into messages the id-map could not follow.
+    input_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "Message text to post or edit in place. Required; at most 2000 characters." },
+          "content_type": { "type": "string", "description": "Content type in the current writable envelope; Discord messages are plain text with native markdown." },
+          "metadata": { "type": "object", "description": "Metadata in the current writable envelope; Discord messages store no metadata." }
+        },
+        "required": ["content"] }
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: discord
+      channel_id:
+        picker: wc-schema-form
+        required: true
+        title: Channel ID
+        description: Discord channel id to post into (enable Developer Mode in Discord, right-click the channel, Copy Channel ID). The bot must be a member of the server with Send Messages on the channel.

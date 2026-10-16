@@ -1,0 +1,51 @@
+version: '1.0'
+namespace: kickside.bitbucket.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Bitbucket
+    surface: kickside.bitbucket
+    intent: module_access
+    includes:
+    - kickside.bitbucket.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.bitbucket:*
+    - kickside.bitbucket.client:*
+    - kickside.bitbucket.connection:*
+    - kickside.bitbucket.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.bitbucket:*
+    - kickside.bitbucket.client:*
+    - kickside.bitbucket.connection:*
+    - kickside.bitbucket.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

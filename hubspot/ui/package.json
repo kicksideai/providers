@@ -1,0 +1,72 @@
+{
+  "name": "@kickside/hubspot-ui",
+  "version": "0.1.0",
+  "specification": "wippy-component-1.0",
+  "title": "KickSide HubSpot Picker",
+  "description": "Config picker web component for HubSpot CRM source and sink ports.",
+  "browser": "dist/index.js",
+  "files": [
+    "dist/",
+    "src/",
+    "package.json"
+  ],
+  "type": "module",
+  "dependencies": {
+    "@wippy-fe/theme": "*",
+    "@wippy-fe/webcomponent-core": "*",
+    "@wippy-fe/webcomponent-vue": "*",
+    "primevue": "^4.5.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vue/test-utils": "^2.4.11",
+    "@wippy-fe/proxy": "*",
+    "@wippy-fe/vite-plugin": "*",
+    "happy-dom": "^20.10.6",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.9",
+    "vue": "^3.5.0",
+    "vue-tsc": "^3.3.12"
+  },
+  "peerDependencies": {
+    "@wippy-fe/proxy": "*",
+    "vue": "^3.5.0"
+  },
+  "overrides": {
+    "minimatch": "^10.0.3",
+    "postcss": "^8.5.18"
+  },
+  "wippy": {
+    "description": "Provides the kickside-hubspot-picker web component for HubSpot source and sink configuration. Pass config containing the current connection_id and object_type; the component loads available HubSpot connections through the host proxy and emits config-changed with both values whenever the user updates the selection.",
+    "tagName": "kickside-hubspot-picker",
+    "type": "component",
+    "props": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "object",
+          "default": {},
+          "description": "Current source/sink config containing connection_id and object_type."
+        }
+      }
+    },
+    "events": {
+      "type": "object",
+      "properties": {
+        "config-changed": {
+          "type": "object",
+          "description": "Emitted whenever connection_id or object_type changes."
+        }
+      }
+    },
+    "scripts": {
+      "build": "build"
+    }
+  },
+  "scripts": {
+    "build": "vite build --outDir ../static",
+    "dev": "vite build --watch --outDir ../static",
+    "type-check": "vue-tsc --noEmit"
+  }
+}

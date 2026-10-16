@@ -1,0 +1,31 @@
+version: "1.0"
+namespace: kickside.bitbucket
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Bitbucket
+      comment: Bitbucket Cloud credential connection provider with workspace and repository discovery.
+
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: "*"
+    meta:
+      comment: Resolves Bitbucket connection components and their stored credentials through the component service.
+
+  - name: dep.kickside.connection
+    kind: ns.dependency
+    component: kickside/connection
+    version: "*"
+    meta:
+      comment: Implements the shared connection contract and base connection helpers.
+
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: "*"
+    meta:
+      comment: Implements the component and deletable contracts used by Bitbucket connections.

@@ -1,0 +1,47 @@
+version: '1.0'
+namespace: kickside.memory.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Memory
+    surface: kickside.memory
+    intent: module_access
+    includes:
+    - kickside.memory.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.memory:*
+    - kickside.memory.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.memory:*
+    - kickside.memory.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

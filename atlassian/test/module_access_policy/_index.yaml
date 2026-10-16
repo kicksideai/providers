@@ -1,0 +1,15 @@
+version: '1.0'
+namespace: kickside.atlassian.test.module_access
+entries:
+- name: test
+  kind: function.lua
+  meta:
+    type: test
+    suite: module_access_policy
+  source: file://test.lua
+  method: run
+  modules:
+  - registry
+  - security
+  imports:
+    test: wippy.test:test

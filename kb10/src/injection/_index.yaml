@@ -1,0 +1,205 @@
+version: "1.0"
+namespace: kickside.kb10.injection
+
+# kb10's concrete source/digest/graph-meta projection workers plus the
+# materialization pipeline they own. kb10 owns KB materialization end to end: the
+# source worker writes document/summary/chunk/image nodes into the kb10 store
+# directly (no contract). These workers are the worker_ref targets the kb10 engine
+# kind bindings (engine_document/engine_wiki) declare in meta.projections, so a KB
+# provisions them on its primary thread at create. The materialization planner
+# (source_materializer) and the knowledge content-event extractor live here too;
+# the digest library (kickside.kb10.digest:digest) and node/graph reader
+# (kickside.kb10.reader:kb_nodes) are kb10-internal, imported same-module.
+
+entries:
+  # Internal materialization write surface: DTO/colon-method shim over the kb10
+  # store facade. All source-node writes (worker + re-embed + tests) go through here.
+  - name: materializer_store
+    kind: library.lua
+    meta:
+      name: materializer_store
+      internal: true
+      comment: Internal kb10 materialization write adapter (kb10_store) — the single source-content write surface.
+    source: file://materializer_store.lua
+    imports:
+      kb10_store: kickside.kb10.persist:store
+
+  - name: tabular_chunker
+    kind: library.lua
+    meta:
+      internal: true
+      comment: Row-aware spreadsheet chunks with repeated headers and physical sheet ranges.
+    source: file://tabular_chunker.lua
+
+  # Storage-facing projection slice: materialization config, summary/chunk planning,
+  # document replacement, and canonical deletes. Engine-agnostic through the
+  # materializer_store adapter; kb_types/engines are cross-module into knowledge.
+  - name: source_materializer
+    kind: library.lua
+    meta:
+      name: source_materializer
+      comment: "kb10 materialization planner for the source worker: config, summary/chunk planning, document replacement, canonical deletes."
+    source: file://source_materializer.lua
+    modules:
+      - json
+      - logger
+      - time
+      - text
+    imports:
+      kb_types: kickside.kb10:types
+      engines: kickside.knowledge:engines
+      tabular_chunker: kickside.kb10.injection:tabular_chunker
+
+  # Maps canonical kickside.knowledge content events into source_worker
+  # documents/deletes. Discovered by the source worker at runtime via meta.type.
+  - name: content_extractor
+    kind: function.lua
+    meta:
+      title: Knowledge content extractor
+      comment: Maps canonical kickside.knowledge content events into source_worker documents/deletes.
+      type: projection.extractor
+      source: knowledge.kb
+      event_types:
+        - kickside.knowledge.events:content.upserted
+        - kickside.knowledge.events:content.deleted
+    source: file://content_extractor.lua
+    method: run
+
+  # Deterministic, source-agnostic projection worker. Discovers extractors at
+  # runtime via the registry (meta.type=projection.extractor) and materializes the
+  # emitted documents into the kb10 store. func:// variant for inline dispatch;
+  # proc:// keeps heavy materialization off the scheduler loop; lib for tests.
+  - name: source_worker
+    kind: function.lua
+    meta:
+      title: KB10 Injection (source)
+      comment: Deterministic materialization of knowledge content events into the kb10 store. Source-agnostic — extractors are discovered from the registry via meta.type=projection.extractor.
+      type: projection.worker
+      kind: knowledge.injection.source
+      category: injection
+      icon: tabler:database-import
+    source: file://_fn_source_worker.lua
+    modules:
+      - json
+      - logger
+      - registry
+      - funcs
+      - time
+      - base64
+      - process
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      component: kickside.component:component
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      source_materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      execution_identity: kickside.execution:execution_identity
+      implementation: kickside.kb10.injection:source_worker_lib
+    method: run
+
+  - name: source_worker_proc
+    kind: process.lua
+    meta:
+      title: KB10 Injection (source proc)
+      comment: Proc-runtime wrapper for the deterministic source projection worker; keeps heavy materialization off the scheduler loop.
+      type: projection.worker
+      kind: knowledge.injection.source
+      category: injection
+      icon: tabler:database-import
+    source: file://source_worker.lua
+    modules:
+      - json
+      - logger
+      - registry
+      - funcs
+      - time
+      - base64
+      - process
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      component: kickside.component:component
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      source_materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      execution_identity: kickside.execution:execution_identity
+      job_types: kickside.core.jobs:types
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+    method: run_proc
+
+  - name: source_worker_lib
+    kind: library.lua
+    source: file://source_worker.lua
+    modules:
+      - json
+      - logger
+      - registry
+      - funcs
+      - time
+      - base64
+      - process
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      component: kickside.component:component
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      source_materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      execution_identity: kickside.execution:execution_identity
+      job_types: kickside.core.jobs:types
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+
+  # Durable digest projection worker: a second cursor on the KB injection thread with
+  # a coalescing window, so a burst of content events triggers one summary
+  # regeneration after it settles (the source projection has materialized by then).
+  - name: digest_worker
+    kind: function.lua
+    meta:
+      title: KB10 Digest
+      comment: Regenerates a knowledge base's summary/description after content lands, on a coalescing window.
+      type: projection.worker
+      kind: knowledge.injection.digest
+      category: injection
+      icon: tabler:file-description
+    source: file://_fn_digest_worker.lua
+    modules:
+      - json
+      - logger
+      - time
+      - process
+    imports:
+      digest: kickside.kb10.digest:digest
+      execution_identity: kickside.execution:execution_identity
+      implementation: kickside.kb10.injection:digest_worker_lib
+    method: run
+
+  - name: digest_worker_lib
+    kind: library.lua
+    source: file://digest_worker.lua
+    modules:
+      - json
+      - logger
+      - time
+      - process
+    imports:
+      digest: kickside.kb10.digest:digest
+      execution_identity: kickside.execution:execution_identity
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+
+  # Folds durable graph.changed / content events into KB public graph counters.
+  - name: meta_projection
+    kind: function.lua
+    meta:
+      type: projection.worker
+      kind: knowledge.graph.meta
+      category: graph
+      comment: Folds durable graph.changed events into KB public graph counters.
+    source: file://meta_projection.lua
+    method: run
+    modules: [json, time]
+    imports:
+      component: kickside.component:component

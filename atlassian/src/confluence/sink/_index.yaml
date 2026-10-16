@@ -1,0 +1,125 @@
+version: "1.0"
+namespace: kickside.atlassian.confluence.sink
+
+entries:
+  - name: content_sink
+    kind: library.lua
+    meta:
+      name: content_sink
+      comment: Writable Confluence content sink implementation for pages or blog posts.
+    source: file://content_sink.lua
+    modules: [ctx]
+    imports:
+      confluence: kickside.atlassian.confluence:api
+      data_error: kickside.atlassian.client:data_error
+      transport: kickside.atlassian.client:transport
+
+  - name: write_content
+    kind: function.lua
+    meta:
+      comment: kickside.data:writable.write for Confluence content selected by space and content_type config.
+    source: file://_fn_write_content.lua
+    method: write
+    modules: [ctx]
+    imports:
+      confluence: kickside.atlassian.confluence:api
+      data_error: kickside.atlassian.client:data_error
+      transport: kickside.atlassian.client:transport
+      implementation: kickside.atlassian.confluence.sink:content_sink
+
+  - name: content_sink_binding
+    kind: contract.binding
+    meta:
+      title: Confluence Pages and Posts
+      icon: simple-icons:atlassian
+      comment: Create, update, delete, or comment on Confluence pages or blog posts.
+      provider: atlassian
+      group: Confluence
+      delivery: at_most_once
+      input_shape: record
+    contracts:
+      - contract: kickside.data:writable
+        methods:
+          write: kickside.atlassian.confluence.sink:write_content
+
+  - name: content
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Confluence Pages and Posts
+      comment: Create or update pages and blog posts in the selected Confluence space.
+      icon: simple-icons:confluence
+    binding: kickside.atlassian.confluence.sink:content_sink_binding
+    operations:
+      upsert: {}
+      create: {}
+      update:
+        requires_dest_ref: false
+      delete:
+        requires_dest_ref: false
+      add_comment:
+        requires_dest_ref: false
+    input_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "content_id": { "type": "string" },
+          "page_id": { "type": "string" },
+          "space_key": { "type": "string" },
+          "content_type": { "type": "string", "enum": ["page", "blogpost"] },
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "content": { "type": "string" },
+          "description": { "type": "string" },
+          "parent_id": { "type": "string" },
+          "version": { "type": "integer" },
+          "comment": { "type": "string" }
+        } }
+    config_schema:
+      space_key:
+        picker: kickside-atlassian-confluence-picker
+        required: true
+        title: Confluence space
+        description: Default Confluence space selected by the Confluence picker.
+        writes: [connection_id, space_key]
+      connection_id:
+        required: true
+        title: Atlassian connection
+        description: Populated by the Confluence picker.
+      content_type:
+        picker: wc-schema-form
+        required: true
+        title: Content type
+        description: Confluence content type to write.
+        enum: [page, blogpost]
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "success": { "type": "boolean" },
+          "result": { "type": "string", "enum": ["created", "updated", "deleted", "noop"] },
+          "dest_ref": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "content_id": { "type": "string" },
+              "content_type": { "type": "string", "enum": ["page", "blogpost"] }
+            },
+            "required": ["content_id", "content_type"]
+          },
+          "dest_version": { "type": "string", "description": "Confluence version number/timestamp for the destination content when available." },
+          "retry_after_ms": { "type": "integer", "minimum": 0 },
+          "error": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "retriable": { "type": "boolean" },
+              "scope": { "type": "string" }
+            },
+            "required": ["code", "message", "retriable", "scope"]
+          }
+        },
+        "required": ["success"] }

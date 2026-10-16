@@ -1,0 +1,96 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/google. They live in the harness because the module
+# is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: transport_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: google
+      comment: OAuth connection resolution and request shaping in the Google transport.
+    source: file://transport_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      transport: kickside.google.client:transport
+
+  - name: pagination_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: google
+      comment: Strict page-size normalization shared by Google services.
+    source: file://pagination_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      pagination: kickside.google.client:pagination
+
+  - name: tools_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: google
+      comment: Google read and write tools return complete structured records.
+    source: file://tools_test.lua
+    method: run
+    modules: [ctx]
+    imports:
+      test: wippy.test:test
+      transport: kickside.google.client:transport
+      gmail: kickside.google.client:gmail
+      calendar: kickside.google.client:calendar
+      sheets: kickside.google.client:sheets
+      slides: kickside.google.client:slides
+      drive: kickside.google.client:drive
+      docs: kickside.google.client:docs
+      contacts: kickside.google.client:contacts
+      analytics: kickside.google.client:analytics
+      gmail_tool: kickside.google.traits:gmail_tool_implementation
+      calendar_tool: kickside.google.traits:calendar_tool_implementation
+      sheets_tool: kickside.google.traits:sheets_tool_implementation
+      slides_tool: kickside.google.traits:slides_tool_implementation
+      drive_tool: kickside.google.traits:drive_tool_implementation
+      docs_tool: kickside.google.traits:docs_tool_implementation
+
+  - name: gmail_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: google
+      comment: Gmail service request and response shaping.
+    source: file://gmail_test.lua
+    method: run
+    modules: [base64, json]
+    imports:
+      test: wippy.test:test
+      gmail: kickside.google.client:gmail
+
+  - name: pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: google
+      comment: Google Calendar pull capability.
+    source: file://pull_core_test.lua
+    method: run
+    imports:
+      pull_core: kickside.google.source:pull_core
+      test: wippy.test:test
+
+  - name: gmail_draft_sink_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kickside_google
+      comment: Gmail draft sink operations.
+    source: file://gmail_draft_sink_test.lua
+    method: run
+    imports:
+      sink: kickside.google.sink:gmail_draft_lib
+      test: wippy.test:test

@@ -1,0 +1,16 @@
+version: "1.0"
+namespace: kickside.kb10.reader
+
+# Deterministic node/graph access over the kb10 node_store: resolves a KB id to
+# its store id + engine descriptor, powering the agent node/graph tools and the
+# kb10 reader without crossing the model-agnostic control-plane seam.
+
+entries:
+  - name: kb_nodes
+    kind: library.lua
+    meta: { name: kb_nodes, comment: kb10 node/graph reader — resolve(kb_id) + get_node/browse/graph over node_store. }
+    source: file://kb_nodes.lua
+    imports:
+      component: kickside.component:component
+      node_store: kickside.kb10.persist:node_store
+      engines: kickside.knowledge:engines

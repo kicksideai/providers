@@ -1,0 +1,51 @@
+version: '1.0'
+namespace: kickside.gitlab.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Gitlab
+    surface: kickside.gitlab
+    intent: module_access
+    includes:
+    - kickside.gitlab.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.gitlab:*
+    - kickside.gitlab.client:*
+    - kickside.gitlab.connection:*
+    - kickside.gitlab.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.gitlab:*
+    - kickside.gitlab.client:*
+    - kickside.gitlab.connection:*
+    - kickside.gitlab.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

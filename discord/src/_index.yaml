@@ -1,0 +1,77 @@
+version: "1.0"
+namespace: kickside.discord
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Discord
+      comment: Discord bot-token connection, reply provider, resource discovery, normalized inbound adapter for DM/channel bots, and data-sync source/sink for channel messages.
+
+  - name: dep.kickside.component
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Resolves Discord connection components for the gateway supervisor and transport.
+    component: kickside/component
+
+  - name: dep.kickside.connection
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the shared connection contract and base connection helpers.
+    component: kickside/connection
+
+  - name: dep.kickside.contract
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the component and deletable contracts used by Discord connections.
+    component: kickside/contract
+
+  - name: dep.kickside.dm
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Receives normalized direct messages through the shared DM ingress contract.
+    component: kickside/dm
+
+  - name: dep.kickside.channel
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Receives normalized channel messages through the shared channel ingress contract.
+    component: kickside/channel
+
+  - name: dep.wippy.security
+    version: '*'
+    kind: ns.dependency
+    component: wippy/security
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      api: https://discord.com/api/v10
+      gateway: wss://gateway.discord.gg/?v=10&encoding=json
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Instance api endpoint.
+      description: Instance api endpoint.
+    default: https://discord.com/api/v10
+    targets:
+    - entry: kickside.discord:endpoints
+      path: .endpoints.api
+  - name: endpoint_gateway
+    kind: ns.requirement
+    meta:
+      comment: Instance gateway endpoint.
+      description: Instance gateway endpoint.
+    default: wss://gateway.discord.gg/?v=10&encoding=json
+    targets:
+    - entry: kickside.discord:endpoints
+      path: .endpoints.gateway

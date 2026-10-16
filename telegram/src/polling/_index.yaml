@@ -1,0 +1,79 @@
+version: "1.0"
+namespace: kickside.telegram.polling
+
+entries:
+  - name: dm_dispatch_proc
+    kind: process.lua
+    meta:
+      comment: One-shot process handling a single Telegram private-message update.
+    source: file://dispatch.lua
+    method: dm_main
+    modules: [funcs, logger]
+
+  - name: channel_dispatch_proc
+    kind: process.lua
+    meta:
+      comment: One-shot process handling a single Telegram group/supergroup/channel update.
+    source: file://dispatch.lua
+    method: channel_main
+    modules: [funcs, logger]
+
+  - name: consts
+    kind: library.lua
+    meta:
+      comment: Process registry name of the Telegram polling hub.
+    source: file://consts.lua
+
+  - name: worker
+    kind: process.lua
+    meta:
+      comment: One per-connection Telegram long-poll worker; forwards updates to DM/channel receivers.
+    source: file://worker.lua
+    method: main
+    modules: [time, channel, logger, process]
+    imports:
+      api: kickside.telegram.client:api
+
+  - name: hub
+    kind: process.lua
+    meta:
+      comment: Telegram polling supervisor; enumerates Telegram connections and spawns one worker per bot token.
+    source: file://hub.lua
+    method: main
+    modules: [channel, logger, env, process, registry]
+    imports:
+      component: kickside.component:component
+      connection: kickside.connection:base_connection
+      consts: kickside.telegram.polling:consts
+
+  - name: process_host
+    kind: ns.requirement
+    meta:
+      comment: Process host the Telegram polling hub service runs on.
+      description: Process host the Telegram polling hub service runs on.
+    targets:
+      - entry: kickside.telegram.polling:polling.service
+        path: .host
+
+  - name: target_db
+    kind: ns.requirement
+    meta:
+      comment: Component database resource the Telegram polling supervisor waits for.
+      description: Component database resource the Telegram polling supervisor waits for.
+    targets:
+      - entry: kickside.telegram.polling:polling.service
+        path: ".lifecycle.depends_on +="
+
+  - name: polling.service
+    kind: process.service
+    meta:
+      comment: Supervised Telegram polling hub; spawns per-connection getUpdates workers.
+    process: kickside.telegram.polling:hub
+    host: ""
+    lifecycle:
+      depends_on: [wippy.bootloader:bootloader.service]
+      auto_start: true
+      restart_policy: always
+      security:
+        groups:
+          - wippy.security:process

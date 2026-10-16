@@ -1,0 +1,35 @@
+version: "1.0"
+namespace: kickside.google.sink
+entries:
+  - name: gmail_draft_write
+    kind: function.lua
+    meta: { comment: Writable automation surface that creates Gmail drafts and never sends mail. }
+    source: file://_fn_gmail_draft_write.lua
+    method: write
+    modules: [hash]
+    imports:
+      transport: kickside.google.client:transport
+      gmail: kickside.google.client:gmail
+      implementation: kickside.google.sink:gmail_draft_lib
+  - name: gmail_draft_lib
+    kind: library.lua
+    meta: { name: sink, comment: Gmail draft writable sink implementation. }
+    source: file://gmail_draft_sink.lua
+    modules: [hash]
+    imports:
+      transport: kickside.google.client:transport
+      gmail: kickside.google.client:gmail
+  - name: gmail_draft_sink
+    kind: contract.binding
+    meta: { title: Create Gmail Draft, comment: "Create or update a Gmail draft; sending is not supported.", provider: google, icon: tabler:brand-google, group: Email, delivery: at_most_once, input_shape: record }
+    contracts:
+      - contract: kickside.data:writable
+        methods: { write: kickside.google.sink:gmail_draft_write }
+  - name: gmail_draft
+    kind: registry.entry
+    meta: { type: kickside.automation.port, title: Create Gmail Draft, comment: Create a Gmail draft only; never sends mail. }
+    binding: kickside.google.sink:gmail_draft_sink
+    operations: { create: {}, update: {}, delete: { requires_dest_ref: true } }
+    input_schema: '{ "type":"object", "properties": { "to":{"type":"string"}, "subject":{"type":"string"}, "body":{"type":"string"}, "draft_id":{"type":"string"} }, "required":["to"] }'
+    config_schema:
+      connection_id: { required: true, title: Google account / connection }

@@ -1,0 +1,66 @@
+version: "1.0"
+namespace: kickside.kb10.ui
+
+# The kb10 engine ships and serves its own KB detail UIs — one per type
+# (document / wiki), all over the same kb10 backend. Knowledge mounts the matching
+# one by tag (the engine's meta.manage_ui_id), so the detail UI lives with the
+# engine, not in the knowledge module. The wiki bundle hosts both the reader and
+# the graph canvas behind a view switch. The bundles also let kb10 run standalone
+# under a per-type profile.
+
+entries:
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built kb10 web component bundles (document/wiki).
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      server: ""
+    path: /kickside-kb10
+    fs: kickside.kb10.ui:ui_fs
+    options:
+      # The bundle names are stable (document.js/wiki.js), so without this browsers
+      # cache them hard and never pick up rebuilds. Revalidate.
+      cache: "no-cache"
+
+  - name: document_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: document_view
+      title: KB10 Document
+      tag_name: kx-kb-document
+      base_path: kickside-kb10
+      entry_point: document.js
+      announced: true
+      auto_register: false
+
+  - name: wiki_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: wiki_view
+      title: KB10 Wiki
+      tag_name: kx-kb-wiki
+      base_path: kickside-kb10
+      entry_point: wiki.js
+      announced: true
+      auto_register: false
+
+  # Create-time config element. The knowledge create dialog mounts it by tag (the
+  # engines' create_ui_id) in its config pane; it owns the embedding model,
+  # contextual embedding, and engine config fields for every kb10 KB type.
+  - name: create_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: create_view
+      title: KB10 Create Config
+      tag_name: kx-kb-create
+      base_path: kickside-kb10
+      entry_point: create.js
+      announced: true
+      auto_register: false

@@ -1,0 +1,28 @@
+version: "1.0"
+namespace: kickside.webscout.api
+
+# Read-only surface for the settings card. It runs as the caller under the
+# application's authenticated router; the providers live under kickside.*, which
+# the application's own registry-read policy already covers.
+entries:
+  - name: list_providers
+    kind: function.lua
+    meta:
+      comment: List the installed search providers, whether each is configured, and which is in effect.
+    source: file://list_providers.lua
+    modules:
+      - http
+      - funcs
+    imports:
+      config: kickside.webscout:config
+      providers: kickside.webscout:providers_registry
+    method: handler
+
+  - name: list_providers.endpoint
+    kind: http.endpoint
+    meta:
+      comment: Search provider discovery endpoint for the WebScout settings card.
+      router: app:api
+    method: GET
+    path: /webscout/providers
+    func: list_providers

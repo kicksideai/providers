@@ -1,0 +1,159 @@
+version: "1.0"
+namespace: kickside.sso.providers.github
+
+# GitHub login provider submodule. OAuth2 with fixed REST endpoints baked into
+# the github engine (no PKCE, no OIDC discovery), so the descriptor declares no
+# endpoints.
+entries:
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: KickSide SSO — GitHub
+      comment: GitHub OAuth2 login provider (REST identity, no PKCE).
+
+  - name: provider
+    kind: registry.entry
+    meta: { type: sso.provider, comment: "GitHub OAuth2 connector descriptor (REST identity, no PKCE)." }
+    id: github
+    label: GitHub
+    icon: tabler:brand-github
+    engine: github
+    endpoints:
+      authorize: https://github.com/login/oauth/authorize
+      token: https://github.com/login/oauth/access_token
+      userinfo: https://api.github.com/user
+      emails: https://api.github.com/user/emails
+    settings_ns: kickside.sso.providers.github
+    ui:
+      intro: Register an OAuth App in GitHub developer settings and set its callback URL to the SSO callback. read:user and user:email are always requested.
+      docs_label: GitHub OAuth apps
+      docs_url: https://github.com/settings/developers
+    trust_email: false
+    default_scopes: [read:user, user:email]
+    order: 30
+
+  - name: validate
+    kind: function.lua
+    meta: { comment: GitHub enable-gate — blocks enabling without credentials. }
+    source: file://validate.lua
+    imports:
+      sso_provider_gate: kickside.sso:provider_gate
+    method: validate
+
+  - name: enabled
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Enable GitHub login. }
+    namespace: kickside.sso.providers.github
+    key: enabled
+    value_type: bool
+    default: false
+    description: Offer "Sign in with GitHub".
+    scope: global
+    editable: true
+    visible: false
+    validate_func: kickside.sso.providers.github:validate
+
+  - name: client_id
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: GitHub OAuth app client id. }
+    namespace: kickside.sso.providers.github
+    key: client_id
+    value_type: string
+    default: ""
+    description: GitHub OAuth app client id.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: client_secret
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: GitHub OAuth app client secret. }
+    namespace: kickside.sso.providers.github
+    key: client_secret
+    value_type: secret
+    default: ""
+    description: GitHub OAuth app client secret.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: scopes
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Extra GitHub scopes. }
+    namespace: kickside.sso.providers.github
+    key: scopes
+    value_type: json
+    default: []
+    description: Additional scopes (read:user user:email are always requested).
+    scope: global
+    editable: true
+    visible: false
+    schema: { kind: string_list }
+
+  # Module-owned Settings block: this provider's own left-nav entry in the
+  # "Single sign-on" group. The Settings page mounts kickside-sso-admin and hands
+  # it { provider: "github" }, so it renders only this provider's card.
+  - name: block.sso_provider
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: GitHub single sign-on configuration.
+    key: sso.github
+    title: GitHub
+    icon: tabler:brand-github
+    group: Single sign-on
+    order: 30
+    component_tag: kickside-sso-admin
+    config:
+      provider: github
+
+  - name: dep.kickside.sso
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the provider gate and shared SSO provider contract.
+    component: kickside/sso
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies provider credential settings and the SSO settings block.
+    component: kickside/settings
+
+  - name: endpoint_authorize
+    kind: ns.requirement
+    meta:
+      comment: Instance authorize endpoint.
+      description: Instance authorize endpoint.
+    default: https://github.com/login/oauth/authorize
+    targets:
+    - entry: kickside.sso.providers.github:provider
+      path: .endpoints.authorize
+  - name: endpoint_token
+    kind: ns.requirement
+    meta:
+      comment: Instance token endpoint.
+      description: Instance token endpoint.
+    default: https://github.com/login/oauth/access_token
+    targets:
+    - entry: kickside.sso.providers.github:provider
+      path: .endpoints.token
+  - name: endpoint_userinfo
+    kind: ns.requirement
+    meta:
+      comment: Instance userinfo endpoint.
+      description: Instance userinfo endpoint.
+    default: https://api.github.com/user
+    targets:
+    - entry: kickside.sso.providers.github:provider
+      path: .endpoints.userinfo
+  - name: endpoint_emails
+    kind: ns.requirement
+    meta:
+      comment: Instance emails endpoint.
+      description: Instance emails endpoint.
+    default: https://api.github.com/user/emails
+    targets:
+    - entry: kickside.sso.providers.github:provider
+      path: .endpoints.emails

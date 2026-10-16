@@ -1,0 +1,47 @@
+.pbpick {
+  display: grid;
+  gap: 8px;
+  color: var(--p-text-color);
+  background: var(--p-content-background);
+  font: inherit;
+}
+
+.pbpick-field {
+  display: grid;
+  gap: 6px;
+}
+
+.pbpick-field span {
+  color: var(--p-text-muted-color);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pbpick wc-connection-picker {
+  display: block;
+  width: 100%;
+}
+
+.pbpick-meta,
+.pbpick-hint,
+.pbpick-error {
+  font-size: 12px;
+}
+
+.pbpick-meta {
+  color: var(--p-success-600, var(--p-success-500));
+}
+
+.pbpick-meta.state-expired,
+.pbpick-meta.state-needs_reauth,
+.pbpick-meta.state-reauth_required {
+  color: var(--p-warn-600, var(--p-warn-500));
+}
+
+.pbpick-hint {
+  color: var(--p-text-muted-color);
+}
+
+.pbpick-error {
+  color: var(--p-danger-600, var(--p-danger-500));
+}

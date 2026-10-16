@@ -1,0 +1,122 @@
+version: "1.0"
+namespace: kickside.simplefin.traits
+
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: SimpleFIN Reader
+      public: true
+      comment: Reads bank accounts, transactions and investment holdings through a SimpleFIN connection.
+      icon: tabler:building-bank
+      tags: [simplefin, bank, finance, read-only]
+      web_component: kickside-connection-trait-picker
+      provider: simplefin
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: SimpleFIN connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read the household's bank data through the SimpleFINRead tool:
+        - list_accounts: every account the bank feed shares, with current balances.
+        - list_transactions: transactions across accounts for a window (days back, or
+          start_date / end_date), newest first, optionally for one account_id.
+        - summarize: inflow, outflow and net per account for the same window, the
+          cheapest way to answer "how much came in and went out".
+        - list_holdings: investment positions with quantity, market value and cost basis.
+      Amounts are signed decimal strings in the account currency; amount_minor is the
+      same value in cents. Timestamps are RFC3339 UTC. A typical flow is list_accounts,
+      then summarize or list_transactions for the account and window you need. The
+      connection is selected on the trait, or auto-selected when only one exists.
+    tools:
+      - kickside.simplefin.traits:read_tool
+
+  - name: read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: SimpleFIN Read
+      tags: [simplefin, bank, finance, read-only]
+      llm_alias: SimpleFINRead
+      llm_description: "Read SimpleFIN. list_accounts/list_transactions/list_holdings/summarize return compact rows, 25 per page by default (maximum 100). Follow next_cursor with the same filters. fields selects row fields; [\"*\"] requests full rows, including account holdings or transaction memos. Results retain aggregate totals and provider warnings."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "array", "items": {"type": "string"}, "description": "Additional provider fields to return. Use [\"*\"] for the whole record. Default list rows contain identifiers and selection metadata."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            "cursor": {"type": "string", "description": "next_cursor row offset from the preceding page with the same account/date filters."},
+            "action": {
+              "type": "string",
+              "description": "Read action to perform.",
+              "enum": ["list_accounts", "list_transactions", "summarize", "list_holdings"]
+            },
+            "account_id": {
+              "type": "string",
+              "description": "Restrict list_transactions, summarize or list_holdings to one account id from list_accounts."
+            },
+            "days": {
+              "type": "number",
+              "description": "For list_transactions without start_date: days back from now (default 30, max 365)."
+            },
+            "start_date": {
+              "type": "string",
+              "description": "For list_transactions: ISO-8601 date or date-time; transactions posted on or after it."
+            },
+            "end_date": {
+              "type": "string",
+              "description": "For list_transactions: ISO-8601 date or date-time; transactions posted before it."
+            },
+            "pending": {
+              "type": "boolean",
+              "description": "For list_transactions: include pending transactions (default true)."
+            }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read SimpleFIN. list_accounts/list_transactions/list_holdings/summarize return compact rows, 25 per page by default (maximum 100). Follow next_cursor with the same filters. fields selects row fields; [\"*\"] requests full rows, including account holdings or transaction memos. Results retain aggregate totals and provider warnings. Provider rejections return {success:false,error,status_code?,data?}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Rejection message when success is false."},
+            "code": {"type": "string", "description": "kickside.data error code of a rejected request."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "accounts": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "institution": {"type": ["string", "object"]}, "currency": {"type": "string"}, "balance": {"type": "string"}, "balance_minor": {"type": "integer"}, "available_balance": {"type": "string"}, "balance_at": {"type": ["string", "number"]}, "holdings": {"type": "array", "items": {"type": "object"}}, "transactions": {"type": "array", "items": {"type": "object"}}, "account_id": {"type": "string"}, "account_name": {"type": "string"}, "inflow_minor": {"type": "integer"}, "outflow_minor": {"type": "integer"}, "net_minor": {"type": "integer"}, "count": {"type": "integer"}, "pending_count": {"type": "integer"}}}},
+            "transactions": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "posted": {"type": ["string", "number"]}, "posted_epoch": {"type": "number"}, "amount": {"type": "string"}, "amount_minor": {"type": "integer"}, "description": {"type": "string"}, "payee": {"type": "string"}, "memo": {"type": "string"}, "pending": {"type": "boolean"}, "account_name": {"type": "string"}, "currency": {"type": "string"}}}},
+            "holdings": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "symbol": {"type": "string"}, "description": {"type": "string"}, "shares": {"type": "string"}, "market_value": {"type": "string"}, "cost_basis": {"type": "string"}, "account_name": {"type": "string"}}}},
+            "count": {"type": "integer"},
+            "total": {"type": ["integer", "object"]},
+            "start_at": {"type": "string"},
+            "end_at": {"type": "string"},
+            "warnings": {"type": "array", "items": {}}
+          }
+        }
+    source: file://read_tool.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.simplefin.client:transport
+      protocol: kickside.simplefin.client:protocol
+      output: kickside.simplefin.client:output
+      types: kickside.simplefin.client:types
+
+  - name: traits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: simplefin
+    source: file://traits_test.lua
+    method: run
+    modules: [json, registry]
+    imports:
+      test: wippy.test:test

@@ -1,0 +1,111 @@
+version: "1.0"
+namespace: kickside.kb10.persist
+
+# Schema-owning data-access layer for the kb10 document/graph engine. The
+# migration in kickside.kb10.migrations creates the kb10_* tables; this provider
+# owns all direct reads/writes. Source-content lifecycle callers must enter
+# through the kb10-internal node_store / kb_store; source-content writes enter the kb10
+# package is the internal persistence destination behind that seam. It is split
+# CQRS-style into a read side (reader), a write side (writer), and shared
+# connection/dialect/encoding helpers (ops); store is a thin facade that
+# re-exports every method so engine internals and the contract binding keep a
+# single stable surface.
+
+entries:
+  - name: ops
+    kind: library.lua
+    meta:
+      name: ops
+      internal: true
+      comment: Shared connection acquisition, dialect resolution, vector/placeholder encoding, metadata decode.
+    source: file://ops.lua
+    modules:
+      - sql
+      - json
+      - registry
+
+  - name: reader
+    kind: library.lua
+    meta:
+      name: reader
+      internal: true
+      reader: true
+      comment: Read side — store/node/edge/embedding SELECTs and graph traversal. No writes.
+    source: file://reader.lua
+    modules:
+      - sql
+      - json
+    imports:
+      kb10_ops: kickside.kb10.persist:ops
+      kb10: kickside.kb10:types
+
+  - name: writer
+    kind: library.lua
+    meta:
+      name: writer
+      internal: true
+      writer: true
+      comment: Internal write side — store/node/edge/embedding inserts/updates/deletes with explicit SQLite cascades, plus the graph-KB root-concept seed on create. Source-content writes are reached through the kb10 injection materializer_store surface.
+    source: file://writer.lua
+    modules:
+      - sql
+      - json
+      - uuid
+      - time
+    imports:
+      kb10_ops: kickside.kb10.persist:ops
+      llm: wippy.llm:llm
+      kb10: kickside.kb10:types
+
+  - name: store
+    kind: library.lua
+    meta:
+      name: store
+      internal: true
+      comment: Internal facade re-exporting reader/writer methods. The lifecycle contract binding + node_store adapt this facade; materializer_store guards source-content writes.
+    source: file://store.lua
+    imports:
+      kb10_reader: kickside.kb10.persist:reader
+      kb10_writer: kickside.kb10.persist:writer
+      kb10_ops: kickside.kb10.persist:ops
+
+  # kb10-internal taxonomy/graph node+edge+embedding+vector access: a colon-callable
+  # DTO adapter over the store for kb10's own control code (graph enrichment, node
+  # reader, digest, /kb10 HTTP APIs). Rejects source-content node mutations (those go
+  # through materializer_store). Not a contract — only the store lifecycle crosses the
+  # knowledge contract seam.
+  - name: node_store
+    kind: library.lua
+    meta:
+      name: node_store
+      internal: true
+      comment: kb10-internal taxonomy/graph node+edge+embedding+vector access (DTO adapter over the store).
+    source: file://node_store.lua
+    imports:
+      store: kickside.kb10.persist:store
+      kb10: kickside.kb10:types
+
+  # kb10_maintenance_runs is its own small table with its own lifecycle (mint,
+  # advance, close), read by the maintenance API and written by the maintenance
+  # job worker. It carries no nodes, edges or vectors, so it stays out of the
+  # node reader/writer rather than growing them.
+  - name: maintenance_runs
+    kind: library.lua
+    meta:
+      name: maintenance_runs
+      internal: true
+      comment: Durable progress + outcome records for kb10 maintenance runs (resummarize / re-embed).
+    source: file://maintenance_runs.lua
+    modules:
+      - time
+      - uuid
+    imports:
+      kb10_ops: kickside.kb10.persist:ops
+
+  - name: query_log
+    kind: library.lua
+    source: file://query_log.lua
+    modules: [time, uuid]
+    imports:
+      ops: kickside.kb10.persist:ops
+      text_limits: kickside.kb10:text_limits

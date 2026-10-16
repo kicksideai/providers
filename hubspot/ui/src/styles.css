@@ -1,0 +1,76 @@
+:host,
+.hs {
+  --hs-bg: var(--p-content-background);
+  --hs-surface: color-mix(in srgb, var(--p-text-color) 5%, var(--p-content-background));
+  --hs-border: var(--p-content-border-color);
+  --hs-text: var(--p-text-color);
+  --hs-muted: var(--p-text-muted-color);
+  --hs-primary: var(--p-primary-color);
+  --hs-danger: var(--p-danger-500);
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--hs-text);
+}
+
+.hs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.hs-field > span {
+  color: var(--hs-muted);
+}
+
+.hs-field wc-connection-picker,
+.hs-field .p-select {
+  width: 100%;
+}
+
+.hs-field .p-select {
+  padding: 8px 10px;
+  border: 1px solid var(--hs-border);
+  border-radius: 8px;
+  background: var(--hs-bg);
+  color: var(--hs-text);
+  font-size: 14px;
+}
+
+.hs-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--hs-muted);
+}
+
+.hs-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--hs-danger);
+}
+
+.hs-summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 24px;
+  padding: 8px 10px;
+  border: 1px solid var(--hs-border);
+  border-radius: 8px;
+  background: var(--hs-surface);
+  font-size: 13px;
+}
+
+.hs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hs-primary);
+  flex: 0 0 auto;
+}

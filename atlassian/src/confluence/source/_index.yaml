@@ -1,0 +1,130 @@
+version: "1.0"
+namespace: kickside.atlassian.confluence.source
+
+entries:
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Pullable Confluence content source implementation for pages or blog posts.
+    source: file://pull_core.lua
+    modules: [ctx]
+    imports:
+      confluence: kickside.atlassian.confluence:api
+      markdown: kickside.atlassian.confluence:markdown
+      data_error: kickside.atlassian.client:data_error
+      transport: kickside.atlassian.client:transport
+
+  - name: pull_content
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for Confluence content selected by space and content_type.
+    source: file://pull_content.lua
+    method: pull
+    modules: [ctx]
+    imports:
+      confluence: kickside.atlassian.confluence:api
+      markdown: kickside.atlassian.confluence:markdown
+      data_error: kickside.atlassian.client:data_error
+      transport: kickside.atlassian.client:transport
+      implementation: kickside.atlassian.confluence.source:pull_core
+
+  - name: pull_content_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only Confluence content listing used by Data Sync reconcile.
+    source: file://pull_content_keys.lua
+    method: pull_keys
+    modules: [ctx]
+    imports:
+      confluence: kickside.atlassian.confluence:api
+      markdown: kickside.atlassian.confluence:markdown
+      data_error: kickside.atlassian.client:data_error
+      transport: kickside.atlassian.client:transport
+      implementation: kickside.atlassian.confluence.source:pull_core
+
+  - name: content_source
+    kind: contract.binding
+    meta:
+      title: Confluence Pages and Posts
+      icon: simple-icons:atlassian
+      comment: Pull Confluence pages or blog posts on a schedule with upsert/delete ops and source versions.
+      provider: atlassian
+      group: Confluence
+      class: [kickside.docs]
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.atlassian.confluence.source:pull_content
+
+  - name: content
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Confluence Pages and Posts
+      comment: Watch selected Confluence pages or blog posts for new and updated content.
+      icon: simple-icons:confluence
+    binding: kickside.atlassian.confluence.source:content_source
+    reconcile:
+      pull_keys: kickside.atlassian.confluence.source:pull_content_keys
+    config_schema:
+      space_key:
+        picker: kickside-atlassian-confluence-picker
+        required: true
+        title: Confluence space
+        description: Confluence space selected by the Confluence picker.
+        writes: [connection_id, space_key]
+      connection_id:
+        required: true
+        title: Atlassian connection
+        description: Populated by the Confluence picker.
+      content_type:
+        picker: wc-schema-form
+        required: true
+        title: Content type
+        description: Confluence content type to pull.
+        enum: [page, blogpost]
+      backfill_since:
+        picker: wc-schema-form
+        type: string
+        format: date-time
+        required: false
+        title: Backfill since
+        description: Optional ISO timestamp. Initial content search filters to content modified at or after this time.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item_key": { "type": "string", "description": "Stable item identity, confluence:content:<content_id>." },
+          "dedup_key": { "type": "string", "description": "Delivery idempotency key including op and source_version." },
+          "op": { "type": "string", "enum": ["upsert", "delete"] },
+          "source_version": { "type": "string", "description": "Confluence version/modified timestamp used for ordering and deduplication." },
+          "occurred_at": { "type": "string" },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "confluence_type": { "type": "string", "enum": ["page", "blogpost"] },
+              "entity": { "type": "string" },
+              "title": { "type": "string" },
+              "content": { "type": "string", "description": "Clean markdown/text, never raw storage HTML." },
+              "content_type": { "type": "string" },
+              "source_url": { "type": "string" },
+              "properties": { "type": "object" },
+              "space_key": { "type": "string" },
+              "version": { "type": "integer" },
+              "updated_at": { "type": "string" }
+            },
+            "required": ["id", "confluence_type", "entity", "title", "content", "content_type", "source_url", "properties"]
+          }
+        },
+        "required": ["item_key", "dedup_key", "op"],
+        "allOf": [
+          {
+            "if": { "properties": { "op": { "const": "upsert" } }, "required": ["op"] },
+            "then": { "required": ["payload"] }
+          }
+        ] }

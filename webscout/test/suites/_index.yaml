@@ -1,0 +1,131 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/webscout. They live in the harness because the module
+# is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+#
+# Every import below names an entry of the MODULE. A suite that imported a copy
+# would pass while the original drifted, which is the whole reason this harness
+# exists.
+
+entries:
+  - name: source_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: Research
+      comment: WebScout Research Source operations, artifact shaping, and provider failures.
+    source: file://source_test.lua
+    method: run
+    modules: [funcs, json, hash]
+    imports:
+      test: wippy.test:test
+      source: kickside.webscout.research:source_core
+      operation_policy: kickside.webscout.research:operation_policy
+
+  - name: client_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: HTTP boundary
+      comment: Address rejection, redirect handling, and the headers the deployment owns.
+    source: file://client_test.lua
+    method: run
+    modules: [http_client]
+    imports:
+      test: wippy.test:test
+      client: kickside.webscout.client:client
+
+  - name: search_provider_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: Search providers
+      comment: Provider discovery, descriptor validation, selection, and the search dispatcher.
+    source: file://search_provider_test.lua
+    method: run
+    modules: [registry, funcs]
+    imports:
+      test: wippy.test:test
+      providers: kickside.webscout:providers_registry
+      dispatch: kickside.webscout.traits:search
+
+  - name: list_providers_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: Settings card
+      comment: The settings card's read surface -- which providers exist, which are configured, which is in effect.
+    source: file://list_providers_test.lua
+    method: run
+    modules: [http, funcs]
+    imports:
+      test: wippy.test:test
+      providers: kickside.webscout:providers_registry
+      endpoint: kickside.webscout.api:list_providers
+
+  - name: transport_limits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: Transport limits
+      comment: Which side owns the content budget, the timeout, and the user agent.
+    source: file://transport_limits_test.lua
+    method: run
+    modules: [html, text, http_client]
+    imports:
+      test: wippy.test:test
+      read: kickside.webscout.traits:read
+      links: kickside.webscout.traits:links
+      client: kickside.webscout.client:client
+
+  - name: operation_policy_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: Research policy
+      comment: SourceOperationPolicy/v1 validation against the host-installed control bounds.
+    source: file://operation_policy_test.lua
+    method: run
+    modules: [json, hash]
+    imports:
+      test: wippy.test:test
+      operation_policy: kickside.webscout.research:operation_policy
+
+  - name: source_policy_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: Research source policy
+      comment: What the Source refuses when the operation policy and the bounds disagree.
+    source: file://source_policy_test.lua
+    method: run
+    modules: [funcs, json, hash]
+    imports:
+      test: wippy.test:test
+      source: kickside.webscout.research:source_core
+      operation_policy: kickside.webscout.research:operation_policy
+
+  - name: google_provider_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout
+      group: Google provider
+      comment: The Google provider's own gate and query -- the only way to exercise an API that is closed to new clients.
+    source: file://google_provider_test.lua
+    method: run
+    modules: [json, http_client]
+    imports:
+      test: wippy.test:test
+      search: kickside.webscout.providers.google:search
+      available: kickside.webscout.providers.google:available
+

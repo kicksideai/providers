@@ -1,0 +1,1 @@
+../../lua-fixtures/tests/capacity_http_fixture.lua

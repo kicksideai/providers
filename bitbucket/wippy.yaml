@@ -1,0 +1,32 @@
+organization: kickside
+module: bitbucket
+type: plugin
+description: KickSide Bitbucket — Bitbucket Cloud credential connection provider (Atlassian API token or workspace/project/repository access token) with workspace and repository discovery.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - bitbucket
+  - atlassian
+  - connection
+  - code
+  - repositories
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "test/stubs/**"
+  - "test/stubs:**"
+  - "src/**/stubs/**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

@@ -1,0 +1,13 @@
+version: "1.0"
+namespace: app.env
+
+# Mirrors the real app's env storage id (app.env:store) so transitive core env
+# knobs resolve their default storage in isolation.
+
+entries:
+  - name: store
+    kind: env.storage.file
+    meta:
+      type: envstorage
+    file_path: ./.wippy/test.env
+    auto_create: true

@@ -1,0 +1,84 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/github. They live in the harness because the module
+# is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: github
+      comment: REST path, query, header, error mapping, and rate-limit classification of the GitHub API client.
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.github.client:api
+      data_error: kickside.github.client:data_error
+
+  - name: transport_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: github
+      comment: OAuth and credential connection resolution in the GitHub transport.
+    source: file://transport_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      transport: kickside.github.client:transport
+      types: kickside.github.client:types
+
+  - name: output_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: github
+      comment: Tool output redaction and truncation.
+    source: file://output_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      output: kickside.github.client:output
+
+  - name: connection_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: github
+      comment: Connection contract methods over a fake transport.
+    source: file://connection_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: kickside.github.connection:connection_lib
+
+  - name: pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: github
+      comment: Repository issue and pull request source item shaping and paging.
+    source: file://pull_core_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      pull_core: kickside.github.source:pull_core
+
+  - name: traits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: github
+      comment: GitHubRead and GitHubWrite argument validation and dispatch.
+    source: file://traits_test.lua
+    method: run
+    modules: [registry, json]
+    imports:
+      test: wippy.test:test
+      read_tool: kickside.github.traits:read_tool_lib
+      write_tool: kickside.github.traits:write_tool_lib

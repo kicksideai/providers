@@ -1,0 +1,211 @@
+version: "1.0"
+namespace: kickside.webscout
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Webscout
+      comment: Web research tools for AI agents — search through an installed search provider, page reading, and bounded link extraction. Search credentials are global settings; Research owns case access and retention.
+
+  - name: dep.kickside.blocks
+    kind: ns.dependency
+    component: kickside/blocks
+    version: "*"
+    meta:
+      comment: Provides canonical Block execution for the typed Research Source.
+
+  - name: dep.kickside.settings
+    kind: ns.dependency
+    component: kickside/settings
+    version: "*"
+
+  # ─── Admin-editable settings (DB-backed, encrypted, surfaced in Settings UI) ───
+  # Google's credentials remain admin-editable settings here. A search provider
+  # that ships as its own module keeps its credentials in its own namespace, the
+  # one its descriptor names in settings_ns. Request policy values and transport
+  # headers are supplied by the installed Research Source operation policy; this
+  # provider has no operational settings store.
+  - name: setting_google_search_api_key
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Google Custom Search API key (encrypted setting).
+    namespace: kickside.webscout
+    key: google_search_api_key
+    value_type: secret
+    default: ""
+    description: Google Custom Search API key (required for the Google Search tool).
+    scope: global
+    editable: true
+
+  - name: setting_google_search_engine_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Google Custom Search Engine ID / cx (encrypted setting).
+    namespace: kickside.webscout
+    key: google_search_engine_id
+    value_type: secret
+    default: ""
+    description: Google Custom Search Engine ID / cx (required for the Google Search tool).
+    scope: global
+    editable: true
+
+  - name: setting_user_agent
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: User-Agent sent on outgoing web requests.
+    namespace: kickside.webscout
+    key: user_agent
+    value_type: string
+    default: ""
+    description: User-Agent header sent with outgoing page and search requests. Leave empty to use the built-in browser-like value.
+    scope: global
+    editable: true
+
+  - name: setting_search_provider
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Which installed search provider the web research tools call.
+    namespace: kickside.webscout
+    key: search_provider
+    value_type: string
+    default: google
+    description: Identifier of the installed search provider used by the web research tools.
+    scope: global
+    editable: true
+    # The card above draws this one itself, as a list of the installed
+    # providers; hidden here so the nested stock form does not draw it again as
+    # a text field. It stays readable and writable through the contract and API.
+    visible: false
+    validate_func: kickside.webscout:validate_search_provider
+
+  # ─── Search provider protocol ───
+  # Providers declare themselves with registry entries; nothing below names one.
+  - name: providers_registry
+    kind: library.lua
+    meta:
+      name: providers_registry
+      comment: Discovers declared search providers and resolves the selected one.
+    source: file://providers_registry.lua
+    modules:
+      - registry
+
+  - name: validate_search_provider
+    kind: function.lua
+    meta:
+      comment: Refuses a search_provider value that no installed descriptor claims.
+    source: file://providers_registry.lua
+    modules:
+      - registry
+    method: validate_setting
+
+  # ─── Dependency interface (ns.requirement) ───────────────────────────
+  # Defaults match the usual application naming, so an ordinary install needs no
+  # parameters; a host that names these differently overrides them.
+  - name: api_router
+    kind: ns.requirement
+    meta:
+      comment: Authenticated HTTP router for the search provider list.
+      description: Authenticated HTTP router for the search provider list.
+    default: app:api
+    targets:
+      - { entry: kickside.webscout.api:list_providers.endpoint, path: .meta.router }
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server for the WebScout settings card bundle.
+      description: HTTP server for the WebScout settings card bundle.
+    default: app:gateway
+    targets:
+      - { entry: kickside.webscout:ui_static, path: .meta.server }
+
+  # ─── Settings card web component ─────────────────────────────────────
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: WebScout web components, served as plain ES modules.
+    directory: ./static
+    auto_init: true
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      comment: Serves the WebScout web components.
+      server: app:gateway
+    path: /kickside-webscout
+    fs: kickside.webscout:ui_fs
+    options:
+      cache: "no-cache"
+      mime_types:
+        .js: application/javascript
+
+  - name: settings_card_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: settings_card_view
+      title: WebScout settings
+      tag_name: kickside-webscout-settings
+      base_path: kickside-webscout
+      entry_point: settings-card.js
+      announced: true
+      auto_register: false
+
+  # ─── Shared config reader: the single source is the settings contract ───
+  # Reads go through the kickside.settings:settings contract; the settings service
+  # resolves values under its own identity, so any caller that may open the contract
+  # (the agent runtime included) reads config without extra grants here.
+  - name: config
+    kind: library.lua
+    meta:
+      name: config
+      comment: Resolves only search credentials from the settings contract.
+    source: file://config.lua
+    modules:
+      - contract
+
+
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: WebScout settings block for the admin Settings page.
+    key: webscout
+    title: WebScout
+    icon: tabler:world-search
+    group: Integrations
+    order: 10
+    namespace: kickside.webscout
+    component_tag: kickside-webscout-settings
+    config:
+      namespace: kickside.webscout
+      title: WebScout
+      icon: tabler:world-search
+      help: Configure the search providers available for web research.
+
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Instance api endpoint.
+      description: Instance api endpoint.
+    default: https://www.googleapis.com/customsearch/v1
+    targets:
+    - entry: kickside.webscout.providers.google:provider
+      path: .endpoints.api
+  - name: dep.kickside.connection
+    kind: ns.dependency
+    component: kickside/connection
+    version: '*'
+    meta:
+      comment: Resolves declared instance endpoints.
+
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '*'

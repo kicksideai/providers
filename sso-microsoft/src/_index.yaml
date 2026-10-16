@@ -1,0 +1,141 @@
+version: "1.0"
+namespace: kickside.sso.providers.microsoft
+
+# Microsoft / Entra login provider submodule. Multi-tenant: the descriptor's
+# issuer_template substitutes {tenant} from this submodule's tenant setting, so
+# the connector discovers the right issuer per install.
+entries:
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: KickSide SSO — Microsoft
+      comment: Microsoft / Entra OIDC login provider (multi-tenant issuer discovery).
+
+  - name: provider
+    kind: registry.entry
+    meta: { type: sso.provider, comment: Microsoft/Entra OIDC connector descriptor (multi-tenant issuer discovery). }
+    id: microsoft
+    label: Microsoft
+    icon: logos:microsoft-icon
+    engine: oidc
+    settings_ns: kickside.sso.providers.microsoft
+    ui:
+      intro: Register an app in Microsoft Entra ID, add a client secret, and set the tenant (a GUID/domain for single-tenant, or organizations/common for multi-tenant).
+      docs_label: Entra app registrations
+      docs_url: https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
+    issuer_template: "https://login.microsoftonline.com/{tenant}/v2.0"
+    tenant_setting: tenant
+    trust_email: true
+    default_scopes: [openid, email, profile]
+    order: 20
+
+  - name: validate
+    kind: function.lua
+    meta: { comment: Microsoft enable-gate — blocks enabling without credentials. }
+    source: file://validate.lua
+    imports:
+      sso_provider_gate: kickside.sso:provider_gate
+    method: validate
+
+  - name: enabled
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Enable Microsoft login. }
+    namespace: kickside.sso.providers.microsoft
+    key: enabled
+    value_type: bool
+    default: false
+    description: Offer "Sign in with Microsoft".
+    scope: global
+    editable: true
+    visible: false
+    validate_func: kickside.sso.providers.microsoft:validate
+
+  - name: client_id
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Microsoft (Entra) application (client) id. }
+    namespace: kickside.sso.providers.microsoft
+    key: client_id
+    value_type: string
+    default: ""
+    description: Microsoft Entra application (client) id.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: client_secret
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Microsoft (Entra) client secret. }
+    namespace: kickside.sso.providers.microsoft
+    key: client_secret
+    value_type: secret
+    default: ""
+    description: Microsoft Entra client secret.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: tenant
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: "Microsoft tenant (GUID, domain, common, or organizations)." }
+    namespace: kickside.sso.providers.microsoft
+    key: tenant
+    value_type: string
+    default: "organizations"
+    description: Entra tenant — a tenant GUID/domain for single-tenant, or "organizations"/"common" for multi-tenant.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: scopes
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Extra Microsoft scopes. }
+    namespace: kickside.sso.providers.microsoft
+    key: scopes
+    value_type: json
+    default: []
+    description: Additional scopes (openid email profile are always requested).
+    scope: global
+    editable: true
+    visible: false
+    schema: { kind: string_list }
+
+  # Module-owned Settings block: this provider's own left-nav entry in the
+  # "Single sign-on" group. The Settings page mounts kickside-sso-admin and hands
+  # it { provider: "microsoft" }, so it renders only this provider's card.
+  - name: block.sso_provider
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: Microsoft single sign-on configuration.
+    key: sso.microsoft
+    title: Microsoft
+    icon: logos:microsoft-icon
+    group: Single sign-on
+    order: 20
+    component_tag: kickside-sso-admin
+    config:
+      provider: microsoft
+
+  - name: dep.kickside.sso
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the provider gate and shared SSO provider contract.
+    component: kickside/sso
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies provider credential settings and the SSO settings block.
+    component: kickside/settings
+
+  - name: endpoint_issuer_template
+    kind: ns.requirement
+    meta:
+      comment: Instance issuer_template endpoint.
+      description: Instance issuer_template endpoint.
+    default: https://login.microsoftonline.com/{tenant}/v2.0
+    targets:
+    - entry: kickside.sso.providers.microsoft:provider
+      path: .issuer_template

@@ -1,0 +1,113 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/kb10. They live in the harness because the module is
+# loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: concept_placement_prompt_test
+    kind: function.lua
+    meta: { type: test, suite: graph_functions }
+    source: file://concept_placement_prompt_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      placement: kickside.kb10.graph:concept_placement
+      flow: userspace.dataflow.flow:flow
+      node_store: kickside.kb10.persist:node_store
+
+  - name: batching_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10
+    source: file://batching_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      batching: kickside.kb10.engine:batching
+
+  - name: chunking_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10
+    source: file://chunking_test.lua
+    method: run
+    modules: [text]
+    imports:
+      test: wippy.test:test
+
+  - name: kb10_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10
+    source: file://kb10_test.lua
+    method: run
+    modules: [sql, json, crypto]
+    imports:
+      test: wippy.test:test
+      kb10_types: kickside.kb10:types
+      store: kickside.kb10.persist:store
+
+  - name: query_params_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge
+    source: file://query_params_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      query_params: kickside.kb10.api:query_params
+
+  - name: enrichment_service_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: graph_functions
+    source: file://enrichment_service_test.lua
+    method: run
+    modules: []
+    imports:
+      test: wippy.test:test
+      enrichment_service: kickside.kb10.graph:enrichment_service
+
+  - name: graph_functions_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: graph_functions
+    source: file://graph_functions_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      graph_fn: kickside.kb10.graph:graph_functions
+
+  - name: placement_tools_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: graph_tools
+    source: file://placement_tools_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      kb_types: kickside.kb10:types
+      placement_tools: kickside.kb10.graph:placement_tools
+
+  - name: hybrid_search_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_hybrid
+    source: file://hybrid_search_test.lua
+    method: run
+    modules: [crypto, sql]
+    imports:
+      test: wippy.test:test
+      store: kickside.kb10.persist:store
+      ops: kickside.kb10.persist:ops

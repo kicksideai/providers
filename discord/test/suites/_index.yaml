@@ -1,0 +1,423 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/discord. They live in the harness because the module
+# is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: hub_fixture
+    kind: library.lua
+    source: file://hub_fixture.lua
+    modules: [process]
+  - name: hub_health_fixture
+    kind: library.lua
+    source: file://hub_fixture.lua
+    modules: [process]
+  - name: hub_notifier_fixture
+    kind: library.lua
+    source: file://hub_fixture.lua
+    modules: [process]
+  - name: hub_process_fixture
+    kind: library.lua
+    source: file://hub_process_fixture.lua
+    modules: [process]
+  - name: hub_worker_fixture
+    kind: process.lua
+    source: file://hub_worker_fixture.lua
+    method: main
+    modules: [process]
+  - name: hub_supervisor
+    kind: process.lua
+    source: file://src_link/gateway/hub.lua
+    method: main
+    modules: [channel, logger, env, time, registry]
+    imports:
+      process: app.suites:hub_process_fixture
+      connection: kickside.connection:base_connection
+      component: app.suites:hub_fixture
+      health: app.suites:hub_health_fixture
+      notifier: app.suites:hub_notifier_fixture
+  - name: hub_supervision_test
+    kind: function.lua
+    meta: { type: test, suite: discord }
+    source: file://hub_supervision_test.lua
+    method: run
+    modules: [process, channel, time]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:hub_fixture
+  - name: lifecycle_process_fixture
+    kind: library.lua
+    source: file://lifecycle_process_fixture.lua
+  - name: lifecycle_observer_under_test
+    kind: library.lua
+    source: file://src_link/gateway/lifecycle_reconcile.lua
+    imports:
+      process: app.suites:lifecycle_process_fixture
+      connection: kickside.connection:base_connection
+      consts: kickside.discord.gateway:consts
+  - name: lifecycle_names
+    kind: library.lua
+    source: file://lifecycle_names.lua
+  - name: lifecycle_observer_real
+    kind: library.lua
+    source: file://src_link/gateway/lifecycle_reconcile.lua
+    modules: [process]
+    imports:
+      connection: kickside.connection:base_connection
+      consts: app.suites:lifecycle_names
+  - name: lifecycle_registry_test
+    kind: function.lua
+    meta: { type: test, suite: discord }
+    source: file://lifecycle_registry_test.lua
+    method: run
+    modules: [process, channel, time]
+    imports:
+      test: wippy.test:test
+      observer: app.suites:lifecycle_observer_real
+      names: app.suites:lifecycle_names
+  - name: lifecycle_reconcile_test
+    kind: function.lua
+    meta: { type: test, suite: discord }
+    source: file://lifecycle_reconcile_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      observer: app.suites:lifecycle_observer_under_test
+      fixture: app.suites:lifecycle_process_fixture
+  - name: reply_transport_state
+    kind: library.lua
+    source: file://reply_transport_state.lua
+  - name: reply_transport_api
+    kind: library.lua
+    source: file://reply_transport_api.lua
+    modules: [sql]
+    imports:
+      state: app.suites:reply_transport_state
+  - name: reply_transport_under_test
+    kind: library.lua
+    source: file://src_link/client/transport.lua
+    modules: [security]
+    imports:
+      preconditions: kickside.discord.client:preconditions
+      component: kickside.component:component
+      api: app.suites:reply_transport_api
+      types: kickside.discord.client:types
+      base: kickside.connection:base_connection
+      reply_authorization: kickside.connection:reply_authorization
+  - name: connection_under_test
+    kind: library.lua
+    source: file://src_link/connection/connection.lua
+    imports:
+      preconditions: kickside.discord.client:preconditions
+      base: kickside.connection:base_connection
+      transport: app.suites:reply_transport_under_test
+      types: kickside.discord.client:types
+  - name: transport_probe
+    kind: contract.definition
+    methods:
+      - name: run
+  - name: transport_probe_func
+    kind: function.lua
+    source: file://reply_transport_probe.lua
+    method: run
+    imports:
+      connection: app.suites:connection_under_test
+  - name: transport_probe_binding
+    kind: contract.binding
+    contracts:
+      - contract: app.suites:transport_probe
+        context_required: [component_id]
+        methods:
+          run: app.suites:transport_probe_func
+  - name: transport_access_test
+    kind: function.lua
+    meta: { type: test, suite: discord }
+    source: file://transport_access_test.lua
+    method: run
+    modules: [contract, sql, json, uuid, security]
+    imports:
+      test: wippy.test:test
+      state: app.suites:reply_transport_state
+      persist: kickside.channel.persist:repo
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.discord.client:api
+
+  - name: data_error_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://data_error_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      data_error: kickside.discord.client:data_error
+
+  - name: connection_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://connection_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: kickside.discord.connection:connection_lib
+      types: kickside.discord.client:types
+
+  - name: protocol_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://protocol_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      protocol: kickside.discord.gateway:protocol
+      consts: kickside.discord.gateway:consts
+
+  - name: backoff_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://backoff_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      backoff: kickside.discord.gateway:backoff
+
+  - name: gateway_api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://gateway_api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      gateway_api: kickside.discord.gateway:gateway_api
+      consts: kickside.discord.gateway:consts
+
+  - name: dm_dispatch_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://dm_dispatch_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      dm_dispatch: kickside.discord.gateway:dm_dispatch
+
+  - name: hub_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://hub_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      hub: kickside.discord.gateway:hub
+
+  - name: message_sink_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://message_sink_test.lua
+    method: run
+    imports:
+      sink: kickside.discord.sink:message_sink_lib
+      test: wippy.test:test
+
+  - name: pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://pull_core_test.lua
+    method: run
+    imports:
+      pull_core: kickside.discord.source:pull_core
+      test: wippy.test:test
+
+  - name: discord_tools_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: discord
+    source: file://discord_tools_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      discord_get: kickside.discord.traits:discord_get_lib
+      discord_write: kickside.discord.traits:discord_write_lib
+
+  - name: inbound_fixture
+    kind: library.lua
+    source: file://inbound_fixture.lua
+  - name: inbound_under_test
+    kind: library.lua
+    source: file://src_link/inbound/inbound.lua
+    imports:
+      contract: app.suites:inbound_contract_fixture
+      transport: app.suites:inbound_fixture
+      types: kickside.discord.client:types
+  - name: inbound_gateway_test
+    kind: function.lua
+    meta: { type: test, suite: discord }
+    source: file://inbound_gateway_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      inbound: app.suites:inbound_under_test
+      dispatch: kickside.discord.gateway:channel_dispatch
+      denied_transport: app.suites:denied_inbound_transport
+
+  - name: inbound_contract_fixture
+    kind: library.lua
+    source: file://inbound_contract_fixture.lua
+
+  - name: health_base_fixture
+    kind: library.lua
+    source: file://health_base_fixture.lua
+  - name: health_transport_fixture
+    kind: library.lua
+    source: file://health_transport_fixture.lua
+  - name: health_connection_under_test
+    kind: library.lua
+    source: file://src_link/connection/connection.lua
+    imports:
+      preconditions: kickside.discord.client:preconditions
+      base: app.suites:health_base_fixture
+      transport: app.suites:health_transport_fixture
+      types: kickside.discord.client:types
+  - name: connection_health_test
+    kind: function.lua
+    meta: { type: test, suite: discord }
+    source: file://connection_health_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: app.suites:health_connection_under_test
+      transport: app.suites:health_transport_fixture
+
+  - name: gateway_health_trust_test
+    kind: function.lua
+    meta: { type: test, suite: discord }
+    source: file://gateway_health_trust_test.lua
+    method: run
+    modules: [security, contract, uuid]
+    imports:
+      test: wippy.test:test
+
+  - name: ingress_security_fixture
+    kind: library.lua
+    source: file://ingress_security_fixture.lua
+  - name: denied_inbound_transport
+    kind: library.lua
+    source: file://src_link/client/transport.lua
+    imports:
+      security: app.suites:ingress_security_fixture
+      base: kickside.connection:base_connection
+      reply_authorization: kickside.connection:reply_authorization
+      component: kickside.component:component
+      api: kickside.discord.client:api
+      types: kickside.discord.client:types
+      preconditions: kickside.discord.client:preconditions
+
+  - name: hub_readiness_test
+    kind: function.lua
+    meta: {type: test, suite: discord}
+    source: file://hub_readiness_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      hub: kickside.discord.gateway:hub
+
+  - name: hub_soak_process
+    kind: library.lua
+    source: file://hub_soak_process.lua
+    modules: [process]
+  - name: hub_soak_worker
+    kind: process.lua
+    source: file://hub_soak_worker.lua
+    method: main
+    modules: [process, channel]
+  - name: hub_soak
+    kind: process.lua
+    source: file://src_link/gateway/hub.lua
+    method: main
+    modules: [channel, logger, env, registry]
+    imports:
+      process: app.suites:hub_soak_process
+      component: kickside.component:component
+      connection: kickside.connection:base_connection
+      health: kickside.discord.gateway:health
+      notifier: app.suites:lifecycle_observer_real
+  - name: hub_soak_test
+    kind: function.lua
+    meta: {type: test, suite: discord.soak}
+    source: file://hub_soak_test.lua
+    method: run
+    modules: [funcs, security, process, channel, time]
+    imports:
+      test: wippy.test:test
+      observer: app.suites:lifecycle_observer_real
+
+  - name: hub_soak_live
+    kind: process.lua
+    meta:
+      command:
+        name: hub-soak
+        security: {groups: [wippy.security:process]}
+    source: file://hub_soak_test.lua
+    method: soak
+    modules: [funcs, security, process, channel, time]
+    imports:
+      test: wippy.test:test
+      observer: app.suites:lifecycle_observer_real
+
+  - name: worker_failure_fixture
+    kind: library.lua
+    source: file://worker_failure_fixture.lua
+  - name: worker_health_fixture
+    kind: library.lua
+    source: file://worker_health_fixture.lua
+  - name: worker_error_source
+    kind: library.lua
+    source: file://worker_source.lua
+    modules: [time, channel, logger, process]
+    imports:
+      protocol: kickside.discord.gateway:protocol
+      backoff: kickside.discord.gateway:backoff
+      consts: kickside.discord.gateway:consts
+      gateway_api: kickside.discord.gateway:gateway_api
+      api: app.suites:worker_failure_fixture
+      preconditions: kickside.discord.client:preconditions
+      health: app.suites:worker_health_fixture
+  - name: worker_failure_test
+    kind: function.lua
+    meta: {type: test, suite: discord}
+    source: file://worker_failure_test.lua
+    method: run
+    modules: [channel]
+    imports:
+      test: wippy.test:test
+      worker: app.suites:worker_error_source
+      fixture: app.suites:worker_failure_fixture
+      health: app.suites:worker_health_fixture

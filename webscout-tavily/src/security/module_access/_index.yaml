@@ -1,0 +1,47 @@
+version: '1.0'
+namespace: kickside.webscout.providers.tavily.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Webscout Tavily
+    surface: kickside.webscout.providers.tavily
+    intent: module_access
+    includes:
+    - kickside.webscout.providers.tavily.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.webscout.providers.tavily:*
+    - kickside.webscout.providers.tavily.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.webscout.providers.tavily:*
+    - kickside.webscout.providers.tavily.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

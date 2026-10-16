@@ -1,0 +1,29 @@
+organization: kickside
+module: fireflies
+type: plugin
+description: KickSide Fireflies — API-key connection provider for Fireflies.ai meeting transcripts, with agent read tools.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - fireflies
+  - connection
+  - transcripts
+  - meetings
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support

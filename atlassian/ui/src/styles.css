@@ -1,0 +1,130 @@
+/* Atlassian connect — shadow-DOM stylesheet (inlined). Uses the --p-* theme
+   vocabulary so it renders in light and dark. */
+
+:host,
+.atl {
+  --atl-bg: var(--p-content-background);
+  --atl-surface: color-mix(in srgb, var(--p-text-color) 5%, var(--p-content-background));
+  --atl-border: var(--p-content-border-color);
+  --atl-text: var(--p-text-color);
+  --atl-muted: var(--p-text-muted-color);
+  --atl-primary: var(--p-primary-color);
+  --atl-primary-text: var(--p-primary-contrast-color);
+  --atl-danger: var(--p-danger-500);
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--atl-text);
+}
+
+.atl {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.atl-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.atl-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--atl-border);
+  border-radius: 8px;
+  background: var(--atl-bg);
+  color: var(--atl-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.atl-tab.on {
+  background: var(--atl-surface);
+  color: var(--atl-text);
+  border-color: var(--atl-primary);
+}
+
+.atl-pane,
+.atl-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.atl-field em {
+  font-style: normal;
+  color: var(--atl-faint, var(--atl-muted));
+  font-size: 12px;
+}
+
+.atl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.atl-field > span {
+  color: var(--atl-muted);
+}
+
+.atl-field input,
+.atl-field select {
+  padding: 8px 10px;
+  border: 1px solid var(--atl-border);
+  border-radius: 8px;
+  background: var(--atl-bg);
+  color: var(--atl-text);
+  font-size: 14px;
+}
+
+.atl-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--atl-muted);
+}
+
+.atl-primary {
+  padding: 9px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--atl-primary);
+  color: var(--atl-primary-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.atl-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.atl-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--atl-danger);
+}
+
+.atl-warn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--p-warn-500) 35%, var(--atl-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--p-warn-500) 10%, transparent);
+  color: var(--p-warn-600, var(--p-warn-500));
+  font-size: 12px;
+}
+
+.atl-warn button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}

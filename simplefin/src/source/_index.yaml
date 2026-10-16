@@ -1,0 +1,222 @@
+version: "1.0"
+namespace: kickside.simplefin.source
+
+# SimpleFIN as kickside.data:pullable sources. The engine owns the cursor, the
+# schedule and dedup; each binding is a pull adapter plus its static meta. Three
+# catalog rows (transactions, balances, holdings) back onto pull_core, which
+# resolves the shape from its adapter.
+
+entries:
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Shared pull implementation for the SimpleFIN sources; resolves the shape from the binding adapter.
+    source: file://pull_core.lua
+    modules: [ctx]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      transport: kickside.simplefin.client:transport
+      protocol: kickside.simplefin.client:protocol
+
+  - name: pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: simplefin
+    source: file://pull_core_test.lua
+    method: run
+    imports:
+      pull_core: kickside.simplefin.source:pull_core
+      protocol: kickside.simplefin.client:protocol
+      test: wippy.test:test
+
+  - name: pull_transactions
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for the transactions source.
+    source: file://pull_transactions.lua
+    method: pull
+    imports:
+      pull_core: kickside.simplefin.source:pull_core
+
+  - name: pull_balances
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for the balances source.
+    source: file://pull_balances.lua
+    method: pull
+    imports:
+      pull_core: kickside.simplefin.source:pull_core
+
+  - name: pull_holdings
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for the holdings source.
+    source: file://pull_holdings.lua
+    method: pull
+    imports:
+      pull_core: kickside.simplefin.source:pull_core
+
+  - name: pull_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only SimpleFIN transaction enumeration used by Data Sync reconcile.
+    source: file://pull_keys.lua
+    method: pull_keys
+    imports:
+      pull_core: kickside.simplefin.source:pull_core
+
+  - name: pull_balance_keys
+    kind: function.lua
+    source: file://pull_keys.lua
+    method: pull_balance_keys
+    imports:
+      pull_core: kickside.simplefin.source:pull_core
+
+  - name: pull_holding_keys
+    kind: function.lua
+    source: file://pull_keys.lua
+    method: pull_holding_keys
+    imports:
+      pull_core: kickside.simplefin.source:pull_core
+
+  - name: transactions_source
+    kind: contract.binding
+    meta:
+      title: SimpleFIN Transactions
+      icon: tabler:building-bank
+      comment: Pull bank and card transactions from every account behind a SimpleFIN connection on a schedule.
+      provider: simplefin
+      group: Finance
+      class:
+        - kickside.finance
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.simplefin.source:pull_transactions
+
+  - name: balances_source
+    kind: contract.binding
+    meta:
+      title: SimpleFIN Balances
+      icon: tabler:building-bank
+      comment: Snapshot every account balance behind a SimpleFIN connection on a schedule.
+      provider: simplefin
+      group: Finance
+      class:
+        - kickside.finance
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.simplefin.source:pull_balances
+
+  - name: holdings_source
+    kind: contract.binding
+    meta:
+      title: SimpleFIN Holdings
+      icon: tabler:building-bank
+      comment: Snapshot every investment position behind a SimpleFIN connection on a schedule.
+      provider: simplefin
+      group: Finance
+      class:
+        - kickside.finance
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.simplefin.source:pull_holdings
+
+  - name: transactions
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: SimpleFIN Transactions
+      comment: Watch bank and card transactions across every account the connection shares.
+      icon: tabler:receipt
+    binding: kickside.simplefin.source:transactions_source
+    reconcile:
+      pull_keys: kickside.simplefin.source:pull_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: simplefin
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "provider": {"type":"string","const":"simplefin"},
+          "id": {"type":"string","description":"Transaction id, unique within the account."},
+          "account_id": {"type":"string"}, "account_name": {"type":"string"}, "account_currency": {"type":"string"},
+          "institution": {"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"domain":{"type":"string"},"url":{"type":"string"}}},
+          "posted_at": {"type":"string","format":"date-time","description":"Posting time, RFC3339 UTC."},
+          "posted_epoch": {"type":"integer","description":"Posting time, unix seconds."},
+          "transacted_at": {"type":"string","format":"date-time"}, "transacted_epoch": {"type":"integer"},
+          "amount": {"type":"string","description":"Signed decimal string as the bank reports it."},
+          "amount_minor": {"type":"integer","description":"Signed amount in minor units (cents)."},
+          "description": {"type":"string"}, "payee": {"type":"string"}, "memo": {"type":"string"},
+          "pending": {"type":"boolean"},
+          "category_code": {"type":"string","description":"Merchant category code when the bank reports one."} },
+        "required": ["provider", "id", "account_id", "amount", "amount_minor", "posted_at"] }
+
+  - name: balances
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: SimpleFIN Balances
+      comment: Watch account balances across every account the connection shares.
+      icon: tabler:building-bank
+    binding: kickside.simplefin.source:balances_source
+    reconcile:
+      pull_keys: kickside.simplefin.source:pull_balance_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: simplefin
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "provider": {"type":"string","const":"simplefin"},
+          "id": {"type":"string"}, "name": {"type":"string"}, "currency": {"type":"string"},
+          "balance": {"type":"string"}, "balance_minor": {"type":"integer"},
+          "available_balance": {"type":"string"}, "available_minor": {"type":"integer"},
+          "balance_at": {"type":"string","format":"date-time"}, "balance_epoch": {"type":"integer"},
+          "institution": {"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"domain":{"type":"string"},"url":{"type":"string"}}},
+          "holdings_count": {"type":"integer"} },
+        "required": ["provider", "id", "balance", "balance_minor", "currency"] }
+
+  - name: holdings
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: SimpleFIN Holdings
+      comment: Watch investment positions across every account the connection shares.
+      icon: tabler:chart-line
+    binding: kickside.simplefin.source:holdings_source
+    reconcile:
+      pull_keys: kickside.simplefin.source:pull_holding_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: simplefin
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "provider": {"type":"string","const":"simplefin"},
+          "id": {"type":"string","description":"Position id, unique within the account; the symbol when the bank gives none."},
+          "account_id": {"type":"string"}, "account_name": {"type":"string"}, "account_currency": {"type":"string"},
+          "institution": {"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"domain":{"type":"string"},"url":{"type":"string"}}},
+          "symbol": {"type":"string"}, "description": {"type":"string"},
+          "quantity": {"type":"string","description":"Units held, decimal string."},
+          "market_value": {"type":"string"}, "market_value_minor": {"type":"integer"},
+          "cost_basis": {"type":"string","description":"Total cost of the position."}, "cost_basis_minor": {"type":"integer"},
+          "purchase_price": {"type":"string"}, "currency": {"type":"string"},
+          "as_of": {"type":"string","format":"date-time"}, "as_of_epoch": {"type":"integer"} },
+        "required": ["provider", "id", "account_id", "symbol", "quantity"] }

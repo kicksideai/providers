@@ -1,0 +1,149 @@
+@import "@wippy-fe/theme/theme-config.css";
+
+/* Styled only with the universal --p-* theme vocabulary so the form renders
+   correctly inside the Connections dialog of any Wippy host, light or dark. */
+:host { display: block; min-height: 0; }
+*, *::before, *::after { box-sizing: border-box; }
+
+.sf {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--p-text-color);
+}
+
+.sf-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--p-content-border-color);
+}
+.sf-mark {
+  width: 36px; height: 36px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
+  color: var(--p-primary-color);
+}
+.sf-mark svg { width: 20px; height: 20px; }
+.sf-intro-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sf-intro-text strong { font-size: 14px; }
+.sf-intro-text small { color: var(--p-text-muted-color); font-size: 12.5px; }
+
+.sf-steps {
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: var(--p-text-muted-color);
+  font-size: 12.5px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.sf-steps a { color: var(--p-primary-color); text-decoration: none; }
+.sf-steps a:hover { text-decoration: underline; }
+
+.sf-field { display: flex; flex-direction: column; gap: 5px; }
+.sf-field > span:first-child { display: flex; justify-content: space-between; font-weight: 600; font-size: 12.5px; }
+.sf-field em { font-style: normal; font-weight: 400; color: var(--p-text-muted-color); font-size: 11.5px; }
+.sf-field small { color: var(--p-text-muted-color); font-size: 11.5px; }
+
+.sf-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  color: var(--p-text-color);
+  background: transparent;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.sf-input::placeholder { color: var(--p-text-muted-color); }
+.sf-input:focus {
+  outline: none;
+  border-color: var(--p-primary-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--p-primary-color) 18%, transparent);
+}
+.sf-secret { position: relative; display: block; }
+.sf-secret .sf-input { padding-right: 58px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.sf-reveal {
+  position: absolute; top: 50%; right: 5px; transform: translateY(-50%);
+  height: 26px; padding: 0 8px;
+  border: none; border-radius: 6px;
+  background: color-mix(in srgb, var(--p-text-color) 8%, transparent);
+  color: var(--p-text-muted-color);
+  font: inherit; font-size: 11px; font-weight: 600;
+  cursor: pointer;
+}
+.sf-reveal:focus-visible, .sf-submit:focus-visible { outline: 2px solid var(--p-primary-color); outline-offset: 2px; }
+
+.sf-note {
+  display: flex; gap: 8px; align-items: flex-start;
+  margin: 0; padding: 9px 11px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--p-text-color) 5%, transparent);
+  color: var(--p-text-muted-color);
+  font-size: 11.5px; line-height: 1.4;
+}
+.sf-note svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--p-primary-color); }
+
+.sf-feedback {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid;
+  border-radius: 10px;
+}
+.sf-feedback strong { display: block; font-size: 12.5px; }
+.sf-feedback small { font-size: 11.5px; line-height: 1.4; }
+.sf-feedback.error {
+  border-color: color-mix(in srgb, var(--p-danger-600, var(--p-danger-500)) 35%, var(--p-content-border-color));
+  background: color-mix(in srgb, var(--p-danger-600, var(--p-danger-500)) 7%, transparent);
+}
+.sf-feedback.error svg { color: var(--p-danger-600, var(--p-danger-500)); }
+.sf-feedback.success {
+  border-color: color-mix(in srgb, var(--p-primary-color) 35%, var(--p-content-border-color));
+  background: color-mix(in srgb, var(--p-primary-color) 7%, transparent);
+}
+.sf-feedback.success svg { color: var(--p-primary-color); }
+.sf-feedback svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+
+.sf-accounts {
+  list-style: none; margin: 8px 0 0; padding: 0;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.sf-account {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px;
+  font-size: 12.5px;
+}
+.sf-account + .sf-account { border-top: 1px solid color-mix(in srgb, var(--p-content-border-color) 55%, transparent); }
+.sf-account-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sf-account-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-account-name small { color: var(--p-text-muted-color); font-size: 11px; }
+.sf-account-balance { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+
+.sf-submit {
+  width: 100%;
+  min-height: 38px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: inherit; font-size: 13.5px; font-weight: 600;
+  color: var(--p-primary-contrast-color);
+  background: var(--p-primary-color);
+  border: none; border-radius: 8px;
+  cursor: pointer;
+}
+.sf-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--p-primary-color) 88%, var(--p-text-color)); }
+.sf-submit:disabled { opacity: 0.6; cursor: wait; }
+.sf-spinner {
+  width: 13px; height: 13px;
+  border: 2px solid color-mix(in srgb, var(--p-primary-contrast-color) 40%, transparent);
+  border-top-color: var(--p-primary-contrast-color);
+  border-radius: 999px;
+  animation: sf-spin 0.7s linear infinite;
+}
+@keyframes sf-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sf-spinner { animation: none; } }

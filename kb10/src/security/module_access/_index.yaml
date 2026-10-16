@@ -1,0 +1,96 @@
+version: '1.0'
+namespace: kickside.kb10.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Kb10
+    surface: kickside.kb10
+    intent: module_access
+    includes:
+    - kickside.kb10.security:module_runtime
+    - kickside.kb10.security:kb10_endpoint_access
+  groups: []
+  policy:
+    resources:
+    - kickside.kb10:*
+    - kickside.kb10.api:*
+    - kickside.kb10.binding:*
+    - kickside.kb10.digest:*
+    - kickside.kb10.engine:*
+    - kickside.kb10.graph:*
+    - kickside.kb10.graph.agents:*
+    - kickside.kb10.injection:*
+    - kickside.kb10.migrations:*
+    - kickside.kb10.persist:*
+    - kickside.kb10.portability:*
+    - kickside.kb10.reader:*
+    - kickside.kb10.security:*
+    - kickside.kb10.traits:*
+    - kickside.kb10.ui:*
+    actions:
+    - registry.get
+    - registry.find
+    effect: allow
+- name: kb10_endpoint_access
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.kb10.api:browse.endpoint
+    - kickside.kb10.api:concepts_create.endpoint
+    - kickside.kb10.api:concepts_delete.endpoint
+    - kickside.kb10.api:concepts_move.endpoint
+    - kickside.kb10.api:concepts_update.endpoint
+    - kickside.kb10.api:delete_node.endpoint
+    - kickside.kb10.api:enrichment.endpoint
+    - kickside.kb10.api:graph.endpoint
+    - kickside.kb10.api:maintenance_get.endpoint
+    - kickside.kb10.api:reembed.endpoint
+    - kickside.kb10.api:resummarize.endpoint
+    - kickside.kb10.api:search.endpoint
+    - kickside.kb10.api:source.endpoint
+    actions: access
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.kb10:*
+    - kickside.kb10.api:*
+    - kickside.kb10.binding:*
+    - kickside.kb10.digest:*
+    - kickside.kb10.engine:*
+    - kickside.kb10.graph:*
+    - kickside.kb10.graph.agents:*
+    - kickside.kb10.injection:*
+    - kickside.kb10.migrations:*
+    - kickside.kb10.persist:*
+    - kickside.kb10.portability:*
+    - kickside.kb10.reader:*
+    - kickside.kb10.security:*
+    - kickside.kb10.traits:*
+    - kickside.kb10.ui:*
+    actions:
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: user_security_scope
+  kind: ns.requirement
+  default: kickside.security.groups:members
+  meta:
+    value_kind: security.scope
+    description: Application security group allowed to use module HTTP endpoints.
+  targets:
+  - entry: kickside.kb10.security:kb10_endpoint_access
+    path: .groups +=

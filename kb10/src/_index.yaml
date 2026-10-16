@@ -1,0 +1,643 @@
+version: "1.0"
+namespace: kickside.kb10
+
+entries:
+  - name: text_limits
+    kind: library.lua
+    meta:
+      internal: true
+    source: file://text_limits.lua
+
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide KB10
+      comment: The document/graph knowledge-base engine. Owns the kb10_* schema and store, the contextual embedding + two-stage query funcs, the binding implementing kickside/knowledge's kb_store contract, the internal source materialization pipeline (injection workers + re-embed), plus the KickSide embeddable/queryable/deletable contract surface. Permission-agnostic; access is enforced upstream by the component service.
+
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: "*"
+    meta:
+      comment: Records and instances register as component shells and resolve access through the component service.
+
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: "*"
+    meta:
+      comment: Implements the shared component and deletable contracts.
+
+  - name: dep.kickside.core
+    kind: ns.dependency
+    component: kickside/core
+    version: "*"
+    meta:
+      comment: Event-sourced on the core thread engine (thread upsert, event append, status).
+
+  - name: dep.kickside.execution
+    kind: ns.dependency
+    component: kickside/execution
+    version: "*"
+    meta:
+      comment: Captures and re-admits the requester's identity for deferred KB work.
+
+  - name: dep.kickside.jobs
+    kind: ns.dependency
+    component: kickside/jobs
+    version: "*"
+    meta:
+      comment: Whole-KB maintenance (resummarize, re-embed) runs as a durable job so the request answers immediately and the work carries the caller's frozen identity.
+
+  - name: dep.kickside.knowledge
+    kind: ns.dependency
+    component: kickside/knowledge
+    version: "*"
+    meta:
+      comment: Reads and writes knowledge bases through the knowledge contract.
+
+  - name: dep.kickside.uploads
+    kind: ns.dependency
+    component: kickside/uploads
+    version: "*"
+    meta:
+      comment: Stages and stores files through the uploads repository and file_manager trait.
+
+  - name: dep.wippy.agent
+    kind: ns.dependency
+    component: wippy/agent
+    version: "*"
+    meta:
+      comment: Agent runtime backing the module agents and tools.
+
+  - name: dep.wippy.dataflow
+    kind: ns.dependency
+    component: wippy/dataflow
+    version: "*"
+    meta:
+      comment: Work runs as dataflow flows with terminal delivery nodes.
+
+  - name: dep.wippy.llm
+    kind: ns.dependency
+    component: wippy/llm
+    version: "*"
+    meta:
+      comment: Large language model calls for transform and agent work.
+
+  - name: dep.wippy.migration
+    kind: ns.dependency
+    component: wippy/migration
+    version: "*"
+    meta:
+      comment: Migration framework for the module read-model tables.
+
+  - name: dep.wippy.security
+    kind: ns.dependency
+    component: wippy/security
+    version: "*"
+
+  # ─── Dependency interface (ns.requirement) ───────────────────────────
+  # The consuming host wires this via ns.dependency. kb10 owns the kb10_*
+  # tables (created by its migration) on target_db. knowledge's control plane
+  # reaches it through the kb_store contract binding, and the KickSide KB surface
+  # through the embeddable/queryable/deletable bindings. Source content nodes are
+  # created, replaced, embedded, and deleted only by kb10's own materialization
+  # pipeline (the injection workers via the internal materializer_store surface);
+  # direct kb_store mutations are for taxonomy/graph state.
+  - name: api_router
+    kind: ns.requirement
+    meta:
+      comment: Authenticated HTTP router for the KB10 engine API.
+      description: Authenticated HTTP router for the KB10 engine API.
+    targets:
+      - { entry: kickside.kb10.api:search.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:browse.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:graph.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:delete_node.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:concepts_create.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:concepts_update.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:concepts_move.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:concepts_delete.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:source.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:enrichment.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:reembed.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:resummarize.endpoint, path: .meta.router }
+      - { entry: kickside.kb10.api:maintenance_get.endpoint, path: .meta.router }
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server for the KB10 engine UI bundles.
+      description: HTTP server for the KB10 engine UI bundles.
+    targets:
+      - entry: kickside.kb10.ui:ui_static
+        path: .meta.server
+
+  - name: process_host
+    kind: ns.requirement
+    meta:
+      comment: Process host for the KB10 enrichment service.
+      description: Process host for the KB10 enrichment service.
+    targets:
+      - entry: kickside.kb10.graph:enrichment_service.service
+        path: .host
+
+  - name: target_db
+    kind: ns.requirement
+    meta:
+      comment: SQL database resource backing the kb10_* tables.
+      description: SQL database resource backing the kb10_* tables.
+    targets:
+      - entry: kickside.kb10.migrations:01_kb10_schema
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:04_maintenance_runs
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:05_retrieval_observations
+        path: .meta.target_db
+      - entry: kickside.kb10:db_config
+        path: .meta.db_id
+
+  - name: db_config
+    kind: registry.entry
+    meta:
+      comment: Holds the configured KB10 database id (rewritten by target_db).
+      db_id: ""
+
+  - name: types
+    kind: library.lua
+    source: file://types.lua
+
+  # ─── kb_store binding (default engine for knowledge's control plane) ──
+  # kb10 implements ONLY the model-agnostic store lifecycle toward knowledge. Node,
+  # edge, embedding, summary and graph operations are kb10-internal (persist:node_store
+  # + injection:materializer_store) and never cross the contract seam.
+  - name: kb_store_lifecycle
+    kind: contract.binding
+    meta:
+      title: KB10 Store Lifecycle
+      comment: Canonical kb10 implementation of kickside.knowledge:kb_store_lifecycle. All node/edge/embedding/graph state is kb10-internal.
+      tags: [kb10, kb_store, engine, canonical, lifecycle]
+    contracts:
+      - contract: kickside.knowledge:kb_store_lifecycle
+        default: true
+        methods:
+          create_store: kickside.kb10.binding:create_store
+          get_store: kickside.kb10.binding:get_store
+          delete_store: kickside.kb10.binding:delete_store
+          update_config: kickside.kb10.binding:update_config
+
+  # ─── KickSide KB surface bindings ────────────────────────────────────
+  # The embeddable binding also declares queryable so component-bound dispatch
+  # (component.open(kb_id, READ, queryable), used by the agent kb_query trait)
+  # resolves through the component's impl binding.
+  - name: embeddable
+    kind: contract.binding
+    meta:
+      comment: KB10 durable embeddable/queryable binding. Writes queue KB-owned knowledge-thread events; the source projection materializes document summaries and chunks.
+      icon: tabler:database
+      class: [knowledge]
+      title: Knowledge Base
+      events:
+        output:
+          - type: kickside.knowledge.events:content.upserted
+          - type: kickside.knowledge.events:content.deleted
+          - type: kickside.knowledge.events:delivery.claimed
+          - type: kickside.knowledge.events:graph.changed
+          - type: kickside.knowledge.events:digest.requested
+          - type: kickside.knowledge.events:treatment.requested
+      # Component autoinit reads projections from the registered impl binding
+      # (engine.impl_id == kickside.kb10:embeddable). Keep the read-model
+      # declarations here so KB create remains registry-driven and declarative.
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          input_mode: prefetch_events
+          batch_size: 1
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+        - kind: knowledge.injection.digest
+          projection_key: digest
+          cursor_key: digest
+          worker_ref: "func://kickside.kb10.injection:digest_worker"
+          input_mode: prefetch_events
+          window_max_events: 0
+          window_idle_timeout_ms: 15000
+          window_max_duration_ms: 60000
+          events:
+            input:
+              - type: "kickside.knowledge.events:digest.requested"
+              - type: "kickside.knowledge.events:treatment.requested"
+        - kind: knowledge.graph.meta
+          projection_key: graph_meta
+          cursor_key: graph_meta
+          worker_ref: "func://kickside.kb10.injection:meta_projection"
+          input_mode: prefetch_events
+          batch_size: 100
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+              - type: "kickside.knowledge.events:graph.changed"
+      # Workspace kind: the Knowledge page is the manage view (deep-links to a KB by id,
+      # route = component id -> applyRoute opens its detail); the create popup collects
+      # kb_type + embedding model.
+      component:
+        create: { view: kickside.knowledge:kb_create_view }
+        manage: { view: kickside.knowledge:knowledge_view, deep_link: true }
+      # Portability: a KB is exportable. Its config (kb_type, embedding_model) rides
+      # in meta; the heavy data (store row + nodes + embeddings + edges) streams via
+      # the kickside.contract:portable data methods below into data/*.jsonl.
+      portable_schema:
+        context: false
+        meta:
+          - kb_type
+          - embedding_model
+    contracts:
+      - contract: kickside.contract:component
+        methods:
+          get_status: kickside.core.threads:thread_status
+      - contract: kickside.contract:embeddable
+        context_required:
+          - component_id
+        methods:
+          embed_content: kickside.kb10.binding:embed_func
+          embed_reference: kickside.knowledge.binding:embed_reference_func
+      - contract: kickside.contract:deletable
+        context_required:
+          - component_id
+        methods:
+          delete: kickside.kb10.binding:delete_func
+      - contract: kickside.contract:portable
+        context_required:
+          - component_id
+        methods:
+          export: kickside.kb10.portability:export_func
+          import_into: kickside.kb10.portability:import_into_func
+      - contract: kickside.contract:queryable
+        context_required:
+          - component_id
+        methods:
+          query: kickside.kb10.binding:query_func
+
+  - name: queryable
+    kind: contract.binding
+    meta:
+      comment: KB10 adaptive two-stage search via summaries then targeted chunk retrieval.
+    contracts:
+      - contract: kickside.contract:queryable
+        context_required:
+          - component_id
+        methods:
+          query: kickside.kb10.binding:query_func
+
+  # Whole-knowledge-base maintenance toward the knowledge control plane: the two
+  # verbs that rewrite a KB (every document summary, every node vector) and the
+  # read that follows a run. Both verbs are minutes to hours of work, so each
+  # mints a job on kb10's own queue and answers a receipt. The engine descriptors
+  # name this binding as maintenance_binding; knowledge resolves a KB's engine,
+  # reads that id and opens this binding with the KB as context.
+  - name: maintainable
+    kind: contract.binding
+    meta:
+      comment: KB10 whole-knowledge-base maintenance — schedule a resummarize, schedule a re-embed, read the latest run of each.
+    contracts:
+      - contract: kickside.knowledge:maintainable
+        context_required:
+          - component_id
+        methods:
+          schedule_resummarize: kickside.kb10.binding:schedule_resummarize_func
+          schedule_reembed: kickside.kb10.binding:schedule_reembed_func
+          maintenance_status: kickside.kb10.binding:maintenance_status_func
+
+  # ─── KB engine descriptors (knowledge control-plane discovery) ───────
+  # kickside/knowledge discovers engines via registry.find(meta.type ==
+  # kickside.kb_engine) and routes a kb_type to the impl/store/binding ids
+  # declared here — knowledge never names kb10. One entry per kb_type kb10
+  # provides (document, graph). Both back onto the same store + bindings; the
+  # graph entry seeds a root concept node (is_graph).
+  - name: engine_document
+    kind: registry.entry
+    meta:
+      type: kickside.kb_engine
+      thread:
+        class: kickside.knowledge.injection
+      kb_type: document
+      default: true
+      label: Document
+      title: Document
+      comment: Files and pages chunked, embedded, and retrieved by semantic search.
+      icon: tabler:files
+      create_ui_id: kx-kb-create
+      manage_ui_id: kx-kb-document
+      ui:
+        badge: { label: Document, icon: tabler:files, tone: neutral }
+        stats:
+          - { path: document_count, singular: document, plural: documents, icon: tabler:file-text }
+          - { path: embedding_count, singular: embedding, plural: embeddings, icon: tabler:vector, min: 1 }
+      impl_id: kickside.kb10:embeddable
+      embed_binding: kickside.kb10:embeddable
+      query_binding: kickside.kb10:queryable
+      maintenance_binding: kickside.kb10:maintainable
+      config_maintenance:
+        schedule_resummarize: [summary_model, summary_prompt, summary_max_chars]
+      store_contract: kickside.knowledge:kb_store_lifecycle
+      component:
+        create: { view: kickside.kb10.ui:create_view }
+        manage: { view: kickside.kb10.ui:document_view }
+      is_graph: false
+      # Read-model projections a document KB provisions on its primary thread at
+      # create (thread_id == component_id). The control plane declares the thread
+      # under this engine binding so autoinit auto-applies them -- one declared
+      # path, no imperative ensure. worker_ref points at kb10's own injection
+      # workers. source materializes document/summary/chunk/image nodes into the
+      # kb10 store; digest regenerates the KB summary on a coalescing window;
+      # graph_meta folds materialization deltas into the KB's public counters.
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          input_mode: prefetch_events
+          batch_size: 1
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+        - kind: knowledge.injection.digest
+          projection_key: digest
+          cursor_key: digest
+          worker_ref: "func://kickside.kb10.injection:digest_worker"
+          input_mode: prefetch_events
+          window_max_events: 0
+          window_idle_timeout_ms: 15000
+          window_max_duration_ms: 60000
+          events:
+            input:
+              - type: "kickside.knowledge.events:digest.requested"
+              - type: "kickside.knowledge.events:treatment.requested"
+        - kind: knowledge.graph.meta
+          projection_key: graph_meta
+          cursor_key: graph_meta
+          worker_ref: "func://kickside.kb10.injection:meta_projection"
+          input_mode: prefetch_events
+          batch_size: 100
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+              - type: "kickside.knowledge.events:graph.changed"
+      # Source materialization creates summary + chunk nodes and can use these
+      # settings for model-backed/engine-backed processing as the pipeline evolves.
+      default_config:
+        search_limit: 10
+        chunk_size: 1000
+        chunk_overlap: 150
+        summary_max_chars: 2400
+        summary_prompt: ""
+        summary_model: "class:fast"
+        chunk_enrichment_model: "class:fast"
+        # Images: when on, diagrams/figures from the source become retrievable image
+        # nodes -- described in context by image_caption_model, contextually embedded
+        # alongside text, and placed in the graph so agentic search returns the diagram.
+        # Off by default (heavier: vision captioning + extra vectors). Surfaced as the
+        # "Embed images" create checkmark.
+        embed_images: false
+        image_caption_model: "class:fast"
+        digest_temperature: 0.2
+        digest_max_tokens: 1000
+        # The digest prompt concatenates every document summary in the knowledge
+        # base, bounded by digest_context_tokens * digest_chars_per_token. The
+        # budget has to hold a realistic knowledge base at the summary length
+        # above: 48000 * 4 = 192000 characters, ~80 documents at
+        # summary_max_chars 2400, past which the digest falls back to its
+        # incremental (prior-description plus most recent summaries) form.
+        digest_context_tokens: 48000
+        digest_chars_per_token: 4
+        # Ask: how a grounded answer is produced (built-in synthesis | agentic agent).
+        query_strategy: plain
+        self_tuning: false
+        self_tuning_query_interval: 25
+        query_driver: built-in
+        max_retrieval_iterations: 4
+      config_schema:
+        type: object
+        properties:
+          query_strategy:
+            type: string
+            enum: [plain, hyde]
+            default: plain
+            label: Hypothetical answer retrieval
+            description: HyDE embeds a generated hypothetical answer using analysis_model; plain embeds the raw question.
+          self_tuning:
+            type: boolean
+            default: false
+            label: Autonomous retrieval tuning
+            description: Learns standing prompts from bounded document and query evidence when a caller has write access.
+          self_tuning_query_interval:
+            type: integer
+            default: 25
+            minimum: 5
+            maximum: 500
+            label: Tuning interval
+          summary_prompt:
+            type: string
+            label: Summary instructions
+            description: How every document in this knowledge base is summarized — what to capture, in what voice and shape. Added to the summarizer's own instructions; leave empty to use them unchanged.
+            format: textarea
+          # The length budget every document summary is written to. The bound
+          # mirrors source_materializer's MAX_SUMMARY_CHARS, which refuses a
+          # larger value at ingest; the default is what an unset knowledge base
+          # resolves to.
+          summary_max_chars:
+            type: integer
+            label: Summary length
+            description: How long each document's summary may be. Longer summaries carry more of a document into retrieval and into the knowledge base digest, at proportionally more model cost.
+            minimum: 0
+            maximum: 8000
+            default: 2400
+          # An oversized document is refused whole: source_materializer records
+          # it as a failed document and keeps its uploaded content, so raising
+          # the limit and replaying is all it takes to index it later.
+          max_document_content_chars:
+            type: integer
+            label: Document size limit
+            description: Documents longer than this many characters are marked failed instead of indexed; the uploaded file is kept. Empty means no limit.
+            minimum: 0
+            maximum: 268435456
+
+  # Wiki is the single concept-graph KB type. The manage UI hosts both renderings
+  # of the same concept+edge data behind a view switch: the wiki reader (page tree)
+  # and the graph canvas (node/edge map). depth is the default concept-link depth,
+  # carried in default_config, applied by create/read APIs and enforced by placement.
+  - name: engine_wiki
+    kind: registry.entry
+    meta:
+      type: kickside.kb_engine
+      thread:
+        class: kickside.knowledge.injection
+      kb_type: wiki
+      label: Wiki
+      title: Wiki
+      comment: A concept graph with a fixed default link depth — broader, pre-shaped recall.
+      icon: tabler:notebook
+      create_ui_id: kx-kb-create
+      manage_ui_id: kx-kb-wiki
+      ui:
+        badge: { label: Wiki, icon: tabler:notebook, tone: help }
+        stats:
+          - { path: document_count, singular: page, plural: pages, icon: tabler:file-text }
+          - { path: concept_count, singular: concept, plural: concepts, icon: tabler:topology-star-3, min: 1 }
+          - { path: embedding_count, singular: embedding, plural: embeddings, icon: tabler:vector, min: 1 }
+      impl_id: kickside.kb10:embeddable
+      embed_binding: kickside.kb10:embeddable
+      query_binding: kickside.kb10:queryable
+      maintenance_binding: kickside.kb10:maintainable
+      config_maintenance:
+        schedule_resummarize: [summary_model, summary_prompt, summary_max_chars]
+      store_contract: kickside.knowledge:kb_store_lifecycle
+      component:
+        create: { view: kickside.kb10.ui:create_view }
+        # The wiki manage UI renders the same concept+edge data two ways. The
+        # host owns the mode toggle (rendered from this declared list) and passes
+        # the chosen mode to the WC via config.view; the WC carries no toggle.
+        manage:
+          view: kickside.kb10.ui:wiki_view
+          views:
+            - { id: wiki, label: Wiki, icon: tabler:book-2 }
+            - { id: graph, label: Graph, icon: tabler:topology-star-3 }
+      is_graph: true
+      # Same declared read-model projections as the document engine (source +
+      # digest + graph_meta), provisioned on the KB primary thread at create via
+      # this engine binding -- one declared path, no imperative ensure.
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          input_mode: prefetch_events
+          batch_size: 1
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+        - kind: knowledge.injection.digest
+          projection_key: digest
+          cursor_key: digest
+          worker_ref: "func://kickside.kb10.injection:digest_worker"
+          input_mode: prefetch_events
+          window_max_events: 0
+          window_idle_timeout_ms: 15000
+          window_max_duration_ms: 60000
+          events:
+            input:
+              - type: "kickside.knowledge.events:digest.requested"
+              - type: "kickside.knowledge.events:treatment.requested"
+        - kind: knowledge.graph.meta
+          projection_key: graph_meta
+          cursor_key: graph_meta
+          worker_ref: "func://kickside.kb10.injection:meta_projection"
+          input_mode: prefetch_events
+          batch_size: 100
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+              - type: "kickside.knowledge.events:graph.changed"
+      default_config:
+        depth: 3
+        search_limit: 10
+        chunk_size: 1000
+        chunk_overlap: 150
+        summary_max_chars: 2400
+        summary_prompt: ""
+        summary_model: "class:fast"
+        chunk_enrichment_model: "class:fast"
+        # Images: when on, diagrams/figures from the source become retrievable image
+        # nodes -- described in context by image_caption_model, contextually embedded
+        # alongside text, and placed in the graph so agentic search returns the diagram.
+        # Off by default (heavier: vision captioning + extra vectors). Surfaced as the
+        # "Embed images" create checkmark.
+        embed_images: false
+        image_caption_model: "class:fast"
+        digest_temperature: 0.2
+        digest_max_tokens: 1000
+        # The digest prompt concatenates every document summary in the knowledge
+        # base, bounded by digest_context_tokens * digest_chars_per_token. The
+        # budget has to hold a realistic knowledge base at the summary length
+        # above: 48000 * 4 = 192000 characters, ~80 documents at
+        # summary_max_chars 2400, past which the digest falls back to its
+        # incremental (prior-description plus most recent summaries) form.
+        digest_context_tokens: 48000
+        digest_chars_per_token: 4
+        extraction_model: "class:nano"
+        retrieval_model: "class:nano"
+        max_retrieval_iterations: 3
+        fallback_node_types: [chunk, summary]
+        query_strategy: plain
+        self_tuning: false
+        self_tuning_query_interval: 25
+        query_driver: built-in
+        # Graph treatment: a post-ingest agent pass that merges duplicate / near-
+        # duplicate concept nodes. Off by default (opt-in per KB). When on, the digest
+        # projection forwards the treatment.requested marker to the enrichment service,
+        # which runs the treatment agent (model + optional extra prompt below).
+        treatment_enabled: false
+        treatment_model: "class:fast"
+        treatment_prompt: ""
+      config_schema:
+        type: object
+        properties:
+          query_strategy:
+            type: string
+            enum: [plain, hyde]
+            default: plain
+            label: Hypothetical answer retrieval
+            description: HyDE embeds a generated hypothetical answer using analysis_model; plain embeds the raw question.
+          self_tuning:
+            type: boolean
+            default: false
+            label: Autonomous retrieval tuning
+            description: Learns standing prompts from bounded document and query evidence when a caller has write access.
+          self_tuning_query_interval:
+            type: integer
+            default: 25
+            minimum: 5
+            maximum: 500
+            label: Tuning interval
+          depth:
+            type: integer
+            label: Link depth
+            description: How many concept-link hops the wiki may build and traverse.
+            minimum: 1
+            maximum: 8
+            default: 3
+          summary_prompt:
+            type: string
+            label: Summary instructions
+            description: How every document in this knowledge base is summarized — what to capture, in what voice and shape. Added to the summarizer's own instructions; leave empty to use them unchanged.
+            format: textarea
+          # The length budget every document summary is written to. The bound
+          # mirrors source_materializer's MAX_SUMMARY_CHARS, which refuses a
+          # larger value at ingest; the default is what an unset knowledge base
+          # resolves to.
+          summary_max_chars:
+            type: integer
+            label: Summary length
+            description: How long each document's summary may be. Longer summaries carry more of a document into retrieval and into the knowledge base digest, at proportionally more model cost.
+            minimum: 0
+            maximum: 8000
+            default: 2400
+          # An oversized document is refused whole: source_materializer records
+          # it as a failed document and keeps its uploaded content, so raising
+          # the limit and replaying is all it takes to index it later.
+          max_document_content_chars:
+            type: integer
+            label: Document size limit
+            description: Documents longer than this many characters are marked failed instead of indexed; the uploaded file is kept. Empty means no limit.
+            minimum: 0
+            maximum: 268435456

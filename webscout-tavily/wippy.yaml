@@ -1,0 +1,29 @@
+organization: kickside
+module: webscout-tavily
+type: plugin
+description: KickSide WebScout — Tavily search provider. A registry-declared search provider (descriptor + its own API key) for the kickside/webscout core.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - webscout
+  - tavily
+  - search
+  - research
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

@@ -1,0 +1,28 @@
+version: "1.0"
+namespace: kickside.hubspot.ui
+
+entries:
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built HubSpot picker web component bundle.
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      server: ""
+    path: /kickside-hubspot
+    fs: kickside.hubspot.ui:ui_fs
+
+  - name: picker_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: picker_view
+      title: HubSpot Picker
+      tag_name: kickside-hubspot-picker
+      base_path: kickside-hubspot
+      entry_point: picker.js
+      announced: true
+      auto_register: false

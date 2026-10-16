@@ -1,0 +1,4 @@
+organization: kickside
+module: asr-test
+type: application
+description: Standalone runnable harness that boots kickside/asr and exercises the transcription stage.

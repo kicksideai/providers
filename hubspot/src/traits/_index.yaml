@@ -1,0 +1,219 @@
+version: "1.0"
+namespace: kickside.hubspot.traits
+
+# HubSpot CRM is split into a read-only Reader trait and a write Writer trait so an
+# agent can be granted suggest-only (Reader) or write-through (Reader + Writer)
+# access. The CRM objects share the uniform /crm/v3/objects/{type} API, so the
+# object type is a tool parameter rather than a separate trait per object. Reads
+# span all eight object types; writes cover contacts, companies, deals, and tasks —
+# engagement objects (meetings, notes, emails, calls) are pull-only.
+
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: HubSpot Reader
+      public: true
+      comment: Reads HubSpot CRM contacts, companies, deals, tasks, meetings, notes, emails, and calls.
+      icon: simple-icons:hubspot
+      tags: [hubspot, crm, contacts, deals, read-only]
+      web_component: kickside-connection-trait-picker
+      provider: hubspot
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: HubSpot connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can read the HubSpot CRM with the HubSpotRead tool. Set object_type to
+      contacts, companies, deals, tasks, meetings, notes, emails, or calls, then:
+        - list_objects: page through records (limit / after, optional properties).
+        - get_object: one record by object_id (optional properties).
+        - search_objects: find records by a free-text query.
+        - list_owners: the CRM owners (people records can be assigned to).
+        - list_pipelines: pipeline and stage labels for an object type; defaults to deals.
+        - list_properties: the field schema for an object_type — use it to discover
+          field names, including the wippy_* intelligence fields, before reading or
+          writing them.
+      A typical flow is search_objects or list_objects to find a record, then
+      get_object with the properties you need. The HubSpot connection is selected
+      on the trait, or auto-selected when only one exists.
+    tools:
+      - kickside.hubspot.traits:read_tool
+
+  - name: read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: HubSpot Read
+      tags: [hubspot, crm, read-only]
+      llm_alias: HubSpotRead
+      llm_description: "Read HubSpot. list_objects/search_objects return summary properties by object type; properties requests an explicit selection. get_object returns all defined properties unless properties selects a subset. list_owners/list_pipelines/list_properties return compact summaries; get_owner/get_pipeline/get_property return full records. Use provider paging.next.after for object and owner pages; next_after for pipeline and property pages."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "property_name": {"type": "string", "description": "Property name for get_property."},
+            "action": {
+              "type": "string",
+              "description": "The read action to perform.",
+              "enum": ["list_objects", "get_object", "search_objects", "list_owners", "list_pipelines", "list_properties", "get_property", "get_pipeline", "get_owner"]
+            },
+            "object_type": {
+              "type": "string",
+              "description": "CRM object type. Required for object and property actions. list_pipelines defaults to deals.",
+              "enum": ["contacts", "companies", "deals", "tasks", "meetings", "notes", "emails", "calls"]
+            },
+            "object_id": { "type": "string", "description": "Record id. Required for get_object." },
+            "query": { "type": "string", "description": "Free-text query for search_objects." },
+            "properties": {
+              "type": "array",
+              "description": "Property names to return (e.g. firstname, email, dealstage, wippy_intent_score). Defaults to HubSpot's default set.",
+              "items": { "type": "string" }
+            },
+            "limit": { "type": "number", "description": "Max records for list/search (default 25, max 100)." },
+            "after": { "type": "string", "description": "HubSpot paging.next.after cursor for list_objects, search_objects and list_owners, or next_after from list_properties." }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read HubSpot. list_objects/search_objects return summary properties by object type; properties requests an explicit selection. get_object returns all defined properties unless properties selects a subset. list_owners/list_pipelines/list_properties return compact summaries; get_owner/get_pipeline/get_property return full records. Use provider paging.next.after for object and owner pages; next_after for pipeline and property pages. Provider rejections return {success:false,error,status_code?,data?}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when HubSpot rejected the request."},
+            "error": {"type": "string", "description": "HubSpot's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "HubSpot's error body of a rejected request."},
+            "results": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "properties": {"type": "object"}, "createdAt": {"type": "string"}, "updatedAt": {"type": "string"}, "archived": {"type": "boolean"}}}},
+            "total": {"type": "integer"},
+            "paging": {"type": "object", "properties": {"next": {"type": "object", "properties": {"after": {"type": "string"}}}}},
+            "id": {"type": "string"},
+            "properties": {"type": ["object", "array"], "description": "CRM record property map (get_object) or the property schema page (list_properties)"},
+            "createdAt": {"type": "string"},
+            "updatedAt": {"type": "string"},
+            "archived": {"type": "boolean"},
+            "associations": {"type": "object"},
+            "object_type": {"type": "string"},
+            "count": {"type": "integer"},
+            "after": {"type": "string"},
+            "next_after": {"type": "string"}
+          }
+        }
+    source: file://read_tool.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.hubspot.client:transport
+      output: kickside.hubspot.client:output
+
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: HubSpot Writer
+      public: true
+      comment: Creates and updates HubSpot CRM records and task-backed activity logs.
+      icon: simple-icons:hubspot
+      tags: [hubspot, crm, contacts, deals, write]
+      web_component: kickside-connection-trait-picker
+      provider: hubspot
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: HubSpot connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can write to the HubSpot CRM with the HubSpotWrite tool. Set object_type
+      to contacts, companies, deals, or tasks, then:
+        - create_object: create a record from a properties object (field: value).
+        - update_object: patch a record by object_id with a properties object.
+        - archive_object: archive (soft-delete) a record by object_id.
+        - create_association: link a record to another (object_id -> to_object_type / to_object_id).
+        - log_activity: create a HubSpot task using raw task properties.
+      Engagement objects (meetings, notes, emails, calls) are pull-only and cannot be
+      written. Pair with HubSpot Reader to find records and discover field names
+      first (list_properties). Only write when the user explicitly approves the change.
+      The HubSpot connection is selected on the trait, or auto-selected when only
+      one exists.
+    tools:
+      - kickside.hubspot.traits:write_tool
+
+  - name: write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: HubSpot Write
+      tags: [hubspot, crm, write]
+      llm_alias: HubSpotWrite
+      llm_description: Write to the HubSpot CRM — create, update, and archive contacts/companies/deals, log task activity, and create associations, through the configured connection.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The write action to perform.",
+              "enum": ["create_object", "update_object", "archive_object", "create_association", "log_activity"]
+            },
+            "object_type": {
+              "type": "string",
+              "description": "CRM object type (the from object for create_association; use tasks for log_activity).",
+              "enum": ["contacts", "companies", "deals", "tasks"]
+            },
+            "object_id": { "type": "string", "description": "Record id. Required for update/archive and as the from object for create_association." },
+            "properties": {
+              "type": "object",
+              "description": "Raw HubSpot field-name to value map for create_object/update_object/log_activity (e.g. { \"firstname\": \"Ada\" } or { \"hs_task_subject\": \"Call Ada\" })."
+            },
+            "to_object_type": {
+              "type": "string",
+              "description": "The target object type for create_association.",
+              "enum": ["contacts", "companies", "deals", "tasks"]
+            },
+            "to_object_id": { "type": "string", "description": "The target record id for create_association." }
+          },
+          "required": ["action", "object_type"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Fields below; a rejected HubSpot request returns { success: false, error, status_code, data } with HubSpot's error body. HubSpot API payloads with secret-like keys redacted. create_object/update_object/log_activity return the CRM record (id, properties, createdAt, updatedAt, archived); archive_object returns { archived: true, object_type, object_id }; create_association returns the HubSpot association response.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when HubSpot rejected the request."},
+            "error": {"type": "string", "description": "HubSpot's error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "HubSpot's error body of a rejected request."},
+            "id": {"type": "string"},
+            "properties": {"type": "object"},
+            "createdAt": {"type": "string"},
+            "updatedAt": {"type": "string"},
+            "archived": {"type": "boolean"},
+            "object_type": {"type": "string"},
+            "object_id": {"type": "string"},
+            "fromObjectTypeId": {"type": "string"},
+            "fromObjectId": {"type": ["string", "integer"]},
+            "toObjectTypeId": {"type": "string"},
+            "toObjectId": {"type": ["string", "integer"]},
+            "labels": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+    source: file://write_tool.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.hubspot.client:transport
+      output: kickside.hubspot.client:output

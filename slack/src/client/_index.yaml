@@ -1,0 +1,35 @@
+version: "1.0"
+namespace: kickside.slack.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared constants and type surfaces for Slack.
+    source: file://types.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Low-level Slack Web API client.
+    source: file://api.lua
+    modules: [http_client, json, time]
+    imports:
+      types: kickside.slack.client:types
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Actor-scoped Slack connection resolver and API transport.
+    source: file://transport.lua
+    imports:
+      component: kickside.component:component
+      api: kickside.slack.client:api
+      types: kickside.slack.client:types
+      base: kickside.connection:base_connection
+      reply_authorization: kickside.connection:reply_authorization

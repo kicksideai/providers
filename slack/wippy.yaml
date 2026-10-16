@@ -1,0 +1,42 @@
+organization: kickside
+module: slack
+type: plugin
+description: KickSide Slack provider — bot-token + Socket Mode connection, reply provider, resource discovery, and normalized inbound adapter for channel/DM bots.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - slack
+  - connection
+  - reply-provider
+  - dm
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "ui/node_modules/**"
+  - "ui/node_modules:**"
+  - "ui/coverage/**"
+  - "ui/coverage:**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/stubs/**"
+  - "test/stubs:**"
+  - "src/**/stubs/**"
+  - "src/**/*.spec.ts"
+  - "src/**/*.spec.tsx"
+  - "ui/src/**/*.spec.ts"
+  - "ui/src/**/*.spec.tsx"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

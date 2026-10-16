@@ -1,0 +1,19 @@
+version: "1.0"
+namespace: kickside.mcp_client.api
+
+entries:
+  - name: reconnect
+    kind: function.lua
+    source: file://reconnect.lua
+    method: handler
+    modules: [http, json]
+    imports:
+      component: kickside.component:component
+      client: kickside.mcp_client:http_client
+
+  - name: reconnect.endpoint
+    kind: http.endpoint
+    meta: { router: app:api }
+    method: PUT
+    path: /mcp-client/connections/{id}
+    func: reconnect

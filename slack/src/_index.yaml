@@ -1,0 +1,77 @@
+version: "1.0"
+namespace: kickside.slack
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Slack
+      comment: Slack bot-token + Socket Mode connection, reply provider, resource discovery, and normalized inbound adapter for channel/DM bots.
+
+  - name: dep.kickside.component
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Resolves Slack connection components for the socket supervisor and transport.
+    component: kickside/component
+
+  - name: dep.kickside.connection
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the shared connection contract and base connection helpers.
+    component: kickside/connection
+
+  - name: dep.kickside.contract
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Implements the component and deletable contracts used by Slack connections.
+    component: kickside/contract
+
+  - name: dep.kickside.dm
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Receives normalized direct messages through the shared DM ingress contract.
+    component: kickside/dm
+
+  - name: dep.kickside.channel
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Receives normalized channel messages through the shared channel ingress contract.
+    component: kickside/channel
+
+  - name: dep.wippy.security
+    version: '*'
+    kind: ns.dependency
+    component: wippy/security
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      api: https://slack.com/api
+      socket: https://slack.com/api/apps.connections.open
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Instance api endpoint.
+      description: Instance api endpoint.
+    default: https://slack.com/api
+    targets:
+    - entry: kickside.slack:endpoints
+      path: .endpoints.api
+  - name: endpoint_socket
+    kind: ns.requirement
+    meta:
+      comment: Instance socket endpoint.
+      description: Instance socket endpoint.
+    default: https://slack.com/api/apps.connections.open
+    targets:
+    - entry: kickside.slack:endpoints
+      path: .endpoints.socket

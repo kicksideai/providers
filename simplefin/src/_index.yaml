@@ -1,0 +1,85 @@
+version: "1.0"
+namespace: kickside.simplefin
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide SimpleFIN
+      comment: SimpleFIN Bridge bank-feed connection provider with account, transaction and holding sources and an agent read tool.
+
+  - name: dep.kickside.component
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Connections register as component shells and resolve access through the component service.
+    component: kickside/component
+
+  - name: dep.kickside.connection
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Connection contract, base implementation and the Connections page that mounts the connect view.
+    component: kickside/connection
+
+  - name: dep.kickside.contract
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Shared component, deletable and data contracts.
+    component: kickside/contract
+
+  - name: api_router
+    kind: ns.requirement
+    meta:
+      comment: Authenticated router for SimpleFIN credential rotation.
+      description: Authenticated router for SimpleFIN credential rotation.
+    default: app:api
+    targets:
+      - { entry: kickside.simplefin.api:rotate.endpoint, path: .meta.router }
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server the SimpleFIN connect web component is served from.
+      description: HTTP server the SimpleFIN connect web component is served from.
+    default: app:gateway
+    targets:
+      - { entry: kickside.simplefin:ui_static, path: .meta.server }
+
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built SimpleFIN connect web component bundle (from ui/).
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      comment: Serves the SimpleFIN connect web component bundle.
+      server: app:gateway
+    path: /kickside-simplefin
+    fs: kickside.simplefin:ui_fs
+    options:
+      cache: no-cache
+      mime_types:
+        .js: application/javascript
+        .css: text/css
+        .map: application/json
+
+  - name: connect_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: connect_view
+      title: SimpleFIN Connect
+      tag_name: kickside-simplefin-connect
+      base_path: kickside-simplefin
+      entry_point: index.js
+      announced: true
+      auto_register: false
+      description: Provider-owned setup form for a SimpleFIN connection. Takes provider-id, and component-id when rotating credentials of an existing connection; emits connection-saved when the token is claimed and the accounts are verified.
+      props:
+        provider-id: { type: string }
+        component-id: { type: string }

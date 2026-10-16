@@ -1,0 +1,113 @@
+version: "1.0"
+namespace: kickside.atlassian.jira.source
+
+entries:
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Pullable Jira issue source implementation.
+    source: file://pull_core.lua
+    modules: [ctx]
+    imports:
+      data_error: kickside.atlassian.client:data_error
+      jira: kickside.atlassian.jira:api
+      text: kickside.atlassian.jira:text
+      transport: kickside.atlassian.client:transport
+
+  - name: pull_issues
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for Jira issues selected by project/JQL config.
+    source: file://pull_issues.lua
+    method: pull
+    modules: [ctx]
+    imports:
+      data_error: kickside.atlassian.client:data_error
+      jira: kickside.atlassian.jira:api
+      transport: kickside.atlassian.client:transport
+      implementation: kickside.atlassian.jira.source:pull_core
+
+  - name: pull_issue_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only Jira issue listing used by Data Sync reconcile.
+    source: file://pull_issue_keys.lua
+    method: pull_keys
+    modules: [ctx]
+    imports:
+      data_error: kickside.atlassian.client:data_error
+      jira: kickside.atlassian.jira:api
+      transport: kickside.atlassian.client:transport
+      implementation: kickside.atlassian.jira.source:pull_core
+
+  - name: issues_source
+    kind: contract.binding
+    meta:
+      title: Jira Issues
+      icon: simple-icons:atlassian
+      comment: Pull Jira issues on a schedule with upsert ops and source versions.
+      provider: atlassian
+      group: Jira
+      class: [kickside.issues]
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.atlassian.jira.source:pull_issues
+
+  - name: issues
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Jira Issues
+      comment: Watch selected Jira issues for new activity and updates.
+      icon: simple-icons:jira
+    binding: kickside.atlassian.jira.source:issues_source
+    reconcile:
+      pull_keys: kickside.atlassian.jira.source:pull_issue_keys
+    config_schema:
+      project_key:
+        picker: kickside-atlassian-jira-picker
+        required: false
+        title: Jira project
+        description: Optional Jira project selected by the Jira picker. Leave empty when using a full JQL filter.
+        writes: [connection_id, project_key]
+      connection_id:
+        required: true
+        title: Atlassian connection
+        description: Populated by the Jira picker.
+      jql:
+        picker: wc-schema-form
+        required: false
+        title: JQL
+        description: Optional JQL scope. The source appends updated-time filters and its own updated ASC ordering.
+      backfill_since:
+        picker: wc-schema-form
+        type: string
+        format: date-time
+        required: false
+        title: Backfill since
+        description: Optional ISO timestamp. Initial issue search filters to issues updated at or after this time.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "key": {"type": "string"},
+          "entity": {"type": "string"},
+          "title": {"type": "string"},
+          "content": {"type": "string", "description": "Clean markdown/text, never raw HTML or raw ADF."},
+          "content_type": {"type": "string"},
+          "source_url": {"type": "string"},
+          "properties": {"type": "object"},
+          "created_at": {"type": "string"},
+          "updated_at": {"type": "string"},
+          "status": {"type": "string"},
+          "issue_type": {"type": "string"},
+          "issue_priority": {"type": "string"},
+          "assignee": {"type": "string"},
+          "reporter": {"type": "string"}
+        },
+        "required": ["key", "entity", "title", "content", "content_type", "source_url", "properties"] }

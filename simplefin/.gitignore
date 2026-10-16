@@ -1,0 +1,4 @@
+/.wippy/
+/wippy.lock
+ui/node_modules/
+static/*.map

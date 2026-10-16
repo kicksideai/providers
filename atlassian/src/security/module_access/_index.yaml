@@ -1,0 +1,69 @@
+version: '1.0'
+namespace: kickside.atlassian.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Atlassian
+    surface: kickside.atlassian
+    intent: module_access
+    includes:
+    - kickside.atlassian.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.atlassian:*
+    - kickside.atlassian.client:*
+    - kickside.atlassian.confluence:*
+    - kickside.atlassian.confluence.sink:*
+    - kickside.atlassian.confluence.source:*
+    - kickside.atlassian.confluence.traits:*
+    - kickside.atlassian.connection:*
+    - kickside.atlassian.jira:*
+    - kickside.atlassian.jira.sink:*
+    - kickside.atlassian.jira.source:*
+    - kickside.atlassian.jira.traits:*
+    - kickside.atlassian.security:*
+    - kickside.atlassian.ui:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.atlassian:*
+    - kickside.atlassian.client:*
+    - kickside.atlassian.confluence:*
+    - kickside.atlassian.confluence.sink:*
+    - kickside.atlassian.confluence.source:*
+    - kickside.atlassian.confluence.traits:*
+    - kickside.atlassian.connection:*
+    - kickside.atlassian.jira:*
+    - kickside.atlassian.jira.sink:*
+    - kickside.atlassian.jira.source:*
+    - kickside.atlassian.jira.traits:*
+    - kickside.atlassian.security:*
+    - kickside.atlassian.ui:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

@@ -1,0 +1,45 @@
+organization: kickside
+module: phantombuster
+type: plugin
+description: KickSide PhantomBuster — API-key connection provider with agent discovery, read/write tools, and an installable GTM candidate pull.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - phantombuster
+  - connection
+  - automation
+  - acquisition
+  - data-sync
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+embed:
+  - kickside.phantombuster:ui_fs
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "ui/node_modules:**"
+  - "ui/coverage/**"
+  - "ui/coverage:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "test/stubs/**"
+  - "test/stubs:**"
+  - "src/**/stubs/**"
+  - "src/**/*.spec.ts"
+  - "src/**/*.spec.tsx"
+  - "ui/src/**/*.spec.ts"
+  - "ui/src/**/*.spec.tsx"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

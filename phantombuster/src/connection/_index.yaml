@@ -1,0 +1,95 @@
+version: "1.0"
+namespace: kickside.phantombuster.connection
+
+entries:
+  - name: phantombuster_connection
+    kind: contract.binding
+    meta:
+      title: PhantomBuster
+      comment: Connect PhantomBuster with an API key to discover and run agents.
+      icon: tabler:ghost
+      provider: phantombuster
+      group: Automation
+      tags: [phantombuster, automation, scraping, agents]
+      class:
+        - connection
+        - automation
+      credential_schema:
+        version: "1.0"
+        submit_label: Connect
+        fields:
+          - key: api_key
+            label: API key
+            type: password
+            required: true
+            placeholder: PhantomBuster API key
+            help: Use a PhantomBuster API key from your workspace settings.
+    contracts:
+      - contract: kickside.contract:component
+        methods:
+          get_status: kickside.phantombuster.connection:get_status
+      - contract: kickside.connection:connection
+        context_required:
+          - component_id
+        methods:
+          get_status: kickside.phantombuster.connection:get_status
+          test_connection: kickside.phantombuster.connection:test_connection
+          discover_resources: kickside.phantombuster.connection:discover_resources
+      - contract: kickside.contract:deletable
+        context_required:
+          - component_id
+        methods:
+          delete: kickside.phantombuster.connection:delete
+
+  - name: connection_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://connection.lua
+    imports:
+      transport: kickside.phantombuster.client:transport
+      types: kickside.phantombuster.client:types
+      base: kickside.connection:base_connection
+
+  - name: get_status
+    kind: function.lua
+    meta: { comment: "phantombuster connection - get_status" }
+    source: file://get_status.lua
+    method: get_status
+    imports:
+      transport: kickside.phantombuster.client:transport
+      types: kickside.phantombuster.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.phantombuster.connection:connection_implementation
+
+  - name: test_connection
+    kind: function.lua
+    meta: { comment: "phantombuster connection - test_connection" }
+    source: file://test_connection.lua
+    method: test_connection
+    imports:
+      transport: kickside.phantombuster.client:transport
+      types: kickside.phantombuster.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.phantombuster.connection:connection_implementation
+
+  - name: discover_resources
+    kind: function.lua
+    meta: { comment: "phantombuster connection - discover_resources" }
+    source: file://discover_resources.lua
+    method: discover_resources
+    imports:
+      transport: kickside.phantombuster.client:transport
+      types: kickside.phantombuster.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.phantombuster.connection:connection_implementation
+
+  - name: delete
+    kind: function.lua
+    meta: { comment: "phantombuster connection - delete" }
+    source: file://delete.lua
+    method: delete
+    imports:
+      transport: kickside.phantombuster.client:transport
+      types: kickside.phantombuster.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.phantombuster.connection:connection_implementation

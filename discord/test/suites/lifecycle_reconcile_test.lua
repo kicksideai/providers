@@ -1,0 +1,40 @@
+local test = require("test")
+local observer = require("observer")
+local process = require("fixture")
+
+local function define_tests()
+    test.describe("Discord lifecycle reconciliation", function()
+        local input = { projection = { body = { state = { retained = true } } }, range = { to_seq = 3 } }
+        test.it("acknowledges a committed lifecycle batch only after waking the supervisor", function()
+            process.pid, process.lookup_error, process.send_error, process.sent = "hub", nil, nil, {}
+            local result, err = observer.run(input)
+            test.is_nil(err, tostring(err))
+            test.eq(result.last_seq, 3)
+            test.is_true(result.body.state.retained)
+            test.eq(process.name, "kickside.discord.gateway.hub")
+            test.eq(process.mode, process.registry.CONSISTENT)
+            test.eq(#process.sent, 1)
+            test.eq(process.sent[1].pid, "hub")
+            test.eq(process.sent[1].topic, "reconcile")
+        end)
+        test.it("keeps an unacknowledged lifecycle batch retryable when the supervisor is unavailable", function()
+            process.pid, process.lookup_error, process.send_error, process.sent = nil, "lookup failed", nil, {}
+            local result, err = observer.run(input)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(tostring(err):find("lookup failed", 1, true) ~= nil)
+            test.eq(#process.sent, 0)
+        end)
+        test.it("retains a failed wake cause without advancing the lifecycle cursor", function()
+            process.pid, process.lookup_error, process.send_error, process.sent = "hub", nil, "mailbox unavailable", {}
+            local result, err = observer.run(input)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(tostring(err):find("mailbox unavailable", 1, true) ~= nil)
+        end)
+    end)
+end
+local run_cases = test.run_cases(define_tests)
+return { run = function(options) return run_cases(options) end }

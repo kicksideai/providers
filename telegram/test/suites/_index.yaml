@@ -1,0 +1,109 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/telegram. They live in the harness because the
+# module is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: reply_probe
+    kind: contract.definition
+    methods:
+      - name: run
+
+  - name: reply_probe_func
+    kind: function.lua
+    source: file://reply_probe.lua
+    method: run
+    imports:
+      connection: kickside.telegram.connection:connection_lib
+      transport: kickside.telegram.client:transport
+
+  - name: reply_probe_binding
+    kind: contract.binding
+    contracts:
+      - contract: app.suites:reply_probe
+        context_required: [component_id]
+        methods:
+          run: app.suites:reply_probe_func
+
+  - name: reply_access_test
+    kind: function.lua
+    meta: { type: test, suite: telegram }
+    source: file://reply_access_test.lua
+    method: run
+    modules: [contract, sql, json, uuid]
+    imports:
+      test: wippy.test:test
+
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: telegram
+      comment: Exercises Telegram request encoding, retry, status, and error behavior with a fake transport.
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.telegram.client:api
+
+  - name: inbound_attachment_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: telegram
+      comment: Exercises attachment normalization and the registry-selected Telegram byte fetcher.
+    source: file://inbound_attachment_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      implementation: kickside.telegram.inbound:inbound_implementation
+      fetch: kickside.telegram.inbound:fetcher
+      fetch_func: kickside.telegram.inbound:fetch_attachment
+
+  - name: connection_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: telegram
+    source: file://connection_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: kickside.telegram.connection:connection_lib
+      types: kickside.telegram.client:types
+
+  - name: telegram_tools_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: telegram
+    source: file://telegram_tools_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      telegram_get: kickside.telegram.traits:telegram_get_lib
+      telegram_write: kickside.telegram.traits:telegram_write_lib
+
+  - name: message_sink_test
+    kind: function.lua
+    meta: { type: test, suite: telegram }
+    source: file://message_sink_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      sink: kickside.telegram.sink:message_sink_lib
+      writer: kickside.telegram.sink:message_write
+
+  - name: hub_readiness_test
+    kind: function.lua
+    meta: {type: test, suite: telegram}
+    source: file://hub_readiness_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      hub: kickside.telegram.polling:hub
+      consts: kickside.telegram.polling:consts

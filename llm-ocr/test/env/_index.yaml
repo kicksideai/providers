@@ -1,0 +1,10 @@
+version: "1.0"
+namespace: app.env
+
+entries:
+  - name: store
+    kind: env.storage.file
+    meta:
+      type: envstorage
+    file_path: ./.wippy/test.env
+    auto_create: true

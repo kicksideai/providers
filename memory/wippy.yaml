@@ -1,0 +1,43 @@
+organization: kickside
+module: memory
+type: plugin
+description: KickSide agent memory policies and capabilities backed by provider contracts such as knowledge bases.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - agents
+  - memory
+  - capabilities
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+embed:
+  - kickside.memory:ui_fs
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - ".wippy/**"
+  - "test/**"
+  - "ui/node_modules/**"
+  - "ui/node_modules:**"
+  - "ui/coverage/**"
+  - "ui/coverage:**"
+  - "test:**"
+  - ".wippy:**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/stubs/**"
+  - "test/stubs:**"
+  - "src/**/stubs/**"
+  - "src/**/*.spec.ts"
+  - "src/**/*.spec.tsx"
+  - "ui/src/**/*.spec.ts"
+  - "ui/src/**/*.spec.tsx"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

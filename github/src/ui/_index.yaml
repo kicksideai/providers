@@ -1,0 +1,28 @@
+version: "1.0"
+namespace: kickside.github.ui
+
+entries:
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built GitHub connect web component bundle.
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      server: ""
+    path: /kickside-github
+    fs: kickside.github.ui:ui_fs
+
+  - name: connect_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: GitHub Connect
+      title: GitHub Connect
+      tag_name: kickside-github-connect
+      base_path: kickside-github
+      entry_point: connect.js
+      announced: true
+      auto_register: false

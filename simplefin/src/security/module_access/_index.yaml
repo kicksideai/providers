@@ -1,0 +1,68 @@
+version: '1.0'
+namespace: kickside.simplefin.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Simplefin
+    surface: kickside.simplefin
+    intent: module_access
+    includes:
+    - kickside.simplefin.security:module_runtime
+    - kickside.simplefin.security:simplefin_endpoint_access
+  groups: []
+  policy:
+    resources:
+    - kickside.simplefin:*
+    - kickside.simplefin.api:*
+    - kickside.simplefin.client:*
+    - kickside.simplefin.connection:*
+    - kickside.simplefin.security:*
+    - kickside.simplefin.source:*
+    - kickside.simplefin.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    effect: allow
+- name: simplefin_endpoint_access
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.simplefin.api:rotate.endpoint
+    actions: access
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.simplefin:*
+    - kickside.simplefin.api:*
+    - kickside.simplefin.client:*
+    - kickside.simplefin.connection:*
+    - kickside.simplefin.security:*
+    - kickside.simplefin.source:*
+    - kickside.simplefin.traits:*
+    actions:
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: user_security_scope
+  kind: ns.requirement
+  default: kickside.security.groups:members
+  meta:
+    value_kind: security.scope
+    description: Application security group allowed to use module HTTP endpoints.
+  targets:
+  - entry: kickside.simplefin.security:simplefin_endpoint_access
+    path: .groups +=

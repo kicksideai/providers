@@ -1,0 +1,131 @@
+version: "1.0"
+namespace: kickside.slack.socket
+
+# Live Slack Socket Mode transport. The first layer is the pure protocol -- the
+# envelope classifier + ack builder, free of websocket/process IO -- that the
+# per-connection worker drives, so it is fully unit tested.
+
+entries:
+  - name: consts
+    kind: library.lua
+    meta:
+      name: consts
+      comment: Slack Socket Mode envelope types, ack set, disconnect reasons, endpoint.
+    source: file://consts.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: protocol
+    kind: library.lua
+    meta:
+      name: protocol
+      comment: Pure Slack Socket Mode protocol -- classify envelopes, build acks, route message events (no socket/process IO).
+    source: file://protocol.lua
+    imports:
+      consts: kickside.slack.socket:consts
+
+  - name: backoff
+    kind: library.lua
+    meta:
+      name: backoff
+      comment: Reconnect exponential backoff with equal jitter (pure).
+    source: file://backoff.lua
+
+  - name: socket_api
+    kind: library.lua
+    meta:
+      name: socket_api
+      comment: Thin Socket Mode I/O -- open a wss url via apps.connections.open, connect, send/decode frames.
+    source: file://socket_api.lua
+    modules: [http_client, websocket, json]
+    imports:
+      consts: kickside.slack.socket:consts
+
+  - name: channel_dispatch
+    kind: library.lua
+    meta:
+      name: channel_dispatch
+      comment: Per-channel-message handler -- normalize + hand to kickside.channel:receive (routing + installer identity live there). Spawned as its own process so agent runs never block the socket loop.
+    source: file://channel_dispatch.lua
+    modules: [funcs, logger]
+
+  - name: channel_dispatch_proc
+    kind: process.lua
+    meta:
+      comment: One-shot process handling a single Slack channel message as the system socket process; spawned per message by the worker for isolation.
+    source: file://channel_dispatch.lua
+    method: main
+    modules: [funcs, logger]
+
+  - name: dm_dispatch
+    kind: library.lua
+    meta:
+      name: dm_dispatch
+      comment: Per-DM handler -- run the inbound receiver as the system socket process, passing the connection component_id as the reply route. The receiver resolves the linked user; the connection owns no DM identity. No automation, no agent.
+    source: file://dm_dispatch.lua
+    modules: [funcs, logger]
+
+  - name: dm_dispatch_proc
+    kind: process.lua
+    meta:
+      comment: One-shot process handling a single Slack DM as the system socket process; spawned per message by the worker for isolation.
+    source: file://dm_dispatch.lua
+    method: main
+    modules: [funcs, logger]
+
+  - name: worker
+    kind: process.lua
+    meta:
+      comment: One per-connection Slack Socket Mode worker (open via apps.connections.open, receive + ack envelopes, reconnect on disconnect); forwards channel messages to kickside.channel:receive and DMs to kickside.dm:receive. Carries no routing.
+    source: file://worker.lua
+    method: main
+    modules: [time, channel, logger, process]
+    imports:
+      protocol: kickside.slack.socket:protocol
+      backoff: kickside.slack.socket:backoff
+      socket_api: kickside.slack.socket:socket_api
+
+  - name: hub
+    kind: process.lua
+    meta:
+      comment: Socket Mode supervisor -- waits for the component store, enumerates slack connections, and spawns/supervises one worker per connection. Channel coverage is resolved per message by kickside.channel:receive; the hub owns no routing.
+    source: file://hub.lua
+    method: main
+    modules: [channel, logger, env, process, registry]
+    imports:
+      component: kickside.component:component
+      connection: kickside.connection:base_connection
+      consts: kickside.slack.socket:consts
+
+  # The host and readiness dependency are supplied by the consuming application.
+  - name: process_host
+    kind: ns.requirement
+    meta:
+      comment: Process host the Slack socket hub service runs on.
+      description: Process host the Slack socket hub service runs on.
+    targets:
+      - entry: kickside.slack.socket:socket.service
+        path: .host
+
+  - name: target_db
+    kind: ns.requirement
+    meta:
+      comment: Component database resource the Slack socket supervisor waits for.
+      description: Component database resource the Slack socket supervisor waits for.
+    targets:
+      - entry: kickside.slack.socket:socket.service
+        path: ".lifecycle.depends_on +="
+
+  - name: socket.service
+    kind: process.service
+    meta:
+      comment: Supervised Slack Socket Mode hub -- spawns/monitors per-connection workers from installed connections.
+    process: kickside.slack.socket:hub
+    host: ""
+    lifecycle:
+      depends_on: [wippy.bootloader:bootloader.service]
+      auto_start: true
+      restart_policy: always
+      security:
+        groups:
+          - wippy.security:process

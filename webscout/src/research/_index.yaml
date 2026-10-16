@@ -1,0 +1,341 @@
+version: "1.0"
+namespace: kickside.webscout.research
+
+entries:
+  - name: source_core
+    kind: library.lua
+    meta:
+      comment: Pure WebScout Research artifact adapter shared by runtime and tests.
+    source: file://source.lua
+    modules: [funcs, json, hash]
+    imports:
+      operation_policy: kickside.webscout.research:operation_policy
+
+  - name: operation_policy
+    kind: library.lua
+    meta:
+      name: webscout_source_operation_policy
+      comment: Canonical SourceOperationPolicy/v1 validation against a host-installed SourceOperationControlBounds/v1; no settings, retries, or scheduling state.
+    source: file://operation_policy.lua
+    modules: [json, hash]
+
+  - name: run
+    kind: function.lua
+    meta:
+      comment: Execute one typed WebScout Research Source operation under the ambient actor.
+    source: file://source.lua
+    modules: [funcs, json, hash]
+    imports:
+      operation_policy: kickside.webscout.research:operation_policy
+    method: run
+
+  - name: block.source
+    kind: registry.entry
+    meta:
+      type: kickside.block
+      public: false
+      title: WebScout Research Source
+      description: Discover public results, capture full pages, and traverse a bounded site map as attributable evidence.
+    data:
+      block:
+        api_version: kickside.block/v1
+        input:
+          type: object
+          additionalProperties: false
+          required: [case_id, idempotency_key, operation, capability, subject, input, limits]
+          properties:
+            case_id: { type: string, minLength: 1, maxLength: 256 }
+            idempotency_key: { type: string, minLength: 1, maxLength: 256 }
+            operation: { type: string, enum: [company_discovery, prospect_context, person_context, product_proof, relationship_context, page_read, site_links] }
+            capability: { type: string, minLength: 1, maxLength: 256 }
+            subject:
+              type: object
+              additionalProperties: false
+              required: [kind, ref]
+              properties:
+                kind: { type: string, minLength: 1 }
+                ref: { type: string, minLength: 1 }
+                names: { type: array, items: { type: string, minLength: 1 } }
+                identifiers:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [kind, value]
+                    properties:
+                      kind: { type: string, minLength: 1 }
+                      value: { type: string, minLength: 1 }
+            input:
+              type: object
+              additionalProperties: false
+              properties:
+                query: { type: string, minLength: 1, maxLength: 2000 }
+                url: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 }
+                user_agent: { type: string, minLength: 1 }
+            limits:
+              type: object
+              additionalProperties: false
+              properties:
+                max_results: { type: integer, minimum: 1 }
+                max_content_chars: { type: integer, minimum: 1 }
+                max_links: { type: integer, minimum: 1 }
+                timeout_seconds: { type: integer, minimum: 1 }
+        config:
+          type: object
+          additionalProperties: false
+          required: [control_bounds, operation_policy]
+          properties:
+            control_bounds: { type: object, additionalProperties: true }
+            operation_policy: { type: object, additionalProperties: true }
+            operation_policies: { type: object, additionalProperties: true }
+        output:
+          type: object
+          additionalProperties: false
+          required: [source_id, operation, artifacts]
+          properties:
+            source_id: { type: string, const: "kickside.webscout.research:source" }
+            operation: { type: string }
+            receipt: { type: object, additionalProperties: true }
+            retrieval:
+              type: object
+              additionalProperties: false
+              required: [transport, status, outcome_code, escalatable]
+              properties:
+                transport: { type: string, const: http }
+                status: { type: string, const: succeeded }
+                outcome_code: { type: string, const: static_content }
+                escalatable: { type: boolean, const: false }
+            artifacts:
+              type: array
+              items:
+                oneOf:
+                  - &search_artifact
+                    type: object
+                    additionalProperties: false
+                    required: [source_artifact_key, canonical_uri, title, media_type, content, subject_refs, ordinal]
+                    properties:
+                      source_artifact_key: { type: string, minLength: 1, maxLength: 8200 }
+                      canonical_uri: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 }
+                      title: { type: string, minLength: 1, maxLength: 512 }
+                      media_type: { type: string, const: "application/vnd.kickside.web-search-result+json" }
+                      content:
+                        type: object
+                        additionalProperties: false
+                        required: [query, snippet, display_domain]
+                        properties:
+                          query: { type: string }
+                          snippet: { type: string, maxLength: 4000 }
+                          display_domain: { type: string, maxLength: 512 }
+                      subject_refs: &subject_refs
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required: [kind, ref]
+                          properties:
+                            kind: { type: string, minLength: 1 }
+                            ref: { type: string, minLength: 1 }
+                      ordinal: { type: integer, minimum: 1 }
+                  - &page_artifact
+                    type: object
+                    additionalProperties: false
+                    required: [source_artifact_key, canonical_uri, title, media_type, content, subject_refs]
+                    properties:
+                      source_artifact_key: { type: string, minLength: 1, maxLength: 8200 }
+                      canonical_uri: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 }
+                      title: { type: string, minLength: 1, maxLength: 512 }
+                      media_type: { type: string, const: text/plain }
+                      content: { type: string, minLength: 1 }
+                      subject_refs: *subject_refs
+                  - &links_artifact
+                    type: object
+                    additionalProperties: false
+                    required: [source_artifact_key, canonical_uri, title, media_type, content, subject_refs]
+                    properties:
+                      source_artifact_key: { type: string, minLength: 1, maxLength: 8200 }
+                      canonical_uri: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 }
+                      title: { type: string, minLength: 1, maxLength: 512 }
+                      media_type: { type: string, const: "application/vnd.kickside.web-links+json" }
+                      content:
+                        type: object
+                        additionalProperties: false
+                        required: [url, links, total_links]
+                        properties:
+                          url: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 }
+                          links: { type: array, items: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 } }
+                          total_links: { type: integer, minimum: 0 }
+                      subject_refs: *subject_refs
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, minLength: 1 }
+            message: { type: string, minLength: 1 }
+        ports:
+          - { id: result, label: Evidence, direction: out }
+          - { id: failed, label: Failed, direction: out }
+        presentation:
+          category: Research Sources
+          icon: tabler:world-search
+          blurb: Discover public evidence and retain the authoritative pages behind search results.
+        execution:
+          kind: function
+          function_id: kickside.webscout.research:run
+
+  - name: source
+    kind: registry.entry
+    meta:
+      type: kickside.research.source
+      title: Public web
+      description: Public-web discovery, first-party page capture, and bounded site traversal with retained evidence.
+      icon: tabler:world-search
+    data:
+      block_ref: kickside.webscout.research:block.source
+      # This Source includes keyless page_read/site_links as well as keyed
+      # search operations.  Do not gate the whole binding on Google: Research
+      # can invoke static first-party ATS/career pages with only outbound HTTP
+      # permission, while a search call still returns the typed
+      # connection_not_configured failure when its settings are absent.
+      config_schema:
+        type: object
+        additionalProperties: false
+        required: [control_bounds, operation_policies]
+        properties:
+          control_bounds: { type: object, additionalProperties: true }
+          operation_policies: { type: object, additionalProperties: true }
+      operations:
+        - id: company_discovery
+          capability: market.company.discovery
+          strategy_stage: standard
+          control_bounds: &webscout_bounds
+            version: SourceOperationControlBounds/v1
+            policy_ref: kickside.webscout.research:source-control
+            revision: webscout-source-v1
+            digest: 50a8127449a61b0ae31ac2f1e883fe2c32e4944c41c6c989624904bfc9696fe2
+            limits:
+              max_results: { minimum: 1, maximum: 100 }
+              timeout_seconds: { minimum: 1, maximum: 600 }
+            catalog:
+              page_size: { minimum: 1, maximum: 100 }
+              max_provider_calls: { minimum: 1, maximum: 10 }
+              max_provider_pages: { minimum: 1, maximum: 10 }
+            lifecycle:
+              stale_after_seconds: { minimum: 1, maximum: 2592000 }
+            storage:
+              limit_chars: { minimum: 1, maximum: 200000 }
+              retention:
+                class: source_specific
+                max_age_seconds: { minimum: 1, maximum: 2592000 }
+            controls:
+              response_body_bytes: { minimum: 1, maximum: 2000000 }
+          effect: read_only
+          access_profile: { id: public_web, decision: allowed }
+          description: Discover company candidates with a short product or market query. Use one angle per query; do not include the full hypothesis, headcount, or inferred budget. Capture authoritative pages before admitting company facts.
+          allowed_subject_fields: [kind, ref]
+          input_schema:
+            type: object
+            additionalProperties: false
+            required: [query, user_agent]
+            properties:
+              query: { type: string, minLength: 1, maxLength: 2000 }
+              user_agent: { type: string, minLength: 1 }
+          artifact_schema: *search_artifact
+        - id: prospect_context
+          capability: prospect.current_context
+          strategy_stage: standard
+          control_bounds: *webscout_bounds
+          effect: read_only
+          access_profile: { id: public_web, decision: allowed }
+          description: Pass concise web-search terms as query. Use returned canonical URLs with page_read before relying on consequential claims.
+          allowed_subject_fields: [kind, ref]
+          input_schema:
+            type: object
+            additionalProperties: false
+            required: [query, user_agent, freshness, safe_search]
+            properties:
+              query: { type: string, minLength: 1, maxLength: 2000 }
+              user_agent: { type: string, minLength: 1 }
+              freshness: { type: string, minLength: 1 }
+              safe_search: { type: string, minLength: 1 }
+          artifact_schema: *search_artifact
+        - id: person_context
+          capability: person.current_context
+          strategy_stage: standard
+          control_bounds: *webscout_bounds
+          effect: read_only
+          access_profile: { id: public_web, decision: allowed }
+          description: Pass a person's name plus company or role as web-search terms. Treat snippets as discovery, then retain authoritative pages with page_read.
+          allowed_subject_fields: [kind, ref]
+          input_schema:
+            type: object
+            additionalProperties: false
+            required: [query, user_agent]
+            properties:
+              query: { type: string, minLength: 1, maxLength: 2000 }
+              user_agent: { type: string, minLength: 1 }
+          artifact_schema: *search_artifact
+        - id: product_proof
+          capability: product.relevant_proof
+          strategy_stage: standard
+          control_bounds: *webscout_bounds
+          effect: read_only
+          access_profile: { id: public_web, decision: allowed }
+          description: Pass product, customer, or operational-proof search terms. Follow useful first-party results with page_read.
+          allowed_subject_fields: [kind, ref]
+          input_schema:
+            type: object
+            additionalProperties: false
+            required: [query, user_agent]
+            properties:
+              query: { type: string, minLength: 1, maxLength: 2000 }
+              user_agent: { type: string, minLength: 1 }
+          artifact_schema: *search_artifact
+        - id: relationship_context
+          capability: relationship.external_context
+          strategy_stage: standard
+          control_bounds: *webscout_bounds
+          effect: read_only
+          access_profile: { id: public_web, decision: allowed }
+          description: Pass relationship, partnership, event, or shared-history search terms. Follow authoritative results with page_read.
+          allowed_subject_fields: [kind, ref]
+          input_schema:
+            type: object
+            additionalProperties: false
+            required: [query, user_agent]
+            properties:
+              query: { type: string, minLength: 1, maxLength: 2000 }
+              user_agent: { type: string, minLength: 1 }
+          artifact_schema: *search_artifact
+        - id: page_read
+          capability: web.page.read
+          strategy_stage: standard
+          control_bounds: *webscout_bounds
+          effect: read_only
+          access_profile: { id: public_web, decision: allowed }
+          description: Pass one absolute http or https URL in input.url. Never pass search terms.
+          allowed_subject_fields: [kind, ref]
+          input_schema:
+            type: object
+            additionalProperties: false
+            required: [url, user_agent]
+            properties:
+              url: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 }
+              user_agent: { type: string, minLength: 1 }
+          artifact_schema: *page_artifact
+        - id: site_links
+          capability: web.site.links
+          strategy_stage: standard
+          control_bounds: *webscout_bounds
+          effect: read_only
+          access_profile: { id: public_web, decision: allowed }
+          description: Pass one absolute http or https site URL in input.url to discover bounded links for targeted page_read calls.
+          allowed_subject_fields: [kind, ref]
+          input_schema:
+            type: object
+            additionalProperties: false
+            required: [url, user_agent]
+            properties:
+              url: { type: string, pattern: "^https?://", minLength: 1, maxLength: 8192 }
+              user_agent: { type: string, minLength: 1 }
+          artifact_schema: *links_artifact

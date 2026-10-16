@@ -1,0 +1,78 @@
+version: "1.0"
+namespace: kickside.fireflies.writer
+
+# Fireflies as a RECORD WRITER: the connector half of a general write-back
+# capability, not a meetings-specific hook. A product asks a writer what it can
+# change and then asks it to change one field; who is behind the contract never
+# enters the caller's code.
+#
+# The announcement below is the whole of the discovery seam. It carries the
+# system this writer serves, so a caller resolves one by the system of its own
+# reference and adding a provider is installing a module rather than editing a
+# switch. It lives in this module for the same reason the connection binding
+# does: the grant travels with the module that announces the surface, and a host
+# already grants its users registry reads over these namespaces.
+#
+# The contract is kickside.data.records:external_record_writer, beside pullable and
+# writable in the contracts module this provider already depends on. That is not
+# a preference: a contract.binding is validated against the DEFINITIONS present
+# in the install (service/di/manager.go:143), so binding a contract declared by a
+# product would make that product an install-time dependency of this provider --
+# and a Fireflies connection would stop booting for any host that wanted only its
+# read tools.
+
+entries:
+  - name: record_writer_implementation
+    kind: library.lua
+    meta:
+      name: writer_implementation
+      comment: >-
+        The title write itself. Fireflies exposes updateMeetingTitle and no
+        mutation for speakers or transcript text, so this writer declares one
+        record kind and one field, and refuses anything else by name.
+    source: file://writer.lua
+    modules: [ctx]
+    imports:
+      transport: kickside.fireflies.client:transport
+      types: kickside.fireflies.client:types
+
+  - name: describe
+    kind: function.lua
+    meta: { comment: "fireflies record writer - describe" }
+    source: file://describe.lua
+    method: describe
+    imports:
+      implementation: kickside.fireflies.writer:record_writer_implementation
+
+  - name: update_record
+    kind: function.lua
+    meta: { comment: "fireflies record writer - update_record" }
+    source: file://update_record.lua
+    method: update_record
+    imports:
+      implementation: kickside.fireflies.writer:record_writer_implementation
+
+  - name: record_writer
+    kind: contract.binding
+    meta:
+      title: Fireflies Title Write-back
+      icon: tabler:flame
+      comment: Write a meeting title back onto its Fireflies transcript. Titles only -- the API has no speaker or transcript write.
+      provider: fireflies
+      group: Meetings
+      delivery: at_most_once
+      input_shape: record
+    contracts:
+      - contract: kickside.data.records:external_record_writer
+        methods:
+          describe: kickside.fireflies.writer:describe
+          update_record: kickside.fireflies.writer:update_record
+
+  - name: writer.fireflies
+    kind: registry.entry
+    meta:
+      type: kickside.data.record_writer
+      system: fireflies
+      title: Fireflies
+      comment: Announces which system this writer updates, so a caller resolves it by the system its own reference names.
+    binding: kickside.fireflies.writer:record_writer

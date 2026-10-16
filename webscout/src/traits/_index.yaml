@@ -1,0 +1,264 @@
+version: "1.0"
+namespace: kickside.webscout.traits
+
+entries:
+  # kickside.webscout.traits:links
+  - name: links
+    kind: function.lua
+    meta:
+      type: tool
+      public: true
+      title: Extract All Links
+      tags:
+        - tool
+        - links
+        - extraction
+        - analysis
+      comment: Extracts all unique links from a web page for analysis and discovery
+      input_schema: |
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https?://",
+              "maxLength": 8192,
+              "description": "The complete URL of the web page to extract links from (must include http:// or https://)"
+            },
+            "absolute_only": {
+              "type": "boolean",
+              "description": "Optional. If false, relative URLs are included too; defaults to absolute only."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional. Links per page; defaults to 200."
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Optional. next_cursor from a previous FetchAllLinks result for the same url, to read the following links."
+            }
+          },
+          "required": ["url"]
+        }
+      output_schema: |
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "The unique links extracted from the page.",
+              "properties": {
+                "url": { "type": "string", "pattern": "^https?://", "description": "The page that was fetched." },
+                "base_url": { "type": ["string", "null"], "description": "The scheme+host prefix used to absolutize relative links, or null when it could not be derived." },
+                "total_links": { "type": "integer", "minimum": 0, "description": "Number of unique links found on the page." },
+                "absolute_only": { "type": "boolean", "description": "Whether only absolute (http/https) links were included." },
+                "links": { "type": "array", "description": "This page of the unique links, in document order.", "items": { "type": "string", "pattern": "^https?://" } },
+                "next_cursor": { "type": "string", "description": "Pass as cursor with the same url to read the following links; absent on the last page." }
+              },
+              "required": ["url", "total_links", "absolute_only", "links"]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "An HTTP rejection from the page provider.",
+              "properties": {
+                "success": { "const": false },
+                "error": { "type": "string" },
+                "status_code": { "type": "integer" }
+              },
+              "required": ["success", "error", "status_code"]
+            }
+          ]
+        }
+      llm_alias: FetchAllLinks
+      llm_description: Extracts all unique links from a web page. Use this to discover related pages, find navigation links, or analyze a website's structure. Returns the page's unique links in pages of limit (default 200) with next_cursor for the rest, and total_links for the whole page.
+    source: file://links.lua
+    modules:
+      - text
+    imports:
+      tool_result: kickside.contract:tool_result
+      client: kickside.webscout.client:client
+    method: handle
+
+  # kickside.webscout.traits:read
+  - name: read
+    kind: function.lua
+    meta:
+      type: tool
+      public: true
+      title: Read Web Page
+      tags:
+        - tool
+        - web
+        - content
+        - scraping
+      comment: Reads and extracts clean text content from any web page URL
+      input_schema: |
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https?://",
+              "maxLength": 8192,
+              "description": "The complete URL of the web page to read (must include http:// or https://)"
+            }
+          },
+          "required": ["url"]
+        }
+      output_schema: |
+        {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "The page's complete clean text content (HTML stripped and whitespace-collapsed)."
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "An HTTP rejection from the page provider.",
+              "properties": {
+                "success": { "const": false },
+                "error": { "type": "string" },
+                "status_code": { "type": "integer" }
+              },
+              "required": ["success", "error", "status_code"]
+            }
+          ]
+        }
+      llm_alias: ReadPage
+      llm_description: Reads and extracts clean text content from web pages. Use this to get the actual content of articles, blog posts, documentation, or any web page. The tool automatically removes HTML tags and returns clean, readable text.
+    source: file://read.lua
+    modules:
+      - html
+    imports:
+      tool_result: kickside.contract:tool_result
+      client: kickside.webscout.client:client
+    method: handle
+
+  # kickside.webscout.traits:search
+  - name: search
+    kind: function.lua
+    meta:
+      type: tool
+      public: true
+      title: Web Search
+      tags:
+        - tool
+        - search
+        - web
+      comment: Searches the web through the installed search provider selected in settings
+      input_schema: |
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "query": {
+              "type": "string",
+              "maxLength": 2000,
+              "description": "The search query. Be specific and use relevant keywords."
+            },
+            "num": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional. How many results to return; defaults to one provider page."
+            },
+            "cursor": {
+              "type": "string",
+              "description": "Optional. next_cursor from a previous WebSearch result with the same query, to continue after it."
+            }
+          },
+          "required": ["query"]
+        }
+      output_schema: |
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Search results for the query from the selected provider.",
+              "properties": {
+                "query": { "type": "string", "maxLength": 2000, "description": "The query that was searched." },
+                "total_results": { "type": ["string", "number"], "description": "Total matches reported by the provider (a numeric string), or 0 when unavailable." },
+                "results": {
+                  "type": "array",
+                  "description": "The search result items.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                      "title": { "type": "string", "description": "Result title." },
+                      "link": { "type": "string", "pattern": "^https?://", "description": "Result URL." },
+                      "snippet": { "type": "string", "description": "Result snippet/summary." },
+                      "displayLink": { "type": "string", "description": "Displayed host of the result." }
+                    }
+                  }
+                },
+                "count": { "type": "integer", "description": "Number of results returned in results." },
+                "next_cursor": { "type": "string", "description": "Pass as cursor with the same query to continue; absent when the provider has no more results." }
+              },
+              "required": ["query", "results", "count"]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "An HTTP rejection from the selected provider.",
+              "properties": {
+                "success": { "const": false },
+                "error": { "type": "string" },
+                "status_code": { "type": "integer" }
+              },
+              "required": ["success", "error", "status_code"]
+            }
+          ]
+        }
+      llm_alias: WebSearch
+      llm_description: Searches the web for pages and information. Use this to find current information, news, articles, or any web content. Provide a clear search query with relevant keywords. Ask for more results with num, and continue past the returned results with next_cursor as cursor.
+    source: file://search.lua
+    modules:
+      - funcs
+    imports:
+      tool_result: kickside.contract:tool_result
+      config: kickside.webscout:config
+      providers: kickside.webscout:providers_registry
+    method: handle
+
+  # kickside.webscout.traits:web_researcher
+  - name: web_researcher
+    kind: registry.entry
+    meta:
+      title: Web Researcher
+      type: agent.trait
+      public: true
+      comment: Provides comprehensive web research capabilities including search, content reading, and link extraction.
+      tags:
+        - web
+        - research
+        - search
+        - analysis
+        - links
+      icon: tabler:world-search
+    prompt: |-
+      You have access to comprehensive web research tools that allow you to search, read, and analyze web content. Use these tools to:
+
+      - Search the web with targeted queries
+      - Read and extract clean content from web pages
+      - Extract and analyze all links from web pages for discovery
+      - Perform deep research across multiple interconnected sources
+      - Map website structures and relationships
+
+      Best practices:
+      - Always cite your sources with URLs
+      - Use link extraction to discover related content and resources
+      - Provide clean, well-organized summaries of your findings
+      - When researching topics, follow link trails to gather comprehensive information
+      - Be mindful of content quality and source reliability
+    tools:
+      - kickside.webscout.traits:search
+      - kickside.webscout.traits:read
+      - kickside.webscout.traits:links

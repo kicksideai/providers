@@ -1,0 +1,94 @@
+version: "1.0"
+namespace: kickside.github.connection
+
+entries:
+  - name: github_connection
+    kind: contract.binding
+    meta:
+      title: GitHub
+      comment: Connect GitHub with a personal access token to read repositories, issues, pull requests, and comments.
+      icon: tabler:brand-github
+      provider: github
+      group: Developer
+      tags: [github, git, code, issues, pull-requests]
+      class:
+        - connection
+      credential_schema:
+        version: "1.0"
+        submit_label: Connect
+        fields:
+          - key: token
+            label: Personal access token
+            type: password
+            required: true
+            placeholder: github_pat_...
+            help: Use a fine-grained or classic GitHub token scoped to the repositories KickSide should access.
+    contracts:
+      - contract: kickside.contract:component
+        methods:
+          get_status: kickside.github.connection:get_status
+      - contract: kickside.connection:connection
+        context_required:
+          - component_id
+        methods:
+          get_status: kickside.github.connection:get_status
+          test_connection: kickside.github.connection:test_connection
+          discover_resources: kickside.github.connection:discover_resources
+      - contract: kickside.contract:deletable
+        context_required:
+          - component_id
+        methods:
+          delete: kickside.github.connection:delete
+
+  - name: get_status
+    kind: function.lua
+    meta: { comment: "github connection - get_status" }
+    source: file://get_status.lua
+    method: get_status
+    imports:
+      transport: kickside.github.client:transport
+      types: kickside.github.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.github.connection:connection_lib
+
+  - name: test_connection
+    kind: function.lua
+    meta: { comment: "github connection - test_connection" }
+    source: file://test_connection.lua
+    method: test_connection
+    imports:
+      transport: kickside.github.client:transport
+      types: kickside.github.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.github.connection:connection_lib
+
+  - name: discover_resources
+    kind: function.lua
+    meta: { comment: "github connection - discover_resources" }
+    source: file://discover_resources.lua
+    method: discover_resources
+    imports:
+      transport: kickside.github.client:transport
+      types: kickside.github.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.github.connection:connection_lib
+
+  - name: delete
+    kind: function.lua
+    meta: { comment: "github connection - delete" }
+    source: file://delete.lua
+    method: delete
+    imports:
+      transport: kickside.github.client:transport
+      types: kickside.github.client:types
+      base: kickside.connection:base_connection
+      implementation: kickside.github.connection:connection_lib
+
+  - name: connection_lib
+    kind: library.lua
+    meta: { name: connection_lib, comment: "github connection - shared implementation for tests" }
+    source: file://connection.lua
+    imports:
+      transport: kickside.github.client:transport
+      types: kickside.github.client:types
+      base: kickside.connection:base_connection

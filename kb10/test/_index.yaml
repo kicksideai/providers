@@ -1,0 +1,783 @@
+version: "1.0"
+namespace: app
+
+# Standalone harness for kickside/kb10. Loads kb10's own src via
+# directories.src=../src and boots the kickside/knowledge control plane so the
+# integration suites below run against real engine stores. The control plane
+# resolves kb10 through the kb_engine registry + the kb_store contract. Host
+# resources (db, processes, api, env storage, a permissive actor scope), the
+# kb_ingest fetch_url fixture gateway, and kb10's own integration suites
+# (exercising kickside/knowledge's control plane against the kb10 engine)
+# live here. Harness-only; excluded from publish via the namespace exclude in
+# wippy.yaml.
+
+entries:
+  - name: dep.kickside.realtime
+    kind: ns.dependency
+    component: kickside/realtime
+    version: '*'
+
+  - name: dep.kickside.security
+    kind: ns.dependency
+    version: '*'
+    component: kickside/security
+    parameters:
+      - {name: api_router, value: app:api}
+      - {name: ui_server, value: app:gateway}
+      - {name: target_db, value: app:db}
+      - {name: process_host, value: app:processes}
+
+  - name: db
+    kind: db.sql.sqlite
+    foreign_keys: true
+    meta:
+      comment: In-memory database for kb10 slice tests.
+    file: ":memory:"
+
+  - name: uploads
+    kind: fs.directory
+    meta:
+      comment: Default uploads storage so the artifact content repository can write artifact blobs.
+    directory: ./.wippy
+
+  - name: env_storage
+    kind: env.storage.file
+    meta:
+      type: envstorage
+    file_path: ./.wippy/test.env
+    auto_create: true
+
+  - name: processes
+    kind: process.host
+    lifecycle:
+      auto_start: true
+
+  - name: gateway
+    kind: http.service
+    meta:
+      comment: Test HTTP server.
+    addr: :19097
+    lifecycle:
+      auto_start: true
+
+  - name: api
+    kind: http.router
+    meta:
+      comment: Test API router.
+      server: gateway
+    prefix: /api
+
+  - name: api_public
+    kind: http.router
+    meta:
+      comment: >-
+        Separate router for wippy/views to avoid colliding views'
+        /components/by-tag/{tag} with the component module's
+        /components/{id}/access on /api.
+      server: gateway
+    prefix: /public
+
+  - name: user
+    kind: security.policy
+    meta:
+      comment: Permissive scope the kb10 suites run their scoped actors under.
+    groups:
+      - kb_test
+      - app:user
+    policy:
+      resources: '*'
+      actions: '*'
+      effect: allow
+
+  - name: runtime_calls_only
+    kind: security.policy
+    meta:
+      comment: >-
+        Runtime-level access without any threads.output.publish capability. A caller under
+        exactly this scope reaches an output event only through a producer policy declared on
+        the entry it runs.
+    policy:
+      resources: '*'
+      actions:
+        - access
+        - db.get
+        - registry.get
+        - contract.get
+        - contract.open
+        - contract.call
+        - contract.security
+        - process.send
+        - funcs.call
+        - funcs.security
+        - security.policy_group.get
+        - security.policy.get
+        - security.actor.get
+        - security.scope.get
+        - security.scope.create
+        - security.actor.create
+      effect: allow
+
+  - name: admin
+    kind: security.policy
+    meta:
+      comment: Permissive administrator scope used by structured lifecycle grants.
+    groups:
+      - kb_test_admin
+    policy:
+      resources: '*'
+      actions: '*'
+      effect: allow
+
+  - name: graph_fetch_tree
+    kind: function.lua
+    meta:
+      comment: Test-only scoped wrapper for graph_functions.fetch_concept_tree.
+    source: file://graph_fetch_tree.lua
+    method: run
+    imports:
+      graph_fn: kickside.kb10.graph:graph_functions
+
+  # Integration suites that exercise kickside/knowledge's control plane against the
+  # kb10 engine (document/graph KBs) plus the cross-engine KB control plane. Each
+  # opens kb10's kb_store contract and the KickSide embeddable/queryable bindings,
+  # asserting on kb10_* rows. The mixed suites (knowledge, knowledge_bases) drive
+  # kb10 through the control plane.
+
+  - name: graph_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: graph
+      timeout: 180s
+    source: file://graph_test.lua
+    method: run
+    modules: [sql, json, crypto, funcs, contract, security]
+    imports:
+      test: wippy.test:test
+      graph_fn: kickside.kb10.graph:graph_functions
+      kb10_types: kickside.kb10:types
+      materializer_lib: kickside.kb10.injection:materializer_store
+      node_store: kickside.kb10.persist:node_store
+
+  - name: graph_change_probe
+    kind: function.lua
+    meta:
+      type: test_helper
+      comment: Appends graph.changed from an entry that declares no producer policy.
+    source: file://graph_change_probe.lua
+    method: handle
+    imports:
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+
+  - name: graph_change_publish_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: graph
+      timeout: 120s
+    source: file://graph_change_publish_test.lua
+    method: run
+    modules: [sql, json, crypto, funcs, security, contract, registry]
+    imports:
+      test: wippy.test:test
+      kb10_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+
+  - name: kb_ingest_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb_ingest
+      timeout: 120s
+    source: file://kb_ingest_test.lua
+    method: run
+    modules: [sql, json, crypto, funcs, security, contract]
+    imports:
+      test: wippy.test:test
+      kb10_types: kickside.kb10:types
+      kb10_store: kickside.kb10.persist:store
+      materializer_lib: kickside.kb10.injection:materializer_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_record_repo: kickside.uploads.persist:upload_record_repo
+      agent_fetch_url: kickside.knowledge.traits.kb_ingest:fetch_url
+      agent_embed_content: kickside.knowledge.traits.kb_ingest:embed_content
+      agent_delete_content: kickside.knowledge.traits.kb_ingest:delete_content
+      agent_select_kb: kickside.knowledge.traits.kb_ingest:select_kb
+
+  - name: source_worker_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+    source: file://source_worker_test.lua
+    method: run
+    modules: [json, logger, sql]
+    imports:
+      test: wippy.test:test
+      source_worker_lib: kickside.kb10.injection:source_worker_lib
+      kb10_store: kickside.kb10.persist:store
+      source_worker_fixtures: app:source_worker_fixtures
+
+  - name: source_worker_lineage_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+    source: file://source_worker_lineage_test.lua
+    method: run
+    modules: [sql]
+    imports:
+      test: wippy.test:test
+      source_worker_lib: kickside.kb10.injection:source_worker_lib
+      source_worker_fixtures: app:source_worker_fixtures
+
+  - name: digest_worker_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+    source: file://digest_worker_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      digest_worker: kickside.kb10.injection:digest_worker_lib
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+
+  - name: meta_projection_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+    source: file://meta_projection_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      meta_projection: kickside.kb10.injection:meta_projection
+
+  - name: content_extractor_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+    source: file://content_extractor_test.lua
+    method: run
+    modules: [funcs]
+    imports:
+      test: wippy.test:test
+
+  - name: chunk_text_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+      # Large-document chunking + bounded concatenation over tens of thousands of
+      # lines; needs more than the default per-test budget.
+      timeout: 90s
+    source: file://chunk_text_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      source_materializer: kickside.kb10.injection:source_materializer
+
+  - name: reembed_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+      timeout: 60s
+    source: file://reembed_test.lua
+    method: run
+    modules: [sql, crypto, json, funcs, security]
+    imports:
+      test: wippy.test:test
+      reembed: kickside.kb10.engine:reembed
+      kb10_store: kickside.kb10.persist:store
+
+  - name: resummarize_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_injection
+      timeout: 60s
+    source: file://resummarize_test.lua
+    method: run
+    modules: [sql, json]
+    imports:
+      test: wippy.test:test
+      resummarize: kickside.kb10.engine:resummarize
+      kb10_store: kickside.kb10.persist:store
+      source_worker_fixtures: app:source_worker_fixtures
+
+  - name: knowledge_api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge
+    source: file://knowledge_api_test.lua
+    method: run
+    modules: [sql, json, crypto, contract, ctx]
+    imports:
+      test: wippy.test:test
+      kb10_types: kickside.kb10:types
+      materializer_lib: kickside.kb10.injection:materializer_store
+      node_store: kickside.kb10.persist:node_store
+      kb_nodes: kickside.kb10.reader:kb_nodes
+
+  - name: knowledge_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge
+    source: file://knowledge_test.lua
+    method: run
+    modules: [sql, json, crypto, contract, registry, ctx, security]
+    imports:
+      test: wippy.test:test
+      kb10_types: kickside.kb10:types
+      materializer_lib: kickside.kb10.injection:materializer_store
+      node_store: kickside.kb10.persist:node_store
+
+  - name: knowledge_bases_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_bases_registry_suite
+    source: file://knowledge_bases_test.lua
+    method: run
+    modules: [sql, crypto, funcs, security, contract]
+    imports:
+      test: wippy.test:test
+      engines: kickside.knowledge:engines
+      node_store: kickside.kb10.persist:node_store
+      kb10_store: kickside.kb10.persist:store
+
+  - name: agent_select_kb
+    kind: function.lua
+    meta:
+      comment: Test harness call-through to the real knowledge agent select_kb tool.
+    source: file://agent_tool_call.lua
+    method: select_kb
+    imports:
+      agent_select_kb: kickside.knowledge.traits.kb_ingest:select_kb
+      agent_fetch_url: kickside.knowledge.traits.kb_ingest:fetch_url
+      agent_embed_content: kickside.knowledge.traits.kb_ingest:embed_content
+      agent_delete_content: kickside.knowledge.traits.kb_ingest:delete_content
+
+  - name: agent_fetch_url
+    kind: function.lua
+    meta:
+      comment: Test harness call-through to the real knowledge agent fetch_url tool.
+    source: file://agent_tool_call.lua
+    method: fetch_url
+    imports:
+      agent_select_kb: kickside.knowledge.traits.kb_ingest:select_kb
+      agent_fetch_url: kickside.knowledge.traits.kb_ingest:fetch_url
+      agent_embed_content: kickside.knowledge.traits.kb_ingest:embed_content
+      agent_delete_content: kickside.knowledge.traits.kb_ingest:delete_content
+
+  - name: agent_embed_content
+    kind: function.lua
+    meta:
+      comment: Test harness call-through to the real knowledge agent embed_content tool.
+    source: file://agent_tool_call.lua
+    method: embed_content
+    imports:
+      agent_select_kb: kickside.knowledge.traits.kb_ingest:select_kb
+      agent_fetch_url: kickside.knowledge.traits.kb_ingest:fetch_url
+      agent_embed_content: kickside.knowledge.traits.kb_ingest:embed_content
+      agent_delete_content: kickside.knowledge.traits.kb_ingest:delete_content
+
+  - name: agent_delete_content
+    kind: function.lua
+    meta:
+      comment: Test harness call-through to the real knowledge agent delete_content tool.
+    source: file://agent_tool_call.lua
+    method: delete_content
+    imports:
+      agent_select_kb: kickside.knowledge.traits.kb_ingest:select_kb
+      agent_fetch_url: kickside.knowledge.traits.kb_ingest:fetch_url
+      agent_embed_content: kickside.knowledge.traits.kb_ingest:embed_content
+      agent_delete_content: kickside.knowledge.traits.kb_ingest:delete_content
+
+  - name: kb_portability_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb_portability
+      timeout: 180s
+    source: file://kb_portability_test.lua
+    method: run
+    modules: [sql, json, uuid, fs, funcs, security]
+    imports:
+      test: wippy.test:test
+      kb10_store: kickside.kb10.persist:store
+
+  # Runtime-faithful tests for the kb10 node/graph agent tools (SurveyKB / BrowseKB /
+  # GetKBNode / TraverseKBGraph); they drive the tools by id through a framed funcs executor.
+  - name: node_tools_kb_nodes
+    kind: library.lua
+    source: file://node_tools_kb_nodes.lua
+
+  - name: node_tools_component
+    kind: library.lua
+    source: file://node_tools_component.lua
+
+  - name: node_tools_under_test
+    kind: library.lua
+    source: file://src_link/traits/node_tools.lua
+    imports:
+      render: kickside.knowledge.traits:kb_render
+      kb_nodes: app:node_tools_kb_nodes
+      component: app:node_tools_component
+      tool_result: kickside.contract:tool_result
+
+  - name: node_tools_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb_tools
+    source: file://node_tools_test.lua
+    method: run
+    modules: [funcs, security]
+    imports:
+      test: wippy.test:test
+      node_tools: app:node_tools_under_test
+      kb_nodes: app:node_tools_kb_nodes
+
+  - name: packaging_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_packaging
+    source: file://packaging_test.lua
+    method: run
+    modules:
+      - registry
+    imports:
+      test: wippy.test:test
+
+  - name: query_policy_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_query
+    source: file://query_policy_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      policy: kickside.kb10.binding:query_policy
+
+  - name: query_service_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_query
+    source: file://query_service_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      query_service: kickside.kb10.binding:query_service
+
+  # The harness owns one KB10 root and supplies every concrete host choice on
+  # that edge, including qualified requirements of its transitive packages.
+  # Production packages remain host-agnostic and the resolver proves the same
+  # composition contract used by a real application install.
+  - name: dep.kickside.users
+    kind: ns.dependency
+    component: kickside/users
+    version: "*"
+    parameters:
+      - { name: kickside.users:public_router, value: app:api_public }
+      - { name: kickside.users:api_router, value: app:api }
+      - { name: kickside.users:target_db, value: app:db }
+      - { name: kickside.users:user_security_scope, value: app:user }
+      - { name: kickside.users:admin_security_scope, value: app:admin }
+      - { name: kickside.users:login_role_resource, value: 'app:*' }
+      - { name: kickside.users:ui_server, value: app:gateway }
+
+  - name: dep.kickside.kb10
+    kind: ns.dependency
+    component: kickside/kb10
+    version: '*'
+    parameters:
+    - name: kickside.kb10.security:user_security_scope
+      value: app:user
+    - name: kickside.kb10:api_router
+      value: app:api
+    - name: kickside.kb10:ui_server
+      value: app:gateway
+    - name: kickside.kb10:process_host
+      value: app:processes
+    - name: kickside.kb10:target_db
+      value: app:db
+    - name: kickside.knowledge:api_router
+      value: app:api
+    - name: kickside.knowledge:ui_server
+      value: app:gateway
+    - name: kickside.knowledge.security:user_security_scope
+      value: app:user
+    - name: kickside.automation:ui_server
+      value: app:gateway
+    - name: kickside.automation:api_router
+      value: app:api
+    - name: kickside.automation:target_db
+      value: app:db
+    - name: kickside.settings:target_db
+      value: app:db
+    - name: kickside.settings:api_router
+      value: app:api
+    - name: kickside.settings:ui_server
+      value: app:gateway
+    - name: kickside.component:target_db
+      value: app:db
+    - name: kickside.component:api_router
+      value: app:api
+    - name: kickside.component:lifecycle_impl
+      value: kickside.core.lifecycle:component_lifecycle_impl
+    - name: kickside.core:target_db
+      value: app:db
+    - name: kickside.core.retention:user_security_scope
+      value: app:user
+    - name: kickside.core.threads:user_security_scope
+      value: app:user
+    - name: kickside.core.threads.hydration:user_security_scope
+      value: app:user
+    - name: kickside.core.lifecycle:process_host
+      value: app:processes
+    - name: kickside.core.lifecycle:user_lifecycle_grant
+      value:
+        subject_id: app:user
+        subject_type: group
+        access_mask: 2
+    - name: kickside.core.lifecycle:admin_lifecycle_grant
+      value:
+        subject_id: app:admin
+        subject_type: group
+        access_mask: 3
+    - name: kickside.core.retention:process_host
+      value: app:processes
+    - name: kickside.core.threads:process_host
+      value: app:processes
+    - name: kickside.core.retention:api_router
+      value: app:api
+    - name: kickside.core.threads:api_router
+      value: app:api
+    - name: kickside.core.threads.hydration:api_router
+      value: app:api
+    - name: kickside.core.projections:api_router
+      value: app:api
+    - name: kickside.core.jobs:target_db
+      value: app:db
+    - name: kickside.core.jobs:process_host
+      value: app:processes
+    - name: kickside.uploads:database_resource
+      value: app:db
+    - name: kickside.uploads:env_storage
+      value: app:env_storage
+    - name: kickside.uploads:api_router
+      value: app:api
+    - name: kickside.uploads:storage_id
+      value: app:uploads
+    - name: kickside.uploads:ui_server
+      value: app:gateway
+    - name: kickside.uploads.security:user_security_scope
+      value: app:user
+    - name: userspace.dataflow:target_db
+      value: app:db
+    - name: userspace.dataflow:user_security_scope
+      value: app:user
+    - name: wippy.bootloader:application_host
+      value: app:processes
+    - name: wippy.bootloader:env_storage
+      value: app:env_storage
+    - name: wippy.llm:process_host
+      value: app:processes
+    - name: wippy.llm:env_storage
+      value: app:env_storage
+    - name: wippy.migration:app_db
+      value: app:db
+    - name: wippy.relay:user_security_scope
+      value: app:user
+    - name: wippy.relay:env_storage
+      value: app:env_storage
+    - name: wippy.relay:application_host
+      value: app:processes
+    - name: wippy.session:api_router
+      value: app:api
+    - name: wippy.session:database_resource
+      value: app:db
+    - name: wippy.session:default_host
+      value: app:processes
+    - name: wippy.session:env_storage
+      value: app:env_storage
+    - name: wippy.session:delegation_func_id
+      value: userspace.dataflow.session:delegate
+    - name: wippy.views:api_router
+      value: app:api_public
+    - name: wippy.views:env_storage
+      value: app:env_storage
+
+  - name: dep.wippy.test
+    kind: ns.dependency
+    component: wippy/test
+    version: "*"
+
+  - name: tabular_chunker_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb_sheets
+    source: file://tabular_chunker_test.lua
+    method: run
+    modules: [uuid, fs]
+    imports:
+      doc2md: kickside.convert.doc2md:doc2md
+      test: wippy.test:test
+      source_materializer: kickside.kb10.injection:source_materializer
+      kb10_store: kickside.kb10.persist:store
+      materializer_store: kickside.kb10.injection:materializer_store
+
+  - name: sheet_fixture
+    kind: fs.directory
+    directory: ./fixtures
+
+  - name: enrichment_identity_probe
+    kind: function.lua
+    source: file://enrichment_identity_probe.lua
+    method: run
+    imports:
+      enrichment_service: kickside.kb10.graph:enrichment_service
+
+  - name: dep.kickside.models
+    kind: ns.dependency
+    version: '*'
+    component: kickside/models
+    parameters:
+    - name: kickside.models:target_db
+      value: app:db
+    - name: kickside.models:api_router
+      value: app:api
+    - name: kickside.models:ui_server
+      value: app:gateway
+    - name: kickside.models:process_host
+      value: app:processes
+
+  - name: user_endpoint_policy_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: member_endpoint_policy
+    source: file://user_endpoint_policy_test.lua
+    method: run
+    modules:
+    - registry
+    - security
+    imports:
+      test: wippy.test:test
+
+  - name: dep.member_endpoint_contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '*'
+    parameters:
+    - name: kickside.contract.http:user_security_scope
+      value: app:user
+
+  - name: export_fault_state
+    kind: library.lua
+    source: file://export_fault_state.lua
+    modules: [sql]
+
+  - name: export_fault_adapter
+    kind: library.lua
+    source: file://export_fault_adapter.lua
+    modules: [json, sql, ctx]
+    imports:
+      fs: app:export_fault_fs
+      ops: app:export_fault_state
+      portable_io: kickside.component.portability:portable_io
+
+  - name: export_fault_fs
+    kind: library.lua
+    source: file://export_fault_fs.lua
+    imports:
+      state: app:export_fault_state
+
+  - name: export_fault_probe
+    kind: function.lua
+    source: file://export_fault_probe.lua
+    imports:
+      state: app:export_fault_state
+      adapter: app:export_fault_adapter
+    method: run
+
+  - name: retrieval_settings_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_query
+    source: file://retrieval_settings_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      query_service: kickside.kb10.binding:query_service
+
+  - name: tuner_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_query
+    source: file://tuner_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      tuner: kickside.kb10.engine:tuner
+
+  - name: query_log_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_query
+    source: file://query_log_test.lua
+    method: run
+    modules: [uuid, sql]
+    imports:
+      test: wippy.test:test
+      query_log: kickside.kb10.persist:query_log
+      store: kickside.kb10.persist:store
+
+  - name: query_log_migration_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_query_migration
+    source: file://query_log_migration_test.lua
+    method: run
+    modules: [uuid, sql, funcs]
+    imports:
+      test: wippy.test:test
+      query_log: kickside.kb10.persist:query_log
+      store: kickside.kb10.persist:store
+
+  - name: enrichment_component_fixture
+    kind: library.lua
+    source: file://enrichment_component_fixture.lua
+  - name: enrichment_state_under_test
+    kind: library.lua
+    source: file://enrichment_state_source.lua
+    imports:
+      component: app:enrichment_component_fixture
+  - name: enrichment_state_test
+    kind: function.lua
+    source: file://enrichment_state_test.lua
+    method: run
+    meta:
+      type: test
+      suite: enrichment_state
+    imports:
+      test: wippy.test:test
+      enrichment_state: app:enrichment_state_under_test
+      component_fixture: app:enrichment_component_fixture

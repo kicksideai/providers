@@ -1,0 +1,25 @@
+version: "1.0"
+namespace: kickside.atlassian.confluence
+
+# Confluence product slice: the v1 REST client and the agent tools/traits (in the
+# .traits child namespace). The connection itself is the single shared Atlassian
+# connection (kickside.atlassian.connection) — one site + one credential serves
+# both Jira and Confluence — so there is no per-product connection binding here.
+
+entries:
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Confluence v1 REST client (spaces, pages, CQL search, comments, write) over the transport.
+    source: file://api.lua
+    imports:
+      transport: kickside.atlassian.client:transport
+      types: kickside.atlassian.client:types
+
+  - name: markdown
+    kind: library.lua
+    meta:
+      name: markdown
+      comment: Confluence storage format (XHTML) to Markdown, keeping headings, lists, tables, links, code and macro bodies.
+    source: file://markdown.lua

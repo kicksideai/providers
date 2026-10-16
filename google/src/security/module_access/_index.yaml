@@ -1,0 +1,57 @@
+version: '1.0'
+namespace: kickside.google.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Google
+    surface: kickside.google
+    intent: module_access
+    includes:
+    - kickside.google.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.google:*
+    - kickside.google.client:*
+    - kickside.google.security:*
+    - kickside.google.sink:*
+    - kickside.google.source:*
+    - kickside.google.traits:*
+    - kickside.google.ui:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.google:*
+    - kickside.google.client:*
+    - kickside.google.security:*
+    - kickside.google.sink:*
+    - kickside.google.source:*
+    - kickside.google.traits:*
+    - kickside.google.ui:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

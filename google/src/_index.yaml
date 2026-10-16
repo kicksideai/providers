@@ -1,0 +1,386 @@
+version: "1.0"
+namespace: kickside.google
+
+# A standalone OAuth provider module. It declares ONE registry entry with
+# meta.oauth_provider = google, which kickside/oauth discovers (registry scan on
+# meta.oauth_provider) and exposes via /api/v1/oauth/providers/discover. All OAuth
+# mechanics (authorize, token exchange, refresh, storage) are the shared
+# kickside.oauth:base_connector — this module owns only Google's endpoints,
+# scopes, and credentials. Adding a provider is a module, not an edit to oauth.
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Google
+      comment: Google OAuth connection provider (Gmail, Drive, Calendar, Docs, Sheets, Slides, Contacts, Analytics). Self-declares as an oauth_provider for kickside/oauth.
+
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: "*"
+    meta:
+      comment: Provides the pullable and writable data contracts used by Google automation ports.
+
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: "*"
+    meta:
+      comment: Records and instances register as component shells and resolve access through the component service.
+
+  - name: dep.kickside.connection
+    kind: ns.dependency
+    component: kickside/connection
+    version: "*"
+
+  - name: dep.kickside.oauth
+    kind: ns.dependency
+    component: kickside/oauth
+    version: "*"
+    meta:
+      comment: Supplies the OAuth connector and OAuth connection contracts used by the provider.
+
+  - name: dep.kickside.settings
+    kind: ns.dependency
+    component: kickside/settings
+    version: "*"
+    meta:
+      comment: Supplies Google credential settings and the settings block.
+
+  # ─── Shared types ──────────────────────────────────────────────────
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared type surfaces (Result, Connection, AccessToken) for the Google provider.
+    source: file://types.lua
+
+  # ─── Dependency interface (ns.requirement) ───────────────────────────
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server the Google provider UI static mount attaches to.
+      description: HTTP server the Google provider UI static mount attaches to.
+    targets:
+      - entry: kickside.google.ui:ui_static
+        path: .meta.server
+
+  - name: env_storage
+    kind: ns.requirement
+    meta:
+      comment: Environment storage that resolves the Google OAuth client credentials.
+      description: Environment storage that resolves the Google OAuth client credentials.
+    targets:
+      - entry: kickside.google:client_id
+        path: .storage
+      - entry: kickside.google:client_secret
+        path: .storage
+
+  # ─── Credentials (env-backed) ────────────────────────────────────────
+  - name: client_id
+    kind: env.variable
+    meta:
+      comment: Google OAuth client ID.
+      icon: tabler:brand-google
+    variable: GOOGLE_CLIENT_ID
+
+  - name: client_secret
+    kind: env.variable
+    meta:
+      comment: Google OAuth client secret.
+      icon: tabler:brand-google
+    variable: GOOGLE_CLIENT_SECRET
+
+  # ─── Credentials (settings-backed, encrypted, admin-editable) ────────
+  # Declared as kickside.settings:definition entries of value_type secret, so
+  # admins can set the OAuth client id/secret in the Settings UI (encrypted at
+  # rest). The connector prefers these and falls back to the env vars above, so a
+  # deployment can migrate creds out of .env without downtime.
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Google OAuth client ID (encrypted setting).
+    namespace: kickside.google
+    key: client_id
+    value_type: secret
+    default: ""
+    description: Google OAuth client ID. Overrides GOOGLE_CLIENT_ID when set.
+    scope: global
+    editable: true
+
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Google OAuth client secret (encrypted setting).
+    namespace: kickside.google
+    key: client_secret
+    value_type: secret
+    default: ""
+    description: Google OAuth client secret. Overrides GOOGLE_CLIENT_SECRET when set.
+    scope: global
+    editable: true
+
+  # ─── The provider (discovered by kickside/oauth) ─────────────────────
+  - name: google
+    kind: registry.entry
+    meta:
+      type: component
+      title: Google
+      comment: Connect Google to sync Gmail, Drive, Calendar, Docs, Sheets, Slides, Contacts and Analytics.
+      group: Productivity
+      tags: [email, storage, calendar, productivity, documents, presentations, contacts, analytics]
+      class:
+        - connection
+        - oauth_connection
+        - google_services
+        - productivity
+      component:
+        icon: tabler:brand-google
+      oauth_provider: google
+    description: Connect to Google services to access Gmail, Google Drive, Calendar, Docs, Sheets, Slides, Contacts and Analytics.
+    depends_on:
+      - kickside.google:client_id
+      - kickside.google:client_secret
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
+        oauth_token_endpoint: https://oauth2.googleapis.com/token
+        oauth_userinfo_endpoint: https://www.googleapis.com/oauth2/v2/userinfo
+        oauth_client_id_env: kickside.google:client_id
+        oauth_client_secret_env: kickside.google:client_secret
+        oauth_client_id_setting: kickside.google:client_id
+        oauth_client_secret_setting: kickside.google:client_secret
+        oauth_extra_auth_params:
+          access_type: offline
+          prompt: consent
+    default_scopes:
+      - openid
+      - https://www.googleapis.com/auth/userinfo.profile
+      - https://www.googleapis.com/auth/userinfo.email
+    available_scopes:
+      - name: Sign In
+        description: Sign you in securely (OpenID).
+        scope: openid
+      - name: Email Address
+        description: View your Google account email address.
+        scope: https://www.googleapis.com/auth/userinfo.email
+      - name: Basic Profile
+        description: View your basic profile info (name, photo).
+        scope: https://www.googleapis.com/auth/userinfo.profile
+      - name: Read Gmail
+        description: Read your email messages and settings.
+        scope: https://www.googleapis.com/auth/gmail.readonly
+      - name: Manage Gmail
+        description: Read, send, and manage your email.
+        scope: https://www.googleapis.com/auth/gmail.modify
+      - name: Compose Gmail
+        description: Create and manage Gmail drafts.
+        scope: https://www.googleapis.com/auth/gmail.compose
+      - name: Manage Gmail Labels
+        description: Create, read, update and delete Gmail labels.
+        scope: https://www.googleapis.com/auth/gmail.labels
+      - name: Manage Gmail Settings
+        description: Manage basic Gmail settings.
+        scope: https://www.googleapis.com/auth/gmail.settings.basic
+      - name: View Google Drive
+        description: View and download your Drive files.
+        scope: https://www.googleapis.com/auth/drive.readonly
+      - name: View Google Drive Metadata
+        description: View Drive file names and metadata for Google Docs, Sheets and Slides listings.
+        scope: https://www.googleapis.com/auth/drive.metadata.readonly
+      - name: Manage Google Drive
+        description: View, edit, create and delete your Drive files.
+        scope: https://www.googleapis.com/auth/drive
+      - name: Read Google Docs
+        description: Read your Google Docs.
+        scope: https://www.googleapis.com/auth/documents.readonly
+      - name: Manage Google Docs
+        description: Create, edit and manage Google Docs.
+        scope: https://www.googleapis.com/auth/documents
+      - name: Read Google Sheets
+        description: Read your Google Sheets.
+        scope: https://www.googleapis.com/auth/spreadsheets.readonly
+      - name: Manage Google Sheets
+        description: Create, edit and manage Google Sheets.
+        scope: https://www.googleapis.com/auth/spreadsheets
+      - name: Read Google Slides
+        description: Read Google Slides presentations.
+        scope: https://www.googleapis.com/auth/presentations.readonly
+      - name: Manage Google Slides
+        description: Create, edit and manage Google Slides presentations.
+        scope: https://www.googleapis.com/auth/presentations
+      - name: View Calendar
+        description: View your calendar events.
+        scope: https://www.googleapis.com/auth/calendar.readonly
+      - name: Manage Calendar
+        description: View, create and edit your calendar events.
+        scope: https://www.googleapis.com/auth/calendar
+      - name: View Calendar Events
+        description: View calendar events with event-level access.
+        scope: https://www.googleapis.com/auth/calendar.events.readonly
+      - name: Manage Calendar Events
+        description: Create and edit calendar events with event-level access.
+        scope: https://www.googleapis.com/auth/calendar.events
+      - name: Read Google Contacts
+        description: View your Google contacts.
+        scope: https://www.googleapis.com/auth/contacts.readonly
+      - name: Read Google Analytics
+        description: View Google Analytics data.
+        scope: https://www.googleapis.com/auth/analytics.readonly
+
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: Google settings block for the admin Settings page.
+    key: google
+    title: Google
+    icon: tabler:brand-google
+    group: Integrations
+    order: 10
+    namespace: kickside.google
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.google
+      title: Google
+      icon: tabler:brand-google
+      help: OAuth app client credentials for Google services.
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      drive: https://www.googleapis.com/drive/v3
+      sheets: https://sheets.googleapis.com/v4/spreadsheets
+      analytics_admin: https://analyticsadmin.googleapis.com/v1beta
+      analytics_data: https://analyticsdata.googleapis.com/v1beta
+      gmail: https://gmail.googleapis.com/gmail/v1/users/me
+      contacts: https://people.googleapis.com/v1
+      docs: https://docs.googleapis.com/v1
+      calendar: https://www.googleapis.com/calendar/v3
+      slides: https://slides.googleapis.com/v1/presentations
+      authorization: https://accounts.google.com/o/oauth2/v2/auth
+      token: https://oauth2.googleapis.com/token
+      userinfo: https://www.googleapis.com/oauth2/v2/userinfo
+  - name: endpoint_drive
+    kind: ns.requirement
+    meta:
+      comment: Instance drive endpoint.
+      description: Instance drive endpoint.
+    default: https://www.googleapis.com/drive/v3
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.drive
+  - name: endpoint_sheets
+    kind: ns.requirement
+    meta:
+      comment: Instance sheets endpoint.
+      description: Instance sheets endpoint.
+    default: https://sheets.googleapis.com/v4/spreadsheets
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.sheets
+  - name: endpoint_analytics_admin
+    kind: ns.requirement
+    meta:
+      comment: Instance analytics_admin endpoint.
+      description: Instance analytics_admin endpoint.
+    default: https://analyticsadmin.googleapis.com/v1beta
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.analytics_admin
+  - name: endpoint_analytics_data
+    kind: ns.requirement
+    meta:
+      comment: Instance analytics_data endpoint.
+      description: Instance analytics_data endpoint.
+    default: https://analyticsdata.googleapis.com/v1beta
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.analytics_data
+  - name: endpoint_gmail
+    kind: ns.requirement
+    meta:
+      comment: Instance gmail endpoint.
+      description: Instance gmail endpoint.
+    default: https://gmail.googleapis.com/gmail/v1/users/me
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.gmail
+  - name: endpoint_contacts
+    kind: ns.requirement
+    meta:
+      comment: Instance contacts endpoint.
+      description: Instance contacts endpoint.
+    default: https://people.googleapis.com/v1
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.contacts
+  - name: endpoint_docs
+    kind: ns.requirement
+    meta:
+      comment: Instance docs endpoint.
+      description: Instance docs endpoint.
+    default: https://docs.googleapis.com/v1
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.docs
+  - name: endpoint_calendar
+    kind: ns.requirement
+    meta:
+      comment: Instance calendar endpoint.
+      description: Instance calendar endpoint.
+    default: https://www.googleapis.com/calendar/v3
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.calendar
+  - name: endpoint_slides
+    kind: ns.requirement
+    meta:
+      comment: Instance slides endpoint.
+      description: Instance slides endpoint.
+    default: https://slides.googleapis.com/v1/presentations
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.slides
+  - name: endpoint_authorization
+    kind: ns.requirement
+    meta:
+      comment: Instance authorization endpoint.
+      description: Instance authorization endpoint.
+    default: https://accounts.google.com/o/oauth2/v2/auth
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.authorization
+    - entry: kickside.google:google
+      path: .connector_contract.context_values.oauth_authorization_endpoint
+  - name: endpoint_token
+    kind: ns.requirement
+    meta:
+      comment: Instance token endpoint.
+      description: Instance token endpoint.
+    default: https://oauth2.googleapis.com/token
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.token
+    - entry: kickside.google:google
+      path: .connector_contract.context_values.oauth_token_endpoint
+  - name: endpoint_userinfo
+    kind: ns.requirement
+    meta:
+      comment: Instance userinfo endpoint.
+      description: Instance userinfo endpoint.
+    default: https://www.googleapis.com/oauth2/v2/userinfo
+    targets:
+    - entry: kickside.google:endpoints
+      path: .endpoints.userinfo
+    - entry: kickside.google:google
+      path: .connector_contract.context_values.oauth_userinfo_endpoint

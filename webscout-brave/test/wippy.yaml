@@ -1,0 +1,3 @@
+organization: kickside
+module: webscout-brave-test
+description: Standalone runnable harness that boots kickside/webscout-brave and runs its unit suites against the module.

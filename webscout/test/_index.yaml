@@ -1,0 +1,299 @@
+version: "1.0"
+namespace: app
+
+# Application-owned harness for kickside/webscout. The module is loaded from the
+# workspace replacement; this root supplies the concrete database, routers, process
+# host, and storage its dependency graph requires. Suites live in app.suites.
+
+entries:
+  - name: dep.kickside.security
+    kind: ns.dependency
+    version: '*'
+    component: kickside/security
+    parameters:
+      - {name: api_router, value: app:api}
+      - {name: ui_server, value: app:gateway}
+      - {name: target_db, value: app:db}
+      - {name: process_host, value: app:processes}
+
+  - name: db
+    kind: db.sql.sqlite
+    foreign_keys: true
+    meta: { comment: In-memory database for the module's transitive dependencies. }
+    file: ":memory:"
+
+  - name: env_storage
+    kind: env.storage.file
+    meta: { type: envstorage }
+    file_path: ./.wippy/test.env
+    auto_create: true
+
+  - name: temp_fs
+    kind: fs.directory
+    directory: ./.wippy
+
+  - name: gateway
+    kind: http.service
+    meta: { comment: Test HTTP server. }
+    addr: :19133
+    lifecycle: { auto_start: false }
+
+  - name: api
+    kind: http.router
+    meta: { comment: Test API router., server: gateway }
+    prefix: /api
+
+  - name: api_public
+    kind: http.router
+    meta: { comment: Test views router., server: gateway }
+    prefix: /public
+
+  - name: processes
+    kind: process.host
+    meta: { comment: Test process host. }
+    lifecycle: { auto_start: false }
+
+  - name: user
+    kind: security.policy
+    groups: [webscout_test]
+    policy: { resources: '*', actions: '*', effect: allow }
+
+  - name: admin
+    kind: security.policy
+    groups: [webscout_test_admin]
+    policy: { resources: '*', actions: '*', effect: allow }
+
+  - name: dep.kickside.users
+    kind: ns.dependency
+    component: kickside/users
+    version: "*"
+    parameters:
+      - { name: kickside.users:public_router, value: app:api_public }
+      - { name: kickside.users:api_router, value: app:api }
+      - { name: kickside.users:target_db, value: app:db }
+      - { name: kickside.users:user_security_scope, value: app:user }
+      - { name: kickside.users:admin_security_scope, value: app:admin }
+      - { name: kickside.users:login_role_resource, value: 'app:*' }
+      - { name: kickside.users:ui_server, value: app:gateway }
+
+  - name: dep.kickside.webscout
+    kind: ns.dependency
+    component: kickside/webscout
+    version: '*'
+    parameters:
+    - name: kickside.component:target_db
+      value: app:db
+    - name: kickside.component:lifecycle_impl
+      value: kickside.core.lifecycle:component_lifecycle_impl
+    - name: kickside.connection:api_router
+      value: app:api
+    - name: kickside.connection:ui_server
+      value: app:gateway
+    - name: kickside.core:target_db
+      value: app:db
+    - name: kickside.core.retention:user_security_scope
+      value: app:user
+    - name: kickside.core.threads:user_security_scope
+      value: app:user
+    - name: kickside.core.threads.hydration:user_security_scope
+      value: app:user
+    - name: kickside.core.lifecycle:process_host
+      value: app:processes
+    - name: kickside.core.retention:process_host
+      value: app:processes
+    - name: kickside.core.threads:process_host
+      value: app:processes
+    - name: kickside.core.projections:process_host
+      value: app:processes
+    - name: kickside.core.retention:api_router
+      value: app:api
+    - name: kickside.core.threads:api_router
+      value: app:api
+    - name: kickside.core.threads.hydration:api_router
+      value: app:api
+    - name: kickside.core.projections:api_router
+      value: app:api
+    - name: kickside.core.retention:env_storage
+      value: app:env_storage
+    - name: kickside.core.projections:env_storage
+      value: app:env_storage
+    - name: kickside.core.jobs:target_db
+      value: app:db
+    - name: kickside.core.jobs:temp_fs
+      value: app:temp_fs
+    - name: kickside.core.jobs:process_host
+      value: app:processes
+    - name: kickside.core.jobs:api_router
+      value: app:api
+    - name: kickside.core.scheduler:process_host
+      value: app:processes
+    - name: kickside.core.scheduler:env_storage
+      value: app:env_storage
+    - name: kickside.core.lifecycle:user_lifecycle_grant
+      value:
+        subject_id: app:user
+        subject_type: group
+        access_mask: 2
+    - name: kickside.core.lifecycle:admin_lifecycle_grant
+      value:
+        subject_id: app:admin
+        subject_type: group
+        access_mask: 3
+    - name: kickside.component:api_router
+      value: app:api
+    - name: kickside.blocks:process_host
+      value: app:processes
+    - name: kickside.settings:target_db
+      value: app:db
+    - name: kickside.settings:api_router
+      value: app:api
+    - name: kickside.settings:ui_server
+      value: app:gateway
+    - name: userspace.dataflow:target_db
+      value: app:db
+    - name: userspace.dataflow:process_host
+      value: app:processes
+    - name: wippy.bootloader:application_host
+      value: app:processes
+    - name: wippy.bootloader:env_storage
+      value: app:env_storage
+    - name: wippy.llm:process_host
+      value: app:processes
+    - name: wippy.llm:env_storage
+      value: app:env_storage
+    - name: wippy.migration:app_db
+      value: app:db
+    - name: wippy.session:api_router
+      value: app:api
+    - name: wippy.session:database_resource
+      value: app:db
+    - name: wippy.session:default_host
+      value: app:processes
+    - name: wippy.session:env_storage
+      value: app:env_storage
+    - name: wippy.session:delegation_func_id
+      value: userspace.dataflow.session:delegate
+    - name: wippy.views:api_router
+      value: app:api_public
+    - name: wippy.views:env_storage
+      value: app:env_storage
+
+  - name: dep.wippy.test
+    kind: ns.dependency
+    component: wippy/test
+    version: "*"
+
+  # A descriptor declared the way a provider module ships one, so discovery runs
+  # against the real registry and not only against a stub finder.
+  - name: fixture_provider
+    kind: registry.entry
+    meta:
+      type: kickside.webscout:search_provider
+      comment: Fixture search provider descriptor.
+    id: fixture
+    label: Fixture
+    icon: tabler:test-pipe
+    description: Declared descriptor used by the discovery tests.
+    search_func: app:fixture_search
+    available_func: app:fixture_available
+    settings_ns: app
+    max_results: 7
+    default: true
+    order: 10
+
+  - name: agent_defaults_test
+    kind: function.lua
+    meta: { type: test, suite: webscout }
+    source: file://agent_defaults_test.lua
+    method: run
+    modules: [registry, funcs, security, json]
+    imports:
+      test: wippy.test:test
+
+  - name: endpoints_test
+    kind: function.lua
+    meta: { type: test, suite: endpoints }
+    source: file://endpoints_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+
+  - name: fixture
+    kind: registry.entry
+    url: http://127.0.0.1:19134/northwind
+
+  - name: native_fetch
+    kind: function.lua
+    source: file://native_fetch.lua
+    method: handler
+    imports:
+      client: kickside.webscout.client:client
+
+  - name: request_scope
+    kind: security.policy
+    policy:
+      resources: '*'
+      actions: [funcs.call, registry.get, http_client.request, env.get]
+      effect: allow
+
+  - name: private_scope
+    kind: security.policy
+    policy:
+      resources: [127.0.0.1]
+      actions: [http_client.private_ip]
+      effect: allow
+
+  - name: native_egress_test
+    kind: function.lua
+    meta: { type: test, suite: webscout }
+    source: file://native_egress_test.lua
+    method: run
+    modules: [funcs, security, registry]
+    imports:
+      test: wippy.test:test
+
+  - name: user_endpoint_policy_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: member_endpoint_policy
+    source: file://user_endpoint_policy_test.lua
+    method: run
+    modules:
+    - registry
+    - security
+    imports:
+      test: wippy.test:test
+
+  - name: dep.member_endpoint_contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '*'
+    parameters:
+    - name: kickside.contract.http:user_security_scope
+      value: app.security:user
+
+  - name: fixture_gateway
+    kind: http.service
+    addr: 127.0.0.1:19134
+    lifecycle: { auto_start: true }
+
+  - name: fixture_router
+    kind: http.router
+    meta: { server: fixture_gateway }
+    prefix: /
+
+  - name: fixture_page
+    kind: function.lua
+    meta: { type: test_helper }
+    source: file://fixture_page.lua
+    method: handler
+    modules: [http]
+
+  - name: fixture_page.endpoint
+    kind: http.endpoint
+    meta: { router: fixture_router, type: test_helper }
+    method: GET
+    path: /northwind
+    func: fixture_page

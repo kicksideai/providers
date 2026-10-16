@@ -1,0 +1,193 @@
+version: "1.0"
+namespace: kickside.atlassian.confluence.traits
+
+# Agent traits + tools for Confluence. The connection is bound on the trait: each
+# trait declares meta.web_component (the Confluence connection/space picker), the
+# user selects a connection (and optionally pins a space) when attaching the
+# trait, and that lands in the trait context. Tools read ctx.connection_id /
+# ctx.space_key — they never ask the LLM which connection to use.
+
+entries:
+  # ─── traits ──────────────────────────────────────────────────────────
+  - name: confluence_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Confluence Reader
+      public: true
+      icon: tabler:book
+      comment: Reads Confluence spaces, pages, and search.
+      tags: [confluence, wiki, read-only]
+      web_component: kickside-atlassian-confluence-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Atlassian connection component id selected by the Confluence picker.
+          space_key:
+            type: string
+            description: Optional pinned Confluence space key selected by the Confluence picker.
+        additionalProperties: false
+    prompt: |
+      You can read Confluence with the ConfluenceRead tool: list_spaces, get_space,
+      list_pages, list_blogposts, get_page, read_page (returns page text), search
+      (CQL, e.g. 'type=page AND text ~ "release notes"'), and get_comments. The
+      Confluence connection is preconfigured; if a space is pinned, space-level
+      actions default to it.
+    tools:
+      - kickside.atlassian.confluence.traits:confluence_get
+
+  - name: confluence_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Confluence Writer
+      public: true
+      icon: tabler:book
+      comment: Creates, updates, and deletes Confluence pages.
+      tags: [confluence, wiki, write]
+      web_component: kickside-atlassian-confluence-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Atlassian connection component id selected by the Confluence picker.
+          space_key:
+            type: string
+            description: Optional pinned Confluence space key selected by the Confluence picker.
+        additionalProperties: false
+    prompt: |
+      You can write Confluence with the ConfluenceWrite tool: create_page,
+      update_page, delete_page. Page bodies use Confluence storage format (XHTML).
+      The Confluence connection is preconfigured; create_page defaults to the
+      pinned space when one is set. update_page fetches the current version for you.
+    tools:
+      - kickside.atlassian.confluence.traits:confluence_write
+
+  - name: confluence_editor
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Confluence Editor
+      public: true
+      icon: tabler:book
+      comment: Full read and write access to Confluence spaces and pages.
+      tags: [confluence, wiki, read-write]
+      web_component: kickside-atlassian-confluence-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Atlassian connection component id selected by the Confluence picker.
+          space_key:
+            type: string
+            description: Optional pinned Confluence space key selected by the Confluence picker.
+        additionalProperties: false
+    prompt: |
+      You have full read+write Confluence access through two tools: ConfluenceRead
+      (read/search) and ConfluenceWrite (create/update/delete pages). The
+      Confluence connection is preconfigured; a pinned space scopes/defaults
+      space-level actions.
+    tools:
+      - kickside.atlassian.confluence.traits:confluence_get
+      - kickside.atlassian.confluence.traits:confluence_write
+
+  # ─── tools ───────────────────────────────────────────────────────────
+  - name: confluence_get
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Confluence Read
+      llm_alias: ConfluenceRead
+      llm_description: "Read Confluence. list_spaces/list_pages/list_blogposts/search/get_comments return compact summaries with title, status, version, author/date and URLs where available, plus provider search excerpts. Follow next_start_at or next_page_token. get_space/get_page/read_page/get_comment return complete records; read_page also renders markdown."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "comment_id": {"type": "string", "description": "Comment id for get_comment."},
+            "action": {"type": "string", "description": "The action to perform", "enum": ["list_spaces", "get_space", "list_pages", "list_blogposts", "get_page", "read_page", "search", "get_comments", "get_comment"]},
+            "space_key": {"type": "string", "description": "Space key (defaults to the pinned space) for get_space/list_pages/list_blogposts"},
+            "page_id": {"type": "string", "description": "Content id for get_page/read_page/get_comments"},
+            "query": {"type": "string", "description": "CQL query for search"},
+            "max_results": {"type": "integer", "description": "Confluence limit page size (max 100)"},
+            "start_at": {"type": "integer", "description": "Confluence start offset; pass next_start_at from the previous page"},
+            "next_page_token": {"type": "string", "description": "Opaque Cloud search token from next_page_token; omit start_at when using it"}
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Confluence. list_spaces/list_pages/list_blogposts/search/get_comments return compact summaries with title, status, version, author/date and URLs where available, plus provider search excerpts. Follow next_start_at or next_page_token. get_space/get_page/read_page/get_comment return complete records; read_page also renders markdown. Provider rejections return {success:false,error,status_code?,data?}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when the request was rejected."},
+            "error": {"type": "string", "description": "Rejection reason when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a request Confluence rejected."},
+            "data": {"description": "Confluence error body of a rejected request."},
+            "action": {"type": "string"},
+            "result": {"type": "string", "enum": ["created", "updated", "deleted"]},
+            "page_id": {"type": "string"},
+            "title": {"type": "string"},
+            "version": {"type": "integer"},
+            "page": {"type": "object", "description": "The created or updated Confluence content object.", "additionalProperties": true}
+          }
+        }
+    source: file://confluence_get.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.atlassian.client:transport
+      confluence: kickside.atlassian.confluence:api
+      markdown: kickside.atlassian.confluence:markdown
+
+  - name: confluence_write
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Confluence Write
+      llm_alias: ConfluenceWrite
+      llm_description: "Write to Confluence via the configured connection. Actions: create_page, update_page, delete_page. Returns an object { success, action, result, page_id, ... }; a rejected request returns { success: false, error, status_code, data }. Use ConfluenceRead to resolve page_id and space_key first."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {"type": "string", "description": "The action to perform", "enum": ["create_page", "update_page", "delete_page"]},
+            "space_key": {"type": "string", "description": "Space key for create_page (defaults to the pinned space)"},
+            "title": {"type": "string", "description": "Page title for create_page/update_page"},
+            "body": {"type": "string", "description": "Page body in Confluence storage format (XHTML)"},
+            "parent_id": {"type": "string", "description": "Parent page id for create_page (optional)"},
+            "page_id": {"type": "string", "description": "Content id for update_page/delete_page"}
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "action": {"type": "string"},
+            "result": {"type": "string", "enum": ["created", "updated", "deleted"]},
+            "page_id": {"type": "string"},
+            "title": {"type": "string"},
+            "version": {"type": "integer"}
+          },
+          "description": "Envelope { success: true, ... } with the fields below; a rejected request returns { success: false, error, status_code, data }."
+        }
+    source: file://confluence_write.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.atlassian.client:transport
+      confluence: kickside.atlassian.confluence:api

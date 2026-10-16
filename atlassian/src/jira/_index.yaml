@@ -1,0 +1,24 @@
+version: "1.0"
+namespace: kickside.atlassian.jira
+
+# Jira product slice: the REST client and the agent tools/traits (in the .traits
+# child namespace). The connection itself is the single shared Atlassian
+# connection (kickside.atlassian.connection) — one site + one credential serves
+# both Jira and Confluence — so there is no per-product connection binding here.
+
+entries:
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Jira REST client (projects, issues, JQL, comments, transitions, write) over the transport.
+    source: file://api.lua
+    imports:
+      transport: kickside.atlassian.client:transport
+      types: kickside.atlassian.client:types
+
+  - name: text
+    kind: library.lua
+    meta:
+      name: text
+    source: file://text.lua

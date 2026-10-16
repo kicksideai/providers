@@ -1,0 +1,30 @@
+organization: kickside
+module: llm-ocr
+type: plugin
+description: KickSide llm-ocr — LLM-based OCR for scanned/image-only documents. Transcribes stored page screenshots into text and supersedes empty extracted content, with an admin-editable model pointer.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - ocr
+  - llm
+  - uploads
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - ".build/**"
+  - "app:**"
+  - "app.env:**"
+  - "app.fixtures:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

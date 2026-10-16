@@ -1,0 +1,6 @@
+organization: kickside
+module: mcp-client-test
+description: Standalone runnable harness that boots kickside/mcp-client and runs its unit suites.
+directories:
+  modules: ../../.wippy/mcp-client
+  src: .

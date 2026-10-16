@@ -1,0 +1,41 @@
+version: "1.0"
+namespace: kickside.phantombuster.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared constants and type surfaces for PhantomBuster.
+    source: file://types.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Low-level PhantomBuster API client.
+    source: file://api.lua
+    modules: [http_client, json]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      types: kickside.phantombuster.client:types
+
+  - name: output
+    kind: library.lua
+    meta:
+      name: output
+      comment: PhantomBuster tool output redaction of secret-like keys.
+    source: file://output.lua
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Actor-scoped PhantomBuster connection resolver and API transport.
+    source: file://transport.lua
+    imports:
+      component: kickside.component:component
+      api: kickside.phantombuster.client:api
+      types: kickside.phantombuster.client:types

@@ -1,0 +1,206 @@
+version: "1.0"
+namespace: kickside.llm_ocr
+
+entries:
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: KickSide LLM OCR
+      comment: LLM-based OCR transcription — a universal upload stage that OCRs rendered-page screenshots and fills empty primary content with transcribed text.
+
+  - name: dep.kickside.jobs
+    version: '*'
+    kind: ns.dependency
+    component: kickside/jobs
+
+  - name: ocr
+    kind: library.lua
+    meta:
+      name: ocr
+      comment: LLM OCR transcription seam. new(runtime?) returns { transcribe(image_bytes, opts) }.
+    source: file://ocr.lua
+    modules: [base64]
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+
+  - name: stage_implementation
+    kind: library.lua
+    meta:
+      comment: Focused implementation for kickside.llm_ocr:stage; invoked by its one-method function wrapper.
+    source: file://stage.lua
+    modules: [channel, contract, logger]
+    imports:
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
+      ocr: kickside.llm_ocr:ocr
+      page_images: kickside.uploads.rasterize:page_images
+      jobs: kickside.core.jobs:jobs
+
+  - name: stage
+    kind: function.lua
+    meta:
+      type: processor
+      comment: Universal upload stage; OCRs rendered-page screenshots and replaces empty primary content with transcribed text.
+    source: file://_fn_stage.lua
+    imports:
+      operation_impl: kickside.llm_ocr:stage_implementation
+    method: process
+    pool:
+      type: static
+      size: 4
+      workers: 4
+
+  - name: stage.universal
+    kind: registry.entry
+    meta:
+      type: upload.stage
+      comment: Runs after the rasterizer on every upload; transcribes stored page screenshots (self-gates to documents with rendered pages).
+    scope: universal
+    func: kickside.llm_ocr:stage
+    title: Transcribing pages
+    priority: 40
+
+  - name: setting.ocr_enabled
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Transcribe stored page screenshots into the document's text content.
+    namespace: kickside.llm_ocr
+    key: ocr_enabled
+    value_type: bool
+    default: true
+    description: When a document has rendered page screenshots, transcribe them with an LLM and use the text as the document content.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.ocr_images
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Image uploads retain their source artifact and receive primary markdown through OCR.
+    namespace: kickside.llm_ocr
+    key: ocr_images
+    value_type: bool
+    default: true
+    description: Transcribe image uploads with an LLM and use the text as primary content. The original image remains stored for preview and vision.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.ocr_batch_size
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Number of pages transcribed per batch; cancellation is honored and progress checkpointed between batches.
+    namespace: kickside.llm_ocr
+    key: ocr_batch_size
+    value_type: int
+    default: 4
+    description: Pages transcribed per OCR batch. After each batch the text is saved and a cancel/terminate is honored, so a long document never loses earlier pages or its job lease.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.ocr_call_timeout_ms
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Per-page OCR call timeout in milliseconds, bounded under the provider ceiling.
+    namespace: kickside.llm_ocr
+    key: ocr_call_timeout_ms
+    value_type: int
+    default: 120000
+    description: Maximum milliseconds a single page transcription call may run before it returns a timeout error instead of hanging.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.ocr_max_text_bytes
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Extracted-text length per page at or below which a document is treated as sparse for OCR.
+    namespace: kickside.llm_ocr
+    key: ocr_max_text_bytes
+    value_type: int
+    default: 800
+    description: When no rendered pages exist, OCR runs on large extracted page images only if the document's text is at or below this many bytes per page.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.ocr_model
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Vision-capable model used to transcribe page screenshots.
+    namespace: kickside.llm_ocr
+    key: ocr_model
+    value_type: string
+    default: "class:fast"
+    description: Model id or class (e.g. class:fast) used to transcribe page screenshots into text.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.ocr_prompt
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Optional override for the per-page transcription instruction.
+    namespace: kickside.llm_ocr
+    key: ocr_prompt
+    value_type: string
+    default: ""
+    description: Optional override for the user instruction sent with each page image.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: LLM OCR settings block for the admin Settings page.
+    key: llm_ocr
+    title: LLM OCR
+    icon: tabler:scan
+    group: Integrations
+    order: 10
+    namespace: kickside.llm_ocr
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.llm_ocr
+      title: LLM OCR
+      icon: tabler:scan
+      help: Vision OCR for scanned or low-text documents.
+
+  - name: dep.kickside.core
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Reads document thread state while OCR materializes page text.
+    component: kickside/core
+
+  - name: dep.kickside.uploads
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Reads uploaded page artifacts through the uploads repository.
+    component: kickside/uploads
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the OCR settings definitions and runtime settings contract.
+    component: kickside/settings
+
+  - name: dep.wippy.llm
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Transcribes page images through the configured multimodal LLM.
+    component: wippy/llm

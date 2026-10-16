@@ -1,0 +1,34 @@
+organization: kickside
+module: code-execution
+type: plugin
+description: Sandboxed Lua execution and one canonical Run Code Block, bounded to an installer-whitelisted tool set. Ships the Block editor, SDK-reference and assist endpoints, a dry-run-validated generator, and the agent trait.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - code-execution
+  - sandbox
+  - agents
+  - blocks
+embed:
+  - kickside.code_execution:ui_fs
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "test/**"
+  - ".wippy/**"
+  - "ui/node_modules/**"
+  - "ui/coverage/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "ui/src/**/*.spec.ts"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

@@ -1,0 +1,47 @@
+version: '1.0'
+namespace: kickside.sso.providers.oidc.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Sso Oidc
+    surface: kickside.sso.providers.oidc
+    intent: module_access
+    includes:
+    - kickside.sso.providers.oidc.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.sso.providers.oidc:*
+    - kickside.sso.providers.oidc.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.sso.providers.oidc:*
+    - kickside.sso.providers.oidc.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

@@ -1,0 +1,54 @@
+version: "1.0"
+namespace: app.models
+
+# Harness fixtures: the LLM models the kb_ingest suite resolves by class. In
+# production these llm.model entries live in the kickside/models app module; the
+# embed_func discovers them via wippy.llm.discovery by class (class:fast for the
+# document pre-summary + chunk enrichment, class:embed for the vector store).
+# The OpenAI provider reads OPENAI_API_KEY from wippy.llm.env:envs (OS storage),
+# so a key must be present in the environment for the live-embed cases to pass.
+# Harness-only; excluded from publish.
+
+entries:
+  - name: gpt-4.1-mini
+    kind: registry.entry
+    meta:
+      type: llm.model
+      title: GPT-4.1 Mini
+      comment: Fast generation model the ingest pre-summary + chunk enrichment resolve via class:fast.
+      capabilities:
+        - tool_use
+        - generate
+        - structured_output
+      class:
+        - default
+        - fast
+      priority: 10
+    max_tokens: 1047576
+    output_tokens: 32768
+    pricing:
+      cached_input: 0.5
+      input: 2
+      output: 8
+    providers:
+      - id: wippy.llm.openai:provider
+        provider_model: gpt-4.1-mini
+
+  - name: text-embedding-3-small
+    kind: registry.entry
+    meta:
+      type: llm.model
+      title: Text Embedding 3 Small
+      comment: Embedding model the kb10 store resolves via class:embed.
+      capabilities:
+        - embed
+      class:
+        - embed
+      priority: 8
+    max_tokens: 8192
+    dimensions: 1536
+    pricing:
+      input: 0.02
+    providers:
+      - id: wippy.llm.openai:provider
+        provider_model: text-embedding-3-small

@@ -1,0 +1,31 @@
+organization: kickside
+module: gitlab
+type: plugin
+description: KickSide GitLab — access-token connection provider for gitlab.com and self-managed GitLab with project discovery.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - gitlab
+  - connection
+  - code
+  - projects
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "test/stubs/**"
+  - "test/stubs:**"
+  - "src/**/stubs/**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

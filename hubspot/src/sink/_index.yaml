@@ -1,0 +1,129 @@
+version: "1.0"
+namespace: kickside.hubspot.sink
+
+entries:
+  - name: object_sink
+    kind: library.lua
+    meta:
+      name: object_sink
+      comment: Shared HubSpot writable sink implementation for uniform CRM objects.
+    source: file://object_sink.lua
+    modules: [ctx]
+    imports:
+      config: kickside.hubspot.client:config
+      data_error: kickside.hubspot.client:data_error
+      transport: kickside.hubspot.client:transport
+
+  - name: write_crm
+    kind: function.lua
+    meta:
+      comment: kickside.data:writable.write for HubSpot CRM objects selected by config.object_type.
+    source: file://_fn_write_crm.lua
+    method: write
+    modules: [ctx]
+    imports:
+      config: kickside.hubspot.client:config
+      data_error: kickside.hubspot.client:data_error
+      transport: kickside.hubspot.client:transport
+      implementation: kickside.hubspot.sink:object_sink
+
+  - name: crm_sink
+    kind: contract.binding
+    meta:
+      title: HubSpot CRM Records
+      icon: simple-icons:hubspot
+      comment: Upsert or archive HubSpot contacts, companies, deals, and task activity objects by dest_ref or configured external key.
+      provider: hubspot
+      group: CRM
+      delivery: at_most_once
+      input_shape: record
+    contracts:
+      - contract: kickside.data:writable
+        methods:
+          write: kickside.hubspot.sink:write_crm
+
+  - name: crm
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: HubSpot CRM Records
+      comment: Upsert or archive HubSpot contacts, companies, deals, and HubSpot task activity objects.
+      icon: simple-icons:hubspot
+    binding: kickside.hubspot.sink:crm_sink
+    operations:
+      upsert: {}
+      delete:
+        requires_dest_ref: false
+    input_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "object_id": { "type": "string", "description": "HubSpot record id for upsert/delete." },
+          "external_key": { "type": "string", "description": "Stable source key used with config.external_key_property for idempotent upsert/delete." },
+          "external_key_property": { "type": "string", "description": "HubSpot property used to find an existing record before create." },
+          "properties": { "type": "object", "description": "Raw HubSpot field-name to value map. No provider-owned canonical mapping is applied." },
+          "activity_type": { "type": "string", "description": "Optional activity kind for task-backed activity records." }
+        } }
+    config_schema:
+      object_type:
+        picker: kickside-hubspot-picker
+        required: true
+        title: Object type
+        description: HubSpot CRM object type to write for canonical upsert/delete operations. Use tasks for task-backed activity records.
+        enum: [contacts, companies, deals, tasks]
+        writes: [connection_id, object_type]
+      connection_id:
+        required: true
+        title: HubSpot connection
+        description: Populated by the HubSpot picker.
+      external_key_property:
+        picker: wc-schema-form
+        required: false
+        title: External key property
+        description: Optional HubSpot property used for idempotent upsert/delete by input.external_key or input.item_key.
+      objects:
+        picker: wc-schema-form
+        type: object
+        required: false
+        title: Object sync config
+        description: >-
+          Per-object enabled/direction config. Shape: { contacts: { enabled: true,
+          direction: "source|sink|bidirectional|disabled" }, companies: {...},
+          deals: {...}, tasks: {...} }.
+      field_map:
+        picker: wc-schema-form
+        type: object
+        required: false
+        title: Field map
+        description: Per-object mapping data, hubspot_property -> canonical field. The sink writes input.properties as raw HubSpot properties; mapping is declared for the external mapping artifact.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "success": { "type": "boolean" },
+          "result": { "type": "string", "enum": ["created", "updated", "deleted", "noop"] },
+          "dest_ref": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "object_type": { "type": "string", "enum": ["contacts", "companies", "deals", "tasks"] },
+              "object_id": { "type": "string" }
+            },
+            "required": ["object_type", "object_id"]
+          },
+          "dest_version": { "type": "string", "description": "HubSpot updatedAt/version for the destination record." },
+          "retry_after_ms": { "type": "integer", "minimum": 0 },
+          "error": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "retriable": { "type": "boolean" },
+              "scope": { "type": "string" }
+            },
+            "required": ["code", "message", "retriable", "scope"]
+          }
+        },
+        "required": ["success"] }

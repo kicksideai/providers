@@ -1,0 +1,38 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/mcp-client. They live in the harness because the
+# module is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: protocol_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: mcp_client
+      comment: MCP protocol decoding, HTTP client sessions, dynamic tool surface, supervisor start, and credential reconnect rollback.
+    source: file://protocol_test.lua
+    method: run
+    modules: [json, registry, process]
+    imports:
+      test: wippy.test:test
+      protocol: kickside.mcp_client:protocol
+      client: kickside.mcp_client:http_client
+      surface: kickside.mcp_client:surface
+      reconnect: kickside.mcp_client.api:reconnect
+      invoke_tool: kickside.mcp_client:invoke_tool
+      mcp_connection: kickside.mcp_client:connection_implementation
+      base: kickside.connection:base_connection
+      broker: kickside.mcp_client:broker
+
+  - name: http_diagnostics_test
+    kind: function.lua
+    source: file://http_diagnostics_test.lua
+    method: run
+    meta: {type: test, suite: mcp_client}
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      client: kickside.mcp_client:http_client
+      protocol: kickside.mcp_client:protocol

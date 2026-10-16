@@ -1,0 +1,22 @@
+version: '1.0'
+namespace: app.http_errors_test
+entries:
+- name: http_error_matrix_test
+  kind: function.lua
+  meta:
+    type: test
+    suite: http_error_matrix
+  source: file://http_error_matrix_test.lua
+  method: run
+  modules:
+  - http
+  - security
+  imports:
+    test: wippy.test:test
+    canonical_json: kickside.contract:canonical_json
+    adapter: kickside.kb10.api:browse
+    dependency: kickside.component:component
+- name: contract
+  kind: ns.dependency
+  component: kickside/contract
+  version: '*'

@@ -1,0 +1,67 @@
+local test = require("test")
+local client = require("client")
+
+local function define_tests()
+    test.describe("WebScout HTTP boundary", function()
+        test.it("accepts public HTTP(S), strips fragments, and rejects credentials", function()
+            local url, err = client.validate_public_url("https://example.invalid/about#section")
+            test.is_nil(err)
+            test.eq(url, "https://example.invalid/about")
+            local _, credential_err = client.validate_public_url("https://user:pass@example.invalid/private")
+            test.contains(credential_err, "credentials")
+        end)
+
+        test.it("rejects unsupported schemes and whitespace", function()
+            for _, value in ipairs({
+                "file:///etc/passwd",
+                "https://example.invalid/a b",
+            }) do
+                local url, err = client.validate_public_url(value)
+                test.is_nil(url)
+                test.not_nil(err)
+            end
+        end)
+
+        test.it("passes private destinations to native egress policy", function()
+            local url, err = client.validate_public_url("http://localhost/admin")
+            test.eq(url, "http://localhost/admin")
+            test.is_nil(err)
+            local url, err = client.validate_public_url("http://127.0.0.1:8080/admin")
+            test.eq(url, "http://127.0.0.1:8080/admin")
+            test.is_nil(err)
+            local url, err = client.validate_public_url("http://10.0.0.2/metadata")
+            test.eq(url, "http://10.0.0.2/metadata")
+            test.is_nil(err)
+            local url, err = client.validate_public_url("http://172.16.0.2/internal")
+            test.eq(url, "http://172.16.0.2/internal")
+            test.is_nil(err)
+            local url, err = client.validate_public_url("http://169.254.169.254/latest")
+            test.eq(url, "http://169.254.169.254/latest")
+            test.is_nil(err)
+            local url, err = client.validate_public_url("http://192.168.1.2/router")
+            test.eq(url, "http://192.168.1.2/router")
+            test.is_nil(err)
+            local url, err = client.validate_public_url("http://[::1]/admin")
+            test.eq(url, "http://[::1]/admin")
+            test.is_nil(err)
+        end)
+
+        test.it("rejects unsafe redirect destinations after transport", function()
+            local response, err = client.check_final_url({ status_code = 200, url = "https://user:pass@example.invalid/private" })
+            test.is_nil(response)
+            test.contains(err, "Redirect target rejected")
+            local redirect, redirect_err = client.check_final_url({ status_code = 302, url = "https://example.invalid/next" })
+            test.is_nil(redirect)
+            test.contains(redirect_err, "Redirect was not resolved")
+            local public, public_err = client.check_final_url({ status_code = 200, url = "https://example.invalid/ok" })
+            test.is_nil(public_err)
+            test.eq(public.url, "https://example.invalid/ok")
+            local missing, missing_err = client.check_final_url({ status_code = 200, body = "unverified" })
+            test.is_nil(missing)
+            test.contains(missing_err, "Response URL missing")
+        end)
+    end)
+end
+
+local run_cases = test.run_cases(define_tests)
+return { run = function(options) return run_cases(options) end }

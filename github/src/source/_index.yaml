@@ -1,0 +1,110 @@
+version: "1.0"
+namespace: kickside.github.source
+
+entries:
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Shared GitHub pullable source implementation for repository issues and pull requests.
+    source: file://pull_core.lua
+    modules: [ctx]
+    imports:
+      data_error: kickside.github.client:data_error
+      transport: kickside.github.client:transport
+
+  - name: pull_items
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for GitHub repository issues / pull requests.
+    source: file://pull_items.lua
+    method: pull
+    modules: [ctx]
+    imports:
+      data_error: kickside.github.client:data_error
+      transport: kickside.github.client:transport
+      implementation: kickside.github.source:pull_core
+
+  - name: pull_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only GitHub repository issue / pull request listing used by Data Sync reconcile.
+    source: file://pull_keys.lua
+    method: pull_keys
+    modules: [ctx]
+    imports:
+      data_error: kickside.github.client:data_error
+      transport: kickside.github.client:transport
+      implementation: kickside.github.source:pull_core
+
+  - name: repo_items_source
+    kind: contract.binding
+    meta:
+      title: GitHub Issues and Pull Requests
+      icon: tabler:brand-github
+      comment: Pull issues and pull requests from a GitHub repository on a schedule.
+      provider: github
+      group: Developer
+      class: [kickside.code, kickside.issues]
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.github.source:pull_items
+
+  - name: repo_items
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: GitHub Issues and Pull Requests
+      comment: Watch issues and pull requests in a selected GitHub repository.
+      icon: tabler:brand-github
+    binding: kickside.github.source:repo_items_source
+    reconcile:
+      pull_keys: kickside.github.source:pull_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        role: primary
+        required: true
+        provider: github
+      owner:
+        picker: wc-schema-form
+        required: true
+        title: Owner
+        description: Repository owner or organization.
+      repo:
+        picker: wc-schema-form
+        required: true
+        title: Repository
+        description: Repository name.
+      item_type:
+        picker: wc-schema-form
+        required: false
+        title: Item type
+        description: Pull issues, pull requests, or both.
+        enum: [all, issues, pull_requests]
+      backfill_since:
+        picker: wc-schema-form
+        required: false
+        title: Backfill since
+        description: Optional ISO timestamp. Only items updated at or after this time are emitted.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "number": { "type": "integer" },
+          "item_type": { "type": "string", "enum": ["issue", "pull_request"] },
+          "state": { "type": "string" },
+          "title": { "type": "string" },
+          "content": { "type": "string" },
+          "content_type": { "type": "string" },
+          "source_url": { "type": "string" },
+          "author": { "type": "string" },
+          "labels": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string" },
+          "updated_at": { "type": "string" },
+          "closed_at": { "type": ["string", "null"] }
+        },
+        "required": ["id", "number", "item_type", "title", "source_url"] }

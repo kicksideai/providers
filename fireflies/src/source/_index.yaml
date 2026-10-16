@@ -1,0 +1,142 @@
+version: "1.0"
+namespace: kickside.fireflies.source
+
+# Fireflies as kickside.data:pullable sources. The engine owns the cursor/schedule/
+# dedup; each binding is a pull adapter + its static meta. Two catalog rows --
+# transcripts (full detail) and meetings (metadata only) -- are two contract.binding
+# entries whose ports declare their own pullable method. The poller persists only
+# { binding, connection_id, config } and never passes the port type to pull, so the
+# shape difference lives in the binding, not in one shared port. Both bindings back
+# onto pull_core, which resolves the shape from its adapter's opts.
+
+entries:
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Shared pull implementation for the Fireflies sources; resolves shape from the binding adapter.
+    source: file://pull_core.lua
+    modules: [ctx, hash]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      transport: kickside.fireflies.client:transport
+      output: kickside.fireflies.client:output
+
+  - name: pull_transcripts
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for the transcripts source (full transcript shape).
+    source: file://pull_transcripts.lua
+    method: pull
+    imports:
+      pull_core: kickside.fireflies.source:pull_core
+
+  - name: pull_meetings
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for the meetings source (force_shape=event; metadata only, never enriches).
+    source: file://pull_meetings.lua
+    method: pull
+    imports:
+      pull_core: kickside.fireflies.source:pull_core
+
+  - name: pull_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only Fireflies transcript listing used by Data Sync reconcile.
+    source: file://pull_keys.lua
+    method: pull_keys
+    imports:
+      pull_core: kickside.fireflies.source:pull_core
+
+  # Self-describing polled SOURCE. It implements kickside.data:pullable and declares
+  # its published port (below) makes it a source the poller catalog offers. The pull
+  # method IS the backing -- the poller opens this binding's pullable directly and
+  # pulls with the config context.
+  - name: transcripts_source
+    kind: contract.binding
+    meta:
+      title: Fireflies Transcripts
+      icon: tabler:flame
+      comment: Pull full meeting transcripts (summary, action items, attendees) from Fireflies on a schedule.
+      provider: fireflies
+      group: Meetings
+      class:
+        - kickside.meetings
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.fireflies.source:pull_transcripts
+
+  # Metadata-only sibling source. Same connection picker and schedule, but its port
+  # forces the event shape: it emits list metadata (title/date/participants) and never
+  # fetches per-transcript detail. item_schema drops the transcript-only fields.
+  - name: meetings_source
+    kind: contract.binding
+    meta:
+      title: Fireflies Meetings
+      icon: tabler:flame
+      comment: Pull meeting metadata (title, date, participants) from Fireflies on a schedule.
+      provider: fireflies
+      group: Meetings
+      class:
+        - kickside.meetings
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.fireflies.source:pull_meetings
+
+  # Published collection ports (pullable backing). output_schema is the item shape
+  # flowing out; reconcile.pull_keys enumerates the source key set for Data Sync
+  # deletion reconcile. Two rows -- transcripts (full detail) and meetings (metadata
+  # only) -- so the shape difference lives in the binding, not one shared port.
+  - name: transcripts
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Fireflies Transcripts
+      comment: Watch completed Fireflies transcripts with summaries and action items.
+      icon: tabler:microphone
+    binding: kickside.fireflies.source:transcripts_source
+    reconcile:
+      pull_keys: kickside.fireflies.source:pull_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: fireflies
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": { "id": {"type":"string"}, "title": {"type":"string"}, "date": {"type":"string"},
+                        "duration": {"type":"number"}, "host_email": {"type":"string"}, "organizer_email": {"type":"string"},
+                        "participants": {"type":"array", "items": {"type":"string"}},
+                        "transcript_url": {"type":"string"}, "attendees": {"type":"array", "items": {"type":"object"}},
+                        "transcript": {"type":"string", "description": "Verbatim call text, speaker-by-speaker, transcript-source-only (empty on the meetings source)."},
+                        "summary": {"type":"object","properties":{"overview":{"type":"string"},"keywords":{"type":"array"},"action_items":{"type":"array"},"outline":{"type":"array"},"topics_discussed":{"type":"array"}}} },
+        "required": ["id"] }
+
+  - name: meetings
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Fireflies Meetings
+      comment: Watch Fireflies meeting records with participants and timing details.
+      icon: tabler:calendar-event
+    binding: kickside.fireflies.source:meetings_source
+    reconcile:
+      pull_keys: kickside.fireflies.source:pull_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: fireflies
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": { "id": {"type":"string"}, "title": {"type":"string"}, "date": {"type":"string"},
+                        "participants": {"type":"array", "items": {"type":"string"}},
+                        "duration": {"type":"number"}, "host_email": {"type":"string"}, "organizer_email": {"type":"string"} },
+        "required": ["id"] }

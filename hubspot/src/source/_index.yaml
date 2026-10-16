@@ -1,0 +1,410 @@
+version: "1.0"
+namespace: kickside.hubspot.source
+
+entries:
+  - name: association_batch
+    kind: library.lua
+    meta:
+      name: association_batch
+      comment: The HubSpot v4 batch association read and the per-input paging discipline every reader of it shares.
+    source: file://association_batch.lua
+    imports:
+      types: kickside.hubspot.client:types
+
+  - name: pull_core_associations
+    kind: library.lua
+    meta:
+      name: pull_core_associations
+      comment: Paged per-item contact/deal association hydration for pulled HubSpot engagements.
+    source: file://pull_core_associations.lua
+    imports:
+      association_batch: kickside.hubspot.source:association_batch
+      types: kickside.hubspot.client:types
+
+  - name: pull_core_hydration
+    kind: library.lua
+    source: file://pull_core_hydration.lua
+    imports:
+      config: kickside.hubspot.client:config
+
+  - name: pull_core_item
+    kind: library.lua
+    source: file://pull_core_item.lua
+    imports:
+      config: kickside.hubspot.client:config
+
+  - name: pull_core_labels
+    kind: library.lua
+    source: file://pull_core_labels.lua
+    imports:
+      config: kickside.hubspot.client:config
+
+  - name: pull_core_rows
+    kind: library.lua
+    meta:
+      name: pull_core_rows
+      comment: HubSpot object-list response shape - row validation and paging value extraction shared by the active and archived pull paths.
+    source: file://pull_core_rows.lua
+
+  - name: pull_core_archived
+    kind: library.lua
+    meta:
+      name: pull_core_archived
+      comment: The archived-object half of the HubSpot uniform pull - DELETE-op enumeration of a portal's archived collection.
+    source: file://pull_core_archived.lua
+    imports:
+      config: kickside.hubspot.client:config
+      data_error: kickside.hubspot.client:data_error
+      item_builder: kickside.hubspot.source:pull_core_item
+      pull_core_rows: kickside.hubspot.source:pull_core_rows
+
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Shared HubSpot pullable source implementation for uniform CRM objects.
+    source: file://pull_core.lua
+    modules: [ctx]
+    imports:
+      pull_core_archived: kickside.hubspot.source:pull_core_archived
+      associations: kickside.hubspot.source:pull_core_associations
+      config: kickside.hubspot.client:config
+      data_error: kickside.hubspot.client:data_error
+      hydration: kickside.hubspot.source:pull_core_hydration
+      item_builder: kickside.hubspot.source:pull_core_item
+      labels: kickside.hubspot.source:pull_core_labels
+      pull_core_rows: kickside.hubspot.source:pull_core_rows
+      transport: kickside.hubspot.client:transport
+
+  - name: pull_crm
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for HubSpot CRM objects selected by config.object_type.
+    source: file://pull_core.lua
+    method: pull
+    modules: [ctx]
+    imports:
+      pull_core_archived: kickside.hubspot.source:pull_core_archived
+      associations: kickside.hubspot.source:pull_core_associations
+      config: kickside.hubspot.client:config
+      data_error: kickside.hubspot.client:data_error
+      hydration: kickside.hubspot.source:pull_core_hydration
+      item_builder: kickside.hubspot.source:pull_core_item
+      labels: kickside.hubspot.source:pull_core_labels
+      pull_core_rows: kickside.hubspot.source:pull_core_rows
+      transport: kickside.hubspot.client:transport
+
+  - name: pull_crm_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only HubSpot CRM listing used by Data Sync reconcile.
+    source: file://pull_core.lua
+    method: pull_keys
+    modules: [ctx]
+    imports:
+      pull_core_archived: kickside.hubspot.source:pull_core_archived
+      associations: kickside.hubspot.source:pull_core_associations
+      config: kickside.hubspot.client:config
+      data_error: kickside.hubspot.client:data_error
+      hydration: kickside.hubspot.source:pull_core_hydration
+      item_builder: kickside.hubspot.source:pull_core_item
+      labels: kickside.hubspot.source:pull_core_labels
+      pull_core_rows: kickside.hubspot.source:pull_core_rows
+      transport: kickside.hubspot.client:transport
+
+  - name: crm_source
+    kind: contract.binding
+    meta:
+      title: HubSpot CRM Records
+      icon: simple-icons:hubspot
+      comment: Pull HubSpot CRM records plus read-only meetings, notes, emails, and calls on a schedule with upsert/delete ops and source versions.
+      provider: hubspot
+      group: CRM
+      class: [kickside.crm]
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.hubspot.source:pull_crm
+
+  - name: crm
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: HubSpot CRM Records
+      comment: Watch HubSpot CRM records plus read-only meetings, notes, emails, and calls for changes.
+      icon: simple-icons:hubspot
+    binding: kickside.hubspot.source:crm_source
+    reconcile:
+      pull_keys: kickside.hubspot.source:pull_crm_keys
+    config_schema:
+      object_type:
+        picker: kickside-hubspot-picker
+        required: true
+        title: Object type
+        description: HubSpot CRM object type to pull.
+        enum: [contacts, companies, deals, tasks, meetings, notes, emails, calls]
+        writes: [connection_id, object_type]
+      connection_id:
+        required: true
+        title: HubSpot connection
+        description: Populated by the HubSpot picker.
+      backfill_since:
+        picker: wc-schema-form
+        type: string
+        format: date-time
+        required: false
+        title: Backfill since
+        description: Optional ISO timestamp. Initial active-object search filters to records updated at or after this time.
+      objects:
+        picker: wc-schema-form
+        type: object
+        required: false
+        title: Object sync config
+        description: >-
+          Per-object enabled/direction and watermark config. Shape:
+          { contacts: { enabled: true, direction: "source|sink|bidirectional|disabled",
+          watermark_property: "lastmodifieddate" }, companies: {...}, deals: {...},
+          tasks: {...}, meetings: {...}, notes: {...}, emails: {...}, calls: {...} }.
+          Defaults: contacts=lastmodifieddate; all other object types=hs_lastmodifieddate.
+      property_selection:
+        picker: wc-schema-form
+        type: object
+        required: false
+        title: Property selection
+        description: >-
+          Per-object HubSpot property arrays to request. Shape: { contacts: ["email",
+          "firstname"], companies: ["name"] }. Use ["*"] for a schema-discovered
+          full mirror. Defaults remain intentionally bounded.
+      all_properties:
+        picker: wc-schema-form
+        type: boolean
+        required: false
+        default: false
+        title: Mirror all properties
+        description: >-
+          Discover every readable property in the connected HubSpot portal and
+          hydrate records in bounded batch reads. Equivalent to selecting ["*"]
+          for the chosen object type.
+      resolve_labels:
+        picker: wc-schema-form
+        type: boolean
+        required: false
+        default: false
+        title: Resolve HubSpot labels
+        description: >-
+          Resolve owner, pipeline, and deal-stage identifiers through the
+          connected HubSpot portal. Adds owner_name and owner_email to mapped
+          records, plus pipeline_name and stage_name for deals.
+      field_map:
+        picker: wc-schema-form
+        type: object
+        required: false
+        title: Field map
+        description: >-
+          Per-object mapping data, hubspot_property -> canonical field. Shape:
+          { contacts: { email: "email" }, companies: { domain: "domain" },
+          deals: { dealname: "name" }, tasks: { hs_task_subject: "subject" } }.
+          Operators can override or remove seeded entries.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item_key": { "type": "string", "description": "Stable item identity, hubspot:<object_type>:<id>." },
+          "dedup_key": { "type": "string", "description": "Delivery idempotency key including op and source_version." },
+          "op": { "type": "string", "enum": ["upsert", "delete"] },
+          "source_version": { "type": "string", "description": "Configured HubSpot watermark property value used for ordering and deduplication." },
+          "occurred_at": { "type": "string", "format": "date-time" },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "object_type": { "type": "string", "enum": ["contacts", "companies", "deals", "tasks", "meetings", "notes", "emails", "calls"] },
+              "entity": { "type": "string" },
+              "title": { "type": "string" },
+              "content": { "type": "string", "description": "Clean markdown/text, never raw HTML." },
+              "content_type": { "type": "string" },
+              "source_url": { "type": "string" },
+              "properties": { "type": "object" },
+              "raw": { "type": "object", "description": "Raw HubSpot CRM object payload." },
+              "origin": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": { "type": "string", "enum": ["backfill", "live"] },
+                  "backfill": { "type": "boolean" }
+                },
+                "required": ["mode", "backfill"]
+              },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "external_source": { "type": "string", "const": "hubspot" },
+                  "external_id": { "type": "string" },
+                  "external_version": { "type": "string" },
+                  "object_type": { "type": "string" },
+                  "object_id": { "type": "string" }
+                },
+                "required": ["external_source", "external_id", "external_version", "object_type", "object_id"]
+              },
+              "candidate": { "type": "object", "description": "Normalized CRM candidate envelope with external provenance only." },
+              "associations": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Raw HubSpot ids of the CRM objects an engagement is associated with, hydrated through paged batch reads. Present on engagement object types only.",
+                "properties": {
+                  "contacts": { "type": "array", "items": { "type": "string" } },
+                  "deals": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["contacts", "deals"]
+              },
+              "record": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Provider-neutral external record envelope for declared import sinks.",
+                "properties": {
+                  "id": { "type": "string", "description": "Stable HubSpot object id within this source." },
+                  "source": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": { "type": "string", "const": "hubspot.crm" },
+                      "id": { "type": "string", "description": "HubSpot connection component id." },
+                      "version": { "type": "string" }
+                    },
+                    "required": ["type", "id"]
+                  },
+                  "fields": {
+                    "type": "object",
+                    "description": "Fields normalized by the source instance's declared field map.",
+                    "additionalProperties": true
+                  }
+                },
+                "required": ["id", "source", "fields"]
+              },
+              "created_at": { "type": "string", "format": "date-time" },
+              "updated_at": { "type": "string", "format": "date-time" },
+              "archived": { "type": "boolean" }
+            },
+            "required": ["id", "object_type", "entity", "title", "content", "content_type", "source_url", "properties", "raw", "origin", "provenance", "record"]
+          }
+        },
+        "required": ["item_key", "dedup_key", "op"],
+        "allOf": [
+          {
+            "if": { "properties": { "op": { "const": "upsert" } }, "required": ["op"] },
+            "then": { "required": ["payload"] }
+          }
+        ] }
+
+  - name: association_pull
+    kind: library.lua
+    meta:
+      name: association_pull
+      comment: Generic paginated HubSpot association source producing typed directed edges.
+    source: file://association_pull.lua
+    imports:
+      association_batch: kickside.hubspot.source:association_batch
+      data_error: kickside.hubspot.client:data_error
+      transport: kickside.hubspot.client:transport
+      types: kickside.hubspot.client:types
+
+  - name: pull_associations
+    kind: function.lua
+    meta:
+      comment: Pull typed directed HubSpot association edges with per-object pagination.
+    source: file://association_pull.lua
+    method: pull
+    imports:
+      association_batch: kickside.hubspot.source:association_batch
+      data_error: kickside.hubspot.client:data_error
+      transport: kickside.hubspot.client:transport
+      types: kickside.hubspot.client:types
+
+  - name: pull_association_keys
+    kind: function.lua
+    meta:
+      comment: Enumerate stable HubSpot association keys used by Data Sync reconciliation.
+    source: file://association_pull.lua
+    method: pull_keys
+    imports:
+      association_batch: kickside.hubspot.source:association_batch
+      data_error: kickside.hubspot.client:data_error
+      transport: kickside.hubspot.client:transport
+      types: kickside.hubspot.client:types
+
+  - name: association_source
+    kind: contract.binding
+    meta:
+      title: HubSpot Associations
+      icon: simple-icons:hubspot
+      comment: Pull typed directed associations between any two HubSpot object types.
+      provider: hubspot
+      group: CRM
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.hubspot.source:pull_associations
+
+  - name: crm_associations
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: HubSpot Associations
+      comment: Watch typed directed relationships between two HubSpot object types.
+      icon: simple-icons:hubspot
+    binding: kickside.hubspot.source:association_source
+    reconcile:
+      pull_keys: kickside.hubspot.source:pull_association_keys
+    config_schema:
+      from_object_type:
+        picker: wc-schema-form
+        type: string
+        required: true
+        title: From object type
+        description: HubSpot object type at the source of each directed association.
+      to_object_type:
+        picker: wc-schema-form
+        type: string
+        required: true
+        title: To object type
+        description: HubSpot object type at the destination of each directed association.
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: hubspot
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item_key": { "type": "string", "description": "Stable connection-scoped typed edge identity." },
+          "dedup_key": { "type": "string", "description": "Versioned delivery idempotency key." },
+          "op": { "type": "string", "const": "upsert" },
+          "source_version": { "type": "string" },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "type": "string", "const": "association" },
+              "edge": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "source": { "type": "object" },
+                  "from": { "type": "object" },
+                  "to": { "type": "object" },
+                  "association_type": { "type": "object" }
+                },
+                "required": ["source", "from", "to", "association_type"]
+              },
+              "provenance": { "type": "object" },
+              "raw": { "type": "object" }
+            },
+            "required": ["kind", "edge", "provenance", "raw"]
+          }
+        },
+        "required": ["item_key", "dedup_key", "op", "source_version", "payload"] }

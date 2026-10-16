@@ -1,0 +1,61 @@
+version: '1.0'
+namespace: kickside.discord.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Discord
+    surface: kickside.discord
+    intent: module_access
+    includes:
+    - kickside.discord.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.discord:*
+    - kickside.discord.client:*
+    - kickside.discord.connection:*
+    - kickside.discord.gateway:*
+    - kickside.discord.inbound:*
+    - kickside.discord.security:*
+    - kickside.discord.sink:*
+    - kickside.discord.source:*
+    - kickside.discord.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.discord:*
+    - kickside.discord.client:*
+    - kickside.discord.connection:*
+    - kickside.discord.gateway:*
+    - kickside.discord.inbound:*
+    - kickside.discord.security:*
+    - kickside.discord.sink:*
+    - kickside.discord.source:*
+    - kickside.discord.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

@@ -1,0 +1,41 @@
+version: "1.0"
+namespace: kickside.fireflies.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared constants and type surfaces for Fireflies.
+    source: file://types.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Low-level Fireflies GraphQL API client.
+    source: file://api.lua
+    modules: [http_client, json]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      types: kickside.fireflies.client:types
+
+  - name: output
+    kind: library.lua
+    meta:
+      name: output
+      comment: Fireflies tool output redaction and source text prefix.
+    source: file://output.lua
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Actor-scoped Fireflies connection resolver and API transport.
+    source: file://transport.lua
+    imports:
+      component: kickside.component:component
+      api: kickside.fireflies.client:api
+      types: kickside.fireflies.client:types

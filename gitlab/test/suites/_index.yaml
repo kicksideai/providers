@@ -1,0 +1,55 @@
+version: "1.0"
+namespace: app.suites
+
+# Suites for kickside/gitlab. They live in the harness because the module is
+# loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: packaging_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: gitlab_packaging
+      comment: Connection binding, contracts, credential schema, and dependency declarations.
+    source: file://packaging_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: gitlab_api
+      comment: Base URL normalization, headers, URL building, error mapping, and pagination of the GitLab API client.
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.gitlab.client:api
+
+  - name: transport_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: gitlab_transport
+      comment: Credential connection resolution in the GitLab transport.
+    source: file://transport_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      transport: kickside.gitlab.client:transport
+
+  - name: connection_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: gitlab_connection
+      comment: Connection contract methods over a fake transport.
+    source: file://connection_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: kickside.gitlab.connection:connection_lib

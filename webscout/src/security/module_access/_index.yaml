@@ -1,0 +1,42 @@
+version: '1.0'
+namespace: kickside.webscout.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Webscout
+    surface: kickside.webscout
+    intent: module_access
+    includes:
+    - kickside.webscout.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.webscout.api:list_providers.endpoint
+    actions: access
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.webscout:*
+    - kickside.webscout.api:*
+    - kickside.webscout.client:*
+    - kickside.webscout.providers.google:*
+    - kickside.webscout.research:*
+    - kickside.webscout.security:*
+    - kickside.webscout.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

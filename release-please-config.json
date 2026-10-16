@@ -1,0 +1,110 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": true,
+  "separate-pull-requests": false,
+  "bump-minor-pre-major": true,
+  "last-release-sha": "0cc8c23a5e94b744c2f79fc3463b7a9cf61f41e5",
+  "packages": {
+    "asr": {
+      "component": "asr",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "atlassian": {
+      "component": "atlassian",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "bitbucket": {
+      "component": "bitbucket",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "code_execution": {
+      "component": "code-execution",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "discord": {
+      "component": "discord",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "fireflies": {
+      "component": "fireflies",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "github": {
+      "component": "github",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "gitlab": {
+      "component": "gitlab",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "google": {
+      "component": "google",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "hubspot": {
+      "component": "hubspot",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "kb10": {
+      "component": "kb10",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "llm-ocr": {
+      "component": "llm-ocr",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "mcp-client": {
+      "component": "mcp-client",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "memory": {
+      "component": "memory",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "phantombuster": {
+      "component": "phantombuster",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "simplefin": {
+      "component": "simplefin",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "slack": {
+      "component": "slack",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "sso-github": {
+      "component": "sso-github",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "sso-google": {
+      "component": "sso-google",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "sso-microsoft": {
+      "component": "sso-microsoft",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "sso-oidc": {
+      "component": "sso-oidc",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "telegram": {
+      "component": "telegram",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "webscout": {
+      "component": "webscout",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "webscout-brave": {
+      "component": "webscout-brave",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "webscout-tavily": {
+      "component": "webscout-tavily",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

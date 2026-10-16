@@ -1,0 +1,54 @@
+version: "1.0"
+namespace: kickside.telegram.sink
+entries:
+  - name: message_write
+    kind: function.lua
+    source: file://_fn_message_write.lua
+    method: write
+    imports:
+      implementation: kickside.telegram.sink:message_sink_lib
+  - name: message_sink_lib
+    kind: library.lua
+    source: file://message_sink.lua
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      transport: kickside.telegram.client:transport
+      api: kickside.telegram.client:api
+      types: kickside.telegram.client:types
+      writable: kickside.data:writable_sink
+  - name: message_sink
+    kind: contract.binding
+    meta:
+      title: Send Telegram Message
+      icon: tabler:brand-telegram
+      provider: telegram
+      group: Messaging
+      delivery: at_most_once
+      input_shape: content
+    contracts:
+      - contract: kickside.data:writable
+        methods:
+          write: kickside.telegram.sink:message_write
+  - name: chat_message
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Send Telegram Message
+      icon: tabler:brand-telegram
+    binding: kickside.telegram.sink:message_sink
+    operations:
+      upsert: {}
+      delete:
+        requires_dest_ref: true
+    input_schema: |
+      {"type":"object","properties":{"content":{"type":"string","maxLength":4096},"content_type":{"type":"string"},"metadata":{"type":"object"}},"required":["content"]}
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: telegram
+      chat_id:
+        picker: wc-schema-form
+        required: true
+        title: Chat ID
+        description: Telegram chat ID. The recipient starts the bot before direct messages arrive.

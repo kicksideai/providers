@@ -1,0 +1,368 @@
+version: "1.0"
+namespace: kickside.phantombuster.research
+
+entries:
+  - name: source_core
+    kind: library.lua
+    meta: { comment: Normalize configured PhantomBuster actor snapshots into Research evidence. }
+    source: file://source.lua
+    imports:
+      pull_core: kickside.phantombuster.source:pull_core
+      operation_policy: kickside.phantombuster.source:operation_policy
+
+  - name: run
+    kind: function.lua
+    meta: { comment: Execute one PhantomBuster Research Source operation under the ambient actor. }
+    source: file://source.lua
+    method: run
+    imports:
+      pull_core: kickside.phantombuster.source:pull_core
+      operation_policy: kickside.phantombuster.source:operation_policy
+
+  - name: block.source
+    kind: registry.entry
+    meta:
+      type: kickside.block
+      public: false
+      title: PhantomBuster Research Source
+      description: Read a configured actor's latest completed bounded snapshot as attributable Research evidence; this source never launches actors.
+    data:
+      block:
+        api_version: kickside.block/v1
+        input:
+          type: object
+          additionalProperties: false
+          required: [case_id, operation, capability, subject, query, limits]
+          properties:
+            case_id: { type: string }
+            operation: { type: string }
+            capability: { type: string }
+            subject:
+              type: object
+              additionalProperties: false
+              required: [kind, ref]
+              properties:
+                kind: { type: string, minLength: 1 }
+                ref: { type: string, minLength: 1 }
+                names: { type: array, items: { type: string, minLength: 1 } }
+                identifiers:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [kind, value]
+                    properties:
+                      kind: { type: string, minLength: 1 }
+                      value: { type: string, minLength: 1 }
+            query: { type: string }
+            limits:
+              type: object
+              additionalProperties: false
+              required: [max_results]
+              properties:
+                max_results: { type: integer, minimum: 1 }
+        config: &binding_schema
+          type: object
+          additionalProperties: false
+          required: [connection_id, actor_id, actor_scope, max_rows_per_pull, owner_component_id, control_bounds, operation_policy]
+          properties:
+            connection_id:
+              type: string
+              title: PhantomBuster connection
+              description: Connected account used to read the actor output.
+              picker: kickside-connection-trait-picker
+              provider: phantombuster
+            actor_id:
+              type: string
+              title: Actor ID
+              description: Configured PhantomBuster actor whose latest completed output is admitted.
+              minLength: 1
+            actor_scope:
+              type: string
+              title: Actor scope
+              description: Truthful description of the searches or accounts covered by this actor output.
+              minLength: 1
+            max_rows_per_pull:
+              type: integer
+              title: Maximum rows
+              description: Explicit provider-side row cap. It must equal input.limits.max_results.
+              minimum: 1
+            owner_component_id:
+              type: string
+              title: Owner component
+              description: Canonical owner component whose context is authorized to read this configured connection.
+              minLength: 1
+            control_bounds:
+              type: object
+              title: Provider control bounds
+              description: Explicit installed SourceOperationControlBounds/v1 document; it supplies provider and tool ranges and is never defaulted.
+              additionalProperties: false
+              required: [version, provider, policy_ref, revision, digest, limits, lifecycle, storage, tool]
+              properties:
+                version: { type: string, const: SourceOperationControlBounds/v1 }
+                provider: { type: string, const: phantombuster }
+                policy_ref: { type: string, minLength: 1 }
+                revision: { type: string, minLength: 1 }
+                digest: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+                operation_id: { type: string, enum: [candidate_snapshot, activity_snapshot] }
+                limits:
+                  type: object
+                  additionalProperties: false
+                  required: [max_results, timeout_seconds]
+                  properties:
+                    max_results:
+                      type: object
+                      additionalProperties: false
+                      required: [minimum, maximum]
+                      properties:
+                        minimum: { type: integer, minimum: 1 }
+                        maximum: { type: integer, minimum: 1 }
+                    timeout_seconds:
+                      type: object
+                      additionalProperties: false
+                      required: [minimum, maximum]
+                      properties:
+                        minimum: { type: integer, minimum: 1 }
+                        maximum: { type: integer, minimum: 1 }
+                lifecycle:
+                  type: object
+                  additionalProperties: false
+                  required: [stale_after_seconds]
+                  properties:
+                    stale_after_seconds:
+                      type: object
+                      additionalProperties: false
+                      required: [minimum, maximum]
+                      properties:
+                        minimum: { type: integer, minimum: 1 }
+                        maximum: { type: integer, minimum: 1 }
+                storage:
+                  type: object
+                  additionalProperties: false
+                  required: [limit_chars, retention]
+                  properties:
+                    limit_chars:
+                      type: object
+                      additionalProperties: false
+                      required: [minimum, maximum]
+                      properties:
+                        minimum: { type: integer, minimum: 1 }
+                        maximum: { type: integer, minimum: 1 }
+                    retention:
+                      type: object
+                      additionalProperties: false
+                      required: [max_age_seconds]
+                      properties:
+                        class: { type: string, minLength: 1 }
+                        max_age_seconds:
+                          type: object
+                          additionalProperties: false
+                          required: [minimum, maximum]
+                          properties:
+                            minimum: { type: integer, minimum: 1 }
+                            maximum: { type: integer, minimum: 1 }
+                tool:
+                  type: object
+                  additionalProperties: false
+                  required: [list_limit, output_chars]
+                  properties:
+                    list_limit:
+                      type: object
+                      additionalProperties: false
+                      required: [minimum, maximum]
+                      properties:
+                        minimum: { type: integer, minimum: 1 }
+                        maximum: { type: integer, minimum: 1 }
+                    output_chars:
+                      type: object
+                      additionalProperties: false
+                      required: [minimum, maximum]
+                      properties:
+                        minimum: { type: integer, minimum: 1 }
+                        maximum: { type: integer, minimum: 1 }
+            operation_policy:
+              type: object
+              title: Source operation policy
+              description: Complete owner-resolved policy; no provider defaults are applied.
+              additionalProperties: false
+              required: [version, policy_id, revision, digest, control_digest, source_binding_id, operation_id, limits, lifecycle, storage, ownership]
+              properties:
+                version: { type: string, const: SourceOperationPolicy/v1 }
+                policy_id: { type: string, minLength: 1 }
+                revision: { type: string, minLength: 1 }
+                digest: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+                control_digest: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+                source_binding_id: { type: string, minLength: 1 }
+                operation_id: { type: string, enum: [candidate_snapshot, activity_snapshot] }
+                snapshot_id: { type: string, minLength: 1 }
+                limits:
+                  type: object
+                  additionalProperties: false
+                  required: [max_results, timeout_seconds]
+                  properties:
+                    max_results: { type: integer, minimum: 1 }
+                    timeout_seconds: { type: integer, minimum: 1 }
+                lifecycle:
+                  type: object
+                  additionalProperties: false
+                  required: [stale_after_seconds, stale_action, not_found_action]
+                  properties:
+                    stale_after_seconds: { type: integer, minimum: 1 }
+                    stale_action: { type: string, enum: [unresolved, retire] }
+                    not_found_action: { type: string, enum: [unresolved, retire] }
+                storage:
+                  type: object
+                  additionalProperties: false
+                  required: [mode, limit_chars, retention]
+                  properties:
+                    mode: { type: string, minLength: 1 }
+                    limit_chars: { type: integer, minimum: 1 }
+                    retention:
+                      type: object
+                      additionalProperties: false
+                      required: [class, max_age_seconds]
+                      properties:
+                        class: { type: string, minLength: 1 }
+                        max_age_seconds: { type: integer, minimum: 1 }
+                ownership:
+                  type: object
+                  additionalProperties: false
+                  required: [owner_component_id, connection_id]
+                  properties:
+                    owner_component_id: { type: string, minLength: 1 }
+                    owner_user_ref: { type: string, minLength: 1 }
+                    connection_id: { type: string, minLength: 1 }
+            snapshot_id:
+              type: string
+              title: Snapshot identity
+              description: Optional stable provider snapshot identity to request or verify; the provider receipt remains authoritative.
+              minLength: 1
+        output:
+          type: object
+          additionalProperties: false
+          required: [source_id, operation, artifacts, receipt, completeness]
+          properties:
+            source_id: { type: string, const: "kickside.phantombuster.research:source" }
+            operation: { type: string, enum: [candidate_snapshot, activity_snapshot] }
+            artifacts:
+              type: array
+              items:
+                oneOf:
+                  - &candidate_artifact
+                    type: object
+                    additionalProperties: false
+                    required: [source_artifact_key, canonical_uri, title, media_type, content, subject_refs]
+                    properties:
+                      source_artifact_key: { type: string, minLength: 1 }
+                      canonical_uri: { type: string }
+                      title: { type: string, minLength: 1 }
+                      media_type: { type: string, const: "application/vnd.kickside.social-candidate+json" }
+                      content:
+                        type: object
+                        additionalProperties: false
+                        required: [name, first_name, last_name, company_name, title, jurisdiction, profile_url]
+                        properties:
+                          name: { type: string }
+                          first_name: { type: string }
+                          last_name: { type: string }
+                          company_name: { type: string }
+                          title: { type: string }
+                          jurisdiction: { type: string }
+                          profile_url: { type: string }
+                      subject_refs: &subject_refs
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required: [kind, ref]
+                          properties:
+                            kind: { type: string, minLength: 1 }
+                            ref: { type: string, minLength: 1 }
+                  - &activity_artifact
+                    type: object
+                    additionalProperties: false
+                    required: [source_artifact_key, canonical_uri, title, media_type, published_at, content, subject_refs]
+                    properties:
+                      source_artifact_key: { type: string, minLength: 1 }
+                      canonical_uri: { type: string }
+                      title: { type: string, minLength: 1 }
+                      media_type: { type: string, const: "application/vnd.kickside.social-activity+json" }
+                      published_at: { type: string }
+                      content:
+                        type: object
+                        additionalProperties: false
+                        required: [author_name, author_profile_url, text, url]
+                        properties:
+                          author_name: { type: string }
+                          author_profile_url: { type: string }
+                          text: { type: string }
+                          url: { type: string }
+                      subject_refs: *subject_refs
+            receipt:
+              type: object
+              additionalProperties: false
+              required: [provider, actor_id, snapshot_id, captured_at, complete, rows_read, policy_receipt, control_receipt, control_digest]
+              properties:
+                provider: { type: string, const: phantombuster }
+                actor_id: { type: string, minLength: 1 }
+                snapshot_id: { type: string, minLength: 1 }
+                captured_at: { type: string, minLength: 1 }
+                complete: { type: boolean, const: true }
+                rows_read: { type: integer, minimum: 0 }
+                control_digest: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+                policy_receipt:
+                  type: object
+                  additionalProperties: false
+                  required: [version, policy_id, revision, digest, effective_policy_digest, control_digest, source_binding_id, operation_id, limits, lifecycle, storage, ownership]
+                control_receipt:
+                  type: object
+                  additionalProperties: false
+                  required: [version, provider, policy_ref, revision, digest, control_digest, limits, lifecycle, storage, tool]
+            completeness:
+              type: object
+              additionalProperties: false
+              required: [mode, complete, snapshot_id, captured_at, rows_read]
+              properties:
+                mode: { type: string, const: snapshot }
+                complete: { type: boolean, const: true }
+                snapshot_id: { type: string, minLength: 1 }
+                captured_at: { type: string, minLength: 1 }
+                rows_read: { type: integer, minimum: 0 }
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, minLength: 1 }
+            message: { type: string, minLength: 1 }
+        ports:
+          - { id: result, label: Evidence, direction: out }
+          - { id: failed, label: Failed, direction: out }
+        presentation:
+          category: Research Sources
+          icon: simple-icons:phantombuster
+          blurb: Read bounded candidate or LinkedIn activity evidence from a configured completed actor.
+        execution:
+          kind: function
+          function_id: kickside.phantombuster.research:run
+
+  - name: source
+    kind: registry.entry
+    meta:
+      type: kickside.research.source
+      title: PhantomBuster actor snapshots
+      description: Bounded candidate and LinkedIn activity evidence from explicitly configured completed actors.
+      icon: simple-icons:phantombuster
+    data:
+      block_ref: kickside.phantombuster.research:block.source
+      required_connection_contract: kickside.connection:connection
+      config_schema: *binding_schema
+      operations:
+        - id: candidate_snapshot
+          capability: social.candidate.discovery
+          allowed_subject_fields: [kind, ref]
+          artifact_schema: *candidate_artifact
+        - id: activity_snapshot
+          capability: social.activity.read
+          allowed_subject_fields: [kind, ref]
+          artifact_schema: *activity_artifact

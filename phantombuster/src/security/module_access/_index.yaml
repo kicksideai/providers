@@ -1,0 +1,57 @@
+version: '1.0'
+namespace: kickside.phantombuster.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Phantombuster
+    surface: kickside.phantombuster
+    intent: module_access
+    includes:
+    - kickside.phantombuster.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.phantombuster:*
+    - kickside.phantombuster.client:*
+    - kickside.phantombuster.connection:*
+    - kickside.phantombuster.research:*
+    - kickside.phantombuster.security:*
+    - kickside.phantombuster.source:*
+    - kickside.phantombuster.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.phantombuster:*
+    - kickside.phantombuster.client:*
+    - kickside.phantombuster.connection:*
+    - kickside.phantombuster.research:*
+    - kickside.phantombuster.security:*
+    - kickside.phantombuster.source:*
+    - kickside.phantombuster.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

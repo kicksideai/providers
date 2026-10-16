@@ -1,0 +1,45 @@
+organization: kickside
+module: atlassian
+type: plugin
+description: KickSide Atlassian — Jira and Confluence provider. Self-declares as an oauth_provider discovered by kickside/oauth (3LO) and supports stored-credential connections (Cloud API token / Server PAT). Ships agent tools (JiraRead/JiraWrite, ConfluenceRead/ConfluenceWrite) over a shared authenticated transport.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - atlassian
+  - jira
+  - confluence
+  - oauth
+  - connection
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+embed:
+  - kickside.atlassian.ui:ui_fs
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "ui/node_modules:**"
+  - "ui/coverage/**"
+  - "ui/coverage:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "test/stubs/**"
+  - "test/stubs:**"
+  - "src/**/stubs/**"
+  - "src/**/*.spec.ts"
+  - "src/**/*.spec.tsx"
+  - "ui/src/**/*.spec.ts"
+  - "ui/src/**/*.spec.tsx"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

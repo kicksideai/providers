@@ -1,0 +1,142 @@
+version: "1.0"
+namespace: kickside.code_execution.traits
+
+# Agent surface for sandboxed code execution: the Code Execution trait, its RunCode
+# tool, and the build func that injects the whitelisted SDK surface into the prompt.
+# The core (run_code + the cage) lives in the parent kickside.code_execution namespace;
+# these entries call it by id. The trait is discovered through the registry
+# (meta.type = agent.trait) like any capability — no code coupling to the agents module.
+#
+# The trait is self-contained. Its context_schema is the canonical machine-readable
+# configuration contract; callers and agent-management tools can set tool_ids without a
+# package-external web-component dependency. Empty tool_ids keeps the documented
+# allow-all behavior.
+
+entries:
+  - name: run_code_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Run Code
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Lua source to run in the isolated sandbox. Reach whitelisted tools via sdk.tools[\"<entry.id>\"](args), which returns result, err. Inspect a tool with sdk.schema(\"<entry.id>\") -> { input_schema, output_schema } (both), or sdk.schemas({\"<id>\", ...}) for several at once; sdk.list() enumerates ids; sdk.sleep(n) paces calls (capped per call). Return a value from the code. The allowed surface is listed in your prompt."
+            },
+            "args": {
+              "type": "object",
+              "description": "Optional data passed to the code as __cx_args (the run's arguments)."
+            }
+          },
+          "required": ["code"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Envelope { success: true, result } with the value the Lua code returned; failures return { success: false, error, error_kind? }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the sandboxed code ran to completion; false with error otherwise."},
+            "result": {"description": "The value returned by the Lua code (any JSON type). Present when success is true."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "error_kind": {"type": "string", "description": "Error class for sandbox, whitelist or runtime failures (invalid, invalid_tool, internal, ...)."}
+          }
+        }
+      llm_alias: RunCode
+      llm_description: "Run Lua you write in an isolated sandbox that can reach only the tools whitelisted for this capability (listed in your prompt) via the sdk import — sdk.tools[\"<entry.id>\"](args), returning result, err. Use it to compose several allowed calls, transform data, or apply logic in one step instead of many tool round-trips. Returns { success: true, result } or { success: false, error, error_kind? }."
+    source: file://run_code_tool.lua
+    modules: [funcs, ctx]
+    method: handler
+
+  - name: recommend_tools_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Recommend Tools
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "array", "items": {"type": "string", "enum": ["description", "input_schema", "output_schema", "*"]}, "description": "Optional public descriptor fields; * requests description and both schemas."},
+            "need": {
+              "type": "string",
+              "description": "Describe, in plain language, what you want to accomplish (e.g. 'read a web page and post a message to my inbox')."
+            }
+          },
+          "required": ["need"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "{success:true,tools} contains ranked compact id/label suggestions, with schemas and descriptions only when requested through fields. Domain errors return {success:false,error}; infrastructure failures return (nil,typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the recommendation ran; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "tools": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "The tool's real registry entry id — the exact key to call via sdk.tools[\"<id>\"](args) in RunCode."}, "label": {"type": "string"}, "description": {"type": "string"}, "input_schema": {"type": "object", "description": "JSON schema of the tool's arguments."}, "output_schema": {"type": "object", "description": "JSON schema of the tool's result."}}, "required": ["id"]}}
+          }
+        }
+      llm_alias: RecommendTools
+      llm_description: "Recommend tools for a need within the configured whitelist. Returns up to eight ranked ids and labels. Request input_schema/output_schema/description through fields, or inspect one selected tool with sdk.schema(id) in RunCode."
+    source: file://recommend_tools_tool.lua
+    modules: [funcs, ctx]
+    method: handler
+
+  - name: init_code_execution
+    kind: function.lua
+    meta:
+      comment: Code Execution trait build func — folds the whitelisted tool SDK surface (context.tool_ids) into the agent prompt.
+    source: file://init_code_execution.lua
+    method: execute
+    modules: [registry, json]
+
+  - name: code_execution
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Code Execution
+      public: true
+      icon: tabler:code
+      comment: Lets the agent write and run sandboxed Lua bounded to a whitelisted tool set.
+      tags: [code_execution, tools]
+      context_schema:
+        type: object
+        properties:
+          tool_ids:
+            type: array
+            title: Allowed tools
+            role: picker
+            items: { type: string }
+        additionalProperties: false
+    build_func_id: kickside.code_execution.traits:init_code_execution
+    prompt: |
+      You have two tools for sandboxed code:
+        - **RecommendTools** — for an unfamiliar task, call this FIRST. Describe what you
+          need; it returns the most relevant tool ids and labels. Request
+          fields=["input_schema","output_schema"] to inspect their schemas before RunCode.
+        - **RunCode** — write Lua and run it in an isolated sandbox. Use it when composing
+          several allowed calls, transforming their results, or applying logic is cleaner in
+          one step than many separate tool calls.
+
+      Inside the sandbox the `sdk` import is the only way to reach anything beyond pure
+      Lua. The tools it exposes are listed in your context (the "Code execution SDK"
+      section) — consult that catalog and use the right tool:
+        - `sdk.tools["<entry.id>"](args)` calls a tool, returning `result, err`.
+        - `sdk.list()` returns every id available to you; `sdk.schema("<entry.id>")` returns
+          a tool's `{ input_schema, output_schema }` (BOTH), and `sdk.schemas({"<id>", ...})`
+          returns a table keyed by registry id: schemas[id].input_schema. Iterate it with
+          pairs, not ipairs — check these before deciding you cannot do something.
+        - `sdk.sleep(n)` pauses `n` seconds to pace calls (rate-limit, poll, backoff); it is
+          capped per call, so it cannot hang the run.
+      The catalog includes web tools (search / page-reading) — use them to fetch or search
+      the web from your code. Raw `http`/network/process/storage modules are blocked, but
+      the tools cover those needs, so reach the web THROUGH a tool rather than refusing.
+      Call the advertised RunCode tool with a JSON object such as {"code":"return 24 * 12"}.
+      Put sdk.tools and sdk.schema expressions inside the code string. The outer function
+      name is RunCode. Return a value from your Lua and check `err` after each SDK call.
+    tools:
+      - kickside.code_execution.traits:run_code_tool
+      - kickside.code_execution.traits:recommend_tools_tool

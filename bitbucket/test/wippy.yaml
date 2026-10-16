@@ -1,0 +1,3 @@
+organization: kickside
+module: bitbucket-test
+description: Standalone runnable harness that boots kickside/bitbucket and runs its packaging and unit suites.

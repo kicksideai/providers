@@ -1,0 +1,21 @@
+version: "1.0"
+namespace: kickside.simplefin.api
+
+entries:
+  - name: rotate
+    kind: function.lua
+    meta:
+      comment: Replace a SimpleFIN connection's credential with a freshly claimed setup token.
+    source: file://rotate.lua
+    method: handler
+    modules: [http, json]
+    imports:
+      component: kickside.component:component
+      transport: kickside.simplefin.client:transport
+
+  - name: rotate.endpoint
+    kind: http.endpoint
+    meta: { router: app:api }
+    method: PUT
+    path: /simplefin/connections/{id}
+    func: rotate

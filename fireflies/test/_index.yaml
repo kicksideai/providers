@@ -1,0 +1,277 @@
+version: "1.0"
+namespace: app
+
+entries:
+  - name: dep.wippy.test
+    kind: ns.dependency
+    component: wippy/test
+    version: "*"
+
+  - name: dep.kickside.security
+    kind: ns.dependency
+    version: '*'
+    component: kickside/security
+    parameters:
+      - {name: api_router, value: app:api}
+      - {name: ui_server, value: app:gateway}
+      - {name: target_db, value: app:db}
+      - {name: process_host, value: app:processes}
+
+  - name: db
+    kind: db.sql.sqlite
+    foreign_keys: true
+    file: ":memory:"
+
+  - name: env_storage
+    kind: env.storage.file
+    meta: { type: envstorage }
+    file_path: ./.wippy/test.env
+    auto_create: true
+
+  - name: temp_fs
+    kind: fs.directory
+    directory: ./.wippy
+
+  - name: gateway
+    kind: http.service
+    addr: :19118
+    lifecycle: { auto_start: false }
+
+  - name: api
+    kind: http.router
+    meta: { server: gateway }
+    prefix: /api
+
+  - name: api_public
+    kind: http.router
+    meta: { server: gateway }
+    prefix: /public
+
+  - name: processes
+    kind: process.host
+    lifecycle: { auto_start: false }
+
+  - name: user
+    kind: security.policy
+    groups: [fireflies_test]
+    policy: { resources: '*', actions: '*', effect: allow }
+
+  - name: admin
+    kind: security.policy
+    groups: [fireflies_test_admin]
+    policy: { resources: '*', actions: '*', effect: allow }
+
+  - name: session_delegate_stub
+    kind: function.lua
+    source: file://session_delegate_stub.lua
+    method: handler
+
+  - name: dep.kickside.users
+    kind: ns.dependency
+    component: kickside/users
+    version: "*"
+    parameters:
+      - { name: kickside.users:public_router, value: app:api_public }
+      - { name: kickside.users:api_router, value: app:api }
+      - { name: kickside.users:target_db, value: app:db }
+      - { name: kickside.users:user_security_scope, value: app:user }
+      - { name: kickside.users:admin_security_scope, value: app:admin }
+      - { name: kickside.users:login_role_resource, value: 'app:*' }
+      - { name: kickside.users:ui_server, value: app:gateway }
+
+  - name: dep.kickside.fireflies
+    kind: ns.dependency
+    component: kickside/fireflies
+    version: '*'
+    parameters:
+    - name: kickside.settings:target_db
+      value: app:db
+    - name: kickside.settings:api_router
+      value: app:api
+    - name: kickside.settings:ui_server
+      value: app:gateway
+    - name: kickside.component:target_db
+      value: app:db
+    - name: kickside.component:api_router
+      value: app:api
+    - name: kickside.component:lifecycle_impl
+      value: kickside.core.lifecycle:component_lifecycle_impl
+    - name: kickside.connection:api_router
+      value: app:api
+    - name: kickside.connection:ui_server
+      value: app:gateway
+    - name: kickside.uploads.security:user_security_scope
+      value: app:user
+    - name: kickside.core.retention:user_security_scope
+      value: app:user
+    - name: kickside.core.threads:user_security_scope
+      value: app:user
+    - name: kickside.core.threads.hydration:user_security_scope
+      value: app:user
+    - name: kickside.core:target_db
+      value: app:db
+    - name: kickside.core.lifecycle:process_host
+      value: app:processes
+    - name: kickside.core.lifecycle:user_lifecycle_grant
+      value:
+        subject_id: app:user
+        subject_type: group
+        access_mask: 2
+    - name: kickside.core.lifecycle:admin_lifecycle_grant
+      value:
+        subject_id: app:admin
+        subject_type: group
+        access_mask: 3
+    - name: kickside.core.retention:process_host
+      value: app:processes
+    - name: kickside.core.threads:process_host
+      value: app:processes
+    - name: kickside.core.projections:process_host
+      value: app:processes
+    - name: kickside.core.retention:api_router
+      value: app:api
+    - name: kickside.core.threads:api_router
+      value: app:api
+    - name: kickside.core.threads.hydration:api_router
+      value: app:api
+    - name: kickside.core.projections:api_router
+      value: app:api
+    - name: kickside.core.retention:env_storage
+      value: app:env_storage
+    - name: kickside.core.projections:env_storage
+      value: app:env_storage
+    - name: kickside.core.jobs:target_db
+      value: app:db
+    - name: kickside.core.jobs:temp_fs
+      value: app:temp_fs
+    - name: kickside.core.jobs:process_host
+      value: app:processes
+    - name: kickside.core.jobs:api_router
+      value: app:api
+    - name: kickside.core.scheduler:process_host
+      value: app:processes
+    - name: kickside.core.scheduler:env_storage
+      value: app:env_storage
+    - name: kickside.uploads:database_resource
+      value: app:db
+    - name: kickside.uploads:env_storage
+      value: app:env_storage
+    - name: kickside.uploads:api_router
+      value: app:api
+    - name: kickside.uploads:storage_id
+      value: app:temp_fs
+    - name: kickside.uploads:ui_server
+      value: app:gateway
+    - name: wippy.bootloader:application_host
+      value: app:processes
+    - name: wippy.bootloader:env_storage
+      value: app:env_storage
+    - name: wippy.llm:process_host
+      value: app:processes
+    - name: wippy.llm:env_storage
+      value: app:env_storage
+    - name: wippy.migration:app_db
+      value: app:db
+    - name: wippy.session:api_router
+      value: app:api
+    - name: wippy.session:database_resource
+      value: app:db
+    - name: wippy.session:default_host
+      value: app:processes
+    - name: wippy.session:delegation_func_id
+      value: app:session_delegate_stub
+    - name: wippy.session:env_storage
+      value: app:env_storage
+    - name: wippy.views:api_router
+      value: app:api_public
+    - name: wippy.views:env_storage
+      value: app:env_storage
+
+  - name: fireflies_smoke_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: fireflies
+      comment: Checks Fireflies connection binding, reader trait, tool, and generic picker wiring.
+    source: file://fireflies_smoke_test.lua
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+    method: run
+
+  - name: endpoints_test
+    kind: function.lua
+    meta: { type: test, suite: endpoints }
+    source: file://endpoints_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+
+  - name: capacity_client
+    kind: library.lua
+    source: file://capacity_client.lua
+    modules:
+    - json
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      types: kickside.fireflies.client:types
+      http_client: app:capacity_http_fixture
+  - name: capacity_http_fixture
+    kind: library.lua
+    source: file://capacity_http_fixture.lua
+  - name: capacity_transport_guard
+    kind: library.lua
+    source: file://capacity_transport_guard.lua
+    modules:
+    - funcs
+    - sql
+    - time
+    imports:
+      test: wippy.test:test
+      component: kickside.component:component
+  - name: capacity_transport_probe
+    kind: function.lua
+    source: file://capacity_transport_probe.lua
+    method: run
+    imports:
+      guard: app:capacity_transport_guard
+      client: app:capacity_client
+      fixture: app:capacity_http_fixture
+  - name: capacity_unreachable
+    kind: function.lua
+    source: file://capacity_transport_probe.lua
+    method: unreachable
+    imports:
+      guard: app:capacity_transport_guard
+      client: app:capacity_client
+      fixture: app:capacity_http_fixture
+  - name: capacity_status
+    kind: function.lua
+    source: file://capacity_transport_probe.lua
+    method: status
+    imports:
+      guard: app:capacity_transport_guard
+      client: app:capacity_client
+      fixture: app:capacity_http_fixture
+  - name: capacity_connection
+    kind: contract.binding
+    meta:
+      class: connection
+    contracts:
+    - contract: kickside.contract:component
+      methods:
+        get_status: app:capacity_status
+  - name: capacity_transport_test
+    kind: function.lua
+    source: file://capacity_transport_test.lua
+    method: run
+    meta:
+      type: test
+      suite: connection_capacity_transport
+    modules:
+    - funcs
+    - security
+    - uuid
+    imports:
+      test: wippy.test:test

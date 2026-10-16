@@ -1,0 +1,18 @@
+local test = require("test")
+local registry = require("registry")
+local function define_tests()
+    test.describe("Instance endpoints", function()
+        test.it("declares official defaults through namespace requirements", function()
+            local r = registry.get("kickside.discord:endpoint_api")
+            test.not_nil(r)
+            test.eq(r.data.default, "https://discord.com/api/v10")
+            test.is_true(#r.data.targets > 0)
+            local r = registry.get("kickside.discord:endpoint_gateway")
+            test.not_nil(r)
+            test.eq(r.data.default, "wss://gateway.discord.gg/?v=10&encoding=json")
+            test.is_true(#r.data.targets > 0)
+        end)
+    end)
+end
+local cases = test.run_cases(define_tests)
+return { run = function(options) return cases(options) end }

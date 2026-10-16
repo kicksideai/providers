@@ -1,0 +1,5 @@
+.wippy/
+/wippy.lock
+.env
+.local/
+node_modules/

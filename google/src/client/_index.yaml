@@ -1,0 +1,132 @@
+version: "1.0"
+namespace: kickside.google.client
+
+# Per-service domain libraries. Each issues calls through
+# kickside.google.client:transport and shapes Google REST responses; none touch
+# HTTP or OAuth directly. The agent traits in kickside.google.traits compose
+# these with a resolved connection.
+
+entries:
+  # ─── Transport: the driven adapter the service layer depends on ──────
+  # Resolves a kickside.oauth connection (token source) and the http_client
+  # module (HTTP) behind a functional surface. Services call transport.* and
+  # never touch HTTP or the OAuth/component contracts directly.
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Authenticated Google API transport over a kickside.oauth connection.
+    source: file://transport.lua
+    modules:
+      - http_client
+      - json
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      endpoints: kickside.connection:endpoints
+      component: kickside.component:component
+      types: kickside.google:types
+
+  - name: pagination
+    kind: library.lua
+    meta:
+      name: pagination
+      comment: Strict page-size normalization shared by Google services.
+    source: file://pagination.lua
+
+  - name: gmail
+    kind: library.lua
+    meta:
+      name: gmail
+      comment: Gmail operations (messages, threads, labels, drafts).
+    source: file://gmail.lua
+    modules:
+      - base64
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types
+
+  - name: drive
+    kind: library.lua
+    meta:
+      name: drive
+      comment: Google Drive operations (list, search, read, create folders).
+    source: file://drive.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types
+
+  - name: calendar
+    kind: library.lua
+    meta:
+      name: calendar
+      comment: Google Calendar operations (calendars, events CRUD).
+    source: file://calendar.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types
+
+  - name: sheets
+    kind: library.lua
+    meta:
+      name: sheets
+      comment: Google Sheets operations (read/append/update values, create).
+    source: file://sheets.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types
+
+  - name: slides
+    kind: library.lua
+    meta:
+      name: slides
+      comment: Google Slides operations (list, read text, create).
+    source: file://slides.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types
+
+  - name: docs
+    kind: library.lua
+    meta:
+      name: docs
+      comment: Google Docs operations (list, read text, create).
+    source: file://docs.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types
+
+  - name: contacts
+    kind: library.lua
+    meta:
+      name: contacts
+      comment: Google Contacts operations (list and search contacts).
+    source: file://contacts.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types
+
+  - name: analytics
+    kind: library.lua
+    meta:
+      name: analytics
+      comment: Google Analytics read operations (properties and reports).
+    source: file://analytics.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+      pagination: kickside.google.client:pagination
+      transport: kickside.google.client:transport
+      types: kickside.google:types

@@ -1,0 +1,49 @@
+organization: kickside
+module: google
+type: plugin
+description: KickSide Google — Google OAuth connection provider, agent traits and connection picker for Gmail, Drive, Calendar, Docs, Sheets, Slides, Contacts and Analytics.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - google
+  - oauth
+  - connection
+  - gmail
+  - drive
+  - calendar
+  - docs
+  - sheets
+  - slides
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+embed:
+  - kickside.google.ui:ui_fs
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "ui/node_modules:**"
+  - "ui/coverage/**"
+  - "ui/coverage:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "test/stubs/**"
+  - "test/stubs:**"
+  - "src/**/stubs/**"
+  - "src/**/*.spec.ts"
+  - "src/**/*.spec.tsx"
+  - "ui/src/**/*.spec.ts"
+  - "ui/src/**/*.spec.tsx"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

@@ -1,0 +1,6 @@
+description: Standalone unit harness for the provider enable-gate contract.
+module: sso-microsoft-unit-test
+organization: kickside
+directories:
+  src: .
+  modules: .wippy

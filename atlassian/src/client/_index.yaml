@@ -1,0 +1,52 @@
+version: "1.0"
+namespace: kickside.atlassian.client
+
+# The Atlassian API transport: the driven adapter the service layer depends on.
+# It resolves a connection (OAuth or stored-credential) and the http_client
+# module behind a functional surface. Services call transport.* and never touch
+# HTTP, auth headers, or the component/oauth contracts directly.
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared type surfaces (Result, Conn, AccessToken) for the Atlassian provider.
+    source: file://types.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: site
+    kind: library.lua
+    meta:
+      name: site
+      comment: Pure Atlassian site/base-url resolution (cloud vs server, OAuth cloudId gateway).
+    source: file://site.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Authenticated Atlassian API transport over an OAuth or credential connection.
+    source: file://transport.lua
+    modules:
+      - http_client
+      - json
+      - base64
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      component: kickside.component:component
+      site: kickside.atlassian.client:site
+      types: kickside.atlassian.client:types
+
+  - name: data_error
+    kind: library.lua
+    meta:
+      name: data_error
+      comment: Maps Atlassian client Results onto kickside.data DataError envelopes for pullable sources and writable sinks.
+    source: file://data_error.lua
+
+    imports:
+      capacity_http: kickside.connection:capacity_http

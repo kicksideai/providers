@@ -1,0 +1,211 @@
+version: "1.0"
+namespace: kickside.atlassian.jira.traits
+
+# Agent traits + tools for Jira. The connection is bound on the trait: each trait
+# declares meta.web_component (the Jira connection/project picker), the user
+# selects a connection (and optionally pins a project) when attaching the trait,
+# and that lands in the trait context. Tools read ctx.connection_id /
+# ctx.project_key — they never ask the LLM which connection to use.
+
+entries:
+  # ─── traits ──────────────────────────────────────────────────────────
+  - name: jira_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Jira Reader
+      public: true
+      icon: tabler:brand-jira
+      comment: Queries Jira projects and issues, including JQL search.
+      tags: [jira, project-management, read-only]
+      web_component: kickside-atlassian-jira-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Atlassian connection component id selected by the Jira picker.
+          project_key:
+            type: string
+            description: Optional pinned Jira project key selected by the Jira picker.
+        additionalProperties: false
+    prompt: |
+      You can query Jira with the JiraRead tool: list_projects, get_project,
+      search_issues (JQL, e.g. "project = ABC AND status = Open order by updated DESC"),
+      get_issue, get_comments, get_transitions. The Jira connection is preconfigured;
+      if a project is pinned, project-level actions default to it.
+    tools:
+      - kickside.atlassian.jira.traits:jira_get
+
+  - name: jira_writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Jira Writer
+      public: true
+      icon: tabler:brand-jira
+      comment: Creates, updates, comments on, and transitions Jira issues.
+      tags: [jira, project-management, write]
+      web_component: kickside-atlassian-jira-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Atlassian connection component id selected by the Jira picker.
+          project_key:
+            type: string
+            description: Optional pinned Jira project key selected by the Jira picker.
+        additionalProperties: false
+    prompt: |
+      You can mutate Jira with the JiraWrite tool: create_issue, update_issue,
+      add_comment, transition_issue (use JiraRead get_transitions to find the id),
+      assign_issue, delete_issue. The Jira connection is preconfigured; create_issue
+      defaults to the pinned project when one is set.
+    tools:
+      - kickside.atlassian.jira.traits:jira_write
+
+  - name: jira_developer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Jira Developer
+      public: true
+      icon: tabler:brand-jira
+      comment: Full read and write access to Jira projects and issues.
+      tags: [jira, project-management, read-write]
+      web_component: kickside-atlassian-jira-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Atlassian connection component id selected by the Jira picker.
+          project_key:
+            type: string
+            description: Optional pinned Jira project key selected by the Jira picker.
+        additionalProperties: false
+    prompt: |
+      You have full read+write Jira access through two tools: JiraRead (read) and
+      JiraWrite (create/update/comment/transition/assign/delete). The Jira
+      connection is preconfigured; a pinned project scopes/defaults project-level actions.
+    tools:
+      - kickside.atlassian.jira.traits:jira_get
+      - kickside.atlassian.jira.traits:jira_write
+
+  # ─── tools ───────────────────────────────────────────────────────────
+  - name: jira_get
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Jira Read
+      llm_alias: JiraRead
+      llm_description: "Read Jira. Lists return compact project, issue or comment summaries with native paging. search_issues accepts fields; get_issue/get_project/get_comment return complete records. Continue Cloud search with next_page_token, other lists with next_start_at."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "array", "items": {"type": "string"}, "description": "Jira search fields. Defaults to summary, status, priority, issuetype, assignee, created, updated, duedate. Use [\"*all\"] for all issue fields. get_transitions accepts fields to request transition properties; [\"*all\"] also expands transition field schemas."},
+            "comment_id": {"type": "string", "description": "Comment id for get_comment."},
+            "action": {
+              "type": "string",
+              "description": "The action to perform",
+              "enum": ["list_projects", "get_project", "search_issues", "get_issue", "get_comments", "get_transitions", "get_comment"]
+            },
+            "project_key": { "type": "string", "description": "Project key (defaults to the pinned project) for get_project" },
+            "issue_key": { "type": "string", "description": "Issue key (e.g. ABC-123) for get_issue/get_comments/get_transitions" },
+            "jql": { "type": "string", "description": "JQL query for search_issues (defaults to the pinned project when set)" },
+            "start_at": { "type": "integer", "description": "Jira startAt offset for list_projects, get_comments and Server search_issues; pass next_start_at from the previous page" },
+            "next_page_token": { "type": "string", "description": "Opaque next_page_token from a previous Cloud search page" },
+            "max_results": { "type": "integer", "description": "Jira maxResults page size (max 100)" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Jira. Lists return compact project, issue or comment summaries with native paging. search_issues accepts fields; get_issue/get_project/get_comment return complete records. Continue Cloud search with next_page_token, other lists with next_start_at. Provider rejections return {success:false,error,status_code?,data?}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when the request was rejected."},
+            "error": {"type": "string", "description": "Rejection reason when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a request Jira rejected."},
+            "data": {"description": "Jira error body of a rejected request."},
+            "action": {"type": "string"},
+            "result": {"type": "string", "enum": ["created", "updated", "deleted"]},
+            "issue_key": {"type": "string"},
+            "id": {"type": "string"},
+            "issue": {"type": "object", "description": "Jira's created-issue response (create_issue).", "additionalProperties": true},
+            "comment_id": {"type": "string"},
+            "comment": {"type": "object", "description": "The created Jira comment object (add_comment).", "additionalProperties": true},
+            "transition_id": {"type": "string"},
+            "account_id": {"type": "string"}
+          }
+        }
+    source: file://jira_get.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.atlassian.client:transport
+      jira: kickside.atlassian.jira:api
+      text: kickside.atlassian.jira:text
+
+  - name: jira_write
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Jira Write
+      llm_alias: JiraWrite
+      llm_description: "Write to Jira via the configured connection. Actions: create_issue, update_issue, add_comment, transition_issue, assign_issue, delete_issue. Returns an object { success, action, result, issue_key, ... }; a rejected request returns { success: false, error, status_code, data }. Use JiraRead first to resolve issue_key/transition_id/project_key."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The action to perform",
+              "enum": ["create_issue", "update_issue", "add_comment", "transition_issue", "assign_issue", "delete_issue"]
+            },
+            "project_key": { "type": "string", "description": "Project key for create_issue (defaults to the pinned project)" },
+            "issue_type": { "type": "string", "description": "Issue type name for create_issue (default Task)" },
+            "summary": { "type": "string", "description": "Summary for create_issue" },
+            "description": { "type": "string", "description": "Description for create_issue" },
+            "issue_key": { "type": "string", "description": "Issue key for update/comment/transition/assign/delete" },
+            "fields": { "type": "object", "description": "Field map for update_issue" },
+            "extra_fields": { "type": "object", "description": "Extra fields for create_issue" },
+            "comment": { "type": "string", "description": "Comment body for add_comment" },
+            "transition_id": { "type": "string", "description": "Transition id for transition_issue" },
+            "account_id": { "type": "string", "description": "Assignee accountId (Cloud) or username (Server) for assign_issue" },
+            "delete_subtasks": { "type": "boolean", "description": "Delete subtasks with the issue (delete_issue)" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "action": {"type": "string"},
+            "result": {"type": "string", "enum": ["created", "updated", "deleted"]},
+            "issue_key": {"type": "string"},
+            "id": {"type": "string"},
+            "comment_id": {"type": "string"},
+            "transition_id": {"type": "string"},
+            "account_id": {"type": "string"}
+          },
+          "description": "Envelope { success: true, ... } with the fields below; a rejected request returns { success: false, error, status_code, data }."
+        }
+    source: file://jira_write.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.atlassian.client:transport
+      jira: kickside.atlassian.jira:api

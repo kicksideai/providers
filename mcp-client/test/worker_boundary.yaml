@@ -1,0 +1,28 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: worker_client_fixture
+    kind: library.lua
+    source: file://worker_client_fixture.lua
+    imports:
+      client: kickside.mcp_client:http_client
+  - name: worker_component_fixture
+    kind: library.lua
+    source: file://worker_component_fixture.lua
+  - name: worker_boundary
+    kind: process.lua
+    source: file://worker_source.lua
+    method: main
+    modules: [channel, time, json, process]
+    imports:
+      error_envelope: kickside.contract:error_envelope
+      component: app:worker_component_fixture
+      client: app:worker_client_fixture
+  - name: worker_boundary_test
+    kind: function.lua
+    source: file://worker_boundary_test.lua
+    method: run
+    modules: [process, channel, time]
+    meta: { type: test, suite: worker_boundary }
+    imports:
+      test: wippy.test:test

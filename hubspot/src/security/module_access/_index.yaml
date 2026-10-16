@@ -1,0 +1,59 @@
+version: '1.0'
+namespace: kickside.hubspot.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Hubspot
+    surface: kickside.hubspot
+    intent: module_access
+    includes:
+    - kickside.hubspot.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.hubspot:*
+    - kickside.hubspot.client:*
+    - kickside.hubspot.connection:*
+    - kickside.hubspot.security:*
+    - kickside.hubspot.sink:*
+    - kickside.hubspot.source:*
+    - kickside.hubspot.traits:*
+    - kickside.hubspot.ui:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.hubspot:*
+    - kickside.hubspot.client:*
+    - kickside.hubspot.connection:*
+    - kickside.hubspot.security:*
+    - kickside.hubspot.sink:*
+    - kickside.hubspot.source:*
+    - kickside.hubspot.traits:*
+    - kickside.hubspot.ui:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

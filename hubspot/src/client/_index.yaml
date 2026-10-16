@@ -1,0 +1,240 @@
+version: "1.0"
+namespace: kickside.hubspot.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared constants and type surfaces for HubSpot.
+    source: file://types.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: config_defaults
+    kind: registry.entry
+    meta:
+      comment: Config helper defaults; default_field_mapping_ref is retargeted by kickside.hubspot:default_field_mapping_ref.
+      default_field_mapping_ref: kickside.hubspot.client:default_field_mapping.standard
+
+  - name: default_field_mapping.standard
+    kind: registry.entry
+    meta:
+      type: kickside.hubspot.field_mapping
+      title: Standard HubSpot field mapping defaults
+      comment: Standard HubSpot field mapping defaults
+      field_map:
+        contacts:
+          email: email
+          firstname: first_name
+          lastname: last_name
+          phone: phone
+          jobtitle: title
+          lifecyclestage: lifecycle_stage
+          hs_lead_status: lead_status
+          company: company
+          website: website
+          city: city
+          state: state
+          country: country
+          createdate: created_at
+          lastmodifieddate: updated_at
+        companies:
+          name: name
+          domain: domain
+          industry: industry
+          numberofemployees: employee_count
+          annualrevenue: annual_revenue
+          phone: phone
+          website: website
+          city: city
+          state: state
+          country: country
+          description: description
+          lifecyclestage: lifecycle_stage
+          createdate: created_at
+          hs_lastmodifieddate: updated_at
+        deals:
+          dealname: name
+          amount: amount
+          dealstage: stage
+          pipeline: pipeline
+          closedate: close_date
+          dealtype: deal_type
+          createdate: created_at
+          hs_lastmodifieddate: updated_at
+        tasks:
+          hs_task_subject: subject
+          hs_task_body: body
+          hs_task_status: status
+          hs_task_priority: priority
+          hs_timestamp: occurred_at
+          hs_lastmodifieddate: updated_at
+        # These bounded defaults are not a portal-schema assertion. Operators
+        # can replace the selection or use schema discovery before enabling an
+        # object type in a given portal. Engagement properties (meetings/notes/
+        # emails), including hs_meeting_recording_url, hs_has_meeting_transcript,
+        # and hs_all_attendee_emails, are live portal properties (na2 portal
+        # schema verified 2026-08-12).
+        meetings:
+          hs_meeting_title: title
+          hs_meeting_start_time: started_at
+          hs_meeting_end_time: ended_at
+          hs_meeting_body: body
+          hs_all_attendee_emails: attendee_emails
+          hs_meeting_outcome: outcome
+          hs_meeting_recording_url: recording_url
+          hs_has_meeting_transcript: has_transcript
+          hs_lastmodifieddate: updated_at
+        notes:
+          hs_note_body: body
+          hs_timestamp: occurred_at
+          hs_lastmodifieddate: updated_at
+        emails:
+          hs_email_subject: subject
+          hs_email_text: body
+          hs_email_direction: direction
+          hs_email_from_email: from_email
+          hs_email_to_email: to_email
+          hs_timestamp: occurred_at
+          hs_lastmodifieddate: updated_at
+        # A call's status is transport/lifecycle (QUEUED/RINGING/COMPLETED/...)
+        # and its disposition is the outcome (including portal-custom GUIDs).
+        # Two facts, two fields: neither is folded into the other.
+        calls:
+          hs_call_title: title
+          hs_call_body: body
+          hs_timestamp: occurred_at
+          hs_call_direction: direction
+          hs_call_duration: duration_ms
+          hs_call_recording_url: recording_url
+          hs_call_status: call_status
+          hs_call_disposition: call_disposition
+          hs_call_has_voicemail: has_voicemail
+          hs_lastmodifieddate: updated_at
+      property_selection:
+        contacts:
+          - email
+          - firstname
+          - lastname
+          - phone
+          - jobtitle
+          - lifecyclestage
+          - hs_lead_status
+          - company
+          - website
+          - city
+          - state
+          - country
+          - createdate
+          - lastmodifieddate
+        companies:
+          - name
+          - domain
+          - industry
+          - numberofemployees
+          - annualrevenue
+          - phone
+          - website
+          - city
+          - state
+          - country
+          - description
+          - lifecyclestage
+          - createdate
+          - hs_lastmodifieddate
+        deals:
+          - dealname
+          - amount
+          - dealstage
+          - pipeline
+          - closedate
+          - dealtype
+          - createdate
+          - hs_lastmodifieddate
+        tasks:
+          - hs_task_subject
+          - hs_task_body
+          - hs_task_status
+          - hs_task_priority
+          - hs_timestamp
+        meetings:
+          - hs_meeting_title
+          - hs_meeting_start_time
+          - hs_meeting_end_time
+          - hs_meeting_body
+          - hs_all_attendee_emails
+          - hs_meeting_outcome
+          - hs_meeting_recording_url
+          - hs_has_meeting_transcript
+        notes:
+          - hs_note_body
+          - hs_timestamp
+        emails:
+          - hs_email_subject
+          - hs_email_text
+          - hs_email_direction
+          - hs_email_from_email
+          - hs_email_to_email
+          - hs_timestamp
+        calls:
+          - hs_call_title
+          - hs_call_body
+          - hs_timestamp
+          - hs_call_direction
+          - hs_call_duration
+          - hs_call_recording_url
+          - hs_call_status
+          - hs_call_disposition
+          - hs_call_has_voicemail
+          - hs_lastmodifieddate
+
+  - name: config
+    kind: library.lua
+    meta:
+      name: config
+      comment: Config-owned HubSpot CRM object, direction, property-selection, and field-map defaults.
+    source: file://config.lua
+    modules: [registry]
+
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Low-level HubSpot REST API client (crm/v3 objects + search + owners + properties, crm/v4 associations).
+    source: file://api.lua
+    modules: [http_client, json, time]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      types: kickside.hubspot.client:types
+      config: kickside.hubspot.client:config
+
+  - name: output
+    kind: library.lua
+    meta:
+      name: output
+      comment: HubSpot tool output redaction of secret-like keys.
+    source: file://output.lua
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Actor-scoped HubSpot connection resolver and API transport.
+    source: file://transport.lua
+    modules: [ctx]
+    imports:
+      component: kickside.component:component
+      api: kickside.hubspot.client:api
+      types: kickside.hubspot.client:types
+      config: kickside.hubspot.client:config
+
+  - name: data_error
+    kind: library.lua
+    meta:
+      name: data_error
+      comment: Maps HubSpot client Results onto kickside.data DataError envelopes for pullable sources and writable sinks.
+    source: file://data_error.lua
+
+    imports:
+      capacity_http: kickside.connection:capacity_http

@@ -1,0 +1,162 @@
+version: "1.0"
+namespace: kickside.kb10.traits
+
+# kb10-owned agent tools for reading a KB's node/graph structure (SurveyKB /
+# BrowseKB / GetKBNode / TraverseKBGraph). These are engine-shaped (they read the
+# kb10 node/edge store via kickside.kb10.reader:kb_nodes) so they live with the
+# engine, not the model-agnostic knowledge control plane. They share the render +
+# kb_id-resolution + access-gate helpers with knowledge's generic tools
+# (kickside.knowledge.traits:kb_render). The knowledge reader/explorer traits and
+# the built-in Q&A agent reference these tools by id.
+
+entries:
+  - name: node_tools_implementation
+    kind: library.lua
+    meta: { comment: Shared implementation behind individually owned function entries. }
+    source: file://node_tools.lua
+    imports:
+      render: kickside.knowledge.traits:kb_render
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      component: kickside.component:component
+      tool_result: kickside.contract:tool_result
+
+  - name: kb_get_node_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.read] }
+      title: Get Knowledge Base Node
+      llm_alias: GetKBNode
+      llm_description: "Read one node (concept, document, or chunk) from a knowledge base in full, by its id (from a search, browse, or graph result). Returns a header line then the node's complete markdown content."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "kb_id": { "type": "string", "description": "Target KB id; required only when several KBs are configured (use the @kbid from QueryKB results)" },
+            "node_id": { "type": "string", "description": "Node id (e.g. from a search result or browse)" }
+          },
+          "required": ["node_id"]
+        }
+      output_schema: |
+        {
+          "description": "Refused access, a missing node or a store failure is a typed error.",
+          "oneOf": [
+            { "type": "string", "description": "Markdown: a header line \"# <node_id> [<node_type>]\", a blank line, then the node's complete markdown content." },
+            { "type": "object", "description": "An unresolved kb_id returns this domain error; kb_ids names the configured KBs when several are.",
+              "properties": { "success": { "const": false }, "error": { "type": "string" }, "kb_ids": { "type": "array", "items": { "type": "string" } } },
+              "required": ["success", "error"] }
+          ]
+        }
+    source: file://kb_get_node_tool.lua
+    method: get_node
+    imports:
+      render: kickside.knowledge.traits:kb_render
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      implementation: kickside.kb10.traits:node_tools_implementation
+
+  - name: kb_browse_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.read] }
+      title: Browse Knowledge Base
+      llm_alias: BrowseKB
+      llm_description: "Browse knowledge-base node summaries (id, type and label) without content. Use limit/offset and the returned continuation offset. GetKBNode reads one node in full."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "kb_id": { "type": "string", "description": "Target KB id; required only when several KBs are configured (use the @kbid from QueryKB results)" },
+            "parent_id": { "type": "string", "description": "List children of this node; omit for top-level nodes" },
+            "node_type": { "type": "string", "description": "Filter by node type (e.g. concept, document, chunk)" },
+            "limit": { "type": "integer", "description": "Max nodes", "minimum": 1, "maximum": 50 },
+            "offset": { "type": "integer", "description": "Pagination offset", "minimum": 0 }
+          },
+          "required": []
+        }
+      output_schema: |
+        {
+          "description": "A compact markdown list of node identifiers, types and labels, followed by the next offset when more nodes exist. Node bodies come from GetKBNode.",
+          "oneOf": [
+            { "type": "string", "description": "Markdown: a \"# Browse <parent|top> (<count>)\" header followed by one \"- <id> [<type>] · <label>\" line per node, then \"_More nodes: pass offset=N._\" when another page exists. Returns the header with \"_No nodes here._\" when empty." },
+            { "type": "object", "description": "An unresolved kb_id returns this domain error; kb_ids names the configured KBs when several are.",
+              "properties": { "success": { "const": false }, "error": { "type": "string" }, "kb_ids": { "type": "array", "items": { "type": "string" } } },
+              "required": ["success", "error"] }
+          ]
+        }
+    source: file://kb_browse_tool.lua
+    method: browse
+    imports:
+      render: kickside.knowledge.traits:kb_render
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      implementation: kickside.kb10.traits:node_tools_implementation
+
+  - name: kb_graph_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.read] }
+      title: Traverse Knowledge Base Graph
+      llm_alias: TraverseKBGraph
+      llm_description: "Graph knowledge bases only. Walk the concept graph deterministically from a start node id (get topic ids from SurveyKB's concept map), returning the connected concepts (with how many documents fall under each) and the edges between them — id-based navigation, not similarity search. Use it to move from a topic to its neighbours and documents. Not useful for document-only KBs."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "kb_id": { "type": "string", "description": "Target KB id; required only when several KBs are configured (use the @kbid from QueryKB results)" },
+            "node_id": { "type": "string", "description": "Start node id to traverse from" },
+            "depth": { "type": "integer", "description": "Traversal depth", "minimum": 1, "maximum": 5 },
+            "limit": { "type": "integer", "description": "Max nodes", "minimum": 1, "maximum": 50 }
+          },
+          "required": ["node_id"]
+        }
+      output_schema: |
+        {
+          "description": "Refused access, a missing node or a store failure is a typed error.",
+          "oneOf": [
+            { "type": "string", "description": "Markdown: a \"# Graph from <node_id>\" header, a \"## Concepts (<count>)\" section listing each connected node (id, type, label with a \"(docs N)\" count), then a \"## Edges (<count>)\" section with one \"- <from> —[<edge_type>]→ <to>\" line per edge between listed nodes. When more nodes are reachable within the depth than limit holds, a final italic line says so and names how to continue." },
+            { "type": "object", "description": "An unresolved kb_id returns this domain error; kb_ids names the configured KBs when several are.",
+              "properties": { "success": { "const": false }, "error": { "type": "string" }, "kb_ids": { "type": "array", "items": { "type": "string" } } },
+              "required": ["success", "error"] }
+          ]
+        }
+    source: file://kb_graph_tool.lua
+    method: graph
+    imports:
+      render: kickside.knowledge.traits:kb_render
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      implementation: kickside.kb10.traits:node_tools_implementation
+
+  - name: kb_summaries_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.read] }
+      title: Survey Knowledge Base Summaries
+      llm_alias: SurveyKB
+      llm_description: "Holistic overview of a knowledge base — call it first. Leads with a scope line (counts of concepts/documents/chunks). For a graph/wiki KB it then returns a deterministic CONCEPT MAP: the topics enumerated in a stable order with their ids and document counts (labels only, no content) — same KB, same list every call. Pick the matching topic id yourself and drill by id with TraverseKBGraph / BrowseKB / GetKBNode (use QueryKB only for fuzzy content search within a topic). For a document KB it lists summary node ids and their parent document ids; use GetKBNode for the complete summary. An empty result does NOT mean the KB is empty — confirm with BrowseKB or QueryKB."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "kb_id": { "type": "string", "description": "Target KB id; required only when several KBs are configured (use the @kbid from QueryKB results)" },
+            "limit": { "type": "integer", "description": "Max concepts, summaries or documents listed", "minimum": 1, "maximum": 100 }
+          },
+          "required": []
+        }
+      output_schema: |
+        {
+          "description": "Refused access, a missing node or a store failure is a typed error.",
+          "oneOf": [
+            { "type": "string", "description": "Markdown holistic overview of the bound KB(s): a scope line (\"# N concepts · N documents · ...\") then, for a graph/wiki KB, a \"## Concept map (<count>)\" of indented id + label (+ \"(docs N)\") lines in stable order; for a document KB, \"## Summaries\" blocks (a \"- <summary_id> [summary]\" line with its parent document id), or \"## Documents ...\" lines when no summaries exist. Lists longer than limit end with a line naming the BrowseKB call that lists the rest. Multiple pinned KBs are concatenated under \"# <title>\" headers. Returns \"_This KB has no concepts/documents yet._\" for an empty KB." },
+            { "type": "object", "description": "No configured KB returns this domain error.",
+              "properties": { "success": { "const": false }, "error": { "type": "string" }, "kb_ids": { "type": "array", "items": { "type": "string" } } },
+              "required": ["success", "error"] }
+          ]
+        }
+    source: file://kb_summaries_tool.lua
+    method: summaries
+    imports:
+      render: kickside.knowledge.traits:kb_render
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      implementation: kickside.kb10.traits:node_tools_implementation

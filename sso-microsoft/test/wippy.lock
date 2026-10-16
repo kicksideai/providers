@@ -1,0 +1,44 @@
+directories:
+    modules: .wippy
+    src: .
+modules:
+    - name: kickside/component
+      version: 0.0.0
+    - name: kickside/contract
+      version: 0.0.0
+    - name: kickside/core
+      version: 0.0.0
+    - name: kickside/execution
+      version: 0.0.0
+    - name: kickside/jobs
+      version: 0.0.0
+    - name: kickside/realtime-dispatch
+      version: 0.0.0
+    - name: kickside/security
+      version: 0.0.0
+    - name: kickside/settings
+      version: 0.0.0
+    - name: kickside/sso
+      version: 0.0.0
+    - name: kickside/sso-microsoft
+      version: 0.0.0
+    - name: kickside/users
+      version: 0.0.0
+    - name: wippy/bootloader
+      version: 0.3.18
+      hash: c7e71b358539b450b49b55e725f60f2dac8218e1c596cf3a473ce71e36b10a9b
+    - name: wippy/migration
+      version: 0.3.23
+      hash: 1666a62a870fa2692e560eda7cb7438fba027931d1fb88a2c5c713d660a10412
+    - name: wippy/security
+      version: 0.4.3
+      hash: f636859979e88b23647a78fb9aa8a553799de18750b0fb5fb085cbe21542c86c
+    - name: wippy/terminal
+      version: 0.4.6
+      hash: aa0c92b85c0dc2c96f00119a7eaa1ced569a2ac8899514d432aef0c910e73e63
+    - name: wippy/test
+      version: 0.4.21
+      hash: 9db8a38143f02e7fad670032cf5d985978130c593706626b5f59763bd8e2fe72
+    - name: wippy/views
+      version: 0.5.12
+      hash: a90c888b6150f1b5fc89f35191a39dce5f644cbdbf069224b22ad524860ce9a0

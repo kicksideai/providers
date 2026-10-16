@@ -1,0 +1,29 @@
+# Changelog
+
+## 0.1.12 (2026-10-09)
+
+- Include emitted source-map resources in the module package.
+
+## 0.1.11 (2026-10-08)
+
+- fix: preserve native result bounds and refresh selected model limits (b9dc370d)
+- fix: bound agent tool results and derive model checkpoint budgets (ff050198)
+- chore: refresh locks to latest published dependencies (8f6ec35e)
+- build: rebuild bundles from source (1696370e)
+- chore: refresh locks to latest published dependencies (61715074)
+- test: declare transitive security catalog kinds in provider hosts (5327e663)
+- fix: retain remote MCP tool diagnostics in errors (75709437)
+- Add selectable module access policies and native scope tests (5ae4742d)
+- fix(mcp-client): preserve error tuples and retain healthy worker sessions (593d9c89)
+- test: declare local siblings and refresh provider harness dependencies (38657c34)
+- Document remote MCP tool error results at the client contract (c72b9099)
+- fix(release): retain published provider snapshot metadata and locks (b70f940e)
+- fix(mcp-client): preserve bounded results and visible tool errors (1b1ab5a0)
+
+## 0.1.10
+
+Current published Hub version.
+
+## 0.1.9
+
+Current published Hub version.

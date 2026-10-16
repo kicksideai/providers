@@ -1,0 +1,193 @@
+version: "1.0"
+namespace: kickside.telegram.traits
+
+entries:
+  - name: telegram_get
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Telegram Read
+      llm_alias: TelegramRead
+      llm_description: "Read Telegram via the configured bot connection. Actions: get_me, get_chat. Returns an object { success, action, ... }; failures return { success: false, error }."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["get_me", "get_chat"] },
+            "chat_id": { "type": "string", "description": "Telegram chat id or @channelusername for get_chat" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Telegram rejected the request."},
+            "error": {"type": "string", "description": "Telegram's error description when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"type": "object", "description": "Telegram's response body of a rejected request.", "additionalProperties": true},
+            "action": {"type": "string"},
+            "bot": {"type": "object", "description": "The Telegram User object of the bot (getMe).", "additionalProperties": true},
+            "chat": {"type": "object", "description": "The Telegram ChatFullInfo object (getChat).", "additionalProperties": true}
+          },
+          "description": "Telegram result; a Telegram rejection returns { success: false, error, status_code, data }."
+        }
+    source: file://_fn_telegram_get.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.telegram.client:transport
+      api: kickside.telegram.client:api
+      implementation: kickside.telegram.traits:telegram_get_lib
+
+  - name: telegram_write
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Telegram Write
+      llm_alias: TelegramWrite
+      llm_description: "Write to Telegram via the configured bot connection. Actions: send_message, edit_message, delete_message, send_reaction, pin_message, send_typing. Returns an object { success, action, result, chat_id, ... }; failures return { success: false, error }."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["send_message", "edit_message", "delete_message", "send_reaction", "pin_message", "send_typing"] },
+            "chat_id": { "type": "string", "description": "Telegram chat id or @channelusername" },
+            "text": { "type": "string", "description": "Message text for send_message/edit_message" },
+            "content": { "type": "string", "description": "Alias for text" },
+            "message_id": { "type": "string", "description": "Telegram message id for edit/delete/reaction/pin" },
+            "emoji": { "type": "string", "description": "Emoji for send_reaction" },
+            "parse_mode": { "type": "string", "description": "Optional Telegram parse_mode, e.g. MarkdownV2 or HTML" },
+            "reply_to_message_id": { "type": "string", "description": "Optional message id to reply to" },
+            "message_thread_id": { "type": "string", "description": "Optional forum topic thread id" }
+          },
+          "required": ["action", "chat_id"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Telegram rejected the request."},
+            "error": {"type": "string", "description": "Telegram's error description when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"type": "object", "description": "Telegram's response body of a rejected request.", "additionalProperties": true},
+            "action": {"type": "string"},
+            "result": {"type": "string", "enum": ["created", "updated", "deleted", "rendered"]},
+            "chat_id": {"type": "string"},
+            "message_id": {"type": "string"},
+            "message": {"description": "The sent or edited Telegram Message object (send_message, edit_message)."},
+            "emoji": {"type": "string"}
+          },
+          "description": "Telegram result; a Telegram rejection returns { success: false, error, status_code, data }."
+        }
+    source: file://_fn_telegram_write.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.telegram.client:transport
+      api: kickside.telegram.client:api
+      types: kickside.telegram.client:types
+      implementation: kickside.telegram.traits:telegram_write_lib
+
+  - name: telegram_get_lib
+    kind: library.lua
+    meta: { name: telegram_get_lib, comment: "TelegramRead handler module (for tests)" }
+    source: file://telegram_get.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.telegram.client:transport
+      api: kickside.telegram.client:api
+
+  - name: telegram_write_lib
+    kind: library.lua
+    meta: { name: telegram_write_lib, comment: "TelegramWrite handler module (for tests)" }
+    source: file://telegram_write.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.telegram.client:transport
+      api: kickside.telegram.client:api
+      types: kickside.telegram.client:types
+
+  - name: telegram_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Telegram Reader
+      public: true
+      icon: tabler:brand-telegram
+      comment: Reads Telegram bot identity and known chat details.
+      tags: [telegram, messaging, read-only]
+      web_component: kickside-connection-trait-picker
+      provider: telegram
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Telegram connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can query Telegram with TelegramRead: get_me and get_chat. Telegram
+      bots cannot enumerate all chats; use a known chat_id or an inbound message's
+      reply_resource_id.
+    tools:
+      - kickside.telegram.traits:telegram_get
+
+  - name: telegram_operator
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Telegram Operator
+      public: true
+      icon: tabler:brand-telegram
+      comment: Sends and manages Telegram bot messages.
+      tags: [telegram, messaging, write]
+      web_component: kickside-connection-trait-picker
+      provider: telegram
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Telegram connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can write to Telegram with TelegramWrite: send_message, edit_message,
+      delete_message, send_reaction, pin_message, and send_typing. Keep messages
+      under 4096 characters.
+    tools:
+      - kickside.telegram.traits:telegram_write
+
+  - name: telegram_manager
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Telegram Manager
+      public: true
+      icon: tabler:brand-telegram
+      comment: Full read and write access for Telegram bot chats.
+      tags: [telegram, messaging, read-write]
+      web_component: kickside-connection-trait-picker
+      provider: telegram
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Telegram connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You have TelegramRead and TelegramWrite. Use TelegramRead to confirm bot or
+      chat details before writing; Telegram chat enumeration and history are not
+      available through the Bot API.
+    tools:
+      - kickside.telegram.traits:telegram_get
+      - kickside.telegram.traits:telegram_write

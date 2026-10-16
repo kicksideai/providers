@@ -1,0 +1,3 @@
+organization: kickside
+module: fireflies-test
+description: Standalone runnable harness that boots kickside/fireflies and checks provider declarations.

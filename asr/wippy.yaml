@@ -1,0 +1,28 @@
+organization: kickside
+module: asr
+type: plugin
+description: KickSide ASR — speech transcription for audio uploads. A universal upload stage that turns a stored audio file into the upload's text content, with the transcriber chosen by the deployment through a contract.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - asr
+  - speech
+  - transcription
+  - uploads
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

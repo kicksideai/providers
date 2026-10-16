@@ -1,0 +1,85 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/fireflies. They live in the harness because the
+# module is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: fireflies
+      comment: GraphQL request shaping and error mapping of the Fireflies API client.
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.fireflies.client:api
+
+  - name: output_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: fireflies
+      comment: Tool output redaction.
+    source: file://output_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      output: kickside.fireflies.client:output
+
+  - name: pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: fireflies
+      comment: Transcript and meeting pull core over a fake transport.
+    source: file://pull_core_test.lua
+    method: run
+    imports:
+      pull_core: kickside.fireflies.source:pull_core
+      test: wippy.test:test
+
+  - name: traits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: fireflies
+      comment: Fireflies trait and tool registry declarations.
+    source: file://traits_test.lua
+    method: run
+    modules: [json, registry]
+    imports:
+      test: wippy.test:test
+      reader: app.suites:reader_under_test
+      fixture: app.suites:reader_transport_fixture
+
+  - name: writer_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: fireflies
+      comment: The Fireflies record writer's title write-back over a recording transport.
+    source: file://writer_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      writer: kickside.fireflies.writer:record_writer_implementation
+      api: kickside.fireflies.client:api
+
+  - name: reader_transport_fixture
+    kind: library.lua
+    source: file://reader_transport_fixture.lua
+    imports:
+      types: kickside.fireflies.client:types
+
+  - name: reader_under_test
+    kind: library.lua
+    source: file://src_link/traits/get_tool.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: app.suites:reader_transport_fixture
+      output: kickside.fireflies.client:output

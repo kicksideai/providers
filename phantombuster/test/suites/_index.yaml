@@ -1,0 +1,74 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/phantombuster. They live in the harness because the
+# module is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: phantombuster
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.phantombuster.client:api
+
+  - name: output_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: phantombuster
+    source: file://output_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      output: kickside.phantombuster.client:output
+
+  - name: source_test
+    kind: function.lua
+    meta: { type: test, suite: phantombuster, group: Research }
+    source: file://source_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      source: kickside.phantombuster.research:source_core
+      pull_core: kickside.phantombuster.source:pull_core
+      operation_policy: kickside.phantombuster.source:operation_policy
+
+  - name: pull_core_test
+    kind: function.lua
+    meta: { type: test, suite: phantombuster }
+    source: file://pull_core_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      pull_core: kickside.phantombuster.source:pull_core
+      operation_policy: kickside.phantombuster.source:operation_policy
+
+  - name: tool_probe
+    kind: function.lua
+    meta:
+      comment: Runs a PhantomBuster tool handler against canned provider responses.
+    source: file://tool_probe.lua
+    method: run
+    modules: [ctx]
+    imports:
+      transport: kickside.phantombuster.client:transport
+      get_tool: kickside.phantombuster.traits:get_tool
+      write_tool: kickside.phantombuster.traits:write_tool
+
+  - name: traits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: phantombuster
+    source: file://traits_test.lua
+    method: run
+    modules: [json, registry, funcs]
+    imports:
+      test: wippy.test:test
+      operation_policy: kickside.phantombuster.source:operation_policy

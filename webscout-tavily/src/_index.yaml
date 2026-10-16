@@ -1,0 +1,98 @@
+version: "1.0"
+namespace: kickside.webscout.providers.tavily
+
+# Tavily search provider — a self-contained submodule, shaped after
+# kickside/webscout-brave. It owns its provider descriptor and its API key in its
+# own namespace. WebScout carries no Tavily code.
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide WebScout — Tavily
+      comment: Tavily search provider for WebScout — trait search only.
+
+  - name: dep.kickside.webscout
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the provider protocol, the HTTP client and the transport defaults.
+    component: kickside/webscout
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies this provider's own credential setting.
+    component: kickside/settings
+
+  # ─── This provider's own credential, in its own namespace ───
+  - name: setting_api_key
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Tavily API key (encrypted setting).
+    namespace: kickside.webscout.providers.tavily
+    key: api_key
+    value_type: secret
+    default: ""
+    description: Tavily API key for web discovery.
+    scope: global
+    editable: true
+
+  # ─── Where a person finds that key ───
+  # Without this record kickside/settings invents an ungrouped section named
+  # after the namespace and sorts it last; see kickside/webscout-brave.
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: Tavily settings section for the admin Settings page.
+    key: tavily_search
+    title: Tavily
+    icon: thesvg:tavily
+    group: Integrations
+    order: 25
+    namespace: kickside.webscout.providers.tavily
+    config:
+      namespace: kickside.webscout.providers.tavily
+      title: Tavily
+      icon: thesvg:tavily
+      help: Tavily API key. WebScout uses it once Tavily is the selected search provider.
+
+  # ─── Search provider protocol ───
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: kickside.webscout:search_provider
+      comment: Tavily search provider descriptor.
+    id: tavily
+    label: Tavily
+    icon: thesvg:tavily
+    description: Tavily web search built for LLM agents.
+    search_func: kickside.webscout.providers.tavily:search
+    available_func: kickside.webscout.providers.tavily:available
+    settings_ns: kickside.webscout.providers.tavily
+    max_results: 20
+    order: 30
+
+  - name: search
+    kind: function.lua
+    meta:
+      comment: Run one Tavily web search query and normalize the results.
+    source: file://search.lua
+    modules:
+      - json
+      - http_client
+    imports:
+      client: kickside.webscout.client:client
+      config: kickside.webscout:config
+    method: search
+
+  - name: available
+    kind: function.lua
+    meta: { comment: Report whether Tavily-backed discovery is configured. }
+    source: file://available.lua
+    method: available
+    imports:
+      config: kickside.webscout:config

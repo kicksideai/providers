@@ -1,0 +1,52 @@
+version: "1.0"
+namespace: kickside.discord.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared constants and type surfaces for Discord.
+    source: file://types.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Low-level Discord REST API client.
+    source: file://api.lua
+    modules: [http_client, json, time]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      types: kickside.discord.client:types
+
+  - name: preconditions
+    kind: library.lua
+    source: file://preconditions.lua
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: Actor-scoped Discord connection resolver and API transport.
+    source: file://transport.lua
+    modules: [security]
+    imports:
+      preconditions: kickside.discord.client:preconditions
+      base: kickside.connection:base_connection
+      reply_authorization: kickside.connection:reply_authorization
+      component: kickside.component:component
+      api: kickside.discord.client:api
+      types: kickside.discord.client:types
+
+  - name: data_error
+    kind: library.lua
+    meta:
+      name: data_error
+      comment: Maps client Results onto the kickside.data DataError envelope shared by the source and sink.
+    source: file://data_error.lua
+
+    imports:
+      capacity_http: kickside.connection:capacity_http

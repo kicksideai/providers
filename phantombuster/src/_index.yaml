@@ -1,0 +1,96 @@
+version: "1.0"
+namespace: kickside.phantombuster
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide PhantomBuster
+      comment: PhantomBuster API-key connection provider with agent discovery and read/write tools.
+
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: "*"
+    meta:
+      comment: Records and instances register as component shells and resolve access through the component service.
+
+  - name: dep.kickside.connection
+    kind: ns.dependency
+    component: kickside/connection
+    version: "*"
+    meta:
+      comment: Resolves external connections and their OAuth credentials.
+
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: "*"
+    meta:
+      comment: Implements the shared component and deletable contracts.
+
+  - name: dep.kickside.blocks
+    kind: ns.dependency
+    component: kickside/blocks
+    version: "*"
+
+  - name: dep.kickside.uploads
+    kind: ns.dependency
+    component: kickside/uploads
+    version: "*"
+    meta:
+      comment: Stages and stores files through the uploads repository and file_manager trait.
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server the PhantomBuster UI static mount attaches to.
+      description: HTTP server the PhantomBuster UI static mount attaches to.
+    targets:
+      - entry: kickside.phantombuster:ui_static
+        path: .meta.server
+
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built PhantomBuster trait picker web component bundle.
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      server: ""
+    path: /kickside-phantombuster
+    fs: kickside.phantombuster:ui_fs
+    options:
+      cache: no-cache
+
+  - name: phantombuster_picker_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: phantombuster_picker_view
+      title: PhantomBuster Connection Picker
+      tag_name: kickside-phantombuster-picker
+      base_path: kickside-phantombuster
+      entry_point: phantombuster_picker.js
+      announced: true
+      auto_register: false
+
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+      comment: Instance endpoints resolved from namespace requirements.
+    endpoints:
+      api: https://api.phantombuster.com
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Instance api endpoint.
+      description: Instance api endpoint.
+    default: https://api.phantombuster.com
+    targets:
+    - entry: kickside.phantombuster:endpoints
+      path: .endpoints.api

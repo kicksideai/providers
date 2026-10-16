@@ -1,0 +1,47 @@
+version: '1.0'
+namespace: kickside.llm_ocr.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Llm Ocr
+    surface: kickside.llm_ocr
+    intent: module_access
+    includes:
+    - kickside.llm_ocr.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.llm_ocr:*
+    - kickside.llm_ocr.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.llm_ocr:*
+    - kickside.llm_ocr.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

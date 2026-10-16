@@ -1,0 +1,35 @@
+version: "1.0"
+namespace: kickside.code_execution.security
+
+# The eval grant attaches to run_code, run_code_dry_run, and their internal worker.
+# Their security blocks omit `actor`,
+# these policies are ADDED to the caller's scope while the caller's actor is preserved --
+# so the sandbox and the tools it invokes run as the ambient caller, gaining no new
+# authority beyond the ability to compile+run isolated Lua, load the sandbox's declared
+# safe modules and imports (the SDK), and enumerate the tool catalog for the
+# whitelist (registry read only -- dispatch still runs under the ambient actor's gates).
+
+entries:
+  - name: eval_grant
+    kind: security.policy
+    meta:
+      comment: Permits run_code / run_code_dry_run to compile+run isolated Lua, load the sandbox's modules/imports, and read the registry to resolve the whitelist (empty = all). Attached to execution entries.
+    policy:
+      resources: '*'
+      actions:
+        - eval.compile
+        - eval.run
+        - eval.module
+        - eval.import
+        - registry.get
+        - registry.find
+      effect: allow
+
+  - name: worker_dispatch
+    kind: security.policy
+    meta:
+      comment: Execution entries dispatch their cancellable evaluation worker.
+    policy:
+      resources: kickside.code_execution:run_code_worker
+      actions: funcs.call
+      effect: allow

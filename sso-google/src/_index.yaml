@@ -1,0 +1,174 @@
+version: "1.0"
+namespace: kickside.sso.providers.google
+
+# Google login provider — a self-contained submodule. It owns its sso.provider
+# descriptor and its credential settings in its own namespace; the descriptor's
+# settings_ns points the config/admin readers back here. Adding an IdP is a new
+# submodule like this one, no module code change.
+entries:
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: KickSide SSO — Google
+      comment: Google OIDC login provider (declared endpoints).
+
+  - name: provider
+    kind: registry.entry
+    meta: { type: sso.provider, comment: Google OIDC connector descriptor (declared endpoints). }
+    id: google
+    label: Google
+    icon: tabler:brand-google
+    engine: oidc
+    settings_ns: kickside.sso.providers.google
+    # Declarative card presentation; the shell mounts the generic
+    # kickside-sso-provider card and passes this through. A provider needing a
+    # bespoke card declares its own ui_component tag instead.
+    ui:
+      intro: Create an OAuth 2.0 Client ID in Google Cloud Console and register the SSO callback as an authorized redirect URI.
+      docs_label: Google Cloud credentials
+      docs_url: https://console.cloud.google.com/apis/credentials
+    endpoints:
+      issuer: https://accounts.google.com
+      authorize: https://accounts.google.com/o/oauth2/v2/auth
+      token: https://oauth2.googleapis.com/token
+      userinfo: https://openidconnect.googleapis.com/v1/userinfo
+      jwks: https://www.googleapis.com/oauth2/v3/certs
+    trust_email: false
+    default_scopes: [openid, email, profile]
+    order: 10
+
+  # Google's own enable-gate, declaratively connected to its enabled setting.
+  - name: validate
+    kind: function.lua
+    meta: { comment: Google enable-gate — blocks enabling without credentials. }
+    source: file://validate.lua
+    imports:
+      sso_provider_gate: kickside.sso:provider_gate
+    method: validate
+
+  - name: enabled
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Enable Google login. }
+    namespace: kickside.sso.providers.google
+    key: enabled
+    value_type: bool
+    default: false
+    description: Offer "Sign in with Google".
+    scope: global
+    editable: true
+    visible: false
+    validate_func: kickside.sso.providers.google:validate
+
+  - name: client_id
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Google OAuth client id. }
+    namespace: kickside.sso.providers.google
+    key: client_id
+    value_type: string
+    default: ""
+    description: Google OAuth client id.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: client_secret
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Google OAuth client secret. }
+    namespace: kickside.sso.providers.google
+    key: client_secret
+    value_type: secret
+    default: ""
+    description: Google OAuth client secret.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: scopes
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Extra Google scopes. }
+    namespace: kickside.sso.providers.google
+    key: scopes
+    value_type: json
+    default: []
+    description: Additional scopes (openid email profile are always requested).
+    scope: global
+    editable: true
+    visible: false
+    schema: { kind: string_list }
+
+  # Module-owned Settings block: this provider's own left-nav entry in the
+  # "Single sign-on" group. The Settings page mounts kickside-sso-admin and hands
+  # it { provider: "google" }, so it renders only this provider's card.
+  - name: block.sso_provider
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: Google single sign-on configuration.
+    key: sso.google
+    title: Google
+    icon: tabler:brand-google
+    group: Single sign-on
+    order: 10
+    component_tag: kickside-sso-admin
+    config:
+      provider: google
+
+  - name: dep.kickside.sso
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the provider gate and shared SSO provider contract.
+    component: kickside/sso
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies provider credential settings and the SSO settings block.
+    component: kickside/settings
+
+  - name: endpoint_issuer
+    kind: ns.requirement
+    meta:
+      comment: Instance issuer endpoint.
+      description: Instance issuer endpoint.
+    default: https://accounts.google.com
+    targets:
+    - entry: kickside.sso.providers.google:provider
+      path: .endpoints.issuer
+  - name: endpoint_authorize
+    kind: ns.requirement
+    meta:
+      comment: Instance authorize endpoint.
+      description: Instance authorize endpoint.
+    default: https://accounts.google.com/o/oauth2/v2/auth
+    targets:
+    - entry: kickside.sso.providers.google:provider
+      path: .endpoints.authorize
+  - name: endpoint_token
+    kind: ns.requirement
+    meta:
+      comment: Instance token endpoint.
+      description: Instance token endpoint.
+    default: https://oauth2.googleapis.com/token
+    targets:
+    - entry: kickside.sso.providers.google:provider
+      path: .endpoints.token
+  - name: endpoint_userinfo
+    kind: ns.requirement
+    meta:
+      comment: Instance userinfo endpoint.
+      description: Instance userinfo endpoint.
+    default: https://openidconnect.googleapis.com/v1/userinfo
+    targets:
+    - entry: kickside.sso.providers.google:provider
+      path: .endpoints.userinfo
+  - name: endpoint_jwks
+    kind: ns.requirement
+    meta:
+      comment: Instance jwks endpoint.
+      description: Instance jwks endpoint.
+    default: https://www.googleapis.com/oauth2/v3/certs
+    targets:
+    - entry: kickside.sso.providers.google:provider
+      path: .endpoints.jwks

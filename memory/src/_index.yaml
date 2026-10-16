@@ -1,0 +1,260 @@
+version: "1.0"
+namespace: kickside.memory
+
+entries:
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: KickSide Memory
+      comment: Agent memory capabilities. Owns lifecycle/checkpoint policy; storage is delegated to provider contracts such as knowledge-base queryable/embeddable.
+
+  - name: dep.wippy.agent
+    kind: ns.dependency
+    component: wippy/agent
+    version: '*'
+
+  - name: dep.wippy.llm
+    kind: ns.dependency
+    component: wippy/llm
+    version: '*'
+
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: '*'
+
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '*'
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server the memory capability config component is served from.
+      description: HTTP server the memory capability config component is served from.
+    targets:
+      - entry: kickside.memory:ui_static
+        path: .meta.server
+
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built/plain KickSide memory web components.
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      server: ""
+    path: /kickside-memory
+    fs: kickside.memory:ui_fs
+    options:
+      cache: "no-cache"
+
+  - name: knowledge_memory_component
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: knowledge_memory_component
+      title: Knowledge Base Memory Capability
+      tag_name: kickside-knowledge-memory
+      base_path: kickside-memory
+      entry_point: knowledge_memory.js
+      announced: true
+      auto_register: false
+
+  - name: runtime
+    kind: library.lua
+    meta:
+      name: runtime
+      comment: KB-backed lifecycle/checkpoint runtime for the Knowledge Base Memory capability.
+    source: file://runtime.lua
+    modules: [ctx, contract, json]
+    imports:
+      component: kickside.component:component
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+
+  - name: runtime_lifecycle
+    kind: function.lua
+    meta:
+      comment: Lifecycle binding for Knowledge Based Memory.
+    source: file://runtime_lifecycle.lua
+    modules: [ctx, contract, json]
+    imports:
+      component: kickside.component:component
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      implementation: kickside.memory:runtime
+    method: apply
+
+  - name: runtime_checkpoint
+    kind: function.lua
+    meta:
+      comment: Checkpoint binding for Knowledge Based Memory.
+    source: file://runtime_checkpoint.lua
+    modules: [ctx, contract, json]
+    imports:
+      component: kickside.component:component
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      implementation: kickside.memory:runtime
+    method: create
+
+  - name: memory_recall_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.read] }
+      title: Search Long-Term Memory
+      llm_alias: SearchMemory
+      llm_description: "Search long-term memory. Returns compact identifiers, title, type, score and a provider snippet where available. Follow next_cursor with the same query. fields explicitly selects content, text, metadata or other provider fields; [\"*\"] returns full matched records."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "fields": {"type": "array", "items": {"type": "string"}, "description": "Additional provider fields to return. Use [\"*\"] for the whole record. Default list rows contain identifiers and selection metadata."},
+            "query": { "type": "string", "description": "What memory to search for" },
+            "kb_id": { "type": "string", "description": "Optional memory knowledge base id. Omit to search the capability's configured KBs." },
+            "limit": { "type": "integer", "description": "Maximum memories to return in this page", "minimum": 1, "maximum": 100 },
+            "cursor": { "type": "string", "description": "next_cursor from a previous SearchMemory result with the same query, to read the following page" }
+          },
+          "required": ["query"]
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "A ranked memory page {success,query,count,items,next_cursor?,note}. items are compact summaries by default; fields requests additional provider fields. Domain errors return {success:false,error}; infrastructure failures return (nil,typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the search ran; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "query": {"type": "string", "description": "The query that was searched (present when success is true)."},
+            "count": {"type": "integer", "description": "Number of memories returned in items."},
+            "items": {"type": "array", "description": "Matched memory records from the configured knowledge base(s).", "items": {"type": "object", "description": "A compact knowledge-base match with its source kb id. fields requests content/text/summary/metadata explicitly.", "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "source": {"type": "string"}, "score": {"type": "number"}, "kb_id": {"type": "string", "description": "Id of the knowledge base the memory came from."}, "content": {"type": "string", "description": "Memory content, when the item exposes it."}, "text": {"type": "string", "description": "Memory text, when the item exposes it."}, "summary": {"type": "string", "description": "Memory summary, when the item exposes it."}, "snippet": {"type": "string", "description": "Memory snippet, when the item exposes it."}}}},
+            "next_cursor": {"type": "string", "description": "Pass as cursor with the same query to read the next page; absent on the last page."},
+            "message": {"type": "string", "description": "Message for a disabled-recall domain outcome."},
+            "note": {"type": "string", "description": "Caveat that memory may be incomplete or inaccurate (present when success is true)."}
+          },
+          "required": ["success"]
+        }
+    source: file://memory_recall_tool.lua
+    modules: [ctx, contract, json]
+    imports:
+      component: kickside.component:component
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      implementation: kickside.memory:runtime
+    method: recall
+
+  - name: lifecycle_binding
+    kind: contract.binding
+    meta:
+      title: Knowledge Based Memory Lifecycle
+      comment: Implements wippy.agent:lifecycle for KB-backed memory recall and final commit.
+    contracts:
+      - contract: wippy.agent:lifecycle
+        methods:
+          apply: kickside.memory:runtime_lifecycle
+
+  - name: checkpoint_binding
+    kind: contract.binding
+    meta:
+      title: Knowledge Based Memory Checkpoint
+      comment: Supplies working session summaries and separate durable KB digests when an agent mounts Knowledge Base Memory.
+    contracts:
+      - contract: wippy.agent:checkpoint
+        methods:
+          create: kickside.memory:runtime_checkpoint
+
+  - name: knowledge_based_memory
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      public: true
+      title: Knowledge Base Memory
+      icon: tabler:brain
+      comment: Explicitly mounts Memory for working session checkpoints, durable knowledge-base storage and recall.
+      tags: [memory, checkpoint, knowledge]
+      web_component: kickside-knowledge-memory
+      context_schema:
+        type: object
+        properties:
+          kb_ids:
+            type: array
+            title: Memory knowledge bases
+            role: picker
+            web_component: wc-kb-picker
+            items: { type: string }
+          write_kb_id:
+            type: string
+            title: Write target knowledge base
+            role: picker
+            web_component: wc-kb-picker
+          read_enabled:
+            type: boolean
+            title: Recall memory
+            role: value
+          write_enabled:
+            type: boolean
+            title: Write checkpoints
+            role: value
+          recall_limit:
+            type: integer
+            title: Recall result limit
+            role: value
+          recall_max_chars:
+            type: integer
+            title: Recall character budget
+            role: value
+          recall_prompt:
+            type: string
+            title: Recall prompt
+            role: value
+          checkpoint_model:
+            type: string
+            title: Checkpoint model
+            role: value
+          checkpoint_prompt:
+            type: string
+            title: Checkpoint prompt
+            role: value
+          checkpoint_temperature:
+            type: number
+            title: Checkpoint temperature
+            role: value
+          checkpoint_max_tokens:
+            type: integer
+            title: Checkpoint max tokens
+            role: value
+          checkpoint_source_max_chars:
+            type: integer
+            title: Checkpoint source chars
+            role: value
+        additionalProperties: false
+    prompt: |
+      You have Knowledge Base Memory. Relevant long-term memory may
+      be injected when you become active, including after an agent switch. This
+      memory is derived from prior chats and may be incomplete or
+      inaccurate. Treat it as advisory context; decide what is useful before
+      relying on it.
+
+      Use SearchMemory when you need to query memory explicitly. When
+      checkpoint persistence is enabled, checkpoints and session deactivation
+      store relevant details for future chats in the selected
+      knowledge base. This does not grant a general knowledge-base authoring
+      tool.
+    tools:
+      - kickside.memory:memory_recall_tool
+    behaviors:
+      - id: knowledge_memory
+        kind: memory
+        handles: [activate, checkpoint, deactivate]
+        handlers:
+          lifecycle: kickside.memory:lifecycle_binding
+          checkpoint: kickside.memory:checkpoint_binding
+        priority: 10
+        checkpoint:
+          token_threshold: 64000
+          model: class:fast
+          max_tokens: 1000

@@ -1,0 +1,29 @@
+version: "1.0"
+namespace: kickside.kb10.portability
+
+# kb10's implementation of kickside.contract:portable — it owns its own data, so it
+# streams its store/nodes/embeddings/edges out and replays them on import. The
+# generic coordinator handles the component shell; these only move kb10's tables.
+
+entries:
+  - name: export_func
+    kind: function.lua
+    meta:
+      comment: kb10 portable.export — stream the store row + nodes + embeddings + edges of one KB to <path>/data/*.jsonl.
+    source: file://kb_export.lua
+    modules: [fs, json, sql, ctx]
+    imports:
+      ops: kickside.kb10.persist:ops
+      portable_io: kickside.component.portability:portable_io
+    method: handler
+
+  - name: import_into_func
+    kind: function.lua
+    meta:
+      comment: kb10 portable.import_into — replay data/*.jsonl into the new store, remapping the node id graph (parent-first).
+    source: file://kb_import.lua
+    modules: [fs, uuid, ctx]
+    imports:
+      store: kickside.kb10.persist:store
+      portable_io: kickside.component.portability:portable_io
+    method: handler

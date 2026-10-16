@@ -1,0 +1,31 @@
+organization: kickside
+module: webscout
+type: plugin
+description: Web research tools and typed evidence Sources over pluggable, registry-declared search providers.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - webscout
+  - search
+  - research
+  - tools
+embed:
+  - kickside.webscout:ui_fs
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "app.fixtures:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

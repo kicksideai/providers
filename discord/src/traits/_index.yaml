@@ -1,0 +1,215 @@
+version: "1.0"
+namespace: kickside.discord.traits
+
+# Discord agent toolkit: two tools (read / write) over the existing actor-scoped
+# REST client, and three traits that bundle them. Each trait declares the shared
+# connection-trait-picker as its config UI with provider=discord, so the agent
+# author selects which Discord connection (or auto-selects the single default)
+# the tools act through; the picked connection id arrives as ctx.connection_id.
+
+entries:
+  - name: discord_get
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Discord Read
+      llm_alias: DiscordRead
+      llm_description: "Read Discord. list_guilds/list_channels/get_messages return compact summaries with next_cursor. Pass next_cursor as cursor; channels use an offset, guilds and messages use provider snowflake ids. get_guild/get_channel/get_message return the whole object, including message content, embeds and attachments."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "message_id": {"type": "string", "description": "Message id for get_message."},
+            "action": {"type": "string", "description": "The action to perform", "enum": ["list_guilds", "get_guild", "list_channels", "get_channel", "get_messages", "get_message"]},
+            "guild_id": {"type": "string", "description": "Guild id for get_guild / list_channels"},
+            "channel_id": {"type": "string", "description": "Channel id for get_channel / get_messages"},
+            "limit": {"type": "integer", "description": "Page size for list_guilds (1-200) or get_messages (1-100); default 20"},
+            "cursor": {"type": "string", "description": "next_cursor from the previous list_guilds or get_messages page"}
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Discord. list_guilds/list_channels/get_messages return compact summaries with next_cursor. Pass next_cursor as cursor; channels use an offset, guilds and messages use provider snowflake ids. get_guild/get_channel/get_message return the whole object, including message content, embeds and attachments. Provider rejections return {success:false,error,status_code?,data?}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Discord rejected the request."},
+            "error": {"type": "string", "description": "Discord error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Discord error body of a rejected request."},
+            "action": {"type": "string"},
+            "guilds": {"type": "array", "description": "Discord partial guild objects.", "items": {"type": "object", "additionalProperties": true}},
+            "guild": {"type": "object", "description": "Discord guild object with approximate counts.", "additionalProperties": true},
+            "guild_id": {"type": "string"},
+            "channels": {"type": "array", "description": "Discord channel objects (type is the Discord channel type number).", "items": {"type": "object", "additionalProperties": true}},
+            "channel": {"type": "object", "description": "Discord channel object.", "additionalProperties": true},
+            "channel_id": {"type": "string"},
+            "messages": {"type": "array", "description": "Discord message objects with author, attachments, embeds, reactions and references.", "items": {"type": "object", "additionalProperties": true}},
+            "next_cursor": {"type": "string"}
+          }
+        }
+    source: file://_fn_discord_get.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.discord.client:transport
+      api: kickside.discord.client:api
+      implementation: kickside.discord.traits:discord_get_lib
+
+  - name: discord_write
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Discord Write
+      llm_alias: DiscordWrite
+      llm_description: Write to Discord — send a channel message, add a reaction to a message, or show the bot's typing indicator, via the configured Discord connection.
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The action to perform",
+              "enum": ["send_message", "add_reaction", "trigger_typing"]
+            },
+            "channel_id": { "type": "string", "description": "Target channel id" },
+            "content": { "type": "string", "description": "Message text for send_message (max 2000)" },
+            "message_id": { "type": "string", "description": "Message id for add_reaction" },
+            "emoji": { "type": "string", "description": "Emoji for add_reaction (unicode char, or custom name:id)" }
+          },
+          "required": ["action", "channel_id"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Discord write result; a Discord rejection returns { success: false, error, status_code, data }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Discord rejected the request."},
+            "error": {"type": "string", "description": "Discord error message when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"description": "Discord error body of a rejected request."},
+            "action": {"type": "string"},
+            "result": {"type": "string", "enum": ["created", "updated", "rendered"]},
+            "channel_id": {"type": "string"},
+            "message_id": {"type": "string"},
+            "message": {"type": "object", "description": "The created Discord message object (send_message).", "additionalProperties": true},
+            "emoji": {"type": "string"}
+          }
+        }
+    source: file://_fn_discord_write.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.discord.client:transport
+      api: kickside.discord.client:api
+      types: kickside.discord.client:types
+      implementation: kickside.discord.traits:discord_write_lib
+
+  # Library views of the tool handlers so the dispatch/validation is unit-tested
+  # as a module (the function entries above only expose the bare handler).
+  - name: discord_get_lib
+    kind: library.lua
+    meta: { name: discord_get_lib, comment: "DiscordRead handler module (for tests)" }
+    source: file://discord_get.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.discord.client:transport
+      api: kickside.discord.client:api
+
+  - name: discord_write_lib
+    kind: library.lua
+    meta: { name: discord_write_lib, comment: "DiscordWrite handler module (for tests)" }
+    source: file://discord_write.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.discord.client:transport
+      api: kickside.discord.client:api
+      types: kickside.discord.client:types
+
+  - name: discord_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Discord Reader
+      public: true
+      icon: tabler:brand-discord
+      comment: Reads Discord servers, channels, and messages.
+      tags: [discord, messaging, read-only]
+      web_component: kickside-connection-trait-picker
+      provider: discord
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Discord connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can query Discord with the DiscordRead tool: list_guilds, get_guild,
+      list_channels (per guild), get_channel, and get_messages (recent messages
+      in a channel, up to 100 per call). Pass next_cursor as cursor to continue
+      guild or message pages. Resolve ids with the list actions before reading
+      a specific guild or channel.
+    tools:
+      - kickside.discord.traits:discord_get
+
+  - name: discord_operator
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Discord Operator
+      public: true
+      icon: tabler:brand-discord
+      comment: Posts messages and reactions to Discord.
+      tags: [discord, messaging, write]
+      web_component: kickside-connection-trait-picker
+      provider: discord
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Discord connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can write to Discord with the DiscordWrite tool: send_message (post to a
+      channel), add_reaction (an emoji on a specific message), and trigger_typing
+      (show the bot's typing indicator while composing). Keep messages under 2000
+      characters.
+    tools:
+      - kickside.discord.traits:discord_write
+
+  - name: discord_manager
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Discord Manager
+      public: true
+      icon: tabler:brand-discord
+      comment: Full read and write access to Discord servers, channels, and messages.
+      tags: [discord, messaging, read-write]
+      web_component: kickside-connection-trait-picker
+      provider: discord
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Discord connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You have full read and write access to Discord through two tools:
+      DiscordRead (list_guilds, get_guild, list_channels, get_channel, get_messages)
+      and DiscordWrite (send_message, add_reaction, trigger_typing). Look ids up
+      with DiscordRead before acting, and keep messages under 2000 characters.
+    tools:
+      - kickside.discord.traits:discord_get
+      - kickside.discord.traits:discord_write

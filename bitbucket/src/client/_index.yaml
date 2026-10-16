@@ -1,0 +1,26 @@
+version: "1.0"
+namespace: kickside.bitbucket.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta: { name: types, comment: Shared constants and type surfaces for Bitbucket Cloud. }
+    source: file://types.lua
+
+  - name: api
+    kind: library.lua
+    meta: { name: api, comment: Low-level Bitbucket Cloud REST 2.0 client. }
+    source: file://api.lua
+    modules: [http_client, json]
+    imports:
+      types: kickside.bitbucket.client:types
+
+  - name: transport
+    kind: library.lua
+    meta: { name: transport, comment: Resolves a Bitbucket connection component into an authenticated API handle. }
+    source: file://transport.lua
+    modules: [base64]
+    imports:
+      component: kickside.component:component
+      api: kickside.bitbucket.client:api
+      types: kickside.bitbucket.client:types

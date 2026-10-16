@@ -1,0 +1,355 @@
+version: "1.0"
+namespace: kickside.kb10.graph
+
+# Concept-graph enrichment + placement over the kb10 node/edge/embedding store.
+# These read and write nodes/edges/embeddings through the kb10-internal node_store
+# (no contract); the concept-graph is a kb10 engine concern, not the knowledge
+# control plane's.
+
+entries:
+  - name: concept_placement
+    kind: function.lua
+    source: file://concept_placement.lua
+    security:
+      policies: [kickside.kb10.graph:placement_registry, kickside.kb10.graph:placement_agent_spawn]
+    method: run
+    modules: [logger]
+    imports:
+      flow: userspace.dataflow.flow:flow
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      placement_tools: kickside.kb10.graph:placement_tools
+
+  - name: treatment
+    kind: library.lua
+    source: file://treatment.lua
+    modules: [logger, json]
+    imports:
+      flow: userspace.dataflow.flow:flow
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      engines: kickside.knowledge:engines
+
+  - name: enrichment_consts
+    kind: library.lua
+    meta:
+      comment: Process registry name and message topic of the enrichment service, shared by its registrant and senders.
+    source: file://enrichment_consts.lua
+
+  - name: enrichment_service
+    kind: process.lua
+    source: file://enrichment_service.lua
+    method: main
+    modules: [sql, json, logger, time, channel, process, ctx, security, registry]
+    imports:
+      agent_context: wippy.agent:context
+      treatment: kickside.kb10.graph:treatment
+      kb_types: kickside.kb10:types
+      engines: kickside.knowledge:engines
+      node_store: kickside.kb10.persist:node_store
+      execution_identity: kickside.execution:execution_identity
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+
+  - name: enrichment_state
+    kind: function.lua
+    meta:
+      comment: "Sets or clears the enrichment attention flags (enrichment_error / enrichment_agent_missing / enrichment_agent_error) on a KB's public component meta, so graph-enrichment failures and dangling enrichment agents are visible on the KB surface instead of log-only. Not agent-facing: called by enrichment_service via execution_identity.run_as(frozen_identity, 'kickside.kb10.graph:enrichment_state', { component_id, error?, enrichment_agent_id?, clear? }) under the KB owner's identity, since the enrichment process actor itself has no write grant on the KB. clear='error' resets enrichment_error only; clear='all'/true resets every flag (cleared flags are written as empty values, readers normalize empty to absent). Returns { ok = true } on success, or (nil, error_string) on failure."
+    source: file://enrichment_state.lua
+    method: run
+    imports:
+      component: kickside.component:component
+
+  - name: enrichment_service.service
+    kind: process.service
+    process: kickside.kb10.graph:enrichment_service
+    host: ""
+    lifecycle:
+      auto_start: true
+      restart:
+        max_attempts: 0
+      security:
+        # Concept placement runs a dataflow agent, whose client requires a
+        # non-empty actor id; the process group alone yields an empty id. Give the
+        # worker a stable system actor identity.
+        actor:
+          id: kickside.kb10.graph:enrichment_service
+        policies: [kickside.kb10.graph:enrichment_deferred_owner]
+        groups:
+          - wippy.security:process
+
+  - name: graph_functions
+    kind: library.lua
+    source: file://graph_functions.lua
+    modules: [json, logger]
+    imports:
+      llm: wippy.llm:llm
+      models: wippy.llm.discovery:models
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+
+  - name: browse_tree
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      title: Browse Tree
+      llm_alias: BrowseTree
+      llm_description: "Render the KB's full concept taxonomy as indented plain text — every concept's label, id, and depth in the hierarchy, plus the documents attached under each. Takes no arguments. Returns the tree text, or \"The concept tree is empty (only root exists).\" when there are no concepts yet. Call this first to orient before CreateConcept/AttachDocument/MoveDocument, and reuse the concept ids it lists rather than re-deriving them."
+      input_schema: |
+        {"type":"object","properties":{},"additionalProperties":false}
+      output_schema: |
+        {"type":"string","description":"The concept taxonomy rendered as indented plain text — each concept's label, id, and depth plus the documents attached under it. Returns \"The concept tree is empty (only root exists).\" when no concepts exist, or an \"Error ...\" string on failure."}
+    source: file://browse_tree.lua
+    method: browse_tree
+    modules: [json, logger, ctx]
+    imports:
+      graph_fn: kickside.kb10.graph:graph_functions
+      llm: wippy.llm:llm
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      implementation: kickside.kb10.graph:placement_tools
+
+  - name: placement_tools
+    kind: library.lua
+    meta:
+      name: placement_tools
+      comment: Concept placement tool handlers (browse, create, place, and move concepts) shared by the graph tools.
+    source: file://placement_tools.lua
+    modules: [json, logger, ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      graph_fn: kickside.kb10.graph:graph_functions
+      llm: wippy.llm:llm
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+
+  - name: create_concept
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      title: Create Concept
+      llm_alias: CreateConcept
+      llm_description: "Create a new concept node in the taxonomy, or reuse one if a concept with the same (normalized) label already exists — this tool get-or-creates, it never duplicates. Returns { success: true, result: \"created\"|\"reused\", concept_id, label, parent_id?, message? }; when reused, call AttachDocument with the existing concept_id instead. Failures return { success: false, error }. Omit parent_id only for the first top-level concept; after that pass an explicit parent id from BrowseTree. Fails if the resulting depth exceeds the active wiki link-depth limit — retry with a shallower parent. Pass the returned concept_id to AttachDocument to categorize a document under it."
+      input_schema: |
+        {"type":"object","properties":{"label":{"type":"string","description":"Short label for the concept (2-5 words)"},"description":{"type":"string","description":"1-2 sentence description of what this concept covers"},"parent_id":{"type":"string","description":"ID of the parent concept. Omit only for the first top-level concept; use the root id explicitly for later top-level topics."}},"required":["label"],"additionalProperties":false}
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Envelope { success: true, ... } with the fields below; failures return { success: false, error }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "result": {"type": "string", "enum": ["created", "reused", "attached", "unchanged", "moved", "merged"]},
+            "concept_id": {"type": "string"},
+            "label": {"type": "string"},
+            "parent_id": {"type": "string"},
+            "message": {"type": "string", "description": "Guidance when an existing concept is reused."},
+            "document_node_id": {"type": "string"},
+            "from_id": {"type": "string"},
+            "into_id": {"type": "string"},
+            "moved_edges": {"type": "integer", "description": "Edges re-pointed onto the target concept (merge)."}
+          }
+        }
+    source: file://create_concept.lua
+    method: create_concept
+    modules: [json, logger, ctx]
+    imports:
+      graph_fn: kickside.kb10.graph:graph_functions
+      llm: wippy.llm:llm
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      implementation: kickside.kb10.graph:placement_tools
+
+  - name: attach_document
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      title: Attach Document
+      llm_alias: AttachDocument
+      llm_description: "Attach a document to a non-root concept by creating a categorized_as edge between document_node_id and concept_id (get concept_id from BrowseTree or CreateConcept). Returns { success: true, result: \"attached\"|\"unchanged\", document_node_id, concept_id }; \"unchanged\" means that edge already exists. Failures return { success: false, error }, including when concept_id is the root concept — create or pick a non-root concept first. Use MoveDocument instead if the document is already attached elsewhere and should be recategorized."
+      input_schema: |
+        {"type":"object","properties":{"document_node_id":{"type":"string","description":"The document node ID to attach"},"concept_id":{"type":"string","description":"The non-root concept ID to attach the document to"}},"required":["document_node_id","concept_id"],"additionalProperties":false}
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Envelope { success: true, ... } with the fields below; failures return { success: false, error }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "result": {"type": "string", "enum": ["created", "reused", "attached", "unchanged", "moved", "merged"]},
+            "concept_id": {"type": "string"},
+            "label": {"type": "string"},
+            "parent_id": {"type": "string"},
+            "message": {"type": "string", "description": "Guidance when an existing concept is reused."},
+            "document_node_id": {"type": "string"},
+            "from_id": {"type": "string"},
+            "into_id": {"type": "string"},
+            "moved_edges": {"type": "integer", "description": "Edges re-pointed onto the target concept (merge)."}
+          }
+        }
+    source: file://attach_document.lua
+    method: attach_document
+    modules: [json, logger, ctx]
+    imports:
+      graph_fn: kickside.kb10.graph:graph_functions
+      llm: wippy.llm:llm
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      implementation: kickside.kb10.graph:placement_tools
+
+  - name: move_document
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      title: Move Document
+      llm_alias: MoveDocument
+      llm_description: "Recategorize a document by deleting its existing categorized_as edge(s) and creating a new one to concept_id (a non-root concept — get its id from BrowseTree or CreateConcept). Returns { success: true, result: \"moved\", document_node_id, concept_id }; failures return { success: false, error }, including when the document's current categorization or the target concept is locked (manually curated), or when concept_id is root. Use AttachDocument instead when the document has no existing categorization yet."
+      input_schema: |
+        {"type":"object","properties":{"document_node_id":{"type":"string","description":"The document node ID to move"},"concept_id":{"type":"string","description":"The target non-root concept ID"}},"required":["document_node_id","concept_id"],"additionalProperties":false}
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Envelope { success: true, ... } with the fields below; failures return { success: false, error }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "result": {"type": "string", "enum": ["created", "reused", "attached", "unchanged", "moved", "merged"]},
+            "concept_id": {"type": "string"},
+            "label": {"type": "string"},
+            "parent_id": {"type": "string"},
+            "message": {"type": "string", "description": "Guidance when an existing concept is reused."},
+            "document_node_id": {"type": "string"},
+            "from_id": {"type": "string"},
+            "into_id": {"type": "string"},
+            "moved_edges": {"type": "integer", "description": "Edges re-pointed onto the target concept (merge)."}
+          }
+        }
+    source: file://move_document.lua
+    method: move_document
+    modules: [json, logger, ctx]
+    imports:
+      graph_fn: kickside.kb10.graph:graph_functions
+      llm: wippy.llm:llm
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      implementation: kickside.kb10.graph:placement_tools
+
+  - name: merge_concept
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      title: Merge Concept
+      llm_alias: MergeConcept
+      llm_description: Merge a duplicate concept into a canonical one. Re-points all documents and child concepts from the duplicate onto the target, then deletes the duplicate. Use when two concepts mean the same topic. Identify concepts by id (preferred) or by exact label.
+      input_schema: |
+        {"type":"object","properties":{"from_id":{"type":"string","description":"ID of the duplicate concept to merge away"},"into_id":{"type":"string","description":"ID of the canonical concept to keep"},"from_label":{"type":"string","description":"Label of the duplicate (used if from_id omitted)"},"into_label":{"type":"string","description":"Label of the canonical (used if into_id omitted)"}},"additionalProperties":false}
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Envelope { success: true, ... } with the fields below; failures return { success: false, error }.",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "result": {"type": "string", "enum": ["created", "reused", "attached", "unchanged", "moved", "merged"]},
+            "concept_id": {"type": "string"},
+            "label": {"type": "string"},
+            "parent_id": {"type": "string"},
+            "message": {"type": "string", "description": "Guidance when an existing concept is reused."},
+            "document_node_id": {"type": "string"},
+            "from_id": {"type": "string"},
+            "into_id": {"type": "string"},
+            "moved_edges": {"type": "integer", "description": "Edges re-pointed onto the target concept (merge)."}
+          }
+        }
+    source: file://merge_concept.lua
+    method: merge_concept
+    modules: [json, logger, ctx]
+    imports:
+      graph_fn: kickside.kb10.graph:graph_functions
+      llm: wippy.llm:llm
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      implementation: kickside.kb10.graph:placement_tools
+
+  - name: get_concept_documents
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      title: Get Concept Documents
+      llm_alias: GetConceptDocuments
+      llm_description: List the documents currently attached to a specific concept. Pass next_offset as offset to continue.
+      input_schema: |
+        {"type":"object","properties":{"concept_id":{"type":"string","description":"The concept ID to list documents for"},"limit":{"type":"integer","minimum":1,"maximum":100,"description":"Maximum documents to return; defaults to 50."},"offset":{"type":"integer","minimum":0,"description":"Document offset for the next page; defaults to 0."}},"required":["concept_id"],"additionalProperties":false}
+      output_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "success": {"type": "boolean", "description": "true when the action succeeded; false with error otherwise."},
+            "error": {"type": "string", "description": "Failure reason when success is false."},
+            "concept_id": {"type": "string"},
+            "documents": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "node_type": {"type": "string"}}}},
+            "offset": {"type": "integer"},
+            "next_offset": {"type": "integer", "description": "Offset of the next page; absent on the last page."}
+          },
+          "description": "Envelope { success: true, ... } with the fields below; failures return { success: false, error }."
+        }
+    source: file://get_concept_documents.lua
+    method: get_concept_documents
+    modules: [json, logger, ctx]
+    imports:
+      graph_fn: kickside.kb10.graph:graph_functions
+      llm: wippy.llm:llm
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      implementation: kickside.kb10.graph:placement_tools
+
+  - name: enrichment_deferred_owner
+    kind: security.policy
+    policy:
+      resources: [kickside.kb10.graph:enrichment_service]
+      actions: [kickside.execution.defer]
+      effect: allow
+
+  - name: placement_registry
+    kind: security.policy
+    policy:
+      resources: 'dataflow.*'
+      actions: [process.registry.register, process.registry.unregister, process.registry.lookup]
+      effect: allow
+
+  - name: placement_agent_spawn
+    kind: security.policy
+    policy:
+      resources: userspace.dataflow.node.agent:node
+      actions: [process.spawn, process.spawn.monitored, process.spawn.linked]
+      effect: allow

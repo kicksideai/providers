@@ -1,0 +1,25 @@
+version: "1.0"
+namespace: kickside.gitlab.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta: { name: types, comment: Shared constants and type surfaces for GitLab. }
+    source: file://types.lua
+
+  - name: api
+    kind: library.lua
+    meta: { name: api, comment: Low-level GitLab REST API v4 client. }
+    source: file://api.lua
+    modules: [http_client, json, time]
+    imports:
+      types: kickside.gitlab.client:types
+
+  - name: transport
+    kind: library.lua
+    meta: { name: transport, comment: GitLab connection resolver and API transport. }
+    source: file://transport.lua
+    imports:
+      component: kickside.component:component
+      api: kickside.gitlab.client:api
+      types: kickside.gitlab.client:types

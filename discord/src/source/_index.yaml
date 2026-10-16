@@ -1,0 +1,101 @@
+version: "1.0"
+namespace: kickside.discord.source
+
+# Discord as a kickside.data:pullable source. The engine owns the cursor/schedule/
+# dedup; the binding is a pull adapter + its static meta. The poller persists only
+# { binding, connection_id, config } and opens this binding's pullable with the
+# connection as component_id context. Message snowflakes are time-ordered, so the
+# cursor's `after` anchor gives exact forward pagination; edits converge through
+# an edited_timestamp high-water mark and re-emit as upserts with a bumped
+# source_version; deletions propagate through the reconcile pull_keys listing.
+
+entries:
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Shared pull implementation for the Discord channel-messages source; snowflake cursor, edit high-water mark, reconcile key listing.
+    source: file://pull_core.lua
+    modules: [ctx]
+    imports:
+      data_error: kickside.discord.client:data_error
+      transport: kickside.discord.client:transport
+
+  - name: pull_messages
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for the Discord channel-messages source.
+    source: file://pull_messages.lua
+    method: pull
+    imports:
+      pull_core: kickside.discord.source:pull_core
+
+  - name: pull_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only Discord channel message listing used by Data Sync reconcile.
+    source: file://pull_keys.lua
+    method: pull_keys
+    imports:
+      pull_core: kickside.discord.source:pull_core
+
+  # Self-describing polled SOURCE. It implements kickside.data:pullable; its published
+  # port (below) makes it a source the poller catalog offers. The pull method IS the
+  # backing -- the poller opens this binding's pullable directly and pulls with the
+  # config context.
+  - name: messages_source
+    kind: contract.binding
+    meta:
+      title: Discord Messages
+      icon: tabler:brand-discord
+      comment: Pull messages (author, content, attachments, edits) from a Discord channel on a schedule.
+      provider: discord
+      group: Messaging
+      class:
+        - kickside.messages
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.discord.source:pull_messages
+
+  # Published collection port (pullable backing, no marker). output_schema is the item
+  # shape flowing out; reconcile.pull_keys enumerates the source key set for Data Sync
+  # deletion reconcile. channel_id is a plain form field until a shared channel-picker
+  # web component exists.
+  - name: channel_messages
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Discord Messages
+      comment: Watch messages and edits from a selected Discord channel.
+      icon: tabler:brand-discord
+    binding: kickside.discord.source:messages_source
+    reconcile:
+      pull_keys: kickside.discord.source:pull_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: discord
+      channel_id:
+        picker: wc-schema-form
+        required: true
+        title: Channel ID
+        description: Discord channel id to pull messages from (enable Developer Mode in Discord, right-click the channel, Copy Channel ID). The bot must be a member of the server with Read Message History on the channel.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Message snowflake id (stable external key)." },
+          "channel_id": { "type": "string", "description": "Channel the message belongs to." },
+          "author": { "type": "object", "properties": {
+            "id": { "type": "string", "description": "Author user id." },
+            "name": { "type": "string", "description": "Author display name (global name, else username)." } } },
+          "content": { "type": "string", "description": "Message text." },
+          "timestamp": { "type": "string", "description": "Creation instant (ISO 8601)." },
+          "edited_timestamp": { "type": ["string", "null"], "description": "Last edit instant (ISO 8601); null when never edited. Carried as the item source_version." },
+          "attachments": { "type": "array", "items": { "type": "string", "description": "Attachment URL." } },
+          "message_type": { "type": "integer", "description": "Discord message type code (0 = default, 19 = reply, ...)." }
+        },
+        "required": ["id"] }

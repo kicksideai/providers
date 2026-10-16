@@ -1,0 +1,102 @@
+version: "1.0"
+namespace: kickside.google.source
+
+entries:
+  - name: pull_core
+    kind: library.lua
+    meta:
+      name: pull_core
+      comment: Reusable Google Calendar pull capability; it emits raw upcoming event attendees for a connection window.
+    source: file://pull_core.lua
+    modules: [ctx, time]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      calendar: kickside.google.client:calendar
+      transport: kickside.google.client:transport
+
+  - name: pull_calendar_meetings
+    kind: function.lua
+    meta:
+      comment: kickside.data:pullable.pull for raw upcoming Google Calendar event attendees.
+    source: file://pull_calendar_meetings.lua
+    method: pull
+    modules: [ctx, time]
+    imports:
+      calendar: kickside.google.client:calendar
+      transport: kickside.google.client:transport
+      implementation: kickside.google.source:pull_core
+
+  - name: pull_calendar_meeting_keys
+    kind: function.lua
+    meta:
+      comment: Keys-only Calendar meeting listing used by Data Sync reconcile.
+    source: file://pull_calendar_meeting_keys.lua
+    method: pull_keys
+    modules: [ctx, time]
+    imports:
+      calendar: kickside.google.client:calendar
+      transport: kickside.google.client:transport
+      implementation: kickside.google.source:pull_core
+
+  - name: calendar_meeting_source
+    kind: contract.binding
+    meta:
+      title: Google Calendar upcoming events
+      icon: tabler:brand-google
+      comment: Poll upcoming Google Calendar events for a connection window. Consumers decide timing and attendee policy.
+      provider: google
+      group: Meetings
+      class: [kickside.meetings]
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.google.source:pull_calendar_meetings
+
+  - name: calendar_meetings
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Google Calendar upcoming events
+      comment: Emit raw upcoming meeting attendees for reusable workflow and automation compositions.
+      icon: tabler:calendar-event
+    binding: kickside.google.source:calendar_meeting_source
+    reconcile:
+      pull_keys: kickside.google.source:pull_calendar_meeting_keys
+    config_schema:
+      connection:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: google
+        title: Google Calendar connection
+      lookahead_hours:
+        picker: wc-schema-form
+        type: number
+        required: false
+        default: 24
+        title: Lookahead window (hours)
+        description: Calendar window to scan for upcoming meetings. Defaults to 24 hours.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "item_key": { "type": "string" },
+          "dedup_key": { "type": "string", "description": "Stable per event and attendee delivery key." },
+          "op": { "type": "string", "const": "upsert" },
+          "occurred_at": { "type": "string", "format": "date-time", "description": "The calculated lead-time trigger instant." },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["event_id", "starts_at", "attendee", "source"],
+            "properties": {
+              "event_id": { "type": "string" },
+              "title": { "type": "string" },
+              "starts_at": { "type": "string", "format": "date-time" },
+              "attendee": { "type": "object", "additionalProperties": true, "required": ["email"], "properties": { "email": { "type": "string" }, "displayName": { "type": "string" }, "resource": { "type": "boolean" } } },
+              "source": { "type": "string", "const": "google_calendar" },
+              "calendar_url": { "type": "string" }
+            }
+          }
+        },
+        "required": ["item_key", "dedup_key", "op", "payload"] }

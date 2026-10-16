@@ -1,0 +1,57 @@
+version: "1.0"
+namespace: kickside.atlassian.ui
+
+# The Atlassian provider ships and serves its own connect web component
+# (kickside-atlassian-connect). The Connections picker mounts it by tag via the
+# provider entry's meta.component.create.view; the component offers OAuth or a
+# stored credential and creates the connection over the connections / oauth APIs.
+
+entries:
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built Atlassian connect web component bundle.
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      server: ""
+    path: /kickside-atlassian
+    fs: kickside.atlassian.ui:ui_fs
+
+  - name: connect_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: connect_view
+      title: Atlassian Connect
+      tag_name: kickside-atlassian-connect
+      base_path: kickside-atlassian
+      entry_point: connect.js
+      announced: true
+      auto_register: false
+
+  - name: jira_picker_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: jira_picker_view
+      title: Atlassian Jira Picker
+      tag_name: kickside-atlassian-jira-picker
+      base_path: kickside-atlassian
+      entry_point: jira_picker.js
+      announced: true
+      auto_register: false
+
+  - name: confluence_picker_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: confluence_picker_view
+      title: Atlassian Confluence Picker
+      tag_name: kickside-atlassian-confluence-picker
+      base_path: kickside-atlassian
+      entry_point: confluence_picker.js
+      announced: true
+      auto_register: false

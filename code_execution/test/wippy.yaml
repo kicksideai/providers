@@ -1,0 +1,6 @@
+organization: kickside
+module: code_execution-harness
+description: Standalone runnable harness that boots kickside/code_execution and runs its sandbox suite (stub tools + suite scope, no database).
+directories:
+  modules: ../.wippy
+  src: .

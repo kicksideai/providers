@@ -1,0 +1,21 @@
+version: '1.0'
+namespace: app
+entries:
+  - name: node_tools_source
+    kind: library.lua
+    source: file://node_tools_source.lua
+    imports:
+      kb_nodes: kickside.kb10.reader:kb_nodes
+      render: kickside.knowledge.traits:kb_render
+      component: kickside.component:component
+      tool_result: kickside.contract:tool_result
+  - name: node_tools_errors_test
+    kind: function.lua
+    meta: { type: test, suite: kb_tools }
+    source: file://node_tools_errors_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      tools: app:node_tools_source
+      nodes: kickside.kb10.reader:kb_nodes
+      component: kickside.component:component

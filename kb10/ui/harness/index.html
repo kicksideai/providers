@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>kb10 create-config harness</title>
+  <style>
+    :root {
+      --p-content-background: #ffffff;
+      --p-text-color: #1f2430;
+      --p-text-muted-color: #6b7280;
+      --p-content-border-color: #dfe3e9;
+      --p-primary-color: #4f46e5;
+      --p-danger-500: #dc2626;
+      --p-success-500: #16a34a;
+      --p-button-primary-color: #ffffff;
+      --p-dialog-shadow: 0 12px 32px rgba(0, 0, 0, .22);
+      color-scheme: light;
+    }
+    html, body { margin: 0; background: #eef1f5; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    #board { display: flex; align-items: flex-start; gap: 28px; padding: 20px; }
+    .cell { display: flex; flex-direction: column; gap: 8px; }
+    .cap { font: 600 12px/1.4 system-ui, sans-serif; color: #374151; }
+    /* Same surface tint the dialog's right pane paints behind this element. */
+    .pane {
+      background: color-mix(in srgb, var(--p-text-color) 2.5%, var(--p-content-background));
+      border: 1px solid var(--p-content-border-color);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="board"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

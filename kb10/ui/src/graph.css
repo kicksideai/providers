@@ -1,0 +1,440 @@
+/* kx-kb-graph — immersive concept-graph styles, layered over styles.css.
+   The canvas is the hero: full-bleed, edge-to-edge, with floating glass chrome.
+   Uses the shared --kb-* / --p-* vocabulary so it renders in light and dark. */
+
+:host { display: block; height: 100%; min-height: 0; }
+
+/* Borderless shell, matching the document/wiki KBs: a concept rail (KbShell)
+   flush against the canvas. The glass tokens style the canvas overlays. */
+.gx {
+  --gx-glass: color-mix(in srgb, var(--p-content-background) 82%, transparent);
+  --gx-glass-border: color-mix(in srgb, var(--p-text-color) 12%, transparent);
+  --gx-shadow: 0 8px 30px -12px color-mix(in srgb, var(--p-text-color) 30%, transparent);
+
+  display: flex; flex-direction: column; gap: 0;
+  height: 100%; min-height: calc(100vh - 96px);
+}
+
+.gx-notice { margin: 12px 16px 0; }
+
+/* ── Concept rail (search + list) ─────────────────────────────────────────── */
+.gx-rail-search { padding: 10px; }
+.gx-list { display: flex; flex-direction: column; gap: 1px; }
+.gx-row {
+  display: flex; align-items: center; gap: 9px;
+  height: var(--kb-row); padding: 0 8px; border-radius: var(--kb-r); min-width: 0;
+  cursor: pointer; text-align: left; background: transparent; border: none; font: inherit;
+  transition: background .12s;
+}
+.gx-row:hover { background: var(--kb-surface-2); }
+.gx-row.on { background: color-mix(in srgb, var(--kb-primary) 12%, transparent); box-shadow: inset 2px 0 0 var(--kb-primary); }
+.gx-row-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.gx-row-label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 550; color: var(--kb-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gx-row.on .gx-row-label { color: var(--kb-primary); font-weight: 700; }
+/* Connection count: a faint right-aligned badge so the list reads as ranked by
+   how connected each concept is, without competing with the label. */
+.gx-row-deg {
+  flex: none; min-width: 18px; padding: 1px 6px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; text-align: center;
+  color: var(--kb-faint); background: var(--kb-surface-2);
+}
+.gx-row.on .gx-row-deg { color: var(--kb-primary); background: color-mix(in srgb, var(--kb-primary) 14%, transparent); }
+/* Per-row hide toggle: faint, revealed on row hover, so hiding a hub to split the
+   clusters is one click without crowding the row. A hidden node stays listed but
+   dimmed, with its control always shown, so a single click brings it back. */
+.gx-row-hide {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: var(--kb-r-sm); cursor: pointer;
+  color: var(--kb-faint); opacity: 0; transition: opacity .12s, background .12s, color .12s;
+}
+.gx-row:hover .gx-row-hide { opacity: .6; }
+.gx-row-hide:hover { background: var(--kb-surface-2); color: var(--kb-text); opacity: 1; }
+.gx-row-hide svg { width: 15px; height: 15px; }
+.gx-row.hidden { opacity: .45; }
+.gx-row.hidden .gx-row-hide { opacity: .8; }
+/* Floating restore chip over the canvas while any node is hidden. */
+.gx-hidden-chip {
+  position: absolute; z-index: 6; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 999px;
+  background: var(--gx-glass); backdrop-filter: blur(14px);
+  border: 1px solid var(--gx-glass-border); box-shadow: var(--gx-shadow);
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--kb-text); cursor: pointer;
+}
+.gx-hidden-chip:hover { background: var(--kb-surface-2); }
+.gx-hidden-chip svg { width: 15px; height: 15px; color: var(--kb-primary); }
+/* Subtree-focus chip: same pill, shown while the canvas is narrowed to one branch.
+   Raised clear of the hidden-nodes chip when both are present. */
+.gx-focus-chip.raised { bottom: 58px; }
+.gx-focus-chip-label { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gx-row.focus .gx-row-dot { box-shadow: 0 0 0 2px var(--kb-primary); }
+/* Tree expand/collapse toggle for the nested concept rail. A leaf keeps the same
+   width so labels stay aligned with their expandable siblings. */
+.gx-tw {
+  flex: none; width: 18px; height: var(--kb-row); display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--kb-faint); cursor: pointer; padding: 0; border-radius: var(--kb-r);
+}
+.gx-tw:hover { color: var(--kb-text); background: var(--kb-surface-2); }
+.gx-tw--leaf { cursor: default; }
+.gx-list-empty { padding: 14px 10px; font-size: 12.5px; color: var(--kb-faint); }
+
+/* ── Canvas (the open main area; legend/zoom/inspector overlay it) ─────────── */
+.gx-canvas-wrap {
+  position: relative; flex: 1; min-height: 0; overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--p-primary-color) 7%, transparent), transparent 60%),
+    var(--p-content-background);
+}
+
+.gx-canvas { position: absolute; inset: 0; }
+.gx-svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.gx-svg:active { cursor: grabbing; }
+
+.gx-grid-bg { pointer-events: none; }
+.gx-grid-dot { fill: color-mix(in srgb, var(--p-text-color) 14%, transparent); }
+
+.gx-links { pointer-events: none; }
+.gx-link { fill: none; stroke: var(--kb-border-strong); stroke-width: 1.5; transition: opacity .18s, stroke .18s; }
+.gx-link.subtopic { stroke: var(--p-help-400); stroke-width: 2; opacity: .55; }
+.gx-link.categorized { stroke-dasharray: 4 4; opacity: .4; }
+.gx-link.lit { opacity: .95; stroke-width: 2.5; }
+.gx-link.faded { opacity: .07; }
+
+.gx-node { cursor: pointer; transition: opacity .18s; }
+.gx-node.dim { opacity: .22; }
+.gx-shape { transition: stroke-width .15s, filter .15s; }
+.gx-node.hov .gx-shape { stroke-width: 3.5; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--p-text-color) 30%, transparent)); }
+.gx-node.sel .gx-shape { stroke: var(--kb-text); stroke-width: 3.5; }
+.gx-halo {
+  fill: none; stroke-width: 2; opacity: .5;
+  animation: gx-halo 1.8s ease-in-out infinite;
+}
+@keyframes gx-halo { 0%, 100% { opacity: .25; } 50% { opacity: .6; } }
+
+.gx-badge-bg { fill: var(--p-content-background); stroke: var(--kb-border-strong); stroke-width: 1; }
+.gx-badge-txt { font-size: 8.5px; font-weight: 700; fill: var(--kb-text); pointer-events: none; }
+
+.gx-label {
+  font-size: 10.5px; font-weight: 600; fill: var(--kb-muted);
+  pointer-events: none; paint-order: stroke;
+  stroke: var(--p-content-background); stroke-width: 3px; stroke-linejoin: round;
+}
+.gx-label.root { font-size: 12.5px; font-weight: 700; fill: var(--kb-text); }
+.gx-node.sel .gx-label, .gx-node.hov .gx-label { fill: var(--kb-text); }
+
+/* ── Legend ───────────────────────────────────────────────────────────────── */
+.gx-legend {
+  position: absolute; z-index: 5; left: 16px; bottom: 16px;
+  border-radius: 14px;
+  background: var(--gx-glass); backdrop-filter: blur(14px);
+  border: 1px solid var(--gx-glass-border); box-shadow: var(--gx-shadow);
+  overflow: hidden;
+}
+.gx-legend.collapsed { border-radius: 999px; }
+.gx-legend-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 8px 12px; cursor: pointer;
+  background: none; border: none; color: var(--kb-muted);
+  font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+}
+.gx-legend.collapsed .gx-legend-toggle { padding: 9px 14px; }
+.gx-legend-toggle:hover { color: var(--kb-text); }
+.gx-legend-toggle svg { width: 14px; height: 14px; }
+.gx-legend-body { display: flex; flex-direction: column; gap: 7px; padding: 2px 14px 12px; }
+.gx-legend-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--kb-muted); white-space: nowrap; }
+.gx-legend-mark { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+.gx-legend-mark.doc { width: 12px; height: 9px; border-radius: 2px; }
+.gx-legend-cluster { background: conic-gradient(hsl(262 62% 60%), hsl(199 62% 60%), hsl(24 62% 60%), hsl(142 62% 60%), hsl(348 62% 60%), hsl(262 62% 60%)); }
+.gx-legend-sep { height: 1px; background: var(--gx-glass-border); margin: 1px 0; }
+.gx-legend-line { width: 18px; flex: none; }
+.gx-legend-line.subtopic { border-top: 2px solid var(--p-help-400); }
+.gx-legend-line.categorized { border-top: 1px dashed var(--kb-border-strong); }
+
+/* ── Zoom controls ────────────────────────────────────────────────────────── */
+.gx-controls {
+  position: absolute; z-index: 5; right: 16px; bottom: 16px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  padding: 5px;
+  border-radius: 8px;
+  background: var(--gx-glass); backdrop-filter: blur(14px);
+  border: 1px solid var(--gx-glass-border); box-shadow: var(--gx-shadow);
+}
+.gx-ctrl {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: none; color: var(--kb-muted);
+  transition: background .14s, color .14s;
+}
+.gx-ctrl:hover { background: var(--kb-surface-2); color: var(--kb-text); }
+.gx-ctrl.fit { margin-top: 3px; border-top: 1px solid var(--gx-glass-border); border-radius: 0 0 8px 8px; }
+.gx-ctrl svg { width: 17px; height: 17px; }
+.gx-ctrl-read { text-align: center; font-size: 10px; font-weight: 700; color: var(--kb-faint); padding: 1px 0; font-variant-numeric: tabular-nums; }
+
+/* ── Inspector ────────────────────────────────────────────────────────────── */
+.gx-inspect {
+  position: absolute; z-index: 7; top: 16px; right: 16px; bottom: 16px;
+  width: 430px; max-width: calc(100% - 32px);
+  display: flex; flex-direction: column;
+  border-radius: 14px; overflow: hidden;
+  background: color-mix(in srgb, var(--p-content-background) 96%, transparent);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--gx-glass-border);
+  box-shadow: 0 18px 50px -20px color-mix(in srgb, var(--p-text-color) 45%, transparent);
+}
+.gx-inspect.dragging { user-select: none; }
+
+/* Left-edge handle that resizes the panel width (persisted). */
+.gx-ins-resizer {
+  position: absolute; z-index: 2; top: 0; left: 0; bottom: 0; width: 12px;
+  cursor: col-resize; touch-action: none;
+  display: flex; align-items: center; justify-content: flex-start;
+}
+.gx-ins-resizer-grip { width: 3px; height: 56px; border-radius: 999px; background: var(--kb-border); transition: background .14s; }
+.gx-ins-resizer:hover .gx-ins-resizer-grip, .gx-inspect.dragging .gx-ins-resizer-grip { background: var(--kb-primary); }
+.gx-ins-h {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 14px 14px 13px;
+  border-bottom: 1px solid var(--kb-border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
+}
+.gx-ins-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-top: 4px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.gx-ins-id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.gx-ins-name { margin: 0; flex: 1; min-width: 0; font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--kb-text); word-break: break-word; }
+/* Inline "View original" toggle on the selected node's title line. */
+.gx-ins-orig-btn { flex: none; }
+.gx-ins-orig-btn.on { border-color: var(--kb-primary); color: var(--kb-primary); background: var(--kb-primary-soft); }
+.gx-ins-x {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: none; color: var(--kb-muted);
+  transition: background .14s, color .14s;
+}
+.gx-ins-x:hover { background: var(--kb-surface-2); color: var(--kb-text); }
+.gx-ins-x svg { width: 16px; height: 16px; }
+
+.gx-ins-body { flex: 1; min-height: 0; overflow-y: auto; padding: 13px 16px 18px; }
+.gx-ins-body .kc-docsum { margin-bottom: 14px; }
+.gx-ins-body .kc-refs { margin-bottom: 4px; }
+/* Source content rendered through the shared viewer. */
+.gx-ins-loading { display: flex; align-items: center; gap: 8px; padding: 14px 2px; font-size: 12.5px; color: var(--kb-muted); }
+.gx-ins-loading svg { width: 16px; height: 16px; }
+.gx-ins-content { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--kb-border); }
+.gx-ins-doc + .gx-ins-doc { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--kb-border); }
+.gx-ins-doc-t { font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--kb-faint); margin-bottom: 8px; }
+.gx-ins-rv { display: block; }
+
+/* Per-page "View original" spacing above its rendered body. */
+.gx-ins-doc-orig { margin-bottom: 10px; }
+
+/* Rendered-content clamp: cap a long body, fade its tail, expand via the toggle.
+   Mirrors the document reader's "show more" so the panel stays scannable. */
+.gx-ins-clamp { position: relative; }
+.gx-ins-clamp.clamped .gx-ins-clamp-inner { max-height: 560px; overflow: hidden; }
+.gx-ins-clamp-fade {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 88px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--p-content-background) 92%);
+}
+.gx-ins-more {
+  margin-top: 10px; align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600;
+  background: var(--kb-surface); color: var(--kb-text); border: 1px solid var(--kb-border);
+  transition: border-color .14s, background .14s;
+}
+.gx-ins-more:hover { border-color: var(--kb-primary); color: var(--kb-primary); }
+.gx-ins-more svg { width: 15px; height: 15px; }
+
+/* Inside the inspector the reference chips (Filed under) drop the pill radius to
+   match the squarer relation items. */
+.gx-inspect .kc-ref { border-radius: 8px; }
+.gx-ins-stats { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 11px; }
+.gx-stat {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: var(--kb-r-sm); font-size: 11px; font-weight: 600;
+  background: var(--kb-surface-2); color: var(--kb-muted);
+}
+.gx-stat svg { width: 13px; height: 13px; }
+
+.gx-rel-group { margin-top: 14px; }
+.gx-rel-title {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 7px;
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--kb-faint);
+}
+.gx-rel-title svg { width: 13px; height: 13px; }
+.gx-rel-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 9px; margin-bottom: 4px; border-radius: 8px; cursor: pointer;
+  background: var(--kb-surface); border: 1px solid var(--kb-border); text-align: left;
+  font: inherit; transition: background .13s, border-color .13s;
+}
+.gx-rel-item:hover { background: var(--kb-surface-2); border-color: var(--kb-border-strong); }
+.gx-rel-kind {
+  flex: none; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: var(--kb-r-sm);
+  background: var(--kb-primary-soft); color: var(--kb-primary);
+}
+.gx-rel-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--kb-text); }
+.gx-rel-go { flex: none; width: 14px; height: 14px; color: var(--kb-faint); }
+
+.gx-ins-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 28px 10px; text-align: center; color: var(--kb-faint); font-size: 12px;
+}
+.gx-ins-empty svg { width: 26px; height: 26px; }
+
+@media (max-width: 640px) {
+  /* Inspector becomes a bottom sheet; floating chrome stays within the viewport.
+     The inline resize width is dropped so it spans the sheet, and the left-edge
+     handle is hidden since width isn't draggable here. */
+  .gx-inspect {
+    left: 16px; right: 16px; width: auto !important;
+    top: auto; height: 50%;
+    max-width: calc(100vw - 32px);
+  }
+  .gx-ins-resizer { display: none; }
+  .gx-legend {
+    max-width: calc(100vw - 32px);
+    /* Sit above the zoom controls so the two don't collide on a phone. */
+    bottom: 64px;
+  }
+  .gx-legend-row { white-space: normal; }
+  .gx-sparse { max-width: calc(100vw - 32px); white-space: normal; }
+}
+
+/* ── States ───────────────────────────────────────────────────────────────── */
+.gx-sparse {
+  position: absolute; z-index: 5; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 7px 7px 7px 14px; border-radius: 999px;
+  background: var(--gx-glass); backdrop-filter: blur(14px);
+  border: 1px solid var(--gx-glass-border); box-shadow: var(--gx-shadow);
+  font-size: 12px; color: var(--kb-muted); white-space: nowrap;
+}
+.gx-sparse > svg { width: 15px; height: 15px; color: var(--p-success-500); }
+.gx-sparse-cta {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 11.5px; font-weight: 600;
+  background: var(--kb-primary); color: var(--p-primary-contrast-color); border: none;
+}
+.gx-sparse-cta:hover { filter: brightness(1.07); }
+.gx-sparse-cta svg { width: 13px; height: 13px; }
+
+.gx-ins-fade-enter-active, .gx-ins-fade-leave-active { transition: opacity .2s ease, transform .2s ease; }
+.gx-ins-fade-enter-from, .gx-ins-fade-leave-to { opacity: 0; transform: translateX(8px); }
+
+/* Treatment rail form — themed on the shared tokens (ap-field/ap-label/ap-textarea
+   carry the input chrome; kc-btn carries the actions). */
+.gx-treat { display: flex; flex-direction: column; gap: 12px; padding: 10px 12px; }
+.gx-treat-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--kb-text); cursor: pointer; }
+.gx-treat-check input { width: 15px; height: 15px; accent-color: var(--kb-primary); cursor: pointer; }
+.gx-treat .ap-textarea { min-height: 76px; }
+.gx-treat-actions { display: flex; gap: 8px; }
+.gx-treat-actions .kc-btn { flex: 1; }
+.gx-treat-hint { margin: 0; font-size: 11px; line-height: 1.5; color: var(--kb-muted); }
+
+@media (prefers-color-scheme: dark) {
+  :host { --p-primary-contrast-color: var(--p-surface-0) !important; }
+}
+
+/* ── Concept rail: kebab, indented tree rows, drill breadcrumb ─────────────── */
+/* Hover-revealed kebab on a concept/document row — opens the actions menu. */
+.gx-row-kebab {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: var(--kb-r-sm); cursor: pointer;
+  color: var(--kb-faint); opacity: 0; transition: opacity .12s, background .12s, color .12s;
+}
+.gx-row:hover .gx-row-kebab { opacity: .7; }
+.gx-row-kebab:hover { background: var(--kb-surface-2); color: var(--kb-text); opacity: 1; }
+.gx-row-kebab svg { width: 15px; height: 15px; }
+
+/* A tree row = expand toggle + the row button, indented by depth. */
+.gx-treerow { display: flex; align-items: center; gap: 1px; }
+.gx-treerow .gx-row { flex: 1; min-width: 0; }
+.gx-row--flat { padding-left: 8px; }
+
+/* Drill breadcrumb above the concept tree: scope to a branch, step back out. */
+.gx-drill {
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  padding: 2px 4px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--kb-border);
+}
+.gx-drill-home, .gx-drill-crumb {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 132px;
+  border: none; background: transparent; border-radius: var(--kb-r-sm); cursor: pointer;
+  padding: 2px 5px; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--kb-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gx-drill-home svg { width: 14px; height: 14px; }
+.gx-drill-home:hover, .gx-drill-crumb:hover { background: var(--kb-surface-2); color: var(--kb-text); }
+.gx-drill-crumb.last { color: var(--kb-text); font-weight: 700; }
+.gx-drill-sep { width: 12px; height: 12px; color: var(--kb-faint); flex: none; }
+
+/* ── Canvas display controls, on the same baseline as the legend (bottom-left).
+   The legend and the controls share one bottom-left row, all on a single line:
+   [legend] [ slider · concepts-only · reset ]. ──────────────────────────────── */
+.gx-botleft {
+  position: absolute; z-index: 5; left: 16px; bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.gx-botleft .gx-legend { position: static; left: auto; bottom: auto; }
+/* One unified glass bar holding the slider, the concepts-only switch, and reset. */
+.gx-display {
+  display: flex; align-items: center; gap: 11px; padding: 6px 13px; border-radius: 999px;
+  background: var(--gx-glass); backdrop-filter: blur(14px);
+  border: 1px solid var(--gx-glass-border); box-shadow: var(--gx-shadow);
+  font: inherit; font-size: 12px; color: var(--kb-text);
+}
+.gx-display-row, .gx-display-reset {
+  display: inline-flex; align-items: center; gap: 7px; padding: 0;
+  border: none; background: transparent; font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--kb-text); cursor: pointer;
+}
+.gx-display-row:hover { color: var(--kb-primary); }
+.gx-display-reset { color: var(--kb-primary); }
+.gx-display-reset:hover { filter: brightness(1.1); }
+.gx-display-div { width: 1px; height: 18px; background: var(--gx-glass-border); flex: none; }
+.gx-display-ic { width: 15px; height: 15px; color: var(--kb-muted); flex: none; }
+.gx-display-label { white-space: nowrap; }
+.gx-display-sw { position: relative; width: 30px; height: 17px; border-radius: 999px; background: var(--kb-border-strong); transition: background .15s; flex: none; }
+.gx-display-sw.on { background: var(--kb-primary); }
+.gx-display-knob { position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.gx-display-sw.on .gx-display-knob { transform: translateX(13px); }
+.gx-display-reset svg { width: 15px; height: 15px; }
+.gx-display-count { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--kb-surface-2); font-size: 10.5px; font-weight: 700; color: var(--kb-muted); }
+
+/* Depth slider (peel the graph open level by level) — inline within the bar. */
+.gx-display-slider { display: inline-flex; align-items: center; gap: 8px; }
+.gx-range {
+  -webkit-appearance: none; appearance: none; width: 108px; height: 4px;
+  border-radius: 999px; background: var(--kb-border-strong); outline: none; cursor: pointer;
+}
+.gx-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--kb-primary); border: 2px solid var(--kb-bg); cursor: pointer;
+}
+.gx-range::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%; background: var(--kb-primary);
+  border: 2px solid var(--kb-bg); cursor: pointer;
+}
+.gx-display-lvl { font: inherit; font-size: 11.5px; font-weight: 700; color: var(--kb-text); min-width: 28px; text-align: right; }
+.gx-display-lvl-max { color: var(--kb-faint); font-weight: 600; }
+
+/* ── Branch isolation bar: back-to-parent + current branch + clear ─────────── */
+.gx-focusbar {
+  position: absolute; z-index: 6; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 6px 5px 5px; border-radius: 999px;
+  background: var(--gx-glass); backdrop-filter: blur(14px);
+  border: 1px solid var(--gx-glass-border); box-shadow: var(--gx-shadow);
+  font: inherit; font-size: 12px; font-weight: 650; color: var(--kb-text);
+}
+.gx-focusbar-up, .gx-focusbar-x {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border: none; border-radius: 50%; background: transparent; color: var(--kb-muted); cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.gx-focusbar-up { background: color-mix(in srgb, var(--kb-primary) 14%, transparent); color: var(--kb-primary); }
+.gx-focusbar-up:hover { background: color-mix(in srgb, var(--kb-primary) 24%, transparent); }
+.gx-focusbar-x:hover { background: var(--kb-surface-2); color: var(--kb-text); }
+.gx-focusbar-up svg, .gx-focusbar-x svg { width: 16px; height: 16px; }
+.gx-focusbar-ic { width: 15px; height: 15px; color: var(--kb-primary); }
+.gx-focusbar-name { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

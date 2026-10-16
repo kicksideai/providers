@@ -1,0 +1,55 @@
+version: "1.0"
+namespace: kickside.kb10.migrations
+
+entries:
+  - name: 01_kb10_schema
+    kind: function.lua
+    meta:
+      type: migration
+      tags:
+        - kickside
+        - kb10
+        - schema
+      comment: KB10 document/graph store schema — stores, nodes, embeddings, edges, FTS.
+      target_db: ""
+      timestamp: "2026-03-01T15:00:00Z"
+    source: file://_fn_01_kb10_schema.lua
+    imports:
+      operation_impl: kickside.kb10.migrations:01_kb10_schema_implementation
+    method: migrate
+
+  - name: 01_kb10_schema_implementation
+    kind: library.lua
+    meta:
+      comment: Focused implementation for kickside.kb10.migrations:01_kb10_schema; invoked by its one-method function wrapper.
+    source: file://01_kb10_schema.lua
+    imports:
+      migration: wippy.migration:migration
+
+  - name: 04_maintenance_runs
+    kind: function.lua
+    meta:
+      type: migration
+      tags:
+        - kickside
+        - kb10
+        - schema
+      comment: KB10 maintenance run records — progress and outcome for a deferred resummarize / re-embed.
+      target_db: ""
+      timestamp: "2026-08-19T12:00:00Z"
+    source: file://04_maintenance_runs.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
+  - name: 05_retrieval_observations
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-10-05T23:00:00Z"
+    source: file://05_retrieval_observations.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

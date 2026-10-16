@@ -1,0 +1,13 @@
+.wippy/
+/wippy.lock
+*.wapp
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+.idea/
+# What the rendering harness produces on a run: the schemas it reads out of
+# src/_index.yaml, its screenshots, its server log.
+ui/harness/schemas.json
+ui/harness/shots/
+ui/harness/dev.log

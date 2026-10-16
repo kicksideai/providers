@@ -1,0 +1,59 @@
+version: "1.0"
+namespace: app.suites
+
+# Suites for kickside/bitbucket. They live in the harness because the module is
+# loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: packaging_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: bitbucket
+      comment: Connection binding, credential schema, function entries, and dependency declarations.
+    source: file://packaging_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      create_policy: kickside.connection.api:create_policy
+
+  - name: api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: bitbucket
+      comment: URL building, headers, query filters, pagination, and error mapping of the Bitbucket API client.
+    source: file://api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      api: kickside.bitbucket.client:api
+      types: kickside.bitbucket.client:types
+
+  - name: transport_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: bitbucket
+      comment: Credential resolution and authorization construction for every credential mode.
+    source: file://transport_test.lua
+    method: run
+    modules: [base64]
+    imports:
+      test: wippy.test:test
+      transport: kickside.bitbucket.client:transport
+      types: kickside.bitbucket.client:types
+
+  - name: connection_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: bitbucket
+      comment: Connection contract methods over a fake transport.
+    source: file://connection_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: kickside.bitbucket.connection:connection_lib

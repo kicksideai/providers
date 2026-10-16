@@ -1,0 +1,17 @@
+version: "1.0"
+namespace: kickside.webscout.client
+
+entries:
+  # kickside.webscout.client:client
+  - name: client
+    kind: library.lua
+    meta:
+      type: module
+      title: Web Client
+      comment: HTTP client with browser-like headers
+    source: file://client.lua
+    modules:
+      - http_client
+    imports:
+      config: kickside.webscout:config
+      tool_result: kickside.contract:tool_result

@@ -1,0 +1,19 @@
+version: "1.0"
+namespace: kickside.kb10.digest
+
+# KB summary/description regeneration. Driven by the durable digest projection
+# (kickside.kb10.injection:digest_worker) on a coalescing window.
+
+entries:
+  - name: digest
+    kind: library.lua
+    meta:
+      name: digest
+      comment: Regenerate a KB's auto_summary/auto_description from its materialized document summaries.
+    source: file://digest.lua
+    modules: [json, logger]
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      engines: kickside.knowledge:engines
+      node_store: kickside.kb10.persist:node_store

@@ -1,0 +1,84 @@
+version: '1.0'
+namespace: app
+entries:
+- name: db
+  kind: db.sql.sqlite
+  file: ':memory:'
+- name: dep.wippy.test
+  kind: ns.dependency
+  component: wippy/test
+  version: '*'
+- name: dep.kickside.memory
+  kind: ns.dependency
+  component: kickside/memory
+  version: '*'
+  parameters:
+  - name: kickside.memory:ui_server
+    value: app:gateway
+- name: runtime_test
+  kind: function.lua
+  meta:
+    type: test
+    suite: memory
+  source: file://runtime_test.lua
+  method: run
+  imports:
+    test: wippy.test:test
+    runtime: kickside.memory:runtime
+    prompt: wippy.llm:prompt
+  modules:
+  - sql
+- name: dep.kickside.component
+  kind: ns.dependency
+  component: kickside/component
+  version: '*'
+  parameters:
+  - name: kickside.component:target_db
+    value: app:db
+  - name: kickside.component:api_router
+    value: app:api
+
+- name: dep.wippy.llm
+  kind: ns.dependency
+  component: wippy/llm
+  version: '*'
+- name: gateway
+  kind: http.service
+  addr: :0
+  lifecycle:
+    auto_start: false
+- name: api
+  kind: http.router
+  meta:
+    server: gateway
+  prefix: /api
+- name: user
+  kind: security.policy
+  policy:
+    resources: '*'
+    actions: '*'
+    effect: allow
+- name: env_storage
+  kind: env.storage.file
+  file_path: ./.wippy/test.env
+  auto_create: true
+- name: processes
+  kind: process.host
+  lifecycle:
+    auto_start: true
+- name: dep.wippy.bootloader
+  kind: ns.dependency
+  component: wippy/bootloader
+  version: '*'
+  parameters:
+  - name: wippy.bootloader:application_host
+    value: app:processes
+  - name: wippy.bootloader:env_storage
+    value: app:env_storage
+- name: dep.wippy.migration
+  kind: ns.dependency
+  component: wippy/migration
+  version: '*'
+  parameters:
+  - name: wippy.migration:app_db
+    value: app:db

@@ -1,0 +1,62 @@
+version: '1.0'
+namespace: kickside.code_execution.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Code Execution
+    surface: kickside.code_execution
+    intent: module_access
+    includes:
+    - kickside.code_execution.security:module_runtime
+    - kickside.code_execution.security:endpoint_access
+  groups: []
+  policy:
+    resources:
+    - kickside.code_execution:*
+    - kickside.code_execution.security:*
+    - kickside.code_execution.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    effect: allow
+- name: endpoint_access
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.code_execution:assist.endpoint
+    - kickside.code_execution:recommend_tools_api.endpoint
+    - kickside.code_execution:sdk_reference.endpoint
+    actions: access
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.code_execution:*
+    - kickside.code_execution.security:*
+    - kickside.code_execution.traits:*
+    actions:
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: user_security_scope
+  kind: ns.requirement
+  default: kickside.security.groups:members
+  meta:
+    value_kind: security.scope
+    description: Application security group allowed to use code-execution HTTP endpoints.
+  targets:
+  - entry: kickside.code_execution.security:endpoint_access
+    path: .groups +=

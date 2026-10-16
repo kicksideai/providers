@@ -1,0 +1,32 @@
+version: "1.0"
+namespace: kickside.google.ui
+
+# Provider-owned UI components. The agent editor mounts kickside-google-picker
+# for Google traits so users can pin a specific Google connection. Leaving the
+# picker blank keeps the runtime's existing auto-discovery behavior.
+
+entries:
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built Google trait picker web component bundle.
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta:
+      server: ""
+    path: /kickside-google
+    fs: kickside.google.ui:ui_fs
+
+  - name: google_picker_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: google_picker_view
+      title: Google Connection Picker
+      tag_name: kickside-google-picker
+      base_path: kickside-google
+      entry_point: google_picker.js
+      announced: true
+      auto_register: false

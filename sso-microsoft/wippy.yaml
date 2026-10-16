@@ -1,0 +1,30 @@
+organization: kickside
+module: sso-microsoft
+type: plugin
+description: KickSide SSO — Microsoft / Entra login provider. Multi-tenant OIDC sso.provider for the kickside/sso core.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - sso
+  - microsoft
+  - oauth
+  - oidc
+  - login
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"

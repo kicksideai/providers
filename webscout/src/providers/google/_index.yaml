@@ -1,0 +1,50 @@
+version: "1.0"
+namespace: kickside.webscout.providers.google
+
+# Google Custom Search declared as a search provider. The descriptor is
+# everything the search tool reads about it; another provider arrives as its own
+# module (shaped like kickside/sso-google) and changes nothing here.
+entries:
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: kickside.webscout:search_provider
+      comment: Google Custom Search provider descriptor.
+    id: google
+    endpoints:
+      api: https://www.googleapis.com/customsearch/v1
+    label: Google
+    icon: tabler:brand-google
+    description: Google Custom Search over the public web index.
+    search_func: kickside.webscout.providers.google:search
+    available_func: kickside.webscout.providers.google:available
+    # Google's credentials predate the protocol and stay in the host namespace;
+    # a provider that ships as its own module keeps them in its own.
+    settings_ns: kickside.webscout
+    max_results: 10
+    default: true
+    order: 10
+
+  - name: search
+    kind: function.lua
+    meta:
+      comment: Run one Google Custom Search query and normalize the results.
+    source: file://search.lua
+    modules:
+      - json
+      - http_client
+    imports:
+      endpoints: kickside.connection:endpoints
+      client: kickside.webscout.client:client
+      config: kickside.webscout:config
+      tool_result: kickside.contract:tool_result
+    method: search
+
+  - name: available
+    kind: function.lua
+    meta:
+      comment: Report whether Google Custom Search credentials are set.
+    source: file://available.lua
+    imports:
+      config: kickside.webscout:config
+    method: available

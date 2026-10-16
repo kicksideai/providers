@@ -1,0 +1,550 @@
+{
+  "repository": "providers",
+  "checks": [],
+  "modules": {
+    "asr": {
+      "path": "asr",
+      "organization": "kickside",
+      "module": "asr",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_asr",
+      "extra_tests": []
+    },
+    "atlassian": {
+      "path": "atlassian",
+      "organization": "kickside",
+      "module": "atlassian",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.atlassian.ui:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "dev",
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_atlassian",
+      "extra_tests": []
+    },
+    "bitbucket": {
+      "path": "bitbucket",
+      "organization": "kickside",
+      "module": "bitbucket",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_bitbucket",
+      "extra_tests": []
+    },
+    "code_execution": {
+      "path": "code_execution",
+      "organization": "kickside",
+      "module": "code-execution",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.code_execution:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_code_execution",
+      "extra_tests": []
+    },
+    "discord": {
+      "path": "discord",
+      "organization": "kickside",
+      "module": "discord",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_discord",
+      "extra_tests": []
+    },
+    "fireflies": {
+      "path": "fireflies",
+      "organization": "kickside",
+      "module": "fireflies",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_fireflies_v2",
+      "extra_tests": []
+    },
+    "github": {
+      "path": "github",
+      "organization": "kickside",
+      "module": "github",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.github.ui:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_github_v2",
+      "extra_tests": []
+    },
+    "gitlab": {
+      "path": "gitlab",
+      "organization": "kickside",
+      "module": "gitlab",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_gitlab",
+      "extra_tests": []
+    },
+    "google": {
+      "path": "google",
+      "organization": "kickside",
+      "module": "google",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.google.ui:ui_fs"
+      ],
+      "targets": [
+        "lint",
+        "test",
+        "build",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_google",
+      "extra_tests": []
+    },
+    "hubspot": {
+      "path": "hubspot",
+      "organization": "kickside",
+      "module": "hubspot",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.hubspot.ui:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_hubspot",
+      "extra_tests": []
+    },
+    "kb10": {
+      "path": "kb10",
+      "organization": "kickside",
+      "module": "kb10",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.kb10.ui:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "dev",
+        "lint",
+        "test",
+        "publish",
+        "test-ui",
+        "typecheck-ui",
+        "test-ui-layout"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_kb10",
+      "extra_tests": [
+        [
+          "make",
+          "test-ui"
+        ],
+        [
+          "make",
+          "typecheck-ui"
+        ],
+        [
+          "make",
+          "test-ui-layout"
+        ]
+      ]
+    },
+    "llm-ocr": {
+      "path": "llm-ocr",
+      "organization": "kickside",
+      "module": "llm-ocr",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_llm_ocr_v2",
+      "extra_tests": []
+    },
+    "mcp-client": {
+      "path": "mcp-client",
+      "organization": "kickside",
+      "module": "mcp-client",
+      "type": "plugin",
+      "visibility": "private",
+      "embed": [
+        "kickside.mcp_client:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_mcp_client",
+      "extra_tests": []
+    },
+    "memory": {
+      "path": "memory",
+      "organization": "kickside",
+      "module": "memory",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.memory:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "dev",
+        "lint",
+        "test",
+        "publish",
+        "test-backend",
+        "test-pg"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_memory",
+      "extra_tests": [
+        [
+          "make",
+          "test"
+        ]
+      ]
+    },
+    "phantombuster": {
+      "path": "phantombuster",
+      "organization": "kickside",
+      "module": "phantombuster",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.phantombuster:ui_fs"
+      ],
+      "targets": [
+        "lint",
+        "test",
+        "build",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_phantombuster_v2",
+      "extra_tests": []
+    },
+    "simplefin": {
+      "path": "simplefin",
+      "organization": "kickside",
+      "module": "simplefin",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.simplefin:ui_fs"
+      ],
+      "targets": [
+        "build",
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_simplefin_v2",
+      "extra_tests": []
+    },
+    "slack": {
+      "path": "slack",
+      "organization": "kickside",
+      "module": "slack",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_slack",
+      "extra_tests": []
+    },
+    "sso-github": {
+      "path": "sso-github",
+      "organization": "kickside",
+      "module": "sso-github",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish",
+        "test-pg"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_sso_github",
+      "extra_tests": []
+    },
+    "sso-google": {
+      "path": "sso-google",
+      "organization": "kickside",
+      "module": "sso-google",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish",
+        "test-pg"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_sso_google",
+      "extra_tests": []
+    },
+    "sso-microsoft": {
+      "path": "sso-microsoft",
+      "organization": "kickside",
+      "module": "sso-microsoft",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish",
+        "test-pg"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_sso_microsoft",
+      "extra_tests": []
+    },
+    "sso-oidc": {
+      "path": "sso-oidc",
+      "organization": "kickside",
+      "module": "sso-oidc",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish",
+        "test-pg"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_sso_oidc",
+      "extra_tests": []
+    },
+    "telegram": {
+      "path": "telegram",
+      "organization": "kickside",
+      "module": "telegram",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_telegram",
+      "extra_tests": []
+    },
+    "webscout": {
+      "path": "webscout",
+      "organization": "kickside",
+      "module": "webscout",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [
+        "kickside.webscout:ui_fs"
+      ],
+      "targets": [
+        "lint",
+        "test",
+        "build",
+        "publish",
+        "test-ui"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_webscout",
+      "extra_tests": [
+        [
+          "make",
+          "test-ui"
+        ]
+      ]
+    },
+    "webscout-brave": {
+      "path": "webscout-brave",
+      "organization": "kickside",
+      "module": "webscout-brave",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_webscout_brave",
+      "extra_tests": []
+    },
+    "webscout-tavily": {
+      "path": "webscout-tavily",
+      "organization": "kickside",
+      "module": "webscout-tavily",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_webscout_tavily",
+      "extra_tests": []
+    }
+  }
+}

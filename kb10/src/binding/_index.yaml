@@ -1,0 +1,130 @@
+version: "1.0"
+namespace: kickside.kb10.binding
+
+# Contract-binding implementations: kickside.contract:{embeddable,queryable,
+# deletable} (embed_func/query_func/delete_func) and kickside.knowledge:
+# {kb_store_lifecycle, maintainable} (kb_store_binding's four methods and
+# maintenance_func's three). Wired from kickside.kb10:embeddable/queryable/
+# kb_store_lifecycle/maintainable in the module root _index.yaml.
+#
+# The maintainable methods authorize the knowledge base in context through
+# kickside.kb10.api:request -- the same access seam the kb10 HTTP routes open
+# with -- because a binding is reachable in-process by any caller that can name a
+# component id.
+
+entries:
+  - name: query_policy
+    kind: library.lua
+    meta:
+      comment: Explicit query-mode resolution and bounded interactive LLM options.
+    source: file://query_policy.lua
+
+  - name: query_service
+    kind: library.lua
+    meta:
+      comment: KB10 document/vector query orchestration behind the queryable contract adapter.
+    source: file://query_func.lua
+    modules:
+      - ctx
+      - json
+    imports:
+      llm: wippy.llm:llm
+      store: kickside.kb10.persist:store
+      kc: kickside.kb10:types
+      query_policy: kickside.kb10.binding:query_policy
+      tuner: kickside.kb10.engine:tuner
+      text_limits: kickside.kb10:text_limits
+      model_failure: kickside.contract:model_failure
+
+  - name: embed_func
+    kind: function.lua
+    source: file://embed_func.lua
+    modules:
+      - ctx
+    imports:
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+    method: handle
+
+  - name: query_func
+    kind: function.lua
+    source: file://query_handler.lua
+    imports:
+      query_service: kickside.kb10.binding:query_service
+    method: handle
+
+  - name: delete_func
+    kind: function.lua
+    source: file://delete_func.lua
+    modules:
+      - ctx
+    imports:
+      store: kickside.kb10.persist:store
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+    method: handle
+
+  # ─── maintainable contract methods (ctx component → api seam) ──────
+  # One entry per verb of kickside.knowledge:maintainable, each reading the KB
+  # from binding context and calling the cross-module seam the HTTP maintenance
+  # routes call, so a contract caller and a request reach one implementation.
+  - name: schedule_resummarize_func
+    kind: function.lua
+    meta: { comment: "maintainable — schedule_resummarize" }
+    source: file://maintenance_func.lua
+    method: schedule_resummarize
+    modules:
+      - ctx
+    imports: &maintenance_imports
+      component: kickside.component:component
+      request: kickside.kb10.api:request
+      schedule_resummarize: kickside.kb10.api:schedule_resummarize
+      schedule_reembed: kickside.kb10.api:schedule_reembed
+      maintenance_status: kickside.kb10.api:maintenance_status
+
+  - name: schedule_reembed_func
+    kind: function.lua
+    meta: { comment: "maintainable — schedule_reembed" }
+    source: file://maintenance_func.lua
+    method: schedule_reembed
+    modules:
+      - ctx
+    imports: *maintenance_imports
+
+  - name: maintenance_status_func
+    kind: function.lua
+    meta: { comment: "maintainable — maintenance_status" }
+    source: file://maintenance_func.lua
+    method: maintenance_status
+    modules:
+      - ctx
+    imports: *maintenance_imports
+
+  # ─── kb_store_lifecycle contract methods (DTO → store) ─────────────
+  - name: create_store
+    kind: function.lua
+    meta: { comment: "kb_store_lifecycle — create_store" }
+    source: file://kb_store_binding.lua
+    method: create_store
+    imports: &kb_store_imports
+      store: kickside.kb10.persist:store
+      kb10: kickside.kb10:types
+
+  - name: get_store
+    kind: function.lua
+    meta: { comment: "kb_store_lifecycle — get_store" }
+    source: file://kb_store_binding.lua
+    method: get_store
+    imports: *kb_store_imports
+
+  - name: delete_store
+    kind: function.lua
+    meta: { comment: "kb_store_lifecycle — delete_store" }
+    source: file://kb_store_binding.lua
+    method: delete_store
+    imports: *kb_store_imports
+
+  - name: update_config
+    kind: function.lua
+    meta: { comment: "kb_store_lifecycle — update_config" }
+    source: file://kb_store_binding.lua
+    method: update_config
+    imports: *kb_store_imports

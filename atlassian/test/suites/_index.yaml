@@ -1,0 +1,153 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/atlassian. They live in the harness because the module
+# is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+
+entries:
+  - name: site_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://site_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      site: kickside.atlassian.client:site
+
+  - name: transport_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://transport_test.lua
+    method: run
+    modules: [base64]
+    imports:
+      test: wippy.test:test
+      transport: kickside.atlassian.client:transport
+
+  - name: confluence_api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://confluence_api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      transport: kickside.atlassian.client:transport
+      confluence: kickside.atlassian.confluence:api
+      types: kickside.atlassian.client:types
+
+  - name: content_sink_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://content_sink_test.lua
+    method: run
+    imports:
+      sink: kickside.atlassian.confluence.sink:content_sink
+      test: wippy.test:test
+
+  - name: confluence_pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://confluence_pull_core_test.lua
+    method: run
+    imports:
+      pull_core: kickside.atlassian.confluence.source:pull_core
+      conformance: kickside.automation.testing:pullable_conformance
+      test: wippy.test:test
+
+  - name: confluence_traits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://confluence_traits_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      transport: kickside.atlassian.client:transport
+      confluence_get: kickside.atlassian.confluence.traits:confluence_get
+      confluence_write: kickside.atlassian.confluence.traits:confluence_write
+      markdown: kickside.atlassian.confluence:markdown
+
+    modules: [json]
+  - name: jira_api_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://jira_api_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      transport: kickside.atlassian.client:transport
+      jira: kickside.atlassian.jira:api
+      types: kickside.atlassian.client:types
+
+  - name: issue_sink_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://issue_sink_test.lua
+    method: run
+    imports:
+      sink: kickside.atlassian.jira.sink:issue_sink
+      test: wippy.test:test
+
+  - name: jira_pull_core_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    source: file://jira_pull_core_test.lua
+    method: run
+    imports:
+      pull_core: kickside.atlassian.jira.source:pull_core
+      conformance: kickside.automation.testing:pullable_conformance
+      test: wippy.test:test
+
+  - name: jira_traits_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: atlassian
+    modules: [json]
+    source: file://jira_traits_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      transport: kickside.atlassian.client:transport
+      jira_get: kickside.atlassian.jira.traits:jira_get
+      jira_write: kickside.atlassian.jira.traits:jira_write
+
+  - name: discovery_test
+    kind: function.lua
+    meta: { type: test, suite: atlassian }
+    source: file://discovery_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      connection: kickside.atlassian.connection:connection_implementation
+
+  - name: source_sink_errors_test
+    kind: function.lua
+    meta: { type: test, suite: atlassian }
+    source: file://source_sink_errors_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      types: kickside.atlassian.client:types
+      jira_source: kickside.atlassian.jira.source:pull_core
+      confluence_source: kickside.atlassian.confluence.source:pull_core
+      jira_sink: kickside.atlassian.jira.sink:issue_sink
+      confluence_sink: kickside.atlassian.confluence.sink:content_sink

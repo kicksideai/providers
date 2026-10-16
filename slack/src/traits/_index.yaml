@@ -1,0 +1,217 @@
+version: "1.0"
+namespace: kickside.slack.traits
+
+# Slack agent toolkit: two tools (read / write) over the existing actor-scoped
+# Web API client, and three traits that bundle them. Each trait declares the
+# shared connection-trait-picker as its config UI with provider=slack, so the
+# agent author selects which Slack connection (or auto-selects the single
+# default) the tools act through; the picked connection id arrives as
+# ctx.connection_id.
+
+entries:
+  - name: slack_get
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read]
+      title: Slack Read
+      llm_alias: SlackRead
+      llm_description: "Read Slack. list_channels/list_users/get_messages return compact summaries with next_cursor; pass it as cursor. get_channel/get_user/get_message return the whole provider record. Use a listed channel id and message ts to read message text, blocks, files and reactions."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "message_ts": {"type": "string", "description": "Message timestamp for get_message."},
+            "user_id": {"type": "string", "description": "User id for get_user."},
+            "action": {
+              "type": "string",
+              "description": "The action to perform",
+              "enum": ["list_channels", "get_channel", "get_messages", "list_users", "get_message", "get_user"]
+            },
+            "channel_id": { "type": "string", "description": "Channel id for get_channel / get_messages" },
+            "limit": { "type": "integer", "description": "Slack page size for get_messages (max 999, default 20) / list_channels (max 1000, default 200) / list_users (max 200, default 200)" },
+            "cursor": { "type": "string", "description": "Opaque Slack cursor from next_cursor" }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "Read Slack. list_channels/list_users/get_messages return compact summaries with next_cursor; pass it as cursor. get_channel/get_user/get_message return the whole provider record. Use a listed channel id and message ts to read message text, blocks, files and reactions. Provider rejections return {success:false,error,status_code?,data?}; infrastructure failures return (nil, typed error).",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Slack rejected the request."},
+            "error": {"type": "string", "description": "Slack error code when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"type": "object", "description": "Slack response body of a rejected request.", "additionalProperties": true},
+            "action": {"type": "string"},
+            "count": {"type": "integer"},
+            "channels": {"type": "array", "description": "Slack conversation objects (conversations.list).", "items": {"type": "object", "additionalProperties": true}},
+            "channel": {"type": "object", "description": "Slack conversation object (conversations.info).", "additionalProperties": true},
+            "users": {"type": "array", "description": "Slack user objects (users.list).", "items": {"type": "object", "additionalProperties": true}},
+            "channel_id": {"type": "string"},
+            "messages": {"type": "array", "description": "Slack message objects (conversations.history) with files, blocks, reactions and thread fields.", "items": {"type": "object", "additionalProperties": true}},
+            "next_cursor": {"type": "string"}
+          }
+        }
+    source: file://_fn_slack_get.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.slack.client:transport
+      api: kickside.slack.client:api
+      implementation: kickside.slack.traits:slack_get_lib
+
+  - name: slack_write
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Slack Write
+      llm_alias: SlackWrite
+      llm_description: "Write to Slack via the configured connection. Actions: send_message and add_reaction. Returns an object { success, action, result, channel_id, ... } with the created Slack message; a Slack rejection returns { success: false, error, status_code, data }. Use SlackRead to resolve channel_id and message_ts first."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "The action to perform",
+              "enum": ["send_message", "add_reaction"]
+            },
+            "channel_id": { "type": "string", "description": "Target channel id" },
+            "content": { "type": "string", "description": "Message text for send_message (max 40000)" },
+            "thread_ts": { "type": "string", "description": "Optional parent message ts to reply in a thread" },
+            "message_ts": { "type": "string", "description": "Message ts for add_reaction" },
+            "emoji": { "type": "string", "description": "Emoji name for add_reaction, without colons (e.g. thumbsup)" }
+          },
+          "required": ["action", "channel_id"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "success": {"type": "boolean", "description": "false with error when Slack rejected the request."},
+            "error": {"type": "string", "description": "Slack error code when success is false."},
+            "status_code": {"type": "integer", "description": "HTTP status of a rejected request."},
+            "data": {"type": "object", "description": "Slack response body of a rejected request.", "additionalProperties": true},
+            "action": {"type": "string"},
+            "result": {"type": "string", "enum": ["created", "updated"]},
+            "channel_id": {"type": "string"},
+            "message_ts": {"type": "string"},
+            "message": {"type": "object", "description": "The created Slack message object (send_message).", "additionalProperties": true},
+            "emoji": {"type": "string"}
+          },
+          "description": "Slack write result; a Slack rejection returns { success: false, error, status_code, data }."
+        }
+    source: file://_fn_slack_write.lua
+    method: handler
+    modules: [ctx]
+    imports:
+      transport: kickside.slack.client:transport
+      api: kickside.slack.client:api
+      types: kickside.slack.client:types
+      implementation: kickside.slack.traits:slack_write_lib
+
+  # Library views of the tool handlers so the dispatch/validation is unit-tested
+  # as a module (the function entries above only expose the bare handler).
+  - name: slack_get_lib
+    kind: library.lua
+    meta: { name: slack_get_lib, comment: "SlackRead handler module (for tests)" }
+    source: file://slack_get.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.slack.client:transport
+      api: kickside.slack.client:api
+
+  - name: slack_write_lib
+    kind: library.lua
+    meta: { name: slack_write_lib, comment: "SlackWrite handler module (for tests)" }
+    source: file://slack_write.lua
+    modules: [ctx]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.slack.client:transport
+      api: kickside.slack.client:api
+      types: kickside.slack.client:types
+
+  - name: slack_reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Slack Reader
+      public: true
+      icon: tabler:brand-slack
+      comment: Reads Slack channels, messages, and users.
+      tags: [slack, messaging, read-only]
+      web_component: kickside-connection-trait-picker
+      provider: slack
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Slack connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can query Slack with the SlackRead tool: list_channels, get_channel,
+      get_messages (recent messages in a channel), and list_users. Resolve ids
+      with the list actions before reading a specific channel.
+    tools:
+      - kickside.slack.traits:slack_get
+
+  - name: slack_operator
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Slack Operator
+      public: true
+      icon: tabler:brand-slack
+      comment: Posts messages and reactions to Slack.
+      tags: [slack, messaging, write]
+      web_component: kickside-connection-trait-picker
+      provider: slack
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Slack connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You can write to Slack with the SlackWrite tool: send_message (post to a
+      channel, or reply in a thread with thread_ts) and add_reaction (an emoji on
+      a specific message by its ts). Keep messages under 40000 characters.
+    tools:
+      - kickside.slack.traits:slack_write
+
+  - name: slack_manager
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Slack Manager
+      public: true
+      icon: tabler:brand-slack
+      comment: Full read and write access to Slack channels, messages, and users.
+      tags: [slack, messaging, read-write]
+      web_component: kickside-connection-trait-picker
+      provider: slack
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Slack connection component id selected by the connection trait picker.
+        additionalProperties: false
+    prompt: |
+      You have full read and write access to Slack through two tools:
+      SlackRead (list_channels, get_channel, get_messages, list_users) and
+      SlackWrite (send_message, add_reaction). Look ids up with SlackRead before
+      acting, and keep messages under 40000 characters.
+    tools:
+      - kickside.slack.traits:slack_get
+      - kickside.slack.traits:slack_write

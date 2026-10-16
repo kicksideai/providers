@@ -1,0 +1,25 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/webscout-tavily. They live in the harness because the
+# module is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+#
+# Every import below names an entry of the MODULE, and the descriptor the
+# discovery test reads is the one the module declares.
+
+entries:
+  - name: provider_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout-tavily
+      group: Search provider
+      comment: The declared descriptor, the credential namespace, and Tavily web search normalization.
+    source: file://provider_test.lua
+    method: run
+    modules: [registry, json]
+    imports:
+      test: wippy.test:test
+      search: kickside.webscout.providers.tavily:search
+      available: kickside.webscout.providers.tavily:available

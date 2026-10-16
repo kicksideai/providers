@@ -1,0 +1,35 @@
+organization: kickside
+module: simplefin
+type: plugin
+description: KickSide SimpleFIN — bank-feed connection provider for SimpleFIN Bridge with account, transaction and holding sources and an agent read tool.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - simplefin
+  - connection
+  - bank
+  - finance
+  - transactions
+embed:
+  - kickside.simplefin:ui_fs
+exclude:
+  - "app:**"
+  - "app.env:**"
+  - "ui/node_modules/**"
+  - "ui/dist/**"
+  - "static/*.map"
+  - "static/**/*.map"
+  - "test/**"
+  - "test:**"
+  - ".wippy/**"
+  - ".wippy:**"
+  - "tests/**"
+  - "test-support/**"
+  - "app.**:**"
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support

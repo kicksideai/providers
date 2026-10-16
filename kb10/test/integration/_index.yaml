@@ -1,0 +1,116 @@
+version: "1.0"
+namespace: app
+
+entries:
+  - name: graph_api_fixture
+    kind: library.lua
+    source: file://graph_api_fixture.lua
+    modules: [sql, json, crypto, contract]
+    imports:
+      kb10_types: kickside.kb10:types
+      materializer_lib: kickside.kb10.injection:materializer_store
+      node_store: kickside.kb10.persist:node_store
+
+  - name: graph_api_nodes_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_graph }
+    source: file://graph_api_nodes_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      graph_api_fixture: app:graph_api_fixture
+
+  - name: graph_api_edges_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_graph }
+    source: file://graph_api_edges_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      graph_api_fixture: app:graph_api_fixture
+
+  - name: graph_api_integrity_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_graph }
+    source: file://graph_api_integrity_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      graph_api_fixture: app:graph_api_fixture
+
+  - name: maintenance_fixture
+    kind: library.lua
+    source: file://maintenance_fixture.lua
+    modules: [sql, registry, contract, security]
+    imports:
+      kb10: kickside.kb10:types
+      maintenance: kickside.kb10.api:maintenance_implementation
+      maintenance_worker: kickside.kb10.engine:maintenance_worker_impl
+      maintenance_runs: kickside.kb10.persist:maintenance_runs
+      schedule_resummarize: kickside.kb10.api:schedule_resummarize
+      schedule_reembed: kickside.kb10.api:schedule_reembed
+      maintenance_status: kickside.kb10.api:maintenance_status
+      source_worker_fixtures: app:source_worker_fixtures
+
+  - name: maintenance_store_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_injection, timeout: 60s }
+    source: file://maintenance_store_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      maintenance_fixture: app:maintenance_fixture
+
+  - name: maintenance_contract_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_injection, timeout: 60s }
+    source: file://maintenance_contract_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      maintenance_fixture: app:maintenance_fixture
+
+  - name: maintenance_worker_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_injection, timeout: 60s }
+    source: file://maintenance_worker_test.lua
+    method: run
+    modules: [time]
+    imports:
+      test: wippy.test:test
+      maintenance_fixture: app:maintenance_fixture
+
+  - name: source_worker_fixtures
+    kind: library.lua
+    meta:
+      name: source_worker_fixtures
+      comment: Shared fixtures/adapters for source_worker tests.
+    source: file://source_worker_fixtures.lua
+    modules: [crypto, json, sql]
+    imports:
+      kb10_store: kickside.kb10.persist:store
+
+  # Node methods are not bound as contract functions, lifecycle binding present, graph engine declares query_binding.
+  - name: contract_split_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_packaging
+    source: file://contract_split_test.lua
+    method: run
+    modules:
+      - registry
+    imports:
+      test: wippy.test:test
+
+  - name: db_routing_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: knowledge_packaging
+    source: file://db_routing_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      ops: kickside.kb10.persist:ops

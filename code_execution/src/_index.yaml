@@ -1,0 +1,355 @@
+version: "1.0"
+namespace: kickside.code_execution
+
+# Sandboxed code execution for agents and automations. An agent or user writes Lua that
+# runs process-isolated over a tool SDK it cannot escape; an EMPTY whitelist means every
+# tool the ambient actor can reach (allow-all), a non-empty one restricts to that subset.
+# Every dispatch runs under the ambient actor's own gates.
+#
+# This package owns the reusable low-level SDK/eval primitive and one canonical Run Code
+# Block. Visual Flow authoring is only one consumer of that declaration; Workflows does not
+# own or depend on this provider. The agent trait and eval grant live in their own
+# sub-namespaces (traits/, security/).
+
+entries:
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '*'
+
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: KickSide Code Execution
+      comment: Sandboxed Lua execution for agents and automations, bounded to a tool SDK (empty whitelist = all). Ships an SDK-reference endpoint and a dry-run-validated code generator.
+
+  - name: dep.wippy.dataflow
+    kind: ns.dependency
+    component: wippy/dataflow
+    version: "*"
+
+  - name: dep.wippy.llm
+    kind: ns.dependency
+    component: wippy/llm
+    version: "*"
+
+  - name: dep.kickside.widgets
+    kind: ns.dependency
+    component: kickside/widgets
+    version: "*"
+    meta:
+      comment: Provides the canonical wc-multiselect used by the Run Code Block editor.
+
+  - name: api_router
+    kind: ns.requirement
+    meta:
+      comment: Authenticated HTTP router for the code-execution API.
+      description: Authenticated HTTP router for the code-execution API.
+    targets:
+      - entry: kickside.code_execution:sdk_reference.endpoint
+        path: .meta.router
+      - entry: kickside.code_execution:assist.endpoint
+        path: .meta.router
+      - entry: kickside.code_execution:recommend_tools_api.endpoint
+        path: .meta.router
+
+  - name: ui_server
+    kind: ns.requirement
+    meta:
+      comment: HTTP server for the Code Execution Block editors.
+      description: HTTP server for the Code Execution Block editors.
+    targets:
+      - entry: kickside.code_execution:ui_static
+        path: .meta.server
+
+  - name: ui_fs
+    kind: fs.directory
+    meta:
+      comment: Built Run Code Block editor web component.
+    directory: ./static
+
+  - name: ui_static
+    kind: http.static
+    meta: {}
+    path: /kickside-code-execution
+    fs: kickside.code_execution:ui_fs
+    options:
+      cache: no-cache
+
+  - name: run_code_config_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: run_code_config_view
+      title: Run Code Block Configuration
+      announced: true
+      auto_register: false
+      tag_name: kickside-code-body
+      base_path: kickside-code-execution
+      entry_point: code-body.js
+      icon: tabler:code
+
+  # ─── Canonical Block ───────────────────────────────────────────
+  - name: block.run_code
+    kind: registry.entry
+    meta:
+      type: kickside.block
+      public: true
+      title: Run Code
+      comment: Run sandboxed Lua against an explicitly selected tool surface.
+    data:
+      block:
+        api_version: kickside.block/v1
+        input: { type: object, additionalProperties: true }
+        config:
+          type: object
+          additionalProperties: false
+          required: [code]
+          properties:
+            code:
+              type: string
+              minLength: 1
+              title: Code
+              format: textarea
+              description: Lua source. Read the incoming value from __cx_args and return a value.
+            tool_ids:
+              type: array
+              title: Allowed tools
+              items: { type: string }
+              description: Optional exact tool whitelist. Omit it to allow every tool the current actor can reach.
+            method:
+              type: string
+              title: Method
+              description: Optional exported method to invoke instead of the chunk result.
+        output:
+          type: object
+          additionalProperties: false
+          required: [ok]
+          properties:
+            ok: { type: boolean }
+            result: {}
+            error:
+              type: object
+              additionalProperties: false
+              required: [kind, message]
+              properties:
+                kind: { type: string }
+                message: { type: string }
+        ports:
+          - { id: result, label: Result, direction: out, condition: "output.ok == true" }
+          - { id: error, label: Error, direction: out, condition: "output.ok == false" }
+        presentation:
+          category: Logic
+          icon: tabler:code
+          hue: blue
+          blurb: Transform incoming data with sandboxed Lua and approved tools.
+          config_wc: kickside-code-body
+        execution:
+          kind: function
+          function_id: kickside.code_execution:run_code
+
+  # ─── SDK resolver (shared) ───────────────────────────────────────────
+  # One place resolves a whitelist (empty = all) into pure-data descriptors and renders
+  # the sdk-reference surface. run_code, the sdk-reference endpoint, and the generator all
+  # resolve through this.
+  - name: surface
+    kind: library.lua
+    meta:
+      name: surface
+      comment: Resolves the tool whitelist (empty = all) into descriptors and builds the sdk-reference surface.
+    source: file://sdk/surface.lua
+    modules: [registry, json]
+    imports:
+      canonical_json: kickside.contract:canonical_json
+
+  # ─── SDK libraries injected into the eval sandbox ────────────────────
+  # sdk dispatches the run's tools under the ambient actor; run_code grants its private
+  # import modules (ctx, funcs, json, time) through eval_runner's import table, not the
+  # sandbox's user-facing whitelist, so user source can never require ctx/funcs/time.
+  # sdk_sim mirrors the exact surface but dispatches nothing (schema-shaped mocks) — the
+  # side-effect-free dry-run for the generator; it needs no funcs, which is what makes it
+  # safe.
+  - name: sdk
+    kind: library.lua
+    meta:
+      name: sdk
+      comment: Curated, whitelist-bounded tool surface injected into the sandbox as an import (real dispatch under the ambient actor).
+    source: file://sdk/sdk.lua
+    modules: [ctx, funcs, json, time]
+
+  - name: sdk_sim
+    kind: library.lua
+    meta:
+      name: sdk_sim
+      comment: Simulation SDK mirroring sdk's surface; returns schema-shaped mock outputs and dispatches nothing (side-effect-free dry-run).
+    source: file://sdk/sdk_sim.lua
+    modules: [ctx, json]
+
+  # ─── Core: sandboxed code execution ──────────────────────────────────
+  # run resolves the whitelist and runs the source against the real sdk; dry_run runs the
+  # same source against sdk_sim for a side-effect-free validation. Both hold the eval.*
+  # grant WITHOUT replacing the actor, so tools run as the ambient caller.
+  - name: run_code
+    kind: function.lua
+    meta:
+      comment: Execute agent-authored Lua over the tool SDK, process-isolated (empty whitelist = all).
+    source: file://runner/run_code.lua
+    method: run
+    modules: [eval_runner, funcs, time]
+    imports:
+      surface: kickside.code_execution:surface
+    security:
+      policies:
+        - kickside.code_execution.security:eval_grant
+        - kickside.code_execution.security:worker_dispatch
+
+  - name: run_code_dry_run
+    kind: function.lua
+    meta:
+      comment: Side-effect-free dry-run — run the source against the simulation sdk (sdk_sim) to validate generated code.
+    source: file://runner/run_code.lua
+    method: dry_run
+    modules: [eval_runner, funcs, time]
+    imports:
+      surface: kickside.code_execution:surface
+    security:
+      policies:
+        - kickside.code_execution.security:eval_grant
+        - kickside.code_execution.security:worker_dispatch
+
+  - name: run_code_worker
+    kind: function.lua
+    meta:
+      comment: Isolated evaluation cancelled by the 5-second RunCode deadline.
+      private: true
+    source: file://runner/run_code.lua
+    method: execute
+    modules: [eval_runner, funcs, time]
+    imports:
+      surface: kickside.code_execution:surface
+    security:
+      policies:
+        - kickside.code_execution.security:eval_grant
+
+  # ─── HTTP endpoints (router app:api) ─────────────────────────────────
+  # The callable SDK surface for a whitelist (empty = all): the exact sdk.tools calls with
+  # argument/result schemas. Feeds the WC reference panel and the generator prompt.
+  - name: sdk_reference
+    kind: function.lua
+    meta:
+      comment: Returns the callable SDK surface (tools with schemas) for a whitelist (empty = all).
+    source: file://api/sdk_reference.lua
+    modules: [http, security]
+    method: handler
+    imports:
+      surface: kickside.code_execution:surface
+
+  - name: sdk_reference.endpoint
+    kind: http.endpoint
+    meta: { router: "" }
+    method: GET
+    func: sdk_reference
+    path: /code-execution/sdk-reference
+
+  # Generate sandbox Lua for an intent; returns dry-run-validated code.
+  - name: assist
+    kind: function.lua
+    meta:
+      comment: POST endpoint — generate dry-run-validated sandbox Lua for an intent over a whitelist.
+    source: file://api/assist.lua
+    modules: [http, json, security, funcs]
+    method: handler
+
+  - name: assist.endpoint
+    kind: http.endpoint
+    meta: { router: "" }
+    method: POST
+    func: assist
+    path: /code-execution/assist
+
+  # ─── Tool discovery (LLM-backed, keyword fallback) ───────────────────
+  # recommend_tools selects the tools most relevant to a stated need over a whitelist and
+  # returns compact id/label rows, adding description and schemas when fields requests them.
+  # Its llm import closure lives in its own pool; the RecommendTools trait tool and this
+  # endpoint reach it via funcs.call.
+  - name: recommend_tools
+    kind: function.lua
+    meta:
+      comment: LLM-backed tool discovery — select the tools most relevant to a need and return compact rows plus requested fields.
+    source: file://sdk/recommend_tools.lua
+    method: recommend
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      surface: kickside.code_execution:surface
+
+  - name: recommend_tools_api
+    kind: function.lua
+    meta:
+      comment: POST endpoint — recommend the tools most relevant to a need over a whitelist (empty = all); fields selects schemas and descriptions.
+    source: file://api/recommend_tools.lua
+    modules: [http, json, security, funcs]
+    method: handler
+
+  - name: recommend_tools_api.endpoint
+    kind: http.endpoint
+    meta: { router: "" }
+    method: POST
+    func: recommend_tools_api
+    path: /code-execution/recommend-tools
+
+  # ─── Code generator (draft -> dry-run -> accept) ─────────────────────
+  # generator is the pure loop (no llm/flow imports) so the safety spine runs standalone.
+  # node_generate is the llm-backed cycle edge; generate_code is the durable dataflow the
+  # assist endpoint invokes via funcs.call, keeping the flow/llm closure isolated.
+  - name: generator
+    kind: library.lua
+    meta:
+      name: generator
+      comment: Code generation core — the draft -> sim-validate -> accept/redraft loop against injected collaborators.
+    source: file://generator/generator.lua
+
+  - name: node_generate
+    kind: function.lua
+    meta:
+      comment: Generator cycle node — draft Lua via the model and validate it with a side-effect-free dry-run.
+    source: file://generator/gen_node.lua
+    method: iterate
+    modules: [json, funcs]
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      generator: kickside.code_execution:generator
+      surface: kickside.code_execution:surface
+
+  # The shared implementation exposed as a library so the trigger-suggestion shaping can be
+  # unit-tested as one module (for tests).
+  - name: node_generate_lib
+    kind: library.lua
+    meta: { comment: "code_execution generator cycle node - shared implementation (for tests)" }
+    source: file://generator/gen_node.lua
+    modules: [json, funcs]
+    imports:
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      generator: kickside.code_execution:generator
+      surface: kickside.code_execution:surface
+
+  - name: generate_code
+    kind: function.lua
+    meta:
+      comment: Run the code-generation dataflow for an intent + whitelist; returns dry-run-validated code.
+    source: file://generator/generate_code.lua
+    method: generate_code
+    modules: [funcs, time]
+    imports:
+      flow: userspace.dataflow.flow:flow
+
+  - name: generate_code_worker
+    kind: function.lua
+    meta: { private: true }
+    source: file://generator/generate_code.lua
+    method: execute
+    modules: [funcs, time]
+    imports:
+      flow: userspace.dataflow.flow:flow

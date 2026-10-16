@@ -1,0 +1,41 @@
+version: "1.0"
+namespace: app.suites
+
+# Unit suites for kickside/webscout-brave. They live in the harness because the
+# module is loaded through a workspace replacement, which applies the module's
+# exclude_meta and drops meta.type=test entries from its own tree.
+#
+# Every import below names an entry of the MODULE, and the descriptor the
+# discovery test reads is the one the module declares. The harness used to carry
+# a copy of each, and the copies drifted.
+
+entries:
+  - name: provider_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout-brave
+      group: Search provider
+      comment: The declared descriptor, the credential namespace, and Brave web search normalization.
+    source: file://provider_test.lua
+    method: run
+    modules: [registry, json, http_client]
+    imports:
+      test: wippy.test:test
+      search: kickside.webscout.providers.brave:search
+      available: kickside.webscout.providers.brave:available
+
+  - name: source_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: webscout-brave
+      group: Brave
+      comment: Brave web and news discovery normalization, artifact shaping, and policy refusals.
+    source: file://source_test.lua
+    method: run
+    modules: [http_client, json, hash]
+    imports:
+      test: wippy.test:test
+      source: kickside.webscout.providers.brave:source_core
+      operation_policy: kickside.webscout.research:operation_policy

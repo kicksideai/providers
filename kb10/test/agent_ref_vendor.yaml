@@ -1,0 +1,12 @@
+version: "1.0"
+namespace: kickside.agents
+
+# Vendors the canonical user-agent ref-format module directly (a pure,
+# dependency-free string-format library, so no stub is needed) via a symlink to
+# the real source, so the standalone kb10 harness resolves
+# kickside.agents:agent_ref, the same id knowledge's agentic_query imports in
+# production.
+entries:
+  - name: agent_ref
+    kind: library.lua
+    source: file://agent_ref.lua

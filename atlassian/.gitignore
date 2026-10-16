@@ -1,0 +1,9 @@
+.wippy/
+/wippy.lock
+*.wapp
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+.idea/
+node_modules/

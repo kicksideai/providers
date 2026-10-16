@@ -1,0 +1,36 @@
+version: "1.0"
+namespace: kickside.telegram.client
+
+entries:
+  - name: types
+    kind: library.lua
+    meta:
+      name: types
+      comment: Shared constants and type surfaces for Telegram.
+    source: file://types.lua
+    imports:
+      endpoints: kickside.connection:endpoints
+
+  - name: api
+    kind: library.lua
+    meta:
+      name: api
+      comment: Low-level Telegram Bot API client.
+    source: file://api.lua
+    modules: [http_client, json, time]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      types: kickside.telegram.client:types
+
+  - name: transport
+    kind: library.lua
+    meta:
+      name: transport
+      comment: System-scoped Telegram connection resolver and API transport.
+    source: file://transport.lua
+    imports:
+      component: kickside.component:component
+      api: kickside.telegram.client:api
+      types: kickside.telegram.client:types
+      base: kickside.connection:base_connection
+      reply_authorization: kickside.connection:reply_authorization

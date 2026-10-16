@@ -1,0 +1,251 @@
+version: "1.0"
+namespace: kickside.phantombuster.source
+
+entries:
+  - name: operation_policy
+    kind: library.lua
+    meta: { name: operation_policy, comment: Closed validation and receipt for a resolved PhantomBuster SourceOperationPolicy/v1; it owns no settings or scheduling state. }
+    source: file://operation_policy.lua
+    modules: [json, hash]
+
+  - name: pull_core
+    kind: library.lua
+    meta: { name: pull_core, comment: Read a completed PhantomBuster actor snapshot and map it to canonical acquisition rows; this source never launches actors. }
+    source: file://pull_core.lua
+    modules: [ctx, json, time]
+    imports:
+      capacity_http: kickside.connection:capacity_http
+      transport: kickside.phantombuster.client:transport
+      operation_policy: kickside.phantombuster.source:operation_policy
+
+  - name: pull_candidates
+    kind: function.lua
+    meta: { comment: kickside.data:pullable.pull for PhantomBuster actor candidates. }
+    source: file://pull_candidates.lua
+    method: pull
+    modules: []
+    imports: { implementation: kickside.phantombuster.source:pull_core,  transport: kickside.phantombuster.client:transport }
+
+  - name: pull_activities
+    kind: function.lua
+    meta: { comment: kickside.data:pullable.pull for raw LinkedIn post/activity rows. Policy belongs to the consuming composition. }
+    source: file://pull_activities.lua
+    method: pull_activities
+    modules: []
+    imports: { implementation: kickside.phantombuster.source:pull_core,  transport: kickside.phantombuster.client:transport }
+
+  - name: pull_candidate_keys
+    kind: function.lua
+    source: file://pull_keys.lua
+    method: pull_candidate_keys
+    imports: { implementation: kickside.phantombuster.source:pull_core }
+
+  - name: pull_activity_keys
+    kind: function.lua
+    source: file://pull_keys.lua
+    method: pull_activity_keys
+    imports: { implementation: kickside.phantombuster.source:pull_core }
+
+  - name: candidate_source
+    kind: contract.binding
+    meta:
+      title: PhantomBuster Candidates
+      icon: tabler:ghost
+      comment: Pull normalized candidate rows from a completed PhantomBuster actor on a schedule.
+      provider: phantombuster
+      group: Acquisition
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods: { pull: kickside.phantombuster.source:pull_candidates }
+
+  - name: candidates
+    kind: registry.entry
+    meta: { type: kickside.automation.port, title: PhantomBuster Candidates, icon: simple-icons:phantombuster }
+    binding: kickside.phantombuster.source:candidate_source
+    reconcile:
+      pull_keys: kickside.phantombuster.source:pull_candidate_keys
+    config_schema:
+      connection_id: { picker: kickside-connection-trait-picker, required: true, provider: phantombuster }
+      actor_id: { picker: wc-schema-form, type: string, required: true, title: Actor ID, description: Completed PhantomBuster actor whose latest output is read. }
+      query: { picker: wc-schema-form, type: string, required: true, title: Query, description: Human-readable query/actor argument retained in candidate provenance. }
+      max_rows_per_pull: { picker: wc-schema-form, type: integer, required: true, minimum: 1, title: Max rows per pull, description: Explicit provider-side maximum emitted rows; it must fit the injected control_bounds.limits.max_results range. }
+      owner_component_id: { picker: wc-schema-form, type: string, required: true, minLength: 1, title: Owner component, description: Canonical owner component context authorized to read the configured connection. }
+      snapshot_id: { picker: wc-schema-form, type: string, required: false, minLength: 1, title: Snapshot identity, description: Optional stable provider snapshot identity to request or verify; the provider receipt remains authoritative. }
+      control_bounds: &control_bounds_schema
+        picker: wc-schema-form
+        type: object
+        required: true
+        title: Provider control bounds
+        description: Explicit installed SourceOperationControlBounds/v1 document; it supplies provider and tool ranges and is never defaulted.
+        additionalProperties: false
+        required_fields: [version, provider, policy_ref, revision, digest, limits, lifecycle, storage, tool]
+        properties:
+          version: { type: string, const: SourceOperationControlBounds/v1 }
+          provider: { type: string, const: phantombuster }
+          policy_ref: { type: string, minLength: 1 }
+          revision: { type: string, minLength: 1 }
+          digest: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+          operation_id: { type: string, enum: [candidate_snapshot, activity_snapshot] }
+          limits:
+            type: object
+            additionalProperties: false
+            required: [max_results, timeout_seconds]
+            properties:
+              max_results:
+                type: object
+                additionalProperties: false
+                required: [minimum, maximum]
+                properties:
+                  minimum: { type: integer, minimum: 1 }
+                  maximum: { type: integer, minimum: 1 }
+              timeout_seconds:
+                type: object
+                additionalProperties: false
+                required: [minimum, maximum]
+                properties:
+                  minimum: { type: integer, minimum: 1 }
+                  maximum: { type: integer, minimum: 1 }
+          lifecycle:
+            type: object
+            additionalProperties: false
+            required: [stale_after_seconds]
+            properties:
+              stale_after_seconds:
+                type: object
+                additionalProperties: false
+                required: [minimum, maximum]
+                properties:
+                  minimum: { type: integer, minimum: 1 }
+                  maximum: { type: integer, minimum: 1 }
+          storage:
+            type: object
+            additionalProperties: false
+            required: [limit_chars, retention]
+            properties:
+              limit_chars:
+                type: object
+                additionalProperties: false
+                required: [minimum, maximum]
+                properties:
+                  minimum: { type: integer, minimum: 1 }
+                  maximum: { type: integer, minimum: 1 }
+              retention:
+                type: object
+                additionalProperties: false
+                required: [max_age_seconds]
+                properties:
+                  class: { type: string, minLength: 1 }
+                  max_age_seconds:
+                    type: object
+                    additionalProperties: false
+                    required: [minimum, maximum]
+                    properties:
+                      minimum: { type: integer, minimum: 1 }
+                      maximum: { type: integer, minimum: 1 }
+          tool:
+            type: object
+            additionalProperties: false
+            required: [list_limit, output_chars]
+            properties:
+              list_limit:
+                type: object
+                additionalProperties: false
+                required: [minimum, maximum]
+                properties:
+                  minimum: { type: integer, minimum: 1 }
+                  maximum: { type: integer, minimum: 1 }
+              output_chars:
+                type: object
+                additionalProperties: false
+                required: [minimum, maximum]
+                properties:
+                  minimum: { type: integer, minimum: 1 }
+                  maximum: { type: integer, minimum: 1 }
+      operation_policy: &operation_policy_schema
+        picker: wc-schema-form
+        type: object
+        required: true
+        title: Source operation policy
+        description: Complete owner-resolved policy; no provider defaults are applied.
+        additionalProperties: false
+        required_fields: [version, policy_id, revision, digest, control_digest, source_binding_id, operation_id, limits, lifecycle, storage, ownership]
+        properties:
+          version: { type: string, const: SourceOperationPolicy/v1 }
+          policy_id: { type: string, minLength: 1 }
+          revision: { type: string, minLength: 1 }
+          digest: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+          control_digest: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+          source_binding_id: { type: string, minLength: 1 }
+          operation_id: { type: string, enum: [candidate_snapshot, activity_snapshot] }
+          snapshot_id: { type: string, minLength: 1 }
+          limits:
+            type: object
+            additionalProperties: false
+            required: [max_results, timeout_seconds]
+            properties:
+              max_results: { type: integer, minimum: 1 }
+              timeout_seconds: { type: integer, minimum: 1 }
+          lifecycle:
+            type: object
+            additionalProperties: false
+            required: [stale_after_seconds, stale_action, not_found_action]
+            properties:
+              stale_after_seconds: { type: integer, minimum: 1 }
+              stale_action: { type: string, enum: [unresolved, retire] }
+              not_found_action: { type: string, enum: [unresolved, retire] }
+          storage:
+            type: object
+            additionalProperties: false
+            required: [mode, limit_chars, retention]
+            properties:
+              mode: { type: string, minLength: 1 }
+              limit_chars: { type: integer, minimum: 1 }
+              retention:
+                type: object
+                additionalProperties: false
+                required: [class, max_age_seconds]
+                properties:
+                  class: { type: string, minLength: 1 }
+                  max_age_seconds: { type: integer, minimum: 1 }
+          ownership:
+            type: object
+            additionalProperties: false
+            required: [owner_component_id, connection_id]
+            properties:
+              owner_component_id: { type: string, minLength: 1 }
+              owner_user_ref: { type: string, minLength: 1 }
+              connection_id: { type: string, minLength: 1 }
+    output_schema: |
+      { "type":"object", "properties": { "email":{"type":"string"}, "name":{"type":"string"}, "first_name":{"type":"string"}, "last_name":{"type":"string"}, "company_name":{"type":"string"}, "title":{"type":"string"}, "source_pull_id":{"type":"string"}, "provenance":{"type":"object"}, "jurisdiction":{"type":"string"}, "consent_basis":{"type":"string"}, "suppression":{"type":"boolean"}, "no_auto_send":{"type":"boolean"} }, "required":["source_pull_id","provenance"] }
+
+  - name: activity_source
+    kind: contract.binding
+    meta:
+      title: PhantomBuster LinkedIn activity
+      icon: tabler:ghost
+      comment: Pull raw completed-actor LinkedIn post/activity rows. No engagement policy is applied here.
+      provider: phantombuster
+      group: Content & engagement
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods: { pull: kickside.phantombuster.source:pull_activities }
+
+  - name: activities
+    kind: registry.entry
+    meta: { type: kickside.automation.port, title: PhantomBuster LinkedIn activity, icon: simple-icons:phantombuster }
+    binding: kickside.phantombuster.source:activity_source
+    reconcile:
+      pull_keys: kickside.phantombuster.source:pull_activity_keys
+    config_schema:
+      connection_id: { picker: kickside-connection-trait-picker, required: true, provider: phantombuster }
+      actor_id: { picker: wc-schema-form, type: string, required: true, title: Actor ID, description: Completed PhantomBuster actor whose latest post/activity output is read. }
+      query: { picker: wc-schema-form, type: string, required: true, title: Curated account feed, description: Human-readable curated account set retained in post provenance. }
+      max_rows_per_pull: { picker: wc-schema-form, type: integer, required: true, minimum: 1, title: Max activities per pull, description: Explicit provider-side maximum emitted activities; it must fit the injected control_bounds.limits.max_results range. }
+      owner_component_id: { picker: wc-schema-form, type: string, required: true, minLength: 1, title: Owner component, description: Canonical owner component context authorized to read the configured connection. }
+      snapshot_id: { picker: wc-schema-form, type: string, required: false, minLength: 1, title: Snapshot identity, description: Optional stable provider snapshot identity to request or verify; the provider receipt remains authoritative. }
+      control_bounds: *control_bounds_schema
+      operation_policy: *operation_policy_schema
+    output_schema: |
+      { "type":"object", "properties": { "post_id":{"type":"string"}, "author":{"type":"object"}, "text":{"type":"string"}, "url":{"type":"string"}, "published_at":{"type":"string"}, "source_pull_id":{"type":"string"}, "provenance":{"type":"object"} }, "required":["post_id","author","text","provenance"] }

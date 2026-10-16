@@ -1,0 +1,102 @@
+version: "1.0"
+namespace: kickside.kb10.engine
+
+# The kb10 engine: durable content enqueue, two-stage adaptive query, and
+# teardown. The embeddable write method only appends a KB-owned knowledge thread
+# event; materialization into kb10_* tables is owned by the knowledge source
+# projection worker. Query/teardown still read/write through kb10_store.
+
+entries:
+  - name: batching
+    kind: library.lua
+    source: file://batching.lua
+
+  # Re-embed a KB's nodes from stored content with the KB's own model. kb10 owns
+  # re-vectorizing its nodes, so it writes through the store directly (no contract).
+  - name: reembed
+    kind: library.lua
+    meta:
+      name: reembed
+      comment: Regenerate a KB's vectors from node content via the canonical batch_embed + kb10 store (for vector-excluded imports).
+    source: file://reembed.lua
+    modules: [logger]
+    imports:
+      llm: wippy.llm:llm
+      kb10_store: kickside.kb10.persist:store
+      source_materializer: kickside.kb10.injection:source_materializer
+
+  # The body of a kb10.resummarize / kb10.reembed job: one worker for both, since
+  # only the verb differs and the run record is kept the same way for each. The
+  # maintenance endpoints name it as their worker_ref.
+  - name: maintenance_worker
+    kind: function.lua
+    meta:
+      name: maintenance_worker
+      comment: "kb10 maintenance job worker — runs the resummarize / re-embed verb under the job's frozen identity and keeps its run record."
+    source: file://maintenance_worker.lua
+    method: run
+    imports:
+      component: kickside.component:component
+      maintenance_runs: kickside.kb10.persist:maintenance_runs
+      reembed: kickside.kb10.engine:reembed
+      resummarize: kickside.kb10.engine:resummarize
+      execution_identity: kickside.execution:execution_identity
+
+  - name: maintenance_worker_authorized
+    kind: function.lua
+    meta:
+      name: maintenance_worker_authorized
+      comment: Runs a maintenance verb in the requester's re-admitted frame.
+    source: file://maintenance_worker.lua
+    method: run_authorized
+    imports:
+      component: kickside.component:component
+      maintenance_runs: kickside.kb10.persist:maintenance_runs
+      reembed: kickside.kb10.engine:reembed
+      resummarize: kickside.kb10.engine:resummarize
+      execution_identity: kickside.execution:execution_identity
+
+  - name: maintenance_worker_impl
+    kind: library.lua
+    meta:
+      name: maintenance_worker
+      comment: maintenance_worker.lua's implementation, registered beside the function entry the job dispatches, so the suite runs the recorded terminal counts, the access refusal and a failed run with the seams swapped.
+    source: file://maintenance_worker.lua
+    imports:
+      component: kickside.component:component
+      maintenance_runs: kickside.kb10.persist:maintenance_runs
+      reembed: kickside.kb10.engine:reembed
+      resummarize: kickside.kb10.engine:resummarize
+      execution_identity: kickside.execution:execution_identity
+
+  # Regenerate a KB's stored document summaries (and, when the KB has a chunk
+  # enrichment model, the chunk contextual prefixes derived from them) under
+  # current materialization settings, from already-materialized content --
+  # without re-delivering the source. kb10 owns this, so it resolves the same
+  # options the live source pipeline resolves and writes through the store
+  # directly (no contract), mirroring reembed.
+  - name: resummarize
+    kind: library.lua
+    meta:
+      name: resummarize
+      comment: Regenerate a KB's stored document summaries (and dependent chunk contextual prefixes) under current materialization settings, via the same summarizer/enricher + kb10 store as ingestion.
+    source: file://resummarize.lua
+    modules: [logger]
+    imports:
+      llm: wippy.llm:llm
+      kb10_store: kickside.kb10.persist:store
+      kb_types: kickside.kb10:types
+      source_materializer: kickside.kb10.injection:source_materializer
+      source_worker: kickside.kb10.injection:source_worker_lib
+
+  - name: tuner
+    kind: library.lua
+    source: file://tuner.lua
+    modules: [json, time]
+    imports:
+      llm: wippy.llm:llm
+      kb10_store: kickside.kb10.persist:store
+      component: kickside.component:component
+      query_policy: kickside.kb10.binding:query_policy
+      query_log: kickside.kb10.persist:query_log
+      text_limits: kickside.kb10:text_limits

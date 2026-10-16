@@ -1,0 +1,63 @@
+# kickside/telegram
+
+Telegram bot connections, inbound adapters, and reply delivery.
+
+This module installs independently into a [KickSide](https://kickside.ai) host.
+
+## Quick start
+
+In **System → Modules**, select the package from the Wippy Hub and review its
+requirements. For CLI dependency setup, run from the host application directory:
+
+```sh
+wippy add kickside/telegram
+wippy install
+```
+
+Apply host bindings and migrations through the application install plan.
+Create a bot-token connection and configure inbound delivery. Link external identities to users before routing private agent conversations.
+
+## Key concepts
+
+Provider registry declarations expose capabilities to the host. Connections
+keep user credentials in private context; shared contracts define how agents
+and application modules call those capabilities.
+See the [registry and API reference](src/README.md) for the module contract.
+
+## Requirements
+
+Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
+for the contracts declared by the module.
+The standalone harness uses SQLite and declares a PostgreSQL test profile.
+Development uses Make and the Wippy CLI.
+
+## Development
+
+From this module directory:
+
+```sh
+cd test
+wippy install
+cd ..
+make lint
+make test
+cd test
+wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+```
+
+Create a dedicated PostgreSQL database before the profile run and drop it
+afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
+variables in the harness configuration for your test server.
+
+## Links
+
+- [KickSide](https://kickside.ai)
+- [Module authoring](https://kicksideai.github.io/docs/building-modules/)
+- [Wippy documentation](https://wippy.ai)
+- [Wippy Hub](https://hub.wippy.ai/kickside/telegram)
+
+## License
+
+[KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
+
+The Send Telegram Message writable port sends, edits, and deletes one message per item. It requires connection WRITE access and a chat ID; deletion requires the stored message reference. Message content fits the Telegram 4096-byte cap. The binding declares `at_most_once` delivery and `content` input. Rate limits return a delay to the engine.

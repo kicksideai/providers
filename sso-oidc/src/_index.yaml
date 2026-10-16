@@ -1,0 +1,142 @@
+version: "1.0"
+namespace: kickside.sso.providers.oidc
+
+# Generic OIDC login provider submodule. Endpoints are discovered from an
+# admin-configured issuer (Okta, Auth0, Keycloak, dex, …) via its
+# /.well-known/openid-configuration; the issuer lives in this submodule's own
+# setting.
+entries:
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: KickSide SSO — Generic OIDC
+      comment: Generic OIDC login provider (issuer discovery from a configured issuer).
+
+  - name: provider
+    kind: registry.entry
+    meta: { type: sso.provider, comment: Generic OIDC connector descriptor (issuer discovery from a configured issuer). }
+    id: oidc
+    label: Generic OIDC
+    icon: simple-icons:openid
+    engine: oidc
+    settings_ns: kickside.sso.providers.oidc
+    ui:
+      intro: "Point at any OIDC issuer (Okta, Auth0, Keycloak, dex, …). Its endpoints are discovered from /.well-known/openid-configuration; set the issuer before enabling."
+    issuer_setting: issuer
+    trust_email: false
+    trust_email_setting: allow_unverified_email
+    default_scopes: [openid, email, profile]
+    order: 40
+
+  - name: validate
+    kind: function.lua
+    meta: { comment: Generic OIDC enable-gate — blocks enabling without credentials or issuer. }
+    source: file://validate.lua
+    imports:
+      sso_provider_gate: kickside.sso:provider_gate
+    method: validate
+
+  - name: enabled
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Enable generic OIDC login. }
+    namespace: kickside.sso.providers.oidc
+    key: enabled
+    value_type: bool
+    default: false
+    description: Offer login via a generic OIDC issuer (Okta, Auth0, Keycloak, dex, …).
+    scope: global
+    editable: true
+    visible: false
+    validate_func: kickside.sso.providers.oidc:validate
+
+  - name: issuer
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Generic OIDC issuer URL. }
+    namespace: kickside.sso.providers.oidc
+    key: issuer
+    value_type: string
+    default: ""
+    description: OIDC issuer URL; its /.well-known/openid-configuration is discovered automatically.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: client_id
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Generic OIDC client id. }
+    namespace: kickside.sso.providers.oidc
+    key: client_id
+    value_type: string
+    default: ""
+    description: OIDC client id.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: client_secret
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Generic OIDC client secret. }
+    namespace: kickside.sso.providers.oidc
+    key: client_secret
+    value_type: secret
+    default: ""
+    description: OIDC client secret.
+    scope: global
+    editable: true
+    visible: false
+
+  - name: scopes
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition", comment: Extra OIDC scopes. }
+    namespace: kickside.sso.providers.oidc
+    key: scopes
+    value_type: json
+    default: []
+    description: Additional scopes (openid email profile are always requested).
+    scope: global
+    editable: true
+    visible: false
+    schema: { kind: string_list }
+
+  - name: allow_unverified_email
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition" }
+    namespace: kickside.sso.providers.oidc
+    key: allow_unverified_email
+    value_type: bool
+    default: false
+    description: Allow unverified email
+    scope: global
+    editable: true
+    visible: false
+
+  # Module-owned Settings block: this provider's own left-nav entry in the
+  # "Single sign-on" group. The Settings page mounts kickside-sso-admin and hands
+  # it { provider: "oidc" }, so it renders only this provider's card.
+  - name: block.sso_provider
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: Generic OIDC single sign-on configuration.
+    key: sso.oidc
+    title: Generic OIDC
+    icon: simple-icons:openid
+    group: Single sign-on
+    order: 40
+    component_tag: kickside-sso-admin
+    config:
+      provider: oidc
+
+  - name: dep.kickside.sso
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the provider gate and shared SSO provider contract.
+    component: kickside/sso
+
+  - name: dep.kickside.settings
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Supplies provider credential settings and the SSO settings block.
+    component: kickside/settings

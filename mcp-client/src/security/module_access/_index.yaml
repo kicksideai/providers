@@ -1,0 +1,38 @@
+version: '1.0'
+namespace: kickside.mcp_client.security
+entries:
+- name: module_access
+  kind: security.policy
+  meta:
+    title: Mcp Client
+    surface: kickside.mcp_client
+    intent: module_access
+    includes:
+    - kickside.mcp_client.security:module_runtime
+  groups: []
+  policy:
+    resources:
+    - kickside.mcp_client.api:reconnect.endpoint
+    actions: access
+    effect: allow
+- name: module_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.mcp_client:*
+    - kickside.mcp_client.api:*
+    - kickside.mcp_client.security:*
+    actions:
+    - registry.get
+    - registry.find
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.implementations
+    - contract.security
+    - funcs.call
+    - funcs.security
+    effect: allow

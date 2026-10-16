@@ -1,0 +1,4 @@
+organization: kickside
+module: llm-ocr-test
+type: application
+description: Standalone runnable harness that boots kickside/llm-ocr and exercises the OCR stage.

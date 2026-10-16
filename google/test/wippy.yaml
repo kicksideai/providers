@@ -1,0 +1,3 @@
+organization: kickside
+module: google-test
+description: Standalone runnable harness that boots kickside/google and checks the OAuth provider declaration.

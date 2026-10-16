@@ -1,0 +1,137 @@
+version: "1.0"
+namespace: kickside.atlassian.jira.sink
+
+entries:
+  - name: issue_sink
+    kind: library.lua
+    meta:
+      name: issue_sink
+      comment: Writable Jira issue sink implementation.
+    source: file://issue_sink.lua
+    modules: [ctx]
+    imports:
+      data_error: kickside.atlassian.client:data_error
+      jira: kickside.atlassian.jira:api
+      transport: kickside.atlassian.client:transport
+
+  - name: write_issues
+    kind: function.lua
+    meta:
+      comment: kickside.data:writable.write for Jira issues selected by project/JQL config.
+    source: file://_fn_write_issues.lua
+    method: write
+    modules: [ctx]
+    imports:
+      data_error: kickside.atlassian.client:data_error
+      jira: kickside.atlassian.jira:api
+      transport: kickside.atlassian.client:transport
+      implementation: kickside.atlassian.jira.sink:issue_sink
+
+  - name: issues_sink
+    kind: contract.binding
+    meta:
+      title: Jira Issues
+      icon: simple-icons:atlassian
+      comment: Create, update, delete, comment on, worklog, transition, or assign Jira issues.
+      provider: atlassian
+      group: Jira
+      delivery: at_most_once
+      input_shape: record
+    contracts:
+      - contract: kickside.data:writable
+        methods:
+          write: kickside.atlassian.jira.sink:write_issues
+
+  - name: issues
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Jira Issues
+      comment: Create, update, comment on, or transition Jira issues.
+      icon: simple-icons:jira
+    binding: kickside.atlassian.jira.sink:issues_sink
+    operations:
+      upsert: {}
+      create: {}
+      update:
+        requires_dest_ref: false
+      delete:
+        requires_dest_ref: false
+      add_comment:
+        requires_dest_ref: false
+      add_worklog:
+        requires_dest_ref: false
+      transition:
+        requires_dest_ref: false
+      assign:
+        requires_dest_ref: false
+    input_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "issue_key": { "type": "string" },
+          "project_key": { "type": "string" },
+          "summary": { "type": "string" },
+          "title": { "type": "string" },
+          "issue_type": { "type": "string" },
+          "description": { "type": "string" },
+          "content": { "type": "string" },
+          "fields": { "type": "object" },
+          "extra_fields": { "type": "object" },
+          "external_key": { "type": "string" },
+          "external_key_field": { "type": "string" },
+          "comment": { "type": "string" },
+          "body": { "type": "string" },
+          "time_spent_seconds": { "type": "integer" },
+          "worklog_comment": { "type": "string" },
+          "transition_id": { "type": "string" },
+          "account_id": { "type": "string" },
+          "delete_subtasks": { "type": "boolean" }
+        } }
+    config_schema:
+      project_key:
+        picker: kickside-atlassian-jira-picker
+        required: false
+        title: Jira project
+        description: Optional default project selected by the Jira picker.
+        writes: [connection_id, project_key]
+      connection_id:
+        required: true
+        title: Atlassian connection
+        description: Populated by the Jira picker.
+      external_key_field:
+        picker: wc-schema-form
+        required: false
+        title: External key field
+        description: Optional Jira field name used for idempotent create/update by input.external_key or input.item_key.
+    output_schema: |
+      { "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "success": { "type": "boolean" },
+          "result": { "type": "string", "enum": ["created", "updated", "deleted", "noop"] },
+          "dest_ref": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "issue_key": { "type": "string" },
+              "id": { "type": "string" }
+            },
+            "required": ["issue_key"]
+          },
+          "dest_version": { "type": "string", "description": "Jira updated timestamp/version for the destination issue when available." },
+          "retry_after_ms": { "type": "integer", "minimum": 0 },
+          "error": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "retriable": { "type": "boolean" },
+              "scope": { "type": "string" }
+            },
+            "required": ["code", "message", "retriable", "scope"]
+          }
+        },
+        "required": ["success"] }
