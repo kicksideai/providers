@@ -1,7 +1,7 @@
 organization: kickside
 module: telegram
 type: plugin
-description: KickSide Telegram provider - bot-token connection, reply provider, resource discovery by chat id, normalized inbound adapter, and agent traits.
+description: Bot-token connection, reply provider, resource discovery by chat id, normalized inbound adapter, and agent traits.
 license: LicenseRef-KickSide-Community-1.0
 repository: https://github.com/kicksideai/providers
 homepage: https://wippy.ai

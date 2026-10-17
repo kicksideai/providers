@@ -17,9 +17,11 @@ modules:
     - name: kickside/mcp-client
       version: 0.0.0
     - name: kickside/realtime-dispatch
-      version: 0.0.0
+      version: 0.1.1
+      hash: 6f0fa3625683510a1565afff3b40b6726ea5604b940b1627b787f6615683264d
     - name: kickside/security
-      version: 0.0.0
+      version: 0.2.8
+      hash: d54216b7db0e3ebd6318c387db49513a4eddaae028970532000a1d2a0522b3cb
     - name: kickside/settings
       version: 0.0.0
     - name: kickside/users

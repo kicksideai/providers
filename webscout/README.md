@@ -65,14 +65,14 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 
 | Requirement | Declared default |
 | --- | --- |
-| [`kickside.webscout:api_router`](src/_index.yaml) | `app:api` |
-| [`kickside.webscout:ui_server`](src/_index.yaml) | `app:gateway` |
+| [`kickside.webscout:api_router`](src/_index.yaml) | Host supplies the value |
+| [`kickside.webscout:ui_server`](src/_index.yaml) | Host supplies the value |
 | [`kickside.webscout:endpoint_api`](src/_index.yaml) | `https://www.googleapis.com/customsearch/v1` |
 
 ## Links
 
 - [KickSide](https://kickside.ai)
-- [Module authoring](https://kicksideai.github.io/docs/building-modules/)
+- [Module authoring](https://github.com/kicksideai/docs/blob/main/building-modules/index.md)
 - [Wippy documentation](https://wippy.ai)
 - [Wippy Hub](https://hub.wippy.ai/kickside/webscout)
 

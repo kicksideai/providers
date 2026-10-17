@@ -226,6 +226,15 @@ entries:
       test: wippy.test:test
     method: run
 
+  - name: host_requirements_test
+    kind: function.lua
+    meta: { type: test, suite: host_requirements }
+    source: file://host_requirements_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+
   - name: row_output_test
     kind: function.lua
     meta: { type: test, suite: simplefin }

@@ -33,18 +33,18 @@ entries:
   - name: api_router
     kind: ns.requirement
     meta:
+      value_kind: http.router
       comment: Authenticated router for SimpleFIN credential rotation.
       description: Authenticated router for SimpleFIN credential rotation.
-    default: app:api
     targets:
       - { entry: kickside.simplefin.api:rotate.endpoint, path: .meta.router }
 
   - name: ui_server
     kind: ns.requirement
     meta:
+      value_kind: http.service
       comment: HTTP server the SimpleFIN connect web component is served from.
       description: HTTP server the SimpleFIN connect web component is served from.
-    default: app:gateway
     targets:
       - { entry: kickside.simplefin:ui_static, path: .meta.server }
 

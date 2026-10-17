@@ -1,7 +1,7 @@
 organization: kickside
 module: sso-oidc
 type: plugin
-description: KickSide SSO — Generic OIDC login provider. Issuer-discovery sso.provider for the kickside/sso core (Okta, Auth0, Keycloak, dex, …).
+description: Generic OIDC login provider for kickside/sso.
 license: LicenseRef-KickSide-Community-1.0
 repository: https://github.com/kicksideai/providers
 homepage: https://wippy.ai

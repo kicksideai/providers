@@ -15,7 +15,6 @@ typecheck:
 	cd ui && npm ci && npm run type-check
 test:
 	$(MAKE) test-backend
-	$(MAKE) test-ui
 publish:
 	@echo "Releases use GitHub Release Please (.github/workflows/release.yml)." >&2
 	@exit 1

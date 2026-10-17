@@ -1,7 +1,7 @@
 organization: kickside
 module: sso-github
 type: plugin
-description: KickSide SSO — GitHub login provider. OAuth2 sso.provider for the kickside/sso core.
+description: GitHub login provider for kickside/sso.
 license: LicenseRef-KickSide-Community-1.0
 repository: https://github.com/kicksideai/providers
 homepage: https://wippy.ai

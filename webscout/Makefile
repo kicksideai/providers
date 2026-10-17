@@ -4,9 +4,11 @@ MODULE := webscout
 ENCRYPTION_KEY ?= 0000000000000000000000000000000000000000000000000000000000000000
 export ENCRYPTION_KEY
 
-.PHONY: publish lint
+.PHONY: publish lint test
 lint:
 	cd test && wippy lint $(WIPPY_LINT_ARGS) --ns 'kickside.$(MODULE)' --ns 'kickside.$(MODULE).*'
+test:
+	cd test && wippy test $(WIPPY_TEST_ARGS)
 build:
 	@test -f static/settings-card.js || { echo "static/settings-card.js is missing"; exit 1; }
 	@command -v node >/dev/null 2>&1 \

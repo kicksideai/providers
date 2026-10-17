@@ -39,22 +39,19 @@ entries:
 
   - name: process_host
     kind: ns.requirement
-    meta: { comment: Process host for the MCP client supervisor., description: Process host for the MCP client supervisor. }
-    default: app:processes
+    meta: { value_kind: process.host, comment: Process host for the MCP client supervisor., description: Process host for the MCP client supervisor. }
     targets:
       - { entry: kickside.mcp_client:supervisor.service, path: .host }
 
   - name: api_router
     kind: ns.requirement
-    meta: { comment: Authenticated router for MCP credential rotation., description: Authenticated router for MCP credential rotation. }
-    default: app:api
+    meta: { value_kind: http.router, comment: Authenticated router for MCP credential rotation., description: Authenticated router for MCP credential rotation. }
     targets:
       - { entry: kickside.mcp_client.api:reconnect.endpoint, path: .meta.router }
 
   - name: ui_server
     kind: ns.requirement
-    meta: { comment: HTTP server for MCP client web components., description: HTTP server for MCP client web components. }
-    default: app:gateway
+    meta: { value_kind: http.service, comment: HTTP server for MCP client web components., description: HTTP server for MCP client web components. }
     targets:
       - { entry: kickside.mcp_client:ui_static, path: .meta.server }
 
