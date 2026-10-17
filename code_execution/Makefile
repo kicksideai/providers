@@ -1,6 +1,6 @@
 export VERSION
 # kickside/code-execution — sandboxed code execution for agents (tools-only SDK/eval
-# backend). `make test` runs the standalone suite; `make publish` publishes the module.
+# backend). `make test` runs the standalone suite; Release Please publishes releases.
 MODULE := code-execution
 
 .PHONY: build publish lint test
