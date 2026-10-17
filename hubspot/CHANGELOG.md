@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.41 (2026-10-16)
+
+- Type paged read-tool results at the provider boundary.
+
 ## 0.1.38 (2026-10-09)
 
 - Keep capacity-error details behind the provider's unknown-value boundary.
