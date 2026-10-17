@@ -75,7 +75,7 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 
 | Requirement | Declared default |
 | --- | --- |
-| [`kickside.atlassian:ui_server`](src/_index.yaml) | `app:gateway` |
+| [`kickside.atlassian:ui_server`](src/_index.yaml) | Host supplies the value |
 | [`kickside.atlassian:env_storage`](src/_index.yaml) | Host supplies the value |
 | [`kickside.atlassian:endpoint_resources`](src/_index.yaml) | `https://api.atlassian.com/oauth/token/accessible-resources` |
 | [`kickside.atlassian:endpoint_gateway`](src/_index.yaml) | `https://api.atlassian.com` |
@@ -86,7 +86,7 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 ## Links
 
 - [KickSide](https://kickside.ai)
-- [Module authoring](https://kicksideai.github.io/docs/building-modules/)
+- [Module authoring](https://github.com/kicksideai/docs/blob/main/building-modules/index.md)
 - [Wippy documentation](https://wippy.ai)
 - [Wippy Hub](https://hub.wippy.ai/kickside/atlassian)
 

@@ -72,14 +72,14 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 
 | Requirement | Declared default |
 | --- | --- |
-| [`kickside.simplefin:api_router`](src/_index.yaml) | `app:api` |
-| [`kickside.simplefin:ui_server`](src/_index.yaml) | `app:gateway` |
+| [`kickside.simplefin:api_router`](src/_index.yaml) | Host supplies the value |
+| [`kickside.simplefin:ui_server`](src/_index.yaml) | Host supplies the value |
 | [`kickside.simplefin.security:user_security_scope`](src/security/module_access/_index.yaml) | `kickside.security.groups:members` |
 
 ## Links
 
 - [KickSide](https://kickside.ai)
-- [Module authoring](https://kicksideai.github.io/docs/building-modules/)
+- [Module authoring](https://github.com/kicksideai/docs/blob/main/building-modules/index.md)
 - [Wippy documentation](https://wippy.ai)
 - [Wippy Hub](https://hub.wippy.ai/kickside/simplefin)
 

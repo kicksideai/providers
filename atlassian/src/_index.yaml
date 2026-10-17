@@ -21,9 +21,9 @@ entries:
   - name: ui_server
     kind: ns.requirement
     meta:
+      value_kind: http.service
       comment: HTTP server the Atlassian connection UI static mount attaches to.
       description: HTTP server the Atlassian connection UI static mount attaches to.
-    default: app:gateway
     targets:
       - entry: kickside.atlassian.ui:ui_static
         path: .meta.server

@@ -1,7 +1,7 @@
 organization: kickside
 module: sso-google
 type: plugin
-description: KickSide SSO — Google login provider. A registry-declared sso.provider (descriptor + credentials + its own enable-gate) for the kickside/sso core; rendered by the shared provider card.
+description: Google login provider for kickside/sso.
 license: LicenseRef-KickSide-Community-1.0
 repository: https://github.com/kicksideai/providers
 homepage: https://wippy.ai

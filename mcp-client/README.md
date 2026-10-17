@@ -84,14 +84,14 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 
 | Requirement | Declared default |
 | --- | --- |
-| [`kickside.mcp_client:process_host`](src/_index.yaml) | `app:processes` |
-| [`kickside.mcp_client:api_router`](src/_index.yaml) | `app:api` |
-| [`kickside.mcp_client:ui_server`](src/_index.yaml) | `app:gateway` |
+| [`kickside.mcp_client:process_host`](src/_index.yaml) | Host supplies the value |
+| [`kickside.mcp_client:api_router`](src/_index.yaml) | Host supplies the value |
+| [`kickside.mcp_client:ui_server`](src/_index.yaml) | Host supplies the value |
 
 ## Links
 
 - [KickSide](https://kickside.ai)
-- [Module authoring](https://kicksideai.github.io/docs/building-modules/)
+- [Module authoring](https://github.com/kicksideai/docs/blob/main/building-modules/index.md)
 - [Wippy documentation](https://wippy.ai)
 - [Wippy Hub](https://hub.wippy.ai/kickside/mcp-client)
 

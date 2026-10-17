@@ -81,6 +81,10 @@ entries:
     component: kickside/webscout
     version: '*'
     parameters:
+    - name: kickside.webscout:api_router
+      value: app:api
+    - name: kickside.webscout:ui_server
+      value: app:gateway
     - name: kickside.component:target_db
       value: app:db
     - name: kickside.component:lifecycle_impl

@@ -105,23 +105,21 @@ entries:
     method: validate_setting
 
   # ─── Dependency interface (ns.requirement) ───────────────────────────
-  # Defaults match the usual application naming, so an ordinary install needs no
-  # parameters; a host that names these differently overrides them.
   - name: api_router
     kind: ns.requirement
     meta:
+      value_kind: http.router
       comment: Authenticated HTTP router for the search provider list.
       description: Authenticated HTTP router for the search provider list.
-    default: app:api
     targets:
       - { entry: kickside.webscout.api:list_providers.endpoint, path: .meta.router }
 
   - name: ui_server
     kind: ns.requirement
     meta:
+      value_kind: http.service
       comment: HTTP server for the WebScout settings card bundle.
       description: HTTP server for the WebScout settings card bundle.
-    default: app:gateway
     targets:
       - { entry: kickside.webscout:ui_static, path: .meta.server }
 
