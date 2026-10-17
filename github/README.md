@@ -36,13 +36,10 @@ Frontend development also uses Node.js 22, npm, and Make.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
@@ -50,6 +47,38 @@ afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
+
+## Use
+
+Configure a GitHub OAuth application and callback, authorize a connection, and select it on Reader or Writer capabilities. The OAuth grant and repository access bound available operations. Data Sync can read repository issues and pull requests through the declared source port.
+
+## Reference
+
+- [Module reference](src/README.md)
+
+### Agent tools
+
+Tool names link to their input/output schemas. Capabilities and the caller’s
+resource access determine which tools are available.
+
+| Tool | Selection and paging inputs |
+| --- | --- |
+| [`GitHubRead`](src/traits/_index.yaml) | `limit`, `page` |
+| [`GitHubWrite`](src/traits/_index.yaml) | See the operation schema |
+
+### Host requirements
+
+Bind these exact requirement IDs through the module’s dependency declaration
+or Hub plan. Existing explicit bindings take precedence over defaults.
+
+| Requirement | Declared default |
+| --- | --- |
+| [`kickside.github:ui_server`](src/_index.yaml) | Host supplies the value |
+| [`kickside.github:env_storage`](src/_index.yaml) | Host supplies the value |
+| [`kickside.github:endpoint_api`](src/_index.yaml) | `https://api.github.com` |
+| [`kickside.github:endpoint_authorization`](src/_index.yaml) | `https://github.com/login/oauth/authorize` |
+| [`kickside.github:endpoint_token`](src/_index.yaml) | `https://github.com/login/oauth/access_token` |
+| [`kickside.github:endpoint_userinfo`](src/_index.yaml) | `https://api.github.com/user` |
 
 ## Links
 

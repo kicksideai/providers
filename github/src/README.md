@@ -215,4 +215,4 @@ tree. The suites therefore live in the harness child namespace `app.suites`
 - Repository discovery rows, cursors, limits, type filter, and failures.
 - Source item shaping/filtering/error handling.
 - Tool argument validation and dispatch with fake transports.
-- Output redaction and truncation.
+- Output redaction, compact list projections, paging, and complete detail reads.

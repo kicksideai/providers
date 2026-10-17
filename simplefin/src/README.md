@@ -49,5 +49,6 @@ with `amount_minor`, `quantity`, `cost_basis`, `category_code`.
 `SimpleFINRead` (`kickside.simplefin.traits:read_tool`) lists accounts,
 transactions in a date range, a per-account cash-flow summary, and holdings
 through the connection selected on the trait, or the single SimpleFIN
-connection in scope. Long lists are shortened to fit the tool budget with an
-`omitted` count instead of a cut JSON string.
+connection in scope. List results contain compact rows and `next_cursor`;
+use `limit`, `cursor`, and `fields` to choose the page and row fields. The tool
+returns the structured object directly.

@@ -17,10 +17,6 @@ wippy install
 Apply host bindings and migrations through the application install plan.
 Bind the transcription contract to an installed transcriber. The upload stage consumes stored audio or video; provider credentials belong to the transcriber.
 
-## Key concepts
-
-See the [registry and API reference](src/README.md) for the module contract.
-
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
@@ -33,18 +29,29 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Use
+
+Install to enable the declared audio transcription stage. Configure the speech model/provider required by the stage, upload audio through Uploads, and inspect the resulting text or processing error. The stage does not add a navigation page.
+
+## Reference
+
+- [Module reference](src/README.md)
+
+### Contracts
+
+| Definition | Methods |
+| --- | --- |
+| [`kickside.asr:transcriber`](src/_index.yaml) | `transcribe` |
 
 ## Links
 

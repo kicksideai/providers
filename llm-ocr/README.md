@@ -22,10 +22,6 @@ Embedded images in a text-bearing Office document remain figures. OCR preserves 
 converter's primary body text even when the body is short. Empty Office documents and
 sparse PDF page scans use the page-image transcription path.
 
-## Key concepts
-
-See [src/](src/) for registry declarations and implementation.
-
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
@@ -38,18 +34,19 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Use
+
+Install the OCR processor and PDF rasterizer requirements, configure the generation model, and upload a scanned or image-only document through Uploads. OCR processes selected pages; original content and derived artifacts stay owned by Uploads.
 
 ## Links
 

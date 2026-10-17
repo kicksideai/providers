@@ -30,10 +30,6 @@ results to train its models, and free access may be withdrawn without notice.
 Do not send personal names or other personal data through this provider without
 legal approval.
 
-## Key concepts
-
-See [src/](src/) for registry declarations and implementation.
-
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
@@ -46,18 +42,23 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Use
+
+Set the Tavily API key in Settings, then select `tavily` as WebScout’s `search_provider`. The provider contributes trait search; WebScout owns discovery and the provider-neutral result shape.
+
+## Reference
+
+- [Module reference](src/README.md)
 
 ## Links
 

@@ -17,10 +17,6 @@ wippy install
 Apply host bindings and migrations through the application install plan.
 Install a search provider and select the providers and evidence Sources the research capability uses.
 
-## Key concepts
-
-See the [registry and API reference](src/README.md) for the module contract.
-
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
@@ -33,18 +29,45 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Use
+
+Configure an available search-provider descriptor in Settings, then attach WebScout capabilities to an agent or compose its Research Sources. Search returns evidence summaries; read the selected page for content. Provider modules own API keys and provider-specific search behavior.
+
+## Reference
+
+- [Module reference](src/README.md)
+
+### Agent tools
+
+Tool names link to their input/output schemas. Capabilities and the caller’s
+resource access determine which tools are available.
+
+| Tool | Selection and paging inputs |
+| --- | --- |
+| [`FetchAllLinks`](src/traits/_index.yaml) | `limit`, `cursor` |
+| [`ReadPage`](src/traits/_index.yaml) | See the operation schema |
+| [`WebSearch`](src/traits/_index.yaml) | `cursor` |
+
+### Host requirements
+
+Bind these exact requirement IDs through the module’s dependency declaration
+or Hub plan. Existing explicit bindings take precedence over defaults.
+
+| Requirement | Declared default |
+| --- | --- |
+| [`kickside.webscout:api_router`](src/_index.yaml) | `app:api` |
+| [`kickside.webscout:ui_server`](src/_index.yaml) | `app:gateway` |
+| [`kickside.webscout:endpoint_api`](src/_index.yaml) | `https://www.googleapis.com/customsearch/v1` |
 
 ## Links
 
