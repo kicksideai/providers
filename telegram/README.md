@@ -36,18 +36,45 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Use
+
+Connect a bot token and select the accessible chat. The provider polls `getUpdates`, normalizes inbound DM/channel messages, and supplies read/reply tools. Identity links and the configured responder determine admitted execution; the provider does not trust identity fields in message payloads.
+
+## Reference
+
+- [Module reference](src/README.md)
+
+### Agent tools
+
+Tool names link to their input/output schemas. Capabilities and the caller’s
+resource access determine which tools are available.
+
+| Tool | Selection and paging inputs |
+| --- | --- |
+| [`TelegramRead`](src/traits/_index.yaml) | See the operation schema |
+| [`TelegramWrite`](src/traits/_index.yaml) | See the operation schema |
+
+### Host requirements
+
+Bind these exact requirement IDs through the module’s dependency declaration
+or Hub plan. Existing explicit bindings take precedence over defaults.
+
+| Requirement | Declared default |
+| --- | --- |
+| [`kickside.telegram:endpoint_api`](src/_index.yaml) | `https://api.telegram.org` |
+| [`kickside.telegram:endpoint_file`](src/_index.yaml) | `https://api.telegram.org` |
+| [`kickside.telegram.polling:process_host`](src/polling/_index.yaml) | Host supplies the value |
+| [`kickside.telegram.polling:target_db`](src/polling/_index.yaml) | Host supplies the value |
 
 ## Links
 

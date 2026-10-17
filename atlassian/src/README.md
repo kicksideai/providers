@@ -27,11 +27,11 @@ and tool layers never branch on auth:
 
 ## Planes
 
-- **A — agent tools**: JiraGet/JiraWrite, ConfluenceGet/ConfluenceWrite over
+- **A — agent tools**: JiraRead/JiraWrite, ConfluenceRead/ConfluenceWrite over
   OAuth or credential connections.
-- **B — source flows**: automation types store Jira/Confluence selection and
-  private state, schedule through cron, keep source cursors in their own runtime
-  state, and write durable events into their owned threads.
+- **B — source flows**: pullable source ports expose Jira issues and Confluence pages.
+  Data Sync selects the connection and source configuration; the shared
+  Automation engine owns scheduling, cursors, rounds, and delivery.
 
 ## Jira source payload and cursor
 

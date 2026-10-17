@@ -43,10 +43,6 @@ The host's run-context selector bounds new history through
 `checkpoint_source_max_chars` (12000 by default) and includes the prior working
 summary. Model-window admission belongs to the host and LLM primitives.
 
-## Key concepts
-
-See [src/](src/) for registry declarations and implementation.
-
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
@@ -59,13 +55,10 @@ Frontend development also uses Node.js 22, npm, and Make.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test-backend
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
@@ -73,6 +66,28 @@ afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
+
+## Use
+
+Select a memory policy and its permitted provider resources for the agent. Working-memory summaries and durable memory use the declared memory contracts under the same execution identity. Persisted resource selection grants no additional Component authority.
+
+### Agent tools
+
+Tool names link to their input/output schemas. Capabilities and the caller’s
+resource access determine which tools are available.
+
+| Tool | Selection and paging inputs |
+| --- | --- |
+| [`SearchMemory`](src/_index.yaml) | `fields`, `limit`, `cursor` |
+
+### Host requirements
+
+Bind these exact requirement IDs through the module’s dependency declaration
+or Hub plan. Existing explicit bindings take precedence over defaults.
+
+| Requirement | Declared default |
+| --- | --- |
+| [`kickside.memory:ui_server`](src/_index.yaml) | Host supplies the value |
 
 ## Links
 

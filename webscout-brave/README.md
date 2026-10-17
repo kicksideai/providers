@@ -17,10 +17,6 @@ wippy install
 Apply host bindings and migrations through the application install plan.
 Set the Brave API key in provider settings and enable Brave for WebScout.
 
-## Key concepts
-
-See [src/](src/) for registry declarations and implementation.
-
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
@@ -33,18 +29,23 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Use
+
+Set the Brave API key in **System → Settings → Brave Search**, then select `brave` as WebScout’s `search_provider`. Installation makes Brave selectable without changing the existing provider selection. The module also contributes typed web/news Research Sources.
+
+## Reference
+
+- [Module reference](src/README.md)
 
 ## Links
 

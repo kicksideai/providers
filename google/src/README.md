@@ -3,9 +3,10 @@
 Google as a KickSide OAuth connection provider: Gmail, Drive, Calendar, Docs,
 Sheets, Slides, Contacts and Analytics.
 
-This module is **purely declarative**. It carries no OAuth logic of its own: it
-declares one provider entry that `kickside/oauth` discovers (registry scan on
-`meta.oauth_provider`) and drives through the shared `kickside.oauth:base_connector`.
+This module declares the OAuth provider and implements service transports,
+source/sink ports, and agent tools. The shared OAuth module owns authorization:
+it discovers the provider entry by `meta.oauth_provider` and drives it through
+the shared `kickside.oauth:base_connector`.
 Adding a provider is a module like this one, not an edit to oauth.
 
 ## What it declares (`kickside.google` namespace)
@@ -71,8 +72,9 @@ schemas do not expose raw connection component IDs.
 - **Credentials storage** — prefer encrypted settings; override the
   `env_storage` requirement when depending on this module only if a different env
   router is required.
-- **Connector** — all flow mechanics live in `kickside/oauth`; this module only
-  supplies Google's endpoints + `context_values`.
+- **Connector** — all flow mechanics live in `kickside/oauth`; this module supplies
+  Google's endpoints and context values, then calls the shared connector from
+  its service adapters.
 
 ## Dependencies
 

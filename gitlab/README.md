@@ -36,18 +36,23 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Use
+
+Connect with an access token and optional instance base URL. Connections discovers accessible projects through GitLab API v4. This module supplies read-only connection discovery, without agent tools or Data Sync ports.
+
+## Reference
+
+- [Module reference](src/README.md)
 
 ## Links
 

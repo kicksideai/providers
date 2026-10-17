@@ -36,13 +36,10 @@ Frontend development also uses Node.js 22, npm, and Make.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
@@ -50,6 +47,34 @@ afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
+
+## Use
+
+Connect with a one-time setup token or existing access URL. The server verifies and stores the access credential privately. Select account, transaction, balance, or holding reads through the tool or declared source ports; the bank feed is read-only.
+
+## Reference
+
+- [Module reference](src/README.md)
+
+### Agent tools
+
+Tool names link to their input/output schemas. Capabilities and the caller’s
+resource access determine which tools are available.
+
+| Tool | Selection and paging inputs |
+| --- | --- |
+| [`SimpleFINRead`](src/traits/_index.yaml) | `fields`, `limit`, `cursor` |
+
+### Host requirements
+
+Bind these exact requirement IDs through the module’s dependency declaration
+or Hub plan. Existing explicit bindings take precedence over defaults.
+
+| Requirement | Declared default |
+| --- | --- |
+| [`kickside.simplefin:api_router`](src/_index.yaml) | `app:api` |
+| [`kickside.simplefin:ui_server`](src/_index.yaml) | `app:gateway` |
+| [`kickside.simplefin.security:user_security_scope`](src/security/module_access/_index.yaml) | `kickside.security.groups:members` |
 
 ## Links
 

@@ -27,8 +27,7 @@ Private-app-token connection provider for the [HubSpot](https://hubspot.com) CRM
   and task-backed activity logs. Mapping is declared config for the mapping
   artifact; the provider does not transform canonical fields on write.
 - **Config** — per-object enabled/direction, `watermark_property`, property
-  selection, and editable `hubspot_property -> canonical field` map data seeded
-  from production GTM/ICP/NPS property names. Defaults: contacts use
+  selection, and editable `hubspot_property -> canonical field` map data. Defaults: contacts use
   `lastmodifieddate`; all other object types use `hs_lastmodifieddate`.
   Set `all_properties: true` (or select `["*"]` for one object) for a portal
   schema mirror. The source discovers every readable property and hydrates

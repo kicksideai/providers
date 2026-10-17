@@ -8,7 +8,7 @@ transcripts.
   Fireflies GraphQL API; `discover_resources` lists recent transcripts.
 - **Transport** — a thin GraphQL client over `https://api.fireflies.ai/graphql`
   (Bearer token).
-- **Reader trait** (`Fireflies Reader`) — gives an agent the `FirefliesGet`
+- **Reader trait** (`Fireflies Reader`) — gives an agent the `FirefliesRead`
   tool: `get_user`, `list_transcripts`, `get_transcript`, `get_transcript_text`.
 
 - **Record writer** (`kickside.fireflies.writer`) — the one write Fireflies has:

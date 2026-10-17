@@ -17,10 +17,6 @@ wippy install
 Apply host bindings and migrations through the application install plan.
 Configure issuer, client credentials, callback URI, and claim mapping, then enable the provider in SSO settings.
 
-## Key concepts
-
-See [src/](src/) for registry declarations and implementation.
-
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
@@ -33,19 +29,31 @@ Development uses Make and the Wippy CLI.
 From this module directory:
 
 ```sh
-cd test
-./prepare.sh
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+
+## Provider configuration
+
+Install with `kickside/sso`. Open **System → Settings → SSO**, configure the
+provider credentials, and enable it. Register the callback displayed by the
+provider panel with the identity provider. SSO login is separate from a service
+OAuth connection.
+
+| Setting | Type |
+| --- | --- |
+| [`kickside.sso.providers.oidc/enabled`](src/_index.yaml) | `bool` |
+| [`kickside.sso.providers.oidc/issuer`](src/_index.yaml) | `string` |
+| [`kickside.sso.providers.oidc/client_id`](src/_index.yaml) | `string` |
+| [`kickside.sso.providers.oidc/client_secret`](src/_index.yaml) | `secret` |
+| [`kickside.sso.providers.oidc/scopes`](src/_index.yaml) | `json` |
+| [`kickside.sso.providers.oidc/allow_unverified_email`](src/_index.yaml) | `bool` |
 
 ## Links
 

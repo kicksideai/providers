@@ -36,13 +36,10 @@ Frontend development also uses Node.js 22, npm, and Make.
 From this module directory:
 
 ```sh
-cd test
-wippy install
-cd ..
+make lockrefresh
 make lint
 make test
-cd test
-wippy test --profile postgres --set vars.pg_database=kickside_readme_test
+(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
@@ -50,6 +47,35 @@ afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
+
+## Use
+
+Create a connection with a private-app access token. Select enabled object types, properties, and watermarks for Data Sync. Reader and Writer capabilities remain separate. Engagement objects are pull-only; the writable port supports the operations declared by its input schema.
+
+## Reference
+
+- [Module reference](src/README.md)
+
+### Agent tools
+
+Tool names link to their input/output schemas. Capabilities and the caller’s
+resource access determine which tools are available.
+
+| Tool | Selection and paging inputs |
+| --- | --- |
+| [`HubSpotRead`](src/traits/_index.yaml) | `limit`, `after` |
+| [`HubSpotWrite`](src/traits/_index.yaml) | See the operation schema |
+
+### Host requirements
+
+Bind these exact requirement IDs through the module’s dependency declaration
+or Hub plan. Existing explicit bindings take precedence over defaults.
+
+| Requirement | Declared default |
+| --- | --- |
+| [`kickside.hubspot:ui_server`](src/_index.yaml) | Host supplies the value |
+| [`kickside.hubspot:default_field_mapping_ref`](src/_index.yaml) | `kickside.hubspot.client:default_field_mapping.standard` |
+| [`kickside.hubspot:endpoint_api`](src/_index.yaml) | `https://api.hubapi.com` |
 
 ## Links
 
