@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.42 (2026-10-17)
+
+- Refresh packaged frontend assets and documentation.
+
 ## 0.1.41 (2026-10-16)
 
 - Type paged read-tool results at the provider boundary.

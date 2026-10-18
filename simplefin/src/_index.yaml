@@ -32,6 +32,7 @@ entries:
 
   - name: api_router
     kind: ns.requirement
+    default: app:api
     meta:
       value_kind: http.router
       comment: Authenticated router for SimpleFIN credential rotation.
@@ -41,6 +42,7 @@ entries:
 
   - name: ui_server
     kind: ns.requirement
+    default: app:gateway
     meta:
       value_kind: http.service
       comment: HTTP server the SimpleFIN connect web component is served from.

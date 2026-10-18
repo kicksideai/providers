@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.14 (2026-10-17)
+
+- Refresh packaged module descriptions and documentation.
+
 ## 0.1.11 (2026-10-08)
 
 - Add selectable module access policies and native scope tests (5ae4742d)

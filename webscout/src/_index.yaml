@@ -107,6 +107,7 @@ entries:
   # ─── Dependency interface (ns.requirement) ───────────────────────────
   - name: api_router
     kind: ns.requirement
+    default: app:api
     meta:
       value_kind: http.router
       comment: Authenticated HTTP router for the search provider list.
@@ -116,6 +117,7 @@ entries:
 
   - name: ui_server
     kind: ns.requirement
+    default: app:gateway
     meta:
       value_kind: http.service
       comment: HTTP server for the WebScout settings card bundle.

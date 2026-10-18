@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.6 (2026-10-17)
+
+- Refresh packaged module descriptions and documentation.
+
 ## 0.2.2 (2026-10-09)
 
 - Shows the Ask controls only when the knowledge base can answer; the query function no longer shadows the answer capability (c9a7a595).

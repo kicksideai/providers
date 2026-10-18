@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 (2026-10-17)
+
+- Refresh packaged module descriptions and documentation.
+
 ## 0.1.4 (2026-10-08)
 
 - fix: bind Security in provider hosts and inspect supplied configs (88d42b29)

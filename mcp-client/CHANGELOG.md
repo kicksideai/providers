@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-10-17)
+
+- Declare registry entry requirements with value_kind and default bindings.
+
 ## 0.1.12 (2026-10-09)
 
 - Include emitted source-map resources in the module package.

@@ -20,6 +20,7 @@ entries:
   # ─── Dependency interface (ns.requirement) ───────────────────────────
   - name: ui_server
     kind: ns.requirement
+    default: app:gateway
     meta:
       value_kind: http.service
       comment: HTTP server the Atlassian connection UI static mount attaches to.

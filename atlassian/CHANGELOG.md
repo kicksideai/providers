@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.27 (2026-10-17)
+
+- Declare registry entry requirements with value_kind and default bindings.
+
 ## 0.1.23 (2026-10-09)
 
 - Honor connection capacity at canonical provider transports (7c19888b)

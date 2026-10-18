@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.26 (2026-10-17)
+
+- Refresh packaged module descriptions and documentation.
+
 ## 0.1.22 (2026-10-09)
 
 - Honor connection capacity at canonical provider transports (7c19888b)
