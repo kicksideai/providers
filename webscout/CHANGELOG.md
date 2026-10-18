@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.33 (2026-10-17)
+
+- Declare registry entry requirements with value_kind and default bindings.
+
 ## 0.1.30 (2026-10-08)
 
 - fix: preserve native result bounds and refresh selected model limits (b9dc370d)
