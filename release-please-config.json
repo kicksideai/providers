@@ -4,6 +4,7 @@
   "include-component-in-tag": true,
   "separate-pull-requests": false,
   "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
   "bootstrap-sha": "686ff9190d6924dd6df9d73b5d85879bcac31449",
   "packages": {
     "asr": {
