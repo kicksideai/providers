@@ -27,6 +27,7 @@ profiles:
 workspace:
   replacements:
     kickside/mcp-client: ..
+    kickside/oauth: ../../../kickside/platform/oauth
     kickside/component: ../../../kickside/core/component
     kickside/connection: ../../../kickside/platform/connection
     kickside/contract: ../../../kickside/core/contract

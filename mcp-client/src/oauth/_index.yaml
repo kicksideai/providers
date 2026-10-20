@@ -1,0 +1,97 @@
+version: "1.0"
+namespace: kickside.mcp_client.oauth
+
+entries:
+  - name: service
+    kind: library.lua
+    source: file://service.lua
+    modules: [http_client, json, crypto, hash, base64]
+    imports:
+      form: kickside.oauth:form
+
+  - name: config
+    kind: library.lua
+    source: file://config.lua
+    modules: [contract]
+    imports:
+      oauth_read_repo: kickside.oauth.persist:oauth_read_repo
+
+  - name: connector
+    kind: contract.binding
+    contracts:
+      - contract: kickside.oauth:connector
+        methods:
+          init_oauth: kickside.mcp_client.oauth:init
+          handle_callback: kickside.mcp_client.oauth:callback
+          refresh_token: kickside.mcp_client.oauth:refresh
+
+  - name: init
+    kind: function.lua
+    source: file://init.lua
+    method: handle
+    imports:
+      oauth: kickside.mcp_client.oauth:service
+
+  - name: callback
+    kind: function.lua
+    source: file://callback.lua
+    method: handle
+    imports:
+      oauth: kickside.mcp_client.oauth:service
+
+  - name: refresh
+    kind: function.lua
+    source: file://refresh.lua
+    method: handle
+    imports:
+      oauth: kickside.mcp_client.oauth:service
+
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: component
+      title: Remote MCP
+      comment: Sign in to a remote MCP server with OAuth, or connect an access token or API key.
+      oauth_provider: mcp_remote
+      group: Developer
+      class: [connection, oauth_connection, mcp]
+      component:
+        icon: simple-icons:modelcontextprotocol
+        create: {view: kickside.mcp_client:connect_view}
+    component_contract_id: kickside.mcp_client.oauth:connection
+    connector_contract:
+      implementation_id: kickside.mcp_client.oauth:connector
+    default_scopes: []
+    available_scopes: []
+
+  - name: connection
+    kind: contract.binding
+    meta:
+      title: Remote MCP OAuth
+      provider: mcp_remote
+      class: [connection, oauth_connection, mcp]
+    contracts:
+      - contract: kickside.contract:component
+        context_required: [component_id]
+        methods:
+          get_status: kickside.oauth.binding:get_connection_status_func
+      - contract: kickside.oauth:oauth_connection_contract
+        context_required: [component_id]
+        methods:
+          get_access_token: kickside.oauth.binding:get_access_token_func
+          get_info: kickside.oauth.binding:get_info_func
+      - contract: kickside.connection:connection
+        context_required: [component_id]
+        methods:
+          get_status: kickside.oauth.binding:get_connection_status_func
+          test_connection: kickside.mcp_client:test_connection
+          discover_resources: kickside.mcp_client:discover_resources
+      - contract: kickside.mcp_client:client
+        context_required: [component_id]
+        methods:
+          list_tools: kickside.mcp_client:list_tools
+          call_tool: kickside.mcp_client:call_tool
+      - contract: kickside.contract:deletable
+        context_required: [component_id]
+        methods:
+          delete: kickside.oauth.binding:delete_connection_func

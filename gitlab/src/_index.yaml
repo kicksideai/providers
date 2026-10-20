@@ -7,7 +7,7 @@ entries:
     readme: file://README.md
     meta:
       title: KickSide GitLab
-      comment: GitLab access-token connection provider for gitlab.com and self-managed instances with project discovery.
+      comment: GitLab connections and repository agent tools for gitlab.com and self-managed instances.
 
   - name: dep.kickside.component
     kind: ns.dependency

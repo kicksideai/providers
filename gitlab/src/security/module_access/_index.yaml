@@ -13,8 +13,10 @@ entries:
   policy:
     resources:
     - kickside.gitlab:*
+    - kickside.gitlab.repository:*
     - kickside.gitlab.client:*
     - kickside.gitlab.connection:*
+    - kickside.gitlab.traits:*
     - kickside.gitlab.security:*
     actions:
     - registry.get
@@ -35,8 +37,10 @@ entries:
   policy:
     resources:
     - kickside.gitlab:*
+    - kickside.gitlab.repository:*
     - kickside.gitlab.client:*
     - kickside.gitlab.connection:*
+    - kickside.gitlab.traits:*
     - kickside.gitlab.security:*
     actions:
     - registry.get

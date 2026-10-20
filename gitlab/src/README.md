@@ -21,8 +21,7 @@ The generic Connections page renders the binding's `credential_schema`:
   removed, and a sub-path such as `https://example.com/gitlab` is kept. The API
   base is `<base_url>/api/v4`.
 - `token` (required): a personal, group, or project access token, sent as the
-  `PRIVATE-TOKEN` header. `read_api` is enough for the current read-only
-  surface; `api` also grants write access for later write actions.
+  `PRIVATE-TOKEN` header. `read_api` supports repository reads; use `api` for the Writer capability.
 
 ## Connection Methods
 
@@ -41,3 +40,14 @@ The generic Connections page renders the binding's `credential_schema`:
 
 `make test` boots the offline harness in `test/` and runs the packaging and
 unit suites in `test/suites/`.
+
+## Agent capabilities
+
+Reader, Writer, and Manager appear in the agent capability picker and use the
+shared connection selector. Read and write tools declare typed actions in
+`traits/_index.yaml` and implement them in `repository.lua`. Repository tools
+return `{success, data, next_page?}`; infrastructure failures return a typed error,
+and rejected provider requests preserve structured status and rate-limit details.
+Tokens and secret-like response fields are redacted. Read capability tools reject
+write actions. File edits target an explicit branch; merges use an expected head
+SHA where the provider API supports it.

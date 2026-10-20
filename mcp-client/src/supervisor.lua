@@ -28,7 +28,7 @@ local function main(_args: any)
                     if pid then process.link(pid); workers[k] = pid; pids[pid] = k end
                 end
                 if pid then
-                    process.send(pid, "request", { operation = req.operation, args = req.args, reply_pid = message:from(), reply_topic = req.reply_topic })
+                    process.send(pid, "request", { operation = req.operation, args = req.args, connection_config = req.connection_config, reply_pid = message:from(), reply_topic = req.reply_topic })
                 else
                     process.send(tostring(message:from()), tostring(req.reply_topic), { error = {
                         kind = errors.UNAVAILABLE, message = "could not start MCP worker: " .. tostring(spawn_err), retryable = true,

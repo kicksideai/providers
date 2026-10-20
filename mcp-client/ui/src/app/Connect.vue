@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { api } from '@wippy-fe/proxy'
 import { useEvents, useProps } from '@wippy-fe/webcomponent-vue'
 
-type AuthMode = 'none' | 'bearer' | 'header'
+import { createOAuthFlow } from '../oauth'
+type AuthMode = 'oauth' | 'none' | 'bearer' | 'header'
 import type { ConnectProps, ConnectEvents } from '../types'
 const props = useProps<ConnectProps>()
 const emit = useEvents<ConnectEvents>()
 
 const name = ref('Remote MCP')
 const endpoint = ref('')
-const authMode = ref<AuthMode>('none')
+const authMode = ref<AuthMode>('oauth')
+const clientId = ref('')
+const clientSecret = ref('')
+const clientAuthMethod = ref('none')
+const scopes = ref('')
+const oauth = createOAuthFlow()
+onBeforeUnmount(() => oauth.cancel())
 const bearerToken = ref('')
 const headerName = ref('X-API-Key')
 const headerValue = ref('')
@@ -21,7 +28,7 @@ const busy = ref(false)
 const error = ref('')
 const result = ref<{ toolCount: number } | null>(null)
 const existingId = computed(() => props.value.componentId || '')
-const submitLabel = computed(() => busy.value ? 'Verifying connection…' : existingId.value ? 'Verify and reconnect' : 'Verify and connect')
+const submitLabel = computed(() => busy.value ? 'Connecting…' : authMode.value === 'oauth' ? (existingId.value ? 'Sign in again' : 'Sign in with OAuth') : existingId.value ? 'Verify and reconnect' : 'Verify and connect')
 
 function selectAuth(mode: AuthMode) { authMode.value = mode; error.value = ''; result.value = null }
 function validationError(): string {
@@ -45,6 +52,20 @@ async function save() {
   if (error.value) return
   busy.value = true
   try {
+    if (authMode.value === 'oauth') {
+      await oauth.start({
+        name: name.value.trim() || 'Remote MCP',
+        scopes: scopes.value.trim() ? scopes.value.trim().split(/\s+/) : [],
+        ...(existingId.value ? { component_id: existingId.value } : {}),
+        provider_options: {
+          endpoint_url: endpoint.value.trim(), protocol_version: protocolVersion.value.trim(),
+          client_id: clientId.value.trim(), client_secret: clientSecret.value,
+          token_endpoint_auth_method: clientAuthMethod.value,
+        },
+      })
+      emit('connection-saved', { success: true, ...(existingId.value ? { component_id: existingId.value } : {}) })
+      return
+    }
     const body = { name: name.value.trim() || 'Remote MCP', private_context: privateContext() }
     const response = existingId.value
       ? await api.put(`/api/v1/mcp-client/connections/${encodeURIComponent(existingId.value)}`, body)
@@ -71,15 +92,24 @@ async function save() {
     <section class="section" aria-labelledby="mcp-auth-heading">
       <div id="mcp-auth-heading" class="section-title">Authentication</div>
       <div class="auth-grid" role="radiogroup" aria-label="Authentication method">
-        <button v-for="mode in ([['none','No authentication','Public or network-protected'],['bearer','Access token','OAuth or bearer token'],['header','API key','Custom request header']] as const)" :key="mode[0]" type="button" class="auth-card" :class="{active:authMode===mode[0]}" role="radio" :aria-checked="authMode===mode[0]" @click="selectAuth(mode[0])"><span class="radio-dot"></span><strong>{{mode[1]}}</strong><small>{{mode[2]}}</small></button>
+        <button v-for="mode in ([['oauth','Sign in with OAuth','Authorize your account'],['none','No authentication','Public or network-protected'],['bearer','Access token','Paste an existing bearer token'],['header','API key','Custom request header']] as const)" :key="mode[0]" type="button" :disabled="busy" class="auth-card" :class="{active:authMode===mode[0]}" role="radio" :aria-checked="authMode===mode[0]" @click="selectAuth(mode[0])"><span class="radio-dot"></span><strong>{{mode[1]}}</strong><small>{{mode[2]}}</small></button>
       </div>
+      <p v-if="authMode==='oauth'" class="footnote">Sign in on the server’s authorization page and choose the access to grant. KickSide renews the connection automatically when supported.</p>
       <label v-if="authMode==='bearer'" class="field secret-field"><span>Access token <em>Required</em></span><span class="secret-wrap"><input v-model="bearerToken" :type="showSecret?'text':'password'" autocomplete="new-password" placeholder="Paste a token issued for this MCP server" /><button type="button" class="reveal" :aria-label="showSecret?'Hide token':'Show token'" @click="showSecret=!showSecret">{{showSecret?'Hide':'Show'}}</button></span><small>Sent as <code>Authorization: Bearer</code> on every MCP request.</small></label>
       <div v-if="authMode==='header'" class="header-pair"><label class="field"><span>Header name <em>Required</em></span><input v-model="headerName" autocomplete="off" placeholder="X-API-Key" /></label><label class="field secret-field"><span>Header value <em>Required</em></span><span class="secret-wrap"><input v-model="headerValue" :type="showSecret?'text':'password'" autocomplete="new-password" /><button type="button" class="reveal" @click="showSecret=!showSecret">{{showSecret?'Hide':'Show'}}</button></span></label></div>
-      <p class="security-note"><span aria-hidden="true">◆</span> Credentials stay in the connection's private component context and never enter agent prompts.</p>
+      <p class="security-note"><span aria-hidden="true">◆</span> Credentials stay on the server and never enter agent prompts.</p>
     </section>
 
     <button type="button" class="advanced-toggle" :aria-expanded="advancedOpen" @click="advancedOpen=!advancedOpen"><span>Advanced protocol settings</span><span>{{advancedOpen?'−':'+'}}</span></button>
-    <section v-if="advancedOpen" class="advanced"><label class="field"><span>MCP protocol version</span><input v-model="protocolVersion" autocomplete="off" /><small>The server may negotiate another supported version during initialization.</small></label></section>
+    <section v-if="advancedOpen" class="advanced">
+      <template v-if="authMode==='oauth'">
+        <label class="field"><span>OAuth client id</span><input v-model="clientId" autocomplete="off" /><small>Leave blank for automatic client registration. Some services require a registered client.</small></label>
+        <label class="field"><span>OAuth client secret</span><input v-model="clientSecret" type="password" autocomplete="new-password" /></label>
+        <label class="field"><span>Client authentication</span><select v-model="clientAuthMethod"><option value="none">Public client (PKCE)</option><option value="client_secret_post">Client secret in request body</option><option value="client_secret_basic">Client secret with HTTP Basic</option></select></label>
+        <label class="field"><span>Requested scopes</span><input v-model="scopes" autocomplete="off" /><small>Space-separated permissions. Leave blank to use the server’s requested permissions.</small></label>
+      </template>
+      <label class="field"><span>MCP protocol version</span><input v-model="protocolVersion" autocomplete="off" /><small>The server may negotiate another supported version during initialization.</small></label>
+    </section>
 
     <div v-if="error" class="feedback error" role="alert"><span>!</span><div><strong>Connection failed</strong><small>{{error}}</small></div></div>
     <div v-if="result" class="feedback success" role="status"><span>✓</span><div><strong>Connection verified</strong><small>{{result.toolCount ? `${result.toolCount} tools discovered and ready.` : 'The MCP handshake completed successfully.'}}</small></div></div>

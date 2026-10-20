@@ -116,11 +116,30 @@ end
 -- A Bitbucket answer is a Result (a failed answer carries Bitbucket's message,
 -- HTTP status, error kind, error body and headers); a request that cannot be
 -- sent is a typed error.
-function M.get(conn: types.Conn, path: string, query: { [string]: any }?): (types.Result?, error?)
-    local response, err = M._http.request("GET", build_url(path, query), { headers = headers(conn.authorization) })
-    if err then return nil, errors.wrap(err, "Bitbucket GET " .. path .. " request failed") end
+function M.request(conn: types.Conn, method: string, path: string, body: any?, query: { [string]: any }?, raw: boolean?, form_body: boolean?): (types.Result?, error?)
+    local options: any = {headers = headers(conn.authorization)}
+    if body ~= nil then
+        if form_body then
+            local pairs_out = {}
+            for key, value in pairs(body) do
+                if type(value) == "table" then
+                    for _, item in ipairs(value) do pairs_out[#pairs_out + 1] = percent_encode(key) .. "=" .. percent_encode(tostring(item)) end
+                else pairs_out[#pairs_out + 1] = percent_encode(key) .. "=" .. percent_encode(tostring(value)) end
+            end
+            options.body = table.concat(pairs_out, "&")
+            options.headers["Content-Type"] = "application/x-www-form-urlencoded"
+        else
+            local encoded, encode_err = json.encode(body)
+            if encode_err then return nil, encode_err end
+            options.body = encoded
+            options.headers["Content-Type"] = "application/json"
+        end
+    end
+    local response, err = M._http.request(method, build_url(path, query), options)
+    if err then return nil, errors.wrap(err, "Bitbucket " .. method .. " " .. path .. " request failed") end
     if response and response.status_code >= 200 and response.status_code < 300 then
         local data: any = nil
+        if raw then return ({success = true, data = {content = response.body or ""}, status_code = response.status_code :: integer, headers = response.headers} :: types.Result), nil end
         if response.body and response.body ~= "" then
             local parsed, decode_err = json.decode(response.body :: string)
             if decode_err then
@@ -152,6 +171,10 @@ function M.get(conn: types.Conn, path: string, query: { [string]: any }?): (type
         headers = response_headers,
         retry_after_ms = retry_after_ms(response_headers) or (kind == types.ERROR_RATE_LIMITED and types.RATE_LIMIT_BACKOFF_MS or nil),
     } :: types.Result)
+end
+
+function M.get(conn: types.Conn, path: string, query: { [string]: any }?): (types.Result?, error?)
+    return M.request(conn, "GET", path, nil, query)
 end
 
 -- name_filter builds a Bitbucket query-language substring match on one field;

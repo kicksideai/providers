@@ -16,12 +16,15 @@ modules:
       version: 0.0.0
     - name: kickside/mcp-client
       version: 0.0.0
+    - name: kickside/oauth
+      version: 0.1.37
+      hash: 1497642672dd605a10ead389a7ea40439f8f0292af293c0c061c145cca519dc7
     - name: kickside/realtime-dispatch
       version: 0.1.1
       hash: 6f0fa3625683510a1565afff3b40b6726ea5604b940b1627b787f6615683264d
     - name: kickside/security
-      version: 0.2.8
-      hash: d54216b7db0e3ebd6318c387db49513a4eddaae028970532000a1d2a0522b3cb
+      version: 0.2.9
+      hash: eca98cbd023129d663f4088c565e8e74a89726c5c9d2b9556669561794313bf1
     - name: kickside/settings
       version: 0.0.0
     - name: kickside/users
@@ -39,8 +42,8 @@ modules:
       version: 0.4.6
       hash: aa0c92b85c0dc2c96f00119a7eaa1ced569a2ac8899514d432aef0c910e73e63
     - name: wippy/test
-      version: 0.4.22
-      hash: 5b20c990c7e48234aca72cf538dcb9dbd48d1ff79132382e93d7844696a6baa1
+      version: 0.4.23
+      hash: 94878c4eeabac3337b795087d37ef6fe894458e26a5c7a1dd61012b43fcae366
     - name: wippy/views
       version: 0.5.12
       hash: a90c888b6150f1b5fc89f35191a39dce5f644cbdbf069224b22ad524860ce9a0

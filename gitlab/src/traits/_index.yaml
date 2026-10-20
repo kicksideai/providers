@@ -1,0 +1,746 @@
+version: "1.0"
+namespace: kickside.gitlab.traits
+
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: GitLab Reader
+      public: true
+      icon: tabler:brand-gitlab
+      comment: GitLab repository reader capability.
+      provider: gitlab
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id: {type: string}
+        required: [connection_id]
+        additionalProperties: false
+    prompt: |
+      Use the selected GitLab connection; never ask the user for credentials or a connection id.
+      Inspect repository state before changes. Execute writes, approvals, merges and CI runs only when requested.
+      Follow provider pagination using next_page; propagate permission and rate-limit failures.
+    tools:
+      - kickside.gitlab.traits:read_tool
+
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: GitLab Writer
+      public: true
+      icon: tabler:brand-gitlab
+      comment: GitLab repository writer capability.
+      provider: gitlab
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id: {type: string}
+        required: [connection_id]
+        additionalProperties: false
+    prompt: |
+      Use the selected GitLab connection; never ask the user for credentials or a connection id.
+      Inspect repository state before changes. Execute writes, approvals, merges and CI runs only when requested.
+      Follow provider pagination using next_page; propagate permission and rate-limit failures.
+    tools:
+      - kickside.gitlab.traits:write_tool
+
+  - name: manager
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: GitLab Manager
+      public: true
+      icon: tabler:brand-gitlab
+      comment: GitLab repository manager capability.
+      provider: gitlab
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id: {type: string}
+        required: [connection_id]
+        additionalProperties: false
+    prompt: |
+      Use the selected GitLab connection; never ask the user for credentials or a connection id.
+      Inspect repository state before changes. Execute writes, approvals, merges and CI runs only when requested.
+      Follow provider pagination using next_page; propagate permission and rate-limit failures.
+    tools:
+      - kickside.gitlab.traits:read_tool
+      - kickside.gitlab.traits:write_tool
+
+  - name: read_tool
+    kind: function.lua
+    source: file://read_tool.lua
+    method: handler
+    imports:
+      repository: kickside.gitlab.repository:service
+    meta:
+      type: tool
+      title: GitLab Repository Read
+      llm_alias: GitLabRead
+      llm_description: "Read GitLab repositories, source, branches, commits, issues, pull or merge requests, reviews and CI. The connection is configured on the capability. Returns {success,data,next_page?}; inspect success before continuing. "
+      mcp:
+        required_scopes: [state.read]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "viewer",
+                "list_projects",
+                "get_project",
+                "list_issues",
+                "get_issue",
+                "list_issue_notes",
+                "list_merge_requests",
+                "get_merge_request",
+                "list_merge_request_diffs",
+                "list_merge_request_notes",
+                "list_branches",
+                "get_branch",
+                "list_commits",
+                "get_commit",
+                "get_tree",
+                "get_file",
+                "list_pipelines",
+                "get_pipeline",
+                "list_pipeline_jobs"
+              ]
+            },
+            "project": {
+              "type": "string"
+            },
+            "number": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "search": {
+              "type": "string"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {"type":"object","properties":{"success":{"type":"boolean"},"data":{},"next_page":{"type":["string","integer"]},"error":{"type":"string"}}}
+
+  - name: write_tool
+    kind: function.lua
+    source: file://write_tool.lua
+    method: handler
+    imports:
+      repository: kickside.gitlab.repository:service
+    meta:
+      type: tool
+      title: GitLab Repository Write
+      llm_alias: GitLabWrite
+      llm_description: "Perform explicitly requested GitLab repository mutations using a named action and its typed payload. The connection is configured on the capability. Returns {success,data,next_page?}; inspect success before continuing. For merges supply the expected head SHA where supported. "
+      mcp:
+        required_scopes: [state.read, state.write]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create_issue",
+                "update_issue",
+                "create_issue_note",
+                "create_branch",
+                "create_commit",
+                "create_merge_request",
+                "update_merge_request",
+                "create_merge_request_note",
+                "approve_merge_request",
+                "merge_merge_request",
+                "create_pipeline",
+                "retry_pipeline"
+              ]
+            },
+            "project": {
+              "type": "string"
+            },
+            "number": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "search": {
+              "type": "string"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "actions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "create",
+                          "update",
+                          "delete",
+                          "move",
+                          "chmod"
+                        ]
+                      },
+                      "file_path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "previous_path": {
+                        "type": "string"
+                      },
+                      "encoding": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "base64"
+                        ]
+                      },
+                      "last_commit_id": {
+                        "type": "string"
+                      },
+                      "execute_filemode": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "file_path"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "assignee_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "body": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "commit_message": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "draft": {
+                  "type": "boolean"
+                },
+                "labels": {
+                  "type": "string"
+                },
+                "merge_commit_message": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "remove_source_branch": {
+                  "type": "boolean"
+                },
+                "reviewer_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "sha": {
+                  "type": "string"
+                },
+                "should_remove_source_branch": {
+                  "type": "boolean"
+                },
+                "source_branch": {
+                  "type": "string"
+                },
+                "squash": {
+                  "type": "boolean"
+                },
+                "squash_commit_message": {
+                  "type": "string"
+                },
+                "start_branch": {
+                  "type": "string"
+                },
+                "start_sha": {
+                  "type": "string"
+                },
+                "state_event": {
+                  "type": "string"
+                },
+                "target_branch": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "action": {
+                  "const": "create_issue"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "labels": {
+                      "type": "string"
+                    },
+                    "assignee_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "title"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "update_issue"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "labels": {
+                      "type": "string"
+                    },
+                    "assignee_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "state_event": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_issue_note"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "body": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "body"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_branch"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "branch": {
+                      "type": "string"
+                    },
+                    "ref": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "branch",
+                    "ref"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_commit"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "branch": {
+                      "type": "string"
+                    },
+                    "commit_message": {
+                      "type": "string"
+                    },
+                    "actions": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "create",
+                              "update",
+                              "delete",
+                              "move",
+                              "chmod"
+                            ]
+                          },
+                          "file_path": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "previous_path": {
+                            "type": "string"
+                          },
+                          "encoding": {
+                            "type": "string",
+                            "enum": [
+                              "text",
+                              "base64"
+                            ]
+                          },
+                          "last_commit_id": {
+                            "type": "string"
+                          },
+                          "execute_filemode": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "file_path"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "start_branch": {
+                      "type": "string"
+                    },
+                    "start_sha": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "branch",
+                    "commit_message",
+                    "actions"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_merge_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "source_branch": {
+                      "type": "string"
+                    },
+                    "target_branch": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "draft": {
+                      "type": "boolean"
+                    },
+                    "remove_source_branch": {
+                      "type": "boolean"
+                    },
+                    "squash": {
+                      "type": "boolean"
+                    },
+                    "reviewer_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "assignee_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "source_branch",
+                    "target_branch",
+                    "title"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "update_merge_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "target_branch": {
+                      "type": "string"
+                    },
+                    "state_event": {
+                      "type": "string"
+                    },
+                    "remove_source_branch": {
+                      "type": "boolean"
+                    },
+                    "squash": {
+                      "type": "boolean"
+                    },
+                    "reviewer_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "assignee_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_merge_request_note"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "body": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "body"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "approve_merge_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "sha": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "sha"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "merge_merge_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "sha": {
+                      "type": "string"
+                    },
+                    "merge_commit_message": {
+                      "type": "string"
+                    },
+                    "squash": {
+                      "type": "boolean"
+                    },
+                    "squash_commit_message": {
+                      "type": "string"
+                    },
+                    "should_remove_source_branch": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "sha"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_pipeline"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ref"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "retry_pipeline"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": false
+                }
+              }
+            }
+          ]
+        }
+      output_schema: |
+        {"type":"object","properties":{"success":{"type":"boolean"},"data":{},"next_page":{"type":["string","integer"]},"error":{"type":"string"}}}

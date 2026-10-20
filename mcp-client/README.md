@@ -1,6 +1,6 @@
 # kickside/mcp-client
 
-Streamable HTTP MCP connections and dynamic agent tools.
+Streamable HTTP MCP connections with OAuth sign-in, stored credentials, and dynamic agent tools.
 
 This module installs independently into a [KickSide](https://kickside.ai) host.
 
@@ -56,11 +56,56 @@ commit regenerated tracked assets with the source.
 
 ## Use
 
-Create a Remote MCP connection with its Streamable HTTP endpoint and declared authentication. Select it on the Remote MCP capability to discover and call permitted remote tools. The local caller still needs connection access. Use `kickside/mcp` to expose KickSide tools to an external client.
+Open **Connections → Connect app → Remote MCP**, enter the Streamable HTTP
+endpoint, and choose **Sign in with OAuth**. Approve the server's consent screen,
+then select the connection and permitted tools on an agent's Remote MCP capability.
+
+The client discovers protected-resource and OAuth/OIDC metadata, verifies PKCE
+S256, and binds authorization and token requests to the MCP resource. It supports
+OAuth client metadata documents, dynamic client registration, and pre-registered
+clients. For a pre-registered client, use Advanced settings to enter its id,
+optional secret, and token authentication method. Scope overrides are optional.
+OAuth endpoints require HTTPS; loopback HTTP is available for local development.
+
+OAuth grants and client credentials use `kickside/oauth` encrypted storage.
+Expiry and a rejected access token trigger refresh under the authenticated
+caller's identity. A revoked refresh grant marks the connection `needs_reauth`;
+choose Reconnect to sign in again. Tokens never appear in tool schemas or popup
+messages. API keys, pasted bearer tokens, and unauthenticated endpoints remain
+available as separate setup choices. Changing authentication type requires a new
+connection.
+
+This version must ship with the accompanying platform OAuth changes: provider
+initialization options, issuer forwarding, per-connection refresh configuration,
+and custom connection implementations. Install that platform update before this
+provider. The host binds the existing OAuth database, routers, and process host,
+and the MCP client's `public_router` for its client metadata document.
+
+Use `kickside/mcp` to expose KickSide tools to an external client.
 
 ## Reference
 
 - [Module reference](src/README.md)
+
+### Registry layout
+
+The new OAuth entries live in `kickside.mcp_client.oauth`: `provider`,
+`connection`, `connector`, `service`, `config`, `init`, `callback`, and `refresh`.
+The public client metadata handler belongs to `kickside.mcp_client.oauth.api`.
+Existing published MCP contract and tool IDs retain their namespaces.
+
+### Verification
+
+`make test-backend` includes a real local HTTP authorization server, PKCE code
+exchange, the shared callback and encrypted persistence, MCP tool discovery and
+calls, expiry, 401 refresh, reconnect, and revoked grants. `npm --prefix ui test`
+checks popup origin, source, state, denial,
+blocked popups, and cancellation.
+
+For the Chromium consent test, build `ui`, run `make test-prepare`, start
+`wippy run` from `test/`, and run `node test/oauth-browser.e2e.mjs` with the
+Playwright 1.59.1 browser installed (or in its matching Playwright container).
+The test drives the built editor and real callback through a demo consent popup.
 
 ### Contracts
 
@@ -85,6 +130,7 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 | Requirement | Declared default |
 | --- | --- |
 | [`kickside.mcp_client:process_host`](src/_index.yaml) | Host supplies the value |
+| [`kickside.mcp_client:public_router`](src/_index.yaml) | Host supplies the value |
 | [`kickside.mcp_client:api_router`](src/_index.yaml) | Host supplies the value |
 | [`kickside.mcp_client:ui_server`](src/_index.yaml) | Host supplies the value |
 

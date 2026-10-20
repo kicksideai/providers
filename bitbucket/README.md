@@ -48,11 +48,31 @@ variables in the harness configuration for your test server.
 
 ## Use
 
-Connect a Bitbucket Cloud account with a scoped API token and account email, or a workspace/project/repository access token and workspace. Discover workspaces and repositories through Connections. This module supplies connection discovery, without agent tools or Data Sync ports.
+Connect a Bitbucket Cloud account with a scoped API token and account email, or a workspace/project/repository access token and workspace. Discover workspaces and repositories through Connections. Select the connection on Bitbucket Reader, Writer, or Manager to work with
+repository source, branches, commits, issues, pull or merge requests, reviews,
+and CI. Reader and Writer are separate capabilities; installing a connection
+does not automatically grant tools to an agent. The module has no Data Sync ports.
+
+## Registry layout
+
+Repository operations are owned by `kickside.bitbucket.repository:service`;
+agent tool declarations remain under `kickside.bitbucket.traits`.
 
 ## Reference
 
 - [Module reference](src/README.md)
+
+### Agent tools
+
+| Tool | Purpose |
+| --- | --- |
+| [`BitbucketRead`](src/traits/_index.yaml) | Read repositories and their source, changes, issues, and CI with explicit paging. |
+| [`BitbucketWrite`](src/traits/_index.yaml) | Perform named, typed mutations through the selected connection. |
+
+Writes require the provider's corresponding repository, issue, pull-request,
+and pipeline permissions. Inspect the current state before changes. Only perform
+requested merges, approvals, deletions, and CI runs. Every action has a closed
+payload schema; arbitrary HTTP endpoints and credentials are not tool inputs.
 
 ## Links
 

@@ -60,6 +60,7 @@ function M.connect(component_id: string?): (types.Conn?, error?)
     return connect_with(M._component, component_id)
 end
 
+M.request = api.request_json
 M.viewer = api.viewer
 M.test_connection = api.test_connection
 M.get_repo = api.get_repo

@@ -82,3 +82,14 @@ entries:
       test: wippy.test:test
       read_tool: kickside.github.traits:read_tool_lib
       write_tool: kickside.github.traits:write_tool_lib
+
+  - name: repository_test
+    kind: function.lua
+    source: file://repository_test.lua
+    method: run
+    meta: {type: test, suite: repository_tools}
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      repository: kickside.github.repository:service
+      api: kickside.github.client:api

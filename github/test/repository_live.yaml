@@ -1,0 +1,33 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: repository_live_test
+    kind: function.lua
+    source: file://repository_live_test.lua
+    method: run
+    meta: {type: test_helper, suite: repository_live}
+    modules: [env, funcs, security, uuid, base64]
+    security:
+      actor: {id: 3b367288-df89-4cbd-90e0-616720d9916a}
+      policies: [app:repository_live_policy]
+    imports:
+      test: wippy.test:test
+      component: kickside.component:component
+  - name: repository_live_os
+    kind: env.storage.os
+  - name: repository_live_token
+    kind: env.variable
+    storage: app:repository_live_os
+    variable: KICKSIDE_GITHUB_DEMO_TOKEN
+  - name: repository_live_owner
+    kind: env.variable
+    storage: app:repository_live_os
+    variable: KICKSIDE_GITHUB_DEMO_OWNER
+  - name: repository_live_repo
+    kind: env.variable
+    storage: app:repository_live_os
+    variable: KICKSIDE_GITHUB_DEMO_REPO
+
+  - name: repository_live_policy
+    kind: security.policy
+    policy: {resources: '*', actions: '*', effect: allow}

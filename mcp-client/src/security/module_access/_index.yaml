@@ -23,6 +23,8 @@ entries:
   policy:
     resources:
     - kickside.mcp_client:*
+    - kickside.mcp_client.oauth:*
+    - kickside.mcp_client.oauth.api:*
     - kickside.mcp_client.api:*
     - kickside.mcp_client.security:*
     actions:

@@ -39,6 +39,7 @@ function M.connect(component_id: string?): (types.Conn?, error?)
     } :: types.Conn), nil
 end
 
+M.request = api.request_json
 M.current_user = api.current_user
 M.list_projects = api.list_projects
 M.next_page = api.next_page

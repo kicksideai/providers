@@ -34,12 +34,12 @@ entries:
   - name: api
     kind: http.router
     meta: { server: gateway }
-    prefix: /api
+    prefix: /api/v1
 
   - name: api_public
     kind: http.router
     meta: { server: gateway }
-    prefix: /public
+    prefix: /api/public
 
   - name: user
     kind: security.policy
@@ -80,6 +80,16 @@ entries:
     component: kickside/mcp-client
     version: '*'
     parameters:
+    - name: kickside.mcp_client:public_router
+      value: app:api_public
+    - name: kickside.oauth:target_db
+      value: app:db
+    - name: kickside.oauth:api_router
+      value: app:api
+    - name: kickside.oauth:public_api_router
+      value: app:api_public
+    - name: kickside.oauth:process_host
+      value: app:processes
     - name: kickside.mcp_client:process_host
       value: app:processes
     - name: kickside.mcp_client:api_router

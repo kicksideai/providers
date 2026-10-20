@@ -78,6 +78,8 @@ function M.connect(component_id: string): (types.Conn?, error?)
     return M.credential_conn(component_id, ctx)
 end
 
+M.request = api.request
+M.current_user = api.current_user
 M.test_connection = api.test_connection
 M.list_workspaces = api.list_workspaces
 M.list_repositories = api.list_repositories

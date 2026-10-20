@@ -24,3 +24,7 @@ entries:
       component: kickside.component:component
       api: kickside.bitbucket.client:api
       types: kickside.bitbucket.client:types
+
+  - name: output
+    kind: library.lua
+    source: file://output.lua

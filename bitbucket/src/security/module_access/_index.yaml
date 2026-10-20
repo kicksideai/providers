@@ -13,8 +13,10 @@ entries:
   policy:
     resources:
     - kickside.bitbucket:*
+    - kickside.bitbucket.repository:*
     - kickside.bitbucket.client:*
     - kickside.bitbucket.connection:*
+    - kickside.bitbucket.traits:*
     - kickside.bitbucket.security:*
     actions:
     - registry.get
@@ -35,8 +37,10 @@ entries:
   policy:
     resources:
     - kickside.bitbucket:*
+    - kickside.bitbucket.repository:*
     - kickside.bitbucket.client:*
     - kickside.bitbucket.connection:*
+    - kickside.bitbucket.traits:*
     - kickside.bitbucket.security:*
     actions:
     - registry.get

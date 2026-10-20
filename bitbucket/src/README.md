@@ -122,3 +122,14 @@ make test   # packaging and offline unit suites (no Bitbucket account needed)
 Suites live in `test/suites/` (namespace `app.suites`) because the harness
 loads the module through a workspace replacement, which drops `meta.type: test`
 entries from the module tree.
+
+## Agent capabilities
+
+Reader, Writer, and Manager appear in the agent capability picker and use the
+shared connection selector. Read and write tools declare typed actions in
+`traits/_index.yaml` and implement them in `repository.lua`. Repository tools
+return `{success, data, next_page?}`; infrastructure failures return a typed error,
+and rejected provider requests preserve structured status and rate-limit details.
+Tokens and secret-like response fields are redacted. Read capability tools reject
+write actions. File edits target an explicit branch; merges use an expected head
+SHA where the provider API supports it.

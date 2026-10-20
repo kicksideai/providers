@@ -1,0 +1,18 @@
+version: "1.0"
+namespace: kickside.mcp_client.oauth.api
+
+entries:
+  - name: client_metadata
+    kind: function.lua
+    source: file://client_metadata.lua
+    method: handler
+    modules: [http, env]
+    imports:
+      oauth: kickside.mcp_client.oauth:service
+
+  - name: client_metadata.endpoint
+    kind: http.endpoint
+    meta: {router: app:api.public}
+    method: GET
+    path: /mcp-client/client-metadata.json
+    func: client_metadata
