@@ -4,7 +4,7 @@
   "include-component-in-tag": true,
   "separate-pull-requests": false,
   "bump-minor-pre-major": true,
-  "last-release-sha": "0cc8c23a5e94b744c2f79fc3463b7a9cf61f41e5",
+  "bootstrap-sha": "686ff9190d6924dd6df9d73b5d85879bcac31449",
   "packages": {
     "asr": {
       "component": "asr",
