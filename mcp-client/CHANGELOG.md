@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.2](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.1...mcp-client-v0.2.2) (2026-10-20)
+
+
+### Features
+
+* add OAuth MCP connections and repository agent tools ([#9](https://github.com/kicksideai/providers/issues/9)) ([691e6c2](https://github.com/kicksideai/providers/commit/691e6c204b54f5087915308966b751ddc070361b))
+
+
+### Bug Fixes
+
+* **mcp-client:** exclude development maps from release assets ([#11](https://github.com/kicksideai/providers/issues/11)) ([609d0ed](https://github.com/kicksideai/providers/commit/609d0ed6e61e9952552195e608ca64c80fcde43f))
+
 ## 0.2.1 (2026-10-17)
 
 - Declare registry entry requirements with value_kind and default bindings.

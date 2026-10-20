@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/kicksideai/providers/compare/github-v0.1.21...github-v0.1.22) (2026-10-20)
+
+
+### Features
+
+* add OAuth MCP connections and repository agent tools ([#9](https://github.com/kicksideai/providers/issues/9)) ([691e6c2](https://github.com/kicksideai/providers/commit/691e6c204b54f5087915308966b751ddc070361b))
+
 ## 0.1.21 (2026-10-17)
 
 - Refresh packaged module descriptions and documentation.
