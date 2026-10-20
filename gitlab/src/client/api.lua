@@ -176,11 +176,18 @@ end
 -- A GitLab answer is a Result (a failed answer carries GitLab's message, HTTP
 -- status, error kind, error body and headers); a request that cannot be
 -- authorized or sent is a typed error.
-function M.request_json(conn: types.Conn, method: string, path: string, query: { [string]: any }?): (types.Result?, error?)
+function M.request_json(conn: types.Conn, method: string, path: string, query: { [string]: any }?, body: any?): (types.Result?, error?)
     local request_headers, header_err = M.headers(conn)
     if not request_headers then return nil, header_err end
 
-    local response, err = M._http.request(method, M.build_url(conn, path, query), { headers = request_headers })
+    local options: any = {headers = request_headers}
+    if body ~= nil then
+        local encoded, encode_err = json.encode(body)
+        if encode_err then return nil, encode_err end
+        options.body = encoded
+        request_headers["Content-Type"] = "application/json"
+    end
+    local response, err = M._http.request(method, M.build_url(conn, path, query), options)
     if err then return nil, errors.wrap(err, "GitLab " .. method .. " " .. path .. " request failed") end
     if not response then
         return nil, errors.new({ kind = errors.UNAVAILABLE, message = "GitLab request returned no response" })

@@ -5,8 +5,9 @@
   "specification": "wippy-component-1.0",
   "description": "Remote MCP connection and agent capability web components.",
   "scripts": {
-    "build": "vite build",
-    "type-check": "vue-tsc --noEmit"
+    "build": "vite build --outDir ../static",
+    "type-check": "vue-tsc --noEmit",
+    "test": "vitest run --environment happy-dom"
   },
   "dependencies": {
     "@wippy-fe/theme": "*",
@@ -14,6 +15,7 @@
     "@wippy-fe/webcomponent-vue": "*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/test-utils": "^2.4.11",
     "@wippy-fe/proxy": "*",

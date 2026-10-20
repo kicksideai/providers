@@ -37,8 +37,8 @@ modules:
       version: 0.4.6
       hash: aa0c92b85c0dc2c96f00119a7eaa1ced569a2ac8899514d432aef0c910e73e63
     - name: wippy/test
-      version: 0.4.22
-      hash: 5b20c990c7e48234aca72cf538dcb9dbd48d1ff79132382e93d7844696a6baa1
+      version: 0.4.23
+      hash: 94878c4eeabac3337b795087d37ef6fe894458e26a5c7a1dd61012b43fcae366
     - name: wippy/views
       version: 0.5.12
       hash: a90c888b6150f1b5fc89f35191a39dce5f644cbdbf069224b22ad524860ce9a0

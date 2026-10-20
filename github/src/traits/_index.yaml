@@ -21,17 +21,13 @@ entries:
             description: GitHub connection component id selected by the trait picker.
         additionalProperties: false
     prompt: |
-      You can inspect GitHub through the GitHubRead tool. Use viewer to confirm
-      the connected account, get_repo to verify an owner/repo, list_issues to
-      find issues and pull requests, get_issue or get_pull for details,
-      list_issue_comments for discussion, list_pull_files for changed files, and
-      get_file for repository contents at a path/ref.
-
-      The GitHub connection is selected on this capability. Do not ask the user
-      for a connection id. Resolve owner, repo, issue number, pull request
-      number, file path, and ref with read actions before relying on them.
+      Use GitHubRead for account, issue and comment reads, and GitHubRepoRead
+      for repositories, source, branches, commits, pull requests, reviews and CI.
+      Follow the tool's pagination fields. This capability supplies read tools.
+      The connection is already selected. Do not ask the user for a connection id.
     tools:
       - kickside.github.traits:read_tool
+      - kickside.github.traits:repo_read_tool
 
   - name: read_tool
     kind: function.lua
@@ -108,7 +104,7 @@ entries:
       title: GitHub Writer
       public: true
       icon: tabler:brand-github
-      comment: Creates and updates GitHub issues and issue comments.
+      comment: GitHub issue, branch, file, pull-request, review and workflow mutations.
       tags: [github, git, code, issues, write]
       web_component: kickside-connection-trait-picker
       provider: github
@@ -120,17 +116,16 @@ entries:
             description: GitHub connection component id selected by the trait picker.
         additionalProperties: false
     prompt: |
-      You can mutate GitHub issues through the GitHubWrite tool: create_issue,
-      update_issue, and create_issue_comment. Use it only for issue workflow
-      changes the user requested. Do not use it to change repository files,
-      branches, releases, settings, collaborators, or Actions workflows; those
-      write surfaces are not part of this capability.
-
-      The GitHub connection is selected on this capability. Do not ask the user
-      for a connection id. Use GitHubRead first when you need to verify the repo,
-      find the issue number, inspect current state, or confirm a pull request.
+      Use GitHubWrite for create_issue, update_issue and create_issue_comment.
+      Use GitHubRepoWrite for explicitly requested branch, file, pull-request,
+      review, merge and workflow actions. File changes require an explicit branch
+      and commit message; updates require the current file SHA. Merges require
+      the expected pull-request head SHA. Inspect state with a Reader or Manager
+      capability before a change. Never infer permission to merge or run CI.
+      The connection is already selected. Do not ask the user for a connection id.
     tools:
       - kickside.github.traits:write_tool
+      - kickside.github.traits:repo_write_tool
 
   - name: manager
     kind: registry.entry
@@ -139,7 +134,7 @@ entries:
       title: GitHub Manager
       public: true
       icon: tabler:brand-github
-      comment: Full read and issue-management access for GitHub repositories.
+      comment: GitHub repository and issue read/write access through separate tool surfaces.
       tags: [github, git, code, issues, pull-requests, read-write]
       web_component: kickside-connection-trait-picker
       provider: github
@@ -151,22 +146,19 @@ entries:
             description: GitHub connection component id selected by the trait picker.
         additionalProperties: false
     prompt: |
-      You have GitHub repository read access and issue-management write access.
-      Use GitHubRead to verify the connected account, repository, issues, pull
-      requests, comments, files, and refs. Use GitHubWrite only for
-      create_issue, update_issue, and create_issue_comment.
-
-      Preferred workflow: verify the repository with GitHubRead, list or inspect
-      the relevant issue or pull request, then perform the requested issue
-      mutation with GitHubWrite. Do not mutate repository files, branches,
-      releases, settings, collaborators, or Actions workflows; this capability
-      does not grant those operations.
-
-      The GitHub connection is selected on this capability. Do not ask the user
-      for a connection id.
+      Use GitHubRead and GitHubRepoRead to inspect repositories, source, issues,
+      pull requests, reviews and CI. Use GitHubWrite for issue mutations, and
+      GitHubRepoWrite for explicitly requested repository operations.
+      Do not mutate repository files through GitHubWrite; use GitHubRepoWrite
+      with an explicit branch, commit message, and current file SHA for updates.
+      Merges require the expected pull-request head SHA. Inspect current state
+      before changes and never infer permission to merge, approve or run CI.
+      The connection is already selected. Do not ask the user for a connection id.
     tools:
       - kickside.github.traits:read_tool
       - kickside.github.traits:write_tool
+      - kickside.github.traits:repo_read_tool
+      - kickside.github.traits:repo_write_tool
 
   - name: write_tool
     kind: function.lua
@@ -228,3 +220,577 @@ entries:
       tool_result: kickside.contract:tool_result
       transport: kickside.github.client:transport
       output: kickside.github.client:output
+
+  - name: repo_read_tool
+    kind: function.lua
+    source: file://repo_read_tool.lua
+    method: handler
+    imports:
+      repository: kickside.github.repository:service
+    meta:
+      type: tool
+      title: GitHub Repository Read
+      llm_alias: GitHubRepoRead
+      llm_description: "Read GitHub repositories, source, branches, commits, issues, pull or merge requests, reviews and CI. The connection is configured on the capability. Returns {success,data,next_page?}; inspect success before continuing. "
+      mcp:
+        required_scopes: [state.read]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "list_repositories",
+                "get_repo",
+                "list_pull_requests",
+                "get_pull_request",
+                "list_pull_files",
+                "list_pull_reviews",
+                "list_pull_comments",
+                "list_branches",
+                "get_branch",
+                "list_commits",
+                "get_commit",
+                "get_ref",
+                "get_file",
+                "get_tree",
+                "list_check_runs",
+                "get_commit_status",
+                "list_workflow_runs",
+                "get_workflow_run"
+              ]
+            },
+            "owner": {
+              "type": "string"
+            },
+            "repo": {
+              "type": "string"
+            },
+            "number": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "workflow_id": {
+              "type": "string"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "recursive": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {"type":"object","properties":{"success":{"type":"boolean"},"data":{},"next_page":{"type":["string","integer"]},"error":{"type":"string"}}}
+
+  - name: repo_write_tool
+    kind: function.lua
+    source: file://repo_write_tool.lua
+    method: handler
+    imports:
+      repository: kickside.github.repository:service
+    meta:
+      type: tool
+      title: GitHub Repository Write
+      llm_alias: GitHubRepoWrite
+      llm_description: "Perform explicitly requested GitHub repository mutations using a named action and its typed payload. The connection is configured on the capability. Returns {success,data,next_page?}; inspect success before continuing. For merges supply the expected head SHA where supported. upsert_file takes base64 content and an existing file SHA for updates. create_branch takes refs/heads/<name> and the starting SHA."
+      mcp:
+        required_scopes: [state.read, state.write]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create_branch",
+                "upsert_file",
+                "delete_file",
+                "create_pull_request",
+                "update_pull_request",
+                "create_pull_review",
+                "request_pull_reviewers",
+                "merge_pull_request",
+                "dispatch_workflow"
+              ]
+            },
+            "owner": {
+              "type": "string"
+            },
+            "repo": {
+              "type": "string"
+            },
+            "number": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "workflow_id": {
+              "type": "string"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "recursive": {
+              "type": "boolean"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "base": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "integer"
+                      },
+                      "body": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "side": {
+                        "type": "string",
+                        "enum": [
+                          "LEFT",
+                          "RIGHT"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "body"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "commit_id": {
+                  "type": "string"
+                },
+                "commit_message": {
+                  "type": "string"
+                },
+                "commit_title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "draft": {
+                  "type": "boolean"
+                },
+                "event": {
+                  "type": "string",
+                  "enum": [
+                    "APPROVE",
+                    "REQUEST_CHANGES",
+                    "COMMENT"
+                  ]
+                },
+                "head": {
+                  "type": "string"
+                },
+                "inputs": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "maintainer_can_modify": {
+                  "type": "boolean"
+                },
+                "merge_method": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "reviewers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sha": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "team_reviewers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "action": {
+                  "const": "create_branch"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "sha": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ref",
+                    "sha"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "upsert_file"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "sha": {
+                      "type": "string"
+                    },
+                    "branch": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "message",
+                    "content",
+                    "branch"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "delete_file"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "sha": {
+                      "type": "string"
+                    },
+                    "branch": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "message",
+                    "sha",
+                    "branch"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "head": {
+                      "type": "string"
+                    },
+                    "base": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "draft": {
+                      "type": "boolean"
+                    },
+                    "maintainer_can_modify": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "head",
+                    "base"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "update_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "base": {
+                      "type": "string"
+                    },
+                    "maintainer_can_modify": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_pull_review"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "commit_id": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "event": {
+                      "type": "string",
+                      "enum": [
+                        "APPROVE",
+                        "REQUEST_CHANGES",
+                        "COMMENT"
+                      ]
+                    },
+                    "comments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "integer"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "line": {
+                            "type": "integer"
+                          },
+                          "side": {
+                            "type": "string",
+                            "enum": [
+                              "LEFT",
+                              "RIGHT"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "body"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "event"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "request_pull_reviewers"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "reviewers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "team_reviewers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "merge_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "sha": {
+                      "type": "string"
+                    },
+                    "commit_title": {
+                      "type": "string"
+                    },
+                    "commit_message": {
+                      "type": "string"
+                    },
+                    "merge_method": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "sha"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "dispatch_workflow"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "inputs": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ref"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            }
+          ]
+        }
+      output_schema: |
+        {"type":"object","properties":{"success":{"type":"boolean"},"data":{},"next_page":{"type":["string","integer"]},"error":{"type":"string"}}}

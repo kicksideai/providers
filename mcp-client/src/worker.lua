@@ -24,7 +24,8 @@ local function main(args: any)
             if selected.value.kind == process.event.CANCEL then break end
         else
             local req = selected.value:payload():data()
-            local cfg, call_err = load_config(component_id)
+            local cfg, call_err = req.connection_config, nil
+            if not cfg then cfg, call_err = load_config(component_id) end
             local result
             if cfg then
                 local encoded = json.encode(cfg) or ""

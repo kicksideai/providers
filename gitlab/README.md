@@ -48,11 +48,31 @@ variables in the harness configuration for your test server.
 
 ## Use
 
-Connect with an access token and optional instance base URL. Connections discovers accessible projects through GitLab API v4. This module supplies read-only connection discovery, without agent tools or Data Sync ports.
+Connect with an access token and optional instance base URL. Connections discovers accessible projects through GitLab API v4. Select the connection on GitLab Reader, Writer, or Manager to work with
+repository source, branches, commits, issues, pull or merge requests, reviews,
+and CI. Reader and Writer are separate capabilities; installing a connection
+does not automatically grant tools to an agent. The module has no Data Sync ports.
+
+## Registry layout
+
+Repository operations are owned by `kickside.gitlab.repository:service`;
+agent tool declarations remain under `kickside.gitlab.traits`.
 
 ## Reference
 
 - [Module reference](src/README.md)
+
+### Agent tools
+
+| Tool | Purpose |
+| --- | --- |
+| [`GitLabRead`](src/traits/_index.yaml) | Read repositories and their source, changes, issues, and CI with explicit paging. |
+| [`GitLabWrite`](src/traits/_index.yaml) | Perform named, typed mutations through the selected connection. |
+
+Writes require the provider's corresponding repository, issue, pull-request,
+and pipeline permissions. Inspect the current state before changes. Only perform
+requested merges, approvals, deletions, and CI runs. Every action has a closed
+payload schema; arbitrary HTTP endpoints and credentials are not tool inputs.
 
 ## Links
 

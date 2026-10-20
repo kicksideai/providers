@@ -28,7 +28,7 @@ entries:
             type: password
             required: true
             placeholder: glpat-...
-            help: A personal, group, or project access token. Grant read_api for read-only use, or api to allow write actions later.
+            help: A personal, group, or project access token. Grant read_api for read-only use, or api for repository write actions.
     contracts:
       - contract: kickside.contract:component
         methods:

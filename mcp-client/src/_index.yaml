@@ -30,6 +30,17 @@ entries:
     component: kickside/contract
     version: "*"
 
+  - name: dep.kickside.oauth
+    kind: ns.dependency
+    component: kickside/oauth
+    version: "*"
+
+  - name: public_router
+    kind: ns.requirement
+    meta: {value_kind: http.router, comment: Public router for the OAuth client metadata document.}
+    targets:
+      - {entry: kickside.mcp_client.oauth.api:client_metadata.endpoint, path: .meta.router}
+
   - name: dep.wippy.security
     kind: ns.dependency
     meta:
@@ -109,6 +120,9 @@ entries:
     kind: library.lua
     source: file://broker.lua
     modules: [process, channel, time, uuid, security]
+    imports:
+      component: kickside.component:component
+      oauth_config: kickside.mcp_client.oauth:config
 
   - name: supervisor
     kind: process.lua

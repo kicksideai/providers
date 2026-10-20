@@ -57,3 +57,14 @@ entries:
     imports:
       test: wippy.test:test
       connection: kickside.bitbucket.connection:connection_lib
+
+  - name: repository_test
+    kind: function.lua
+    source: file://repository_test.lua
+    method: run
+    meta: {type: test, suite: repository_tools}
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      repository: kickside.bitbucket.repository:service
+      api: kickside.bitbucket.client:api

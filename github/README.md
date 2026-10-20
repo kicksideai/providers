@@ -52,6 +52,22 @@ commit regenerated tracked assets with the source.
 
 Configure a GitHub OAuth application and callback, authorize a connection, and select it on Reader or Writer capabilities. The OAuth grant and repository access bound available operations. Data Sync can read repository issues and pull requests through the declared source port.
 
+The existing Reader, Writer, and Manager capabilities include the corresponding
+repository tools. `upsert_file` takes base64 file content, an explicit branch and
+commit message; updates also require the current file SHA. `create_branch` takes
+`refs/heads/<name>` and the starting commit SHA. Merging requires the expected
+pull-request head SHA. The OAuth grant or PAT must allow each requested operation.
+
+The opt-in `test/repository_live_test.lua` verifies the actual tools against a
+disposable repository, including a branch, file commit, pull request, merge, and
+read-back. It is disabled in normal test runs and requires demo-only environment
+credentials; never point it at a production repository.
+
+## Registry layout
+
+Repository operations are owned by `kickside.github.repository:service`;
+agent tool declarations remain under `kickside.github.traits`.
+
 ## Reference
 
 - [Module reference](src/README.md)
@@ -64,7 +80,9 @@ resource access determine which tools are available.
 | Tool | Selection and paging inputs |
 | --- | --- |
 | [`GitHubRead`](src/traits/_index.yaml) | `limit`, `page` |
-| [`GitHubWrite`](src/traits/_index.yaml) | See the operation schema |
+| [`GitHubWrite`](src/traits/_index.yaml) | Issue create, update, and comment actions |
+| [`GitHubRepoRead`](src/traits/_index.yaml) | Repositories, branches, files, commits, pull requests, reviews, checks, and workflow runs |
+| [`GitHubRepoWrite`](src/traits/_index.yaml) | Branches, file commits, pull requests, reviews, expected-SHA merges, and workflow dispatch |
 
 ### Host requirements
 

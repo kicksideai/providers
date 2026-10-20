@@ -1,0 +1,1007 @@
+version: "1.0"
+namespace: kickside.bitbucket.traits
+
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Bitbucket Reader
+      public: true
+      icon: tabler:brand-bitbucket
+      comment: Bitbucket repository reader capability.
+      provider: bitbucket
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id: {type: string}
+        required: [connection_id]
+        additionalProperties: false
+    prompt: |
+      Use the selected Bitbucket connection; never ask the user for credentials or a connection id.
+      Inspect repository state before changes. Execute writes, approvals, merges and CI runs only when requested.
+      Follow provider pagination using next_page; propagate permission and rate-limit failures.
+    tools:
+      - kickside.bitbucket.traits:read_tool
+
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Bitbucket Writer
+      public: true
+      icon: tabler:brand-bitbucket
+      comment: Bitbucket repository writer capability.
+      provider: bitbucket
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id: {type: string}
+        required: [connection_id]
+        additionalProperties: false
+    prompt: |
+      Use the selected Bitbucket connection; never ask the user for credentials or a connection id.
+      Inspect repository state before changes. Execute writes, approvals, merges and CI runs only when requested.
+      Follow provider pagination using next_page; propagate permission and rate-limit failures.
+    tools:
+      - kickside.bitbucket.traits:write_tool
+
+  - name: manager
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Bitbucket Manager
+      public: true
+      icon: tabler:brand-bitbucket
+      comment: Bitbucket repository manager capability.
+      provider: bitbucket
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id: {type: string}
+        required: [connection_id]
+        additionalProperties: false
+    prompt: |
+      Use the selected Bitbucket connection; never ask the user for credentials or a connection id.
+      Inspect repository state before changes. Execute writes, approvals, merges and CI runs only when requested.
+      Follow provider pagination using next_page; propagate permission and rate-limit failures.
+    tools:
+      - kickside.bitbucket.traits:read_tool
+      - kickside.bitbucket.traits:write_tool
+
+  - name: read_tool
+    kind: function.lua
+    source: file://read_tool.lua
+    method: handler
+    imports:
+      repository: kickside.bitbucket.repository:service
+    meta:
+      type: tool
+      title: Bitbucket Repository Read
+      llm_alias: BitbucketRead
+      llm_description: "Read Bitbucket repositories, source, branches, commits, issues, pull or merge requests, reviews and CI. The connection is configured on the capability. Returns {success,data,next_page?}; inspect success before continuing. "
+      mcp:
+        required_scopes: [state.read]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "viewer",
+                "get_repo",
+                "list_repositories",
+                "list_issues",
+                "get_issue",
+                "list_pull_requests",
+                "get_pull_request",
+                "list_pull_request_comments",
+                "get_pull_request_diff",
+                "list_pull_request_diffstat",
+                "list_branches",
+                "get_branch",
+                "list_commits",
+                "get_commit",
+                "get_file",
+                "list_directory",
+                "list_pipelines",
+                "get_pipeline",
+                "list_commit_statuses"
+              ]
+            },
+            "workspace": {
+              "type": "string"
+            },
+            "repo": {
+              "type": "string"
+            },
+            "number": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "q": {
+              "type": "string"
+            },
+            "pipeline_id": {
+              "type": "string"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {"type":"object","properties":{"success":{"type":"boolean"},"data":{},"next_page":{"type":["string","integer"]},"error":{"type":"string"}}}
+
+  - name: write_tool
+    kind: function.lua
+    source: file://write_tool.lua
+    method: handler
+    imports:
+      repository: kickside.bitbucket.repository:service
+    meta:
+      type: tool
+      title: Bitbucket Repository Write
+      llm_alias: BitbucketWrite
+      llm_description: "Perform explicitly requested Bitbucket repository mutations using a named action and its typed payload. The connection is configured on the capability. Returns {success,data,next_page?}; inspect success before continuing. For merges supply the expected head SHA where supported. "
+      mcp:
+        required_scopes: [state.read, state.write]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create_commit",
+                "create_issue",
+                "update_issue",
+                "create_branch",
+                "create_pull_request",
+                "update_pull_request",
+                "create_pull_request_comment",
+                "approve_pull_request",
+                "merge_pull_request",
+                "decline_pull_request",
+                "create_pipeline"
+              ]
+            },
+            "workspace": {
+              "type": "string"
+            },
+            "repo": {
+              "type": "string"
+            },
+            "number": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "q": {
+              "type": "string"
+            },
+            "pipeline_id": {
+              "type": "string"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "assignee": {
+                  "type": "object",
+                  "properties": {
+                    "uuid": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "uuid"
+                  ],
+                  "additionalProperties": false
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "close_source_branch": {
+                  "type": "boolean"
+                },
+                "content": {
+                  "type": "object",
+                  "properties": {
+                    "raw": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "raw"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": {
+                  "type": "string"
+                },
+                "destination": {
+                  "type": "object",
+                  "properties": {
+                    "branch": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "branch"
+                  ],
+                  "additionalProperties": false
+                },
+                "draft": {
+                  "type": "boolean"
+                },
+                "files": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "inline": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "from": {
+                      "type": "integer"
+                    },
+                    "to": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "bug",
+                    "enhancement",
+                    "proposal",
+                    "task"
+                  ]
+                },
+                "merge_strategy": {
+                  "type": "string",
+                  "enum": [
+                    "merge_commit",
+                    "squash",
+                    "fast_forward"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "parents": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": [
+                    "trivial",
+                    "minor",
+                    "major",
+                    "critical",
+                    "blocker"
+                  ]
+                },
+                "reviewers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "uuid": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "uuid"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "branch": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "repository": {
+                      "type": "object",
+                      "properties": {
+                        "full_name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "full_name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "branch"
+                  ],
+                  "additionalProperties": false
+                },
+                "state": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "object",
+                  "properties": {
+                    "hash": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "ref_type": {
+                      "type": "string"
+                    },
+                    "ref_name": {
+                      "type": "string"
+                    },
+                    "selector": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "pattern": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "action": {
+                  "const": "create_commit"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "branch": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "files": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "path"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "parents": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "branch",
+                    "message",
+                    "files"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_issue"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "raw": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "raw"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "bug",
+                        "enhancement",
+                        "proposal",
+                        "task"
+                      ]
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "trivial",
+                        "minor",
+                        "major",
+                        "critical",
+                        "blocker"
+                      ]
+                    },
+                    "assignee": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "uuid"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "title"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "update_issue"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "raw": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "raw"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "bug",
+                        "enhancement",
+                        "proposal",
+                        "task"
+                      ]
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "trivial",
+                        "minor",
+                        "major",
+                        "critical",
+                        "blocker"
+                      ]
+                    },
+                    "assignee": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "uuid"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_branch"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "object",
+                      "properties": {
+                        "hash": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "ref_type": {
+                          "type": "string"
+                        },
+                        "ref_name": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string"
+                            },
+                            "pattern": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "target"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "object",
+                      "properties": {
+                        "branch": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "repository": {
+                          "type": "object",
+                          "properties": {
+                            "full_name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "full_name"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "branch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "destination": {
+                      "type": "object",
+                      "properties": {
+                        "branch": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "branch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "reviewers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "uuid": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "uuid"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "close_source_branch": {
+                      "type": "boolean"
+                    },
+                    "draft": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "source",
+                    "destination"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "update_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "destination": {
+                      "type": "object",
+                      "properties": {
+                        "branch": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "branch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "reviewers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "uuid": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "uuid"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "close_source_branch": {
+                      "type": "boolean"
+                    },
+                    "draft": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_pull_request_comment"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "raw": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "raw"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "inline": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "integer"
+                        },
+                        "to": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "content"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "approve_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "merge_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "close_source_branch": {
+                      "type": "boolean"
+                    },
+                    "merge_strategy": {
+                      "type": "string",
+                      "enum": [
+                        "merge_commit",
+                        "squash",
+                        "fast_forward"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "decline_pull_request"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "action": {
+                  "const": "create_pipeline"
+                },
+                "payload": {
+                  "type": "object",
+                  "properties": {
+                    "target": {
+                      "type": "object",
+                      "properties": {
+                        "hash": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "ref_type": {
+                          "type": "string"
+                        },
+                        "ref_name": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string"
+                            },
+                            "pattern": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "target"
+                  ]
+                }
+              },
+              "required": [
+                "payload"
+              ]
+            }
+          ]
+        }
+      output_schema: |
+        {"type":"object","properties":{"success":{"type":"boolean"},"data":{},"next_page":{"type":["string","integer"]},"error":{"type":"string"}}}

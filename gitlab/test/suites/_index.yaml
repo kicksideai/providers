@@ -53,3 +53,14 @@ entries:
     imports:
       test: wippy.test:test
       connection: kickside.gitlab.connection:connection_lib
+
+  - name: repository_test
+    kind: function.lua
+    source: file://repository_test.lua
+    method: run
+    meta: {type: test, suite: repository_tools}
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      repository: kickside.gitlab.repository:service
+      api: kickside.gitlab.client:api

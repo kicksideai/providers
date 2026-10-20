@@ -13,6 +13,7 @@ entries:
   policy:
     resources:
     - kickside.github:*
+    - kickside.github.repository:*
     - kickside.github.client:*
     - kickside.github.connection:*
     - kickside.github.security:*
@@ -38,6 +39,7 @@ entries:
   policy:
     resources:
     - kickside.github:*
+    - kickside.github.repository:*
     - kickside.github.client:*
     - kickside.github.connection:*
     - kickside.github.security:*

@@ -1,0 +1,12 @@
+version: "1.0"
+namespace: kickside.github.repository
+
+entries:
+  - name: service
+    kind: library.lua
+    source: file://service.lua
+    modules: [ctx]
+    imports:
+      transport: kickside.github.client:transport
+      output: kickside.github.client:output
+      tool_result: kickside.contract:tool_result

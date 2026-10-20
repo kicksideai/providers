@@ -16,3 +16,5 @@ kb10/test/storage/
 __pycache__/
 
 mcp-client/test/worker_source.lua
+
+/mcp-client/test/oauth_init_source.lua

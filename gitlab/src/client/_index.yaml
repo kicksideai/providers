@@ -23,3 +23,7 @@ entries:
       component: kickside.component:component
       api: kickside.gitlab.client:api
       types: kickside.gitlab.client:types
+
+  - name: output
+    kind: library.lua
+    source: file://output.lua

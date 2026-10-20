@@ -19,6 +19,8 @@ profiles:
       app:db:pool.max_idle: 8
 workspace:
   replacements:
+    kickside/security: ../../../kickside/platform/security
+    kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
     kickside/gitlab: ..
     kickside/component: ../../../kickside/core/component
     kickside/connection: ../../../kickside/platform/connection
