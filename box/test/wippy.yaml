@@ -1,0 +1,4 @@
+organization: kickside
+module: box-test
+type: application
+description: Standalone Box contract and HTTP adapter harness.

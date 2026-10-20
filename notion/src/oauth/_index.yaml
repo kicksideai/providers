@@ -1,0 +1,85 @@
+version: '1.0'
+namespace: kickside.notion.oauth
+entries:
+  - name: client_id
+    kind: env.variable
+    variable: NOTION_CLIENT_ID
+    meta:
+      comment: Notion OAuth client id.
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.notion.oauth
+    key: client_id
+    value_type: secret
+    default: ''
+    description: Notion OAuth client id.
+    scope: global
+    editable: true
+  - name: client_secret
+    kind: env.variable
+    variable: NOTION_CLIENT_SECRET
+    meta:
+      comment: Notion OAuth client secret.
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.notion.oauth
+    key: client_secret
+    value_type: secret
+    default: ''
+    description: Notion OAuth client secret.
+    scope: global
+    editable: true
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: component
+      title: Notion
+      comment: Authorize Notion with OAuth.
+      group: Productivity
+      tags:
+        - notion
+        - oauth
+      class:
+        - connection
+        - oauth_connection
+      component:
+        icon: simple-icons:notion
+      oauth_provider: notion
+    description: Connect Notion with OAuth.
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://api.notion.com/v1/oauth/authorize
+        oauth_token_endpoint: https://api.notion.com/v1/oauth/token
+        oauth_client_id_env: kickside.notion.oauth:client_id
+        oauth_client_secret_env: kickside.notion.oauth:client_secret
+        oauth_client_id_setting: kickside.notion.oauth:client_id
+        oauth_client_secret_setting: kickside.notion.oauth:client_secret
+        oauth_use_pkce: false
+        oauth_pkce_method: S256
+        oauth_token_auth_method: client_secret_basic
+        oauth_token_body_encoding: json
+        oauth_extra_auth_params:
+          owner: user
+    default_scopes: []
+    available_scopes: []
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+    key: notion
+    title: Notion
+    icon: simple-icons:notion
+    group: Integrations
+    order: 40
+    namespace: kickside.notion.oauth
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.notion.oauth
+      title: Notion
+      help: OAuth application credentials for Notion. Access-token connections do not require these settings.

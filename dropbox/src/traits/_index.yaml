@@ -1,0 +1,1411 @@
+version: '1.0'
+namespace: kickside.dropbox.traits
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Dropbox Reader
+      public: true
+      comment: Read Dropbox resources through a selected connection.
+      icon: simple-icons:dropbox
+      tags:
+        - dropbox
+        - read
+      provider: dropbox
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use DropboxRead for Dropbox. Actions: get_account, get_space_usage, get_metadata, list_folder, continue_list_folder,
+      get_folder_cursor, search, continue_search, list_revisions, get_temporary_link, download_file, export_file,
+      list_shared_links, list_shared_folders, continue_shared_folders, list_folder_members, continue_folder_members.
+      Pass action-specific params. Follow next_cursor using the provider cursor parameter. Select the account on
+      this capability. Use the writer capability for changes.'
+    tools:
+      - kickside.dropbox.traits:read_tool
+  - name: read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Dropbox Read
+      llm_alias: DropboxRead
+      llm_description: Read Dropbox using named API operations. params is validated separately for each action.
+        Responses include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "get_account",
+                "get_space_usage",
+                "get_metadata",
+                "list_folder",
+                "continue_list_folder",
+                "get_folder_cursor",
+                "search",
+                "continue_search",
+                "list_revisions",
+                "get_temporary_link",
+                "download_file",
+                "export_file",
+                "list_shared_links",
+                "list_shared_folders",
+                "continue_shared_folders",
+                "list_folder_members",
+                "continue_folder_members"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_account"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {},
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_space_usage"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {},
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_metadata"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "include_media_info": {
+                      "type": "boolean"
+                    },
+                    "include_deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "recursive": {
+                      "type": "boolean"
+                    },
+                    "include_deleted": {
+                      "type": "boolean"
+                    },
+                    "include_non_downloadable_files": {
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2000
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "continue_list_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "cursor": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "cursor"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_folder_cursor"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "recursive": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "search"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "options": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "max_results": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        },
+                        "filename_only": {
+                          "type": "boolean"
+                        },
+                        "file_status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "deleted"
+                          ]
+                        },
+                        "file_extensions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "query"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "continue_search"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "cursor": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "cursor"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_revisions"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_temporary_link"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "download_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "export_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "export_format": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_shared_links"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "cursor": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "direct_only": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_shared_folders"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "continue_shared_folders"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "cursor": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "cursor"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_folder_members"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "shared_folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": [
+                    "shared_folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "continue_folder_members"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "cursor": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "cursor"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://read_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.dropbox.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Dropbox Writer
+      public: true
+      comment: Modify Dropbox resources through a selected connection.
+      icon: simple-icons:dropbox
+      tags:
+        - dropbox
+        - write
+      provider: dropbox
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use DropboxWrite for Dropbox. Actions: create_folder, copy, move, delete, restore_file, upload_file,
+      start_upload_session, append_upload_session, finish_upload_session, create_shared_link, update_shared_link,
+      revoke_shared_link, share_folder, add_folder_members, remove_folder_member, update_folder_member, unshare_folder.
+      Pass action-specific params. Follow next_cursor using the provider cursor parameter. Select the account on
+      this capability. Confirm the intended target before destructive changes.'
+    tools:
+      - kickside.dropbox.traits:write_tool
+  - name: write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Dropbox Write
+      llm_alias: DropboxWrite
+      llm_description: Write Dropbox using named API operations. params is validated separately for each action.
+        Responses include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create_folder",
+                "copy",
+                "move",
+                "delete",
+                "restore_file",
+                "upload_file",
+                "start_upload_session",
+                "append_upload_session",
+                "finish_upload_session",
+                "create_shared_link",
+                "update_shared_link",
+                "revoke_shared_link",
+                "share_folder",
+                "add_folder_members",
+                "remove_folder_member",
+                "update_folder_member",
+                "unshare_folder"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "autorename": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "copy"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "from_path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "to_path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "allow_shared_folder": {
+                      "type": "boolean"
+                    },
+                    "autorename": {
+                      "type": "boolean"
+                    },
+                    "allow_ownership_transfer": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "from_path",
+                    "to_path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "move"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "from_path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "to_path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "allow_shared_folder": {
+                      "type": "boolean"
+                    },
+                    "autorename": {
+                      "type": "boolean"
+                    },
+                    "allow_ownership_transfer": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "from_path",
+                    "to_path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "parent_rev": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "restore_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "rev": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "rev"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "upload_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "content_base64": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "add",
+                        "overwrite"
+                      ]
+                    },
+                    "autorename": {
+                      "type": "boolean"
+                    },
+                    "mute": {
+                      "type": "boolean"
+                    },
+                    "strict_conflict": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content_base64"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "start_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "content_base64": {
+                      "type": "string"
+                    },
+                    "close": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "content_base64"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "append_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "content_base64": {
+                      "type": "string"
+                    },
+                    "cursor": {
+                      "type": "object",
+                      "properties": {
+                        "session_id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "offset": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "session_id",
+                        "offset"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "close": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "content_base64",
+                    "cursor"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "finish_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "content_base64": {
+                      "type": "string"
+                    },
+                    "cursor": {
+                      "type": "object",
+                      "properties": {
+                        "session_id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "offset": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "session_id",
+                        "offset"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "commit": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "add",
+                            "overwrite"
+                          ]
+                        },
+                        "autorename": {
+                          "type": "boolean"
+                        },
+                        "mute": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "content_base64",
+                    "cursor",
+                    "commit"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_shared_link"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "settings": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_shared_link"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "settings": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "remove_expiration": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "url",
+                    "settings"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "revoke_shared_link"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "share_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "member_policy": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "acl_update_policy": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "shared_link_policy": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "force_async": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "add_folder_members"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "shared_folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      "maxItems": 100
+                    },
+                    "quiet": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "shared_folder_id",
+                    "members"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "remove_folder_member"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "shared_folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "member": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "leave_a_copy": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "shared_folder_id",
+                    "member",
+                    "leave_a_copy"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_folder_member"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "shared_folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "member": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "access_level": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "shared_folder_id",
+                    "member",
+                    "access_level"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "unshare_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "shared_folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "leave_a_copy": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "shared_folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://write_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.dropbox.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result

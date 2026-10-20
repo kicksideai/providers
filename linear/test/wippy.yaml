@@ -1,0 +1,4 @@
+organization: kickside
+module: linear-test
+type: application
+description: Standalone Linear contract and HTTP adapter harness.

@@ -1,0 +1,109 @@
+version: '1.0'
+namespace: kickside.dropbox.oauth
+entries:
+  - name: client_id
+    kind: env.variable
+    variable: DROPBOX_CLIENT_ID
+    meta:
+      comment: Dropbox OAuth client id.
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.dropbox.oauth
+    key: client_id
+    value_type: secret
+    default: ''
+    description: Dropbox OAuth client id.
+    scope: global
+    editable: true
+  - name: client_secret
+    kind: env.variable
+    variable: DROPBOX_CLIENT_SECRET
+    meta:
+      comment: Dropbox OAuth client secret.
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.dropbox.oauth
+    key: client_secret
+    value_type: secret
+    default: ''
+    description: Dropbox OAuth client secret.
+    scope: global
+    editable: true
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: component
+      title: Dropbox
+      comment: Authorize Dropbox with OAuth.
+      group: Productivity
+      tags:
+        - dropbox
+        - oauth
+      class:
+        - connection
+        - oauth_connection
+      component:
+        icon: simple-icons:dropbox
+      oauth_provider: dropbox
+    description: Connect Dropbox with OAuth.
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://www.dropbox.com/oauth2/authorize
+        oauth_token_endpoint: https://api.dropboxapi.com/oauth2/token
+        oauth_client_id_env: kickside.dropbox.oauth:client_id
+        oauth_client_secret_env: kickside.dropbox.oauth:client_secret
+        oauth_client_id_setting: kickside.dropbox.oauth:client_id
+        oauth_client_secret_setting: kickside.dropbox.oauth:client_secret
+        oauth_use_pkce: true
+        oauth_pkce_method: S256
+        oauth_token_auth_method: client_secret_post
+        oauth_token_body_encoding: form
+        oauth_extra_auth_params:
+          token_access_type: offline
+    default_scopes:
+      - account_info.read
+      - files.metadata.read
+      - files.content.read
+      - files.content.write
+      - sharing.read
+      - sharing.write
+    available_scopes:
+      - name: account_info.read
+        description: account_info.read
+        scope: account_info.read
+      - name: files.metadata.read
+        description: files.metadata.read
+        scope: files.metadata.read
+      - name: files.content.read
+        description: files.content.read
+        scope: files.content.read
+      - name: files.content.write
+        description: files.content.write
+        scope: files.content.write
+      - name: sharing.read
+        description: sharing.read
+        scope: sharing.read
+      - name: sharing.write
+        description: sharing.write
+        scope: sharing.write
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+    key: dropbox
+    title: Dropbox
+    icon: simple-icons:dropbox
+    group: Integrations
+    order: 40
+    namespace: kickside.dropbox.oauth
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.dropbox.oauth
+      title: Dropbox
+      help: OAuth application credentials for Dropbox. Access-token connections do not require these settings.

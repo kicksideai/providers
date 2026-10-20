@@ -1,0 +1,26 @@
+organization: kickside
+module: airtable
+type: plugin
+description: Airtable OAuth and access-token connections with typed, paginated reader/writer API tools.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - airtable
+  - connection
+  - oauth
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - test/**
+  - test:**
+  - .wippy/**
+  - .wippy:**
+  - '**/*.map'
+  - '**/node_modules/**'
+  - app:**
+  - app.**:**

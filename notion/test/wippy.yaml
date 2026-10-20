@@ -1,0 +1,4 @@
+organization: kickside
+module: notion-test
+type: application
+description: Standalone Notion contract and HTTP adapter harness.

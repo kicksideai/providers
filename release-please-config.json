@@ -106,6 +106,31 @@
     "webscout-tavily": {
       "component": "webscout-tavily",
       "changelog-path": "CHANGELOG.md"
+    },
+    "notion": {
+      "component": "notion",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0"
+    },
+    "linear": {
+      "component": "linear",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0"
+    },
+    "airtable": {
+      "component": "airtable",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0"
+    },
+    "dropbox": {
+      "component": "dropbox",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0"
+    },
+    "box": {
+      "component": "box",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0"
     }
   }
 }

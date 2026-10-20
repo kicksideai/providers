@@ -1,0 +1,4 @@
+organization: kickside
+module: airtable-test
+type: application
+description: Standalone Airtable contract and HTTP adapter harness.

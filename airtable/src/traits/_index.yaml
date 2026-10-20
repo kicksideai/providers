@@ -1,0 +1,1339 @@
+version: '1.0'
+namespace: kickside.airtable.traits
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Airtable Reader
+      public: true
+      comment: Read Airtable resources through a selected connection.
+      icon: simple-icons:airtable
+      tags:
+        - airtable
+        - read
+      provider: airtable
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use AirtableRead for Airtable. Actions: get_identity, list_bases, list_tables, list_records, get_record,
+      list_comments, list_webhooks, list_webhook_payloads. Pass action-specific params. Follow next_cursor using
+      the provider cursor parameter. Select the account on this capability. Use the writer capability for changes.'
+    tools:
+      - kickside.airtable.traits:read_tool
+  - name: read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Airtable Read
+      llm_alias: AirtableRead
+      llm_description: Read Airtable using named API operations. params is validated separately for each action.
+        Responses include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "get_identity",
+                "list_bases",
+                "list_tables",
+                "list_records",
+                "get_record",
+                "list_comments",
+                "list_webhooks",
+                "list_webhook_payloads"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_identity"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {},
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_bases"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "offset": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_tables"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "include": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 100
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_records"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "pageSize": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "offset": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filterByFormula": {
+                      "type": "string"
+                    },
+                    "view": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 100
+                    },
+                    "sort": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": [
+                              "asc",
+                              "desc"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "field"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 100
+                    },
+                    "maxRecords": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100000
+                    },
+                    "returnFieldsByFieldId": {
+                      "type": "boolean"
+                    },
+                    "cellFormat": {
+                      "type": "string",
+                      "enum": [
+                        "json",
+                        "string"
+                      ]
+                    },
+                    "timeZone": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "userLocale": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_record"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "returnFieldsByFieldId": {
+                      "type": "boolean"
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "record_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "record_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_comments"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "offset": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "record_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "record_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_webhooks"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_webhook_payloads"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "cursor": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 50
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "webhook_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "webhook_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://read_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.airtable.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Airtable Writer
+      public: true
+      comment: Modify Airtable resources through a selected connection.
+      icon: simple-icons:airtable
+      tags:
+        - airtable
+        - write
+      provider: airtable
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use AirtableWrite for Airtable. Actions: create_records, update_records, replace_records, delete_records,
+      create_base, create_table, update_table, create_field, update_field, create_comment, update_comment, delete_comment,
+      create_webhook, refresh_webhook, delete_webhook, upload_attachment, clear_record_fields. Pass action-specific
+      params. Follow next_cursor using the provider cursor parameter. Select the account on this capability. Confirm
+      the intended target before destructive changes.'
+    tools:
+      - kickside.airtable.traits:write_tool
+  - name: write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Airtable Write
+      llm_alias: AirtableWrite
+      llm_description: Write Airtable using named API operations. params is validated separately for each action.
+        Responses include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create_records",
+                "update_records",
+                "replace_records",
+                "delete_records",
+                "create_base",
+                "create_table",
+                "update_table",
+                "create_field",
+                "update_field",
+                "create_comment",
+                "update_comment",
+                "delete_comment",
+                "create_webhook",
+                "refresh_webhook",
+                "delete_webhook",
+                "upload_attachment",
+                "clear_record_fields"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_records"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "fields": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 10,
+                      "minItems": 1
+                    },
+                    "typecast": {
+                      "type": "boolean"
+                    },
+                    "returnFieldsByFieldId": {
+                      "type": "boolean"
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "records"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_records"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "fields": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 10,
+                      "minItems": 1
+                    },
+                    "typecast": {
+                      "type": "boolean"
+                    },
+                    "returnFieldsByFieldId": {
+                      "type": "boolean"
+                    },
+                    "performUpsert": {
+                      "type": "object",
+                      "properties": {
+                        "fieldsToMergeOn": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 3
+                        }
+                      },
+                      "required": [
+                        "fieldsToMergeOn"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "records"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "replace_records"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "fields": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 10,
+                      "minItems": 1
+                    },
+                    "typecast": {
+                      "type": "boolean"
+                    },
+                    "returnFieldsByFieldId": {
+                      "type": "boolean"
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "records"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_records"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 10
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "records"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_base"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "tables": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      "maxItems": 100
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "workspaceId",
+                    "tables"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_table"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      "maxItems": 100
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "name",
+                    "fields"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_table"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_field"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "name",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_field"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "field_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "field_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "record_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "record_id",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "record_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "comment_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "record_id",
+                    "comment_id",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "record_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "comment_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "record_id",
+                    "comment_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_webhook"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "notificationUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "specification": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "specification"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "refresh_webhook"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "webhook_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "webhook_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_webhook"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "webhook_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "webhook_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "upload_attachment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "contentType": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filename": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "record_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "field_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "record_id",
+                    "field_id",
+                    "contentType",
+                    "file",
+                    "filename"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "clear_record_fields"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "base_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "table_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "record_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clear_fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1,
+                      "maxItems": 100
+                    }
+                  },
+                  "required": [
+                    "base_id",
+                    "table_id",
+                    "record_id",
+                    "clear_fields"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://write_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.airtable.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result

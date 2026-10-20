@@ -1,0 +1,101 @@
+version: '1.0'
+namespace: kickside.linear.oauth
+entries:
+  - name: client_id
+    kind: env.variable
+    variable: LINEAR_CLIENT_ID
+    meta:
+      comment: Linear OAuth client id.
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.linear.oauth
+    key: client_id
+    value_type: secret
+    default: ''
+    description: Linear OAuth client id.
+    scope: global
+    editable: true
+  - name: client_secret
+    kind: env.variable
+    variable: LINEAR_CLIENT_SECRET
+    meta:
+      comment: Linear OAuth client secret.
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.linear.oauth
+    key: client_secret
+    value_type: secret
+    default: ''
+    description: Linear OAuth client secret.
+    scope: global
+    editable: true
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: component
+      title: Linear
+      comment: Authorize Linear with OAuth.
+      group: Productivity
+      tags:
+        - linear
+        - oauth
+      class:
+        - connection
+        - oauth_connection
+      component:
+        icon: simple-icons:linear
+      oauth_provider: linear
+    description: Connect Linear with OAuth.
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://linear.app/oauth/authorize
+        oauth_token_endpoint: https://api.linear.app/oauth/token
+        oauth_client_id_env: kickside.linear.oauth:client_id
+        oauth_client_secret_env: kickside.linear.oauth:client_secret
+        oauth_client_id_setting: kickside.linear.oauth:client_id
+        oauth_client_secret_setting: kickside.linear.oauth:client_secret
+        oauth_use_pkce: true
+        oauth_pkce_method: S256
+        oauth_token_auth_method: client_secret_post
+        oauth_token_body_encoding: form
+        oauth_extra_auth_params: {}
+        oauth_scope_separator: ','
+    default_scopes:
+      - read
+      - write
+      - issues:create
+      - comments:create
+    available_scopes:
+      - name: read
+        description: read
+        scope: read
+      - name: write
+        description: write
+        scope: write
+      - name: issues:create
+        description: issues:create
+        scope: issues:create
+      - name: comments:create
+        description: comments:create
+        scope: comments:create
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+    key: linear
+    title: Linear
+    icon: simple-icons:linear
+    group: Integrations
+    order: 40
+    namespace: kickside.linear.oauth
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.linear.oauth
+      title: Linear
+      help: OAuth application credentials for Linear. Access-token connections do not require these settings.

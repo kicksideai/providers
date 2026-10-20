@@ -1,0 +1,55 @@
+version: '1.0'
+namespace: kickside.box.security
+entries:
+  - name: module_access
+    kind: security.policy
+    meta:
+      title: Box
+      surface: kickside.box
+      intent: module_access
+      includes:
+        - kickside.box.security:module_runtime
+    groups: []
+    policy:
+      resources:
+        - kickside.box:*
+        - kickside.box.client:*
+        - kickside.box.connection:*
+        - kickside.box.oauth:*
+        - kickside.box.traits:*
+        - kickside.box.security:*
+      actions:
+        - registry.get
+        - registry.find
+        - contract.get
+        - contract.open
+        - contract.call
+        - contract.implementations
+        - contract.security
+        - funcs.call
+        - funcs.security
+      effect: allow
+  - name: module_runtime
+    kind: security.policy
+    meta:
+      private: true
+    groups: []
+    policy:
+      resources:
+        - kickside.box:*
+        - kickside.box.client:*
+        - kickside.box.connection:*
+        - kickside.box.oauth:*
+        - kickside.box.traits:*
+        - kickside.box.security:*
+      actions:
+        - registry.get
+        - registry.find
+        - contract.get
+        - contract.open
+        - contract.call
+        - contract.implementations
+        - contract.security
+        - funcs.call
+        - funcs.security
+      effect: allow
