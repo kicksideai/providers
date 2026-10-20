@@ -15,6 +15,7 @@ exclude_meta:
     - test_helper
     - test_support
 exclude:
+  - "**/*.map"
   - "app:**"
   - "test/**"
   - "test:**"

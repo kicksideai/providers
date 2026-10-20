@@ -19,6 +19,6 @@ export default defineConfig(({ mode }) => ({
       external: ['vue', '@wippy-fe/proxy'],
       output: { entryFileNames: '[name].js', chunkFileNames: '[name]-[hash].js', assetFileNames: '[name]-[hash][extname]' },
     },
-    sourcemap: true,
+    sourcemap: false,
   },
 }))
