@@ -40,7 +40,7 @@ Use `clear_record_fields` with field names or IDs to clear cell values with JSON
 | Writer | `upload_attachment` | `base_id`, `record_id`, `field_id`, `contentType`, `file`, `filename` |
 | Writer | `clear_record_fields` | `base_id`, `table_id`, `record_id`, `clear_fields` |
 
-Tool schemas specify optional fields and provider-native nested structures. Read/get returns full provider records. API availability depends on workspace plan and scopes. Webhook-management actions manage provider subscriptions; inbound event processing is a separate host integration.
+Tool schemas specify optional fields and provider-native nested structures. Read/get returns full provider records. API availability depends on workspace plan and scopes. Webhook-management actions manage provider subscriptions; inbound event processing is a separate host integration. Webhook MAC signing secrets are redacted from agent results; signature-verifying receivers provision and retain credentials through their own server-side integration.
 
 ## Request limits
 
