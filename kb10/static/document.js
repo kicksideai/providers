@@ -2,7 +2,7 @@ import { _ as ue, u as xe, a as ye, d as we, W as _e, c as $e } from "./styles-C
 import { ref as v, computed as y, onBeforeUnmount as le, watch as H, defineComponent as se, openBlock as s, createElementBlock as p, createElementVNode as c, createTextVNode as S, toDisplayString as b, createCommentVNode as C, renderSlot as ge, createBlock as Q, Transition as Ce, withCtx as G, withModifiers as Ee, normalizeClass as te, createVNode as f, unref as a, nextTick as pe, Fragment as ne, renderList as ie, onMounted as Se } from "vue";
 import { Icon as I } from "@iconify/vue";
 import { api as ae, host as de, loadByTagName as De, define as Te } from "@wippy-fe/proxy";
-import { c as Me, E as fe, i as ve, s as Ne, a as me, _ as Z, u as Le, b as ze, n as ee, d as Ie, e as Oe, f as Be, g as Pe, h as Re, j as je, k as Ve, l as Ke, m as Ue, o as Xe, p as qe, q as Ae } from "./package-C_BpCnAM.js";
+import { c as Me, E as fe, i as ve, s as Ne, a as me, _ as Z, u as Le, b as ze, n as ee, d as Ie, e as Oe, f as Be, g as Pe, h as Re, j as je, k as Ve, l as Ke, m as Ue, o as Xe, p as qe, q as Ae } from "./package-CMfeD3ol.js";
 const he = {
   "text/markdown": "MD",
   "text/plain": "TXT",
