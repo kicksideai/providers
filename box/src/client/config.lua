@@ -125,7 +125,8 @@ local config = json.decode([=[{
       "defaults": {
         "usemarker": true,
         "limit": 100
-      }
+      },
+      "cursor_field": "next_marker"
     },
     "search": {
       "method": "GET",
@@ -395,7 +396,8 @@ local config = json.decode([=[{
       "body": [],
       "defaults": {
         "limit": 100
-      }
+      },
+      "cursor_field": "next_marker"
     },
     "list_folder_collaborations": {
       "method": "GET",
@@ -435,7 +437,8 @@ local config = json.decode([=[{
       "body": [],
       "defaults": {
         "limit": 100
-      }
+      },
+      "cursor_field": "next_marker"
     },
     "get_collaboration": {
       "method": "GET",
@@ -578,7 +581,8 @@ local config = json.decode([=[{
       "defaults": {
         "usemarker": true,
         "limit": 100
-      }
+      },
+      "cursor_field": "next_marker"
     },
     "get_trashed_file": {
       "method": "GET",
@@ -801,7 +805,8 @@ local config = json.decode([=[{
       "body": [],
       "defaults": {
         "limit": 100
-      }
+      },
+      "cursor_field": "next_marker"
     },
     "get_webhook": {
       "method": "GET",

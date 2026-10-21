@@ -47,8 +47,11 @@ verify_module() {
     fi
 
     version="$(awk -F '\t' -v wanted="$component" '$1 == wanted { print $2 }' <<<"$declarations")"
-    if [[ "$version" != '*' ]]; then
-      printf '%s: %s must stay unpinned (*), got %s\n' "$module" "$component" "$version" >&2
+    # A lower bound states the first release providing a required public API;
+    # it still accepts newer releases. Exact versions and upper bounds are pins.
+    local provider_minimum_pattern='^>=[0-9]+\.[0-9]+\.[0-9]+$'
+    if [[ "$version" != '*' && ! "$version" =~ $provider_minimum_pattern ]]; then
+      printf '%s: %s must use * or a minimum compatible version, got %s\n' "$module" "$component" "$version" >&2
       failed=1
     fi
   done

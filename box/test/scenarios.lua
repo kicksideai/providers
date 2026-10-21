@@ -63,6 +63,18 @@ local function cases()
             local result, err = service.new(deps).run("remove_file_shared_link", {file_id = "f1"}, nil, true)
             test.is_nil(err); test.eq(result.success, true); state.done()
         end)
+        test.it("rejects invalid upload ranges and whole-file digests before credential admission", function()
+            local deps, state = fixture.new("box", {})
+            local run = service.new(deps).run
+            local result, err = run("upload_session_part", {upload_session_id = "session1", offset = 0,
+                total_size = 1, content_base64 = "aGk="}, nil, true)
+            test.is_nil(result); test.is_true(errors.is(err, errors.INVALID))
+            result, err = run("commit_upload_session", {upload_session_id = "session1", parts = {}, sha1_base64 = "aGk="}, nil, true)
+            test.is_nil(result); test.is_true(errors.is(err, errors.INVALID))
+            test.eq(state.writes, 0); state.done()
+            test.eq(service.config.operations.upload_session_part.mode, "box_part")
+            test.eq(service.config.operations.commit_upload_session.mode, "box_commit")
+        end)
     end)
 end
 return {run = test.run_cases(cases)}

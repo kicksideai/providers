@@ -14,7 +14,7 @@ entries:
   - name: dep.kickside.connection
     kind: ns.dependency
     component: kickside/connection
-    version: '*'
+    version: '>=0.4.0'
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract

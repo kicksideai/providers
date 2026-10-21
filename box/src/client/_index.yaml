@@ -13,6 +13,15 @@ entries:
     kind: library.lua
     source: file://service.lua
     imports:
+      wire: kickside.box.client:wire
       driver: kickside.connection.client:driver
       config: kickside.box.client:config
+      types: kickside.connection.client:types
+  - name: wire
+    kind: library.lua
+    meta: {private: true}
+    source: file://wire.lua
+    modules: [uuid, json, hash, base64]
+    imports:
+      driver: kickside.connection.client:driver
       types: kickside.connection.client:types
