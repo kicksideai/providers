@@ -8,6 +8,7 @@ entries:
       name: types
       comment: Shared constants and type surfaces for Discord.
     source: file://types.lua
+    modules: [hash]
     imports:
       endpoints: kickside.connection:endpoints
 

@@ -10,6 +10,7 @@
 -- DataError with retry_after_ms so the engine reschedules past the wait; nothing
 -- sleeps in-process.
 
+local canonical_json = require("canonical_json")
 local data_error = require("data_error")
 local transport = require("transport")
 local types = require("types")
@@ -76,7 +77,16 @@ local function upsert(tp: any, conn: any, channel_id: string, req: any, input: a
         }
     end
 
-    local res, send_err = tp.send_channel_message_once(conn, channel_id, { content = content })
+    -- Every attempt of one (origin, sink_op, idempotency_key) delivery posts
+    -- with the same enforced nonce, so Discord answers a retried post with the
+    -- message an earlier attempt created instead of posting again.
+    local delivery_key, key_err = canonical_json.encode({ origin = trim(req.origin), sink_op = "upsert",
+        idempotency_key = trim(req.idempotency_key) })
+    if key_err then return nil, key_err end
+    local nonce, nonce_err = types.message_nonce(delivery_key :: string)
+    if nonce_err then return nil, nonce_err end
+    local res, send_err = tp.send_channel_message_once(conn, channel_id,
+        { content = content, nonce = nonce, enforce_nonce = true })
     if send_err then return nil, send_err end
     if type(res) ~= "table" or not (res :: any).success then
         return data_error.from_result(res, "send message")

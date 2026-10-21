@@ -32,6 +32,7 @@ entries:
       comment: Discord message sink implementation (for tests).
     source: file://message_sink.lua
     imports:
+      canonical_json: kickside.contract:canonical_json
       data_error: kickside.discord.client:data_error
       transport: kickside.discord.client:transport
       types: kickside.discord.client:types
