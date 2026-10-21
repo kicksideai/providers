@@ -1,4 +1,5 @@
 local M = {}
+local artifact_content_repo = require("artifact_content_repo")
 
 local EVENT_CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 local EVENT_CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
@@ -83,6 +84,14 @@ function M.run(input)
     end
 
     local content = body.content
+    if content == nil and body.content_omitted == true then
+        local ref = source_ref or {}
+        local read_err
+        content, read_err = artifact_content_repo.read_artifact_content(ref.upload_id, ref.artifact_id)
+        if read_err then
+            return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err) }
+        end
+    end
     if type(content) ~= "string" or trim(content) == "" then
         return { documents = {}, deletes = {}, error = "content event missing content" }
     end

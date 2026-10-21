@@ -199,6 +199,9 @@ entries:
       kb10_store: kickside.kb10.persist:store
       materializer_lib: kickside.kb10.injection:materializer_store
       thread_ingest: kickside.knowledge.injection:thread_ingest
+      source_worker_lib: kickside.kb10.injection:source_worker_lib
+      source_worker_fixtures: app:source_worker_fixtures
+      artifact_cleanup_repo: kickside.uploads.persist:artifact_cleanup_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       agent_fetch_url: kickside.knowledge.traits.kb_ingest:fetch_url
@@ -264,9 +267,12 @@ entries:
       suite: knowledge_injection
     source: file://content_extractor_test.lua
     method: run
-    modules: [funcs]
+    modules: [funcs, crypto, sql]
     imports:
       test: wippy.test:test
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      artifact_cleanup_repo: kickside.uploads.persist:artifact_cleanup_repo
+      upload_record_repo: kickside.uploads.persist:upload_record_repo
 
   - name: chunk_text_test
     kind: function.lua
