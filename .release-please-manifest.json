@@ -24,9 +24,9 @@
   "webscout": "0.1.33",
   "webscout-brave": "0.1.5",
   "webscout-tavily": "0.1.4",
-  "notion": "0.1.0",
+  "notion": "0.1.1",
   "linear": "0.1.0",
   "airtable": "0.1.0",
-  "dropbox": "0.1.0",
-  "box": "0.1.0"
+  "dropbox": "0.1.1",
+  "box": "0.1.1"
 }
