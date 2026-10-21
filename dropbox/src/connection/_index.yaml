@@ -1,0 +1,73 @@
+version: '1.0'
+namespace: kickside.dropbox.connection
+entries:
+  - name: connection
+    kind: contract.binding
+    meta:
+      title: Dropbox (access token)
+      comment: Connect Dropbox using an integration or personal access token. OAuth is also available.
+      icon: simple-icons:dropbox
+      provider: dropbox
+      group: Productivity
+      class:
+        - connection
+      credential_schema:
+        version: '1.0'
+        submit_label: Connect
+        fields:
+          - key: api_key
+            label: Access token
+            type: password
+            required: true
+            help: Use a scoped Dropbox integration token. Select OAuth to authorize an account instead.
+    contracts:
+      - contract: kickside.contract:component
+        context_required:
+          - component_id
+        methods:
+          get_status: kickside.dropbox.connection:get_status
+      - contract: kickside.connection:connection
+        context_required:
+          - component_id
+        methods:
+          get_status: kickside.dropbox.connection:get_status
+          test_connection: kickside.dropbox.connection:test_connection
+          discover_resources: kickside.dropbox.connection:discover_resources
+      - contract: kickside.contract:deletable
+        context_required:
+          - component_id
+        methods:
+          delete: kickside.dropbox.connection:delete
+  - name: implementation
+    kind: library.lua
+    source: file://connection.lua
+    modules:
+      - ctx
+    imports:
+      base: kickside.connection:base_connection
+      service: kickside.dropbox.client:service
+      types: kickside.connection.client:types
+  - name: get_status
+    kind: function.lua
+    source: file://get_status.lua
+    method: get_status
+    imports:
+      implementation: kickside.dropbox.connection:implementation
+  - name: test_connection
+    kind: function.lua
+    source: file://test_connection.lua
+    method: test_connection
+    imports:
+      implementation: kickside.dropbox.connection:implementation
+  - name: discover_resources
+    kind: function.lua
+    source: file://discover_resources.lua
+    method: discover_resources
+    imports:
+      implementation: kickside.dropbox.connection:implementation
+  - name: delete
+    kind: function.lua
+    source: file://delete.lua
+    method: delete
+    imports:
+      implementation: kickside.dropbox.connection:implementation

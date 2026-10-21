@@ -1,0 +1,84 @@
+version: '1.0'
+namespace: kickside.box.oauth
+entries:
+  - name: client_id
+    kind: env.variable
+    variable: BOX_CLIENT_ID
+    meta:
+      comment: Box OAuth client id.
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.box.oauth
+    key: client_id
+    value_type: secret
+    default: ''
+    description: Box OAuth client id.
+    scope: global
+    editable: true
+  - name: client_secret
+    kind: env.variable
+    variable: BOX_CLIENT_SECRET
+    meta:
+      comment: Box OAuth client secret.
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.box.oauth
+    key: client_secret
+    value_type: secret
+    default: ''
+    description: Box OAuth client secret.
+    scope: global
+    editable: true
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: component
+      title: Box
+      comment: Authorize Box with OAuth.
+      group: Productivity
+      tags:
+        - box
+        - oauth
+      class:
+        - connection
+        - oauth_connection
+      component:
+        icon: simple-icons:box
+      oauth_provider: box
+    description: Connect Box with OAuth.
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://account.box.com/api/oauth2/authorize
+        oauth_token_endpoint: https://api.box.com/oauth2/token
+        oauth_client_id_env: kickside.box.oauth:client_id
+        oauth_client_secret_env: kickside.box.oauth:client_secret
+        oauth_client_id_setting: kickside.box.oauth:client_id
+        oauth_client_secret_setting: kickside.box.oauth:client_secret
+        oauth_use_pkce: false
+        oauth_pkce_method: S256
+        oauth_token_auth_method: client_secret_post
+        oauth_token_body_encoding: form
+        oauth_extra_auth_params: {}
+    default_scopes: []
+    available_scopes: []
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+    key: box
+    title: Box
+    icon: simple-icons:box
+    group: Integrations
+    order: 40
+    namespace: kickside.box.oauth
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.box.oauth
+      title: Box
+      help: OAuth application credentials for Box. Access-token connections do not require these settings.

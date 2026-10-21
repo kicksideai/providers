@@ -1,0 +1,78 @@
+version: '1.0'
+namespace: kickside.notion
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Notion
+      comment: Notion HTTP connection provider with OAuth and separate reader/writer capabilities.
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: '*'
+  - name: dep.kickside.connection
+    kind: ns.dependency
+    component: kickside/connection
+    version: '*'
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '*'
+  - name: dep.kickside.oauth
+    kind: ns.dependency
+    component: kickside/oauth
+    version: '*'
+  - name: dep.kickside.settings
+    kind: ns.dependency
+    component: kickside/settings
+    version: '*'
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+    endpoints:
+      api: https://api.notion.com/v1
+      authorization: https://api.notion.com/v1/oauth/authorize
+      token: https://api.notion.com/v1/oauth/token
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Host supplied endpoint api.
+      description: Host supplied endpoint api.
+    targets:
+      - entry: kickside.notion:endpoints
+        path: .endpoints.api
+    default: https://api.notion.com/v1
+  - name: endpoint_authorization
+    kind: ns.requirement
+    meta:
+      comment: Host supplied endpoint authorization.
+      description: Host supplied endpoint authorization.
+    targets:
+      - entry: kickside.notion:endpoints
+        path: .endpoints.authorization
+      - entry: kickside.notion.oauth:provider
+        path: .connector_contract.context_values.oauth_authorization_endpoint
+    default: https://api.notion.com/v1/oauth/authorize
+  - name: endpoint_token
+    kind: ns.requirement
+    meta:
+      comment: Host supplied endpoint token.
+      description: Host supplied endpoint token.
+    targets:
+      - entry: kickside.notion:endpoints
+        path: .endpoints.token
+      - entry: kickside.notion.oauth:provider
+        path: .connector_contract.context_values.oauth_token_endpoint
+    default: https://api.notion.com/v1/oauth/token
+  - name: env_storage
+    kind: ns.requirement
+    meta:
+      comment: Host supplied env storage.
+      description: Host supplied env storage.
+    targets:
+      - entry: kickside.notion.oauth:client_id
+        path: .storage
+      - entry: kickside.notion.oauth:client_secret
+        path: .storage

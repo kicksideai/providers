@@ -1,0 +1,2781 @@
+version: '1.0'
+namespace: kickside.box.traits
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Box Reader
+      public: true
+      comment: Read Box resources through a selected connection.
+      icon: simple-icons:box
+      tags:
+        - box
+        - read
+      provider: box
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use BoxRead for Box. Actions: get_me, get_file, get_folder, list_folder_items, search, download_file,
+      get_download_url, list_file_versions, list_file_comments, list_file_collaborations, list_folder_collaborations,
+      get_collaboration, list_collections, list_collection_items, list_trash, get_trashed_file, get_trashed_folder,
+      list_file_metadata, get_file_metadata, list_events, list_tasks, get_task, list_task_assignments, list_webhooks,
+      get_webhook, get_upload_session, list_upload_session_parts. Pass action-specific params. Follow next_cursor
+      using the provider cursor parameter. Select the account on this capability. Use the writer capability for
+      changes.'
+    tools:
+      - kickside.box.traits:read_tool
+  - name: read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Box Read
+      llm_alias: BoxRead
+      llm_description: Read Box using named API operations. params is validated separately for each action. Responses
+        include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "get_me",
+                "get_file",
+                "get_folder",
+                "list_folder_items",
+                "search",
+                "download_file",
+                "get_download_url",
+                "list_file_versions",
+                "list_file_comments",
+                "list_file_collaborations",
+                "list_folder_collaborations",
+                "get_collaboration",
+                "list_collections",
+                "list_collection_items",
+                "list_trash",
+                "get_trashed_file",
+                "get_trashed_folder",
+                "list_file_metadata",
+                "get_file_metadata",
+                "list_events",
+                "list_tasks",
+                "get_task",
+                "list_task_assignments",
+                "list_webhooks",
+                "get_webhook",
+                "get_upload_session",
+                "list_upload_session_parts"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_me"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_folder_items"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "marker": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "usemarker": {
+                      "type": "boolean"
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "search"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "file",
+                        "folder",
+                        "web_link"
+                      ]
+                    },
+                    "ancestor_folder_ids": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_extensions": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "content_types": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 200
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sort": {
+                      "type": "string",
+                      "enum": [
+                        "modified_at",
+                        "relevance"
+                      ]
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "ASC",
+                        "DESC"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "query"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "download_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_download_url"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "string",
+                      "enum": [
+                        "download_url"
+                      ]
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_file_versions"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_file_comments"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_file_collaborations"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "marker": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_folder_collaborations"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "marker": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_collaboration"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "collaboration_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "collaboration_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_collections"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_collection_items"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "collection_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "collection_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_trash"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "marker": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "usemarker": {
+                      "type": "boolean"
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_trashed_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_trashed_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_file_metadata"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_file_metadata"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "template_key": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "scope",
+                    "template_key"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_events"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "stream_position": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "stream_type": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 500
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_tasks"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_task"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "task_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "task_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_task_assignments"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "task_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "task_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_webhooks"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "marker": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_webhook"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "webhook_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "webhook_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "upload_session_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "upload_session_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_upload_session_parts"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    },
+                    "upload_session_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "upload_session_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://read_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.box.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Box Writer
+      public: true
+      comment: Modify Box resources through a selected connection.
+      icon: simple-icons:box
+      tags:
+        - box
+        - write
+      provider: box
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use BoxWrite for Box. Actions: create_folder, update_file, copy_file, delete_file, restore_file, update_folder,
+      copy_folder, delete_folder, restore_folder, upload_file, upload_file_version, create_comment, update_comment,
+      delete_comment, create_collaboration, update_collaboration, delete_collaboration, create_file_metadata, update_file_metadata,
+      delete_file_metadata, create_task, update_task, delete_task, create_task_assignment, update_task_assignment,
+      delete_task_assignment, create_webhook, update_webhook, delete_webhook, create_upload_session, create_file_version_upload_session,
+      upload_session_part, commit_upload_session, abort_upload_session, remove_file_shared_link, remove_folder_shared_link.
+      Pass action-specific params. Follow next_cursor using the provider cursor parameter. Select the account on
+      this capability. Confirm the intended target before destructive changes.'
+    tools:
+      - kickside.box.traits:write_tool
+  - name: write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Box Write
+      llm_alias: BoxWrite
+      llm_description: Write Box using named API operations. params is validated separately for each action. Responses
+        include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create_folder",
+                "update_file",
+                "copy_file",
+                "delete_file",
+                "restore_file",
+                "update_folder",
+                "copy_folder",
+                "delete_folder",
+                "restore_folder",
+                "upload_file",
+                "upload_file_version",
+                "create_comment",
+                "update_comment",
+                "delete_comment",
+                "create_collaboration",
+                "update_collaboration",
+                "delete_collaboration",
+                "create_file_metadata",
+                "update_file_metadata",
+                "delete_file_metadata",
+                "create_task",
+                "update_task",
+                "delete_task",
+                "create_task_assignment",
+                "update_task_assignment",
+                "delete_task_assignment",
+                "create_webhook",
+                "update_webhook",
+                "delete_webhook",
+                "create_upload_session",
+                "create_file_version_upload_session",
+                "upload_session_part",
+                "commit_upload_session",
+                "abort_upload_session",
+                "remove_file_shared_link",
+                "remove_folder_shared_link"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "parent": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "parent"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "parent": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "shared_link": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 100
+                    },
+                    "collections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      "maxItems": 100
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "if_match": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "copy_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "parent": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "parent"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "if_match": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "restore_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "parent": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "parent": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "shared_link": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 100
+                    },
+                    "collections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      "maxItems": 100
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "if_match": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "copy_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "parent": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id",
+                    "parent"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "recursive": {
+                      "type": "boolean"
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "if_match": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "restore_folder"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "parent": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "fields": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "upload_file"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "parent_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "content_base64": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "parent_id",
+                    "content_base64"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "upload_file_version"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "content_base64": {
+                      "type": "string"
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "if_match": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "content_base64"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "comment"
+                          ]
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "tagged_message": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "comment_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "comment_id",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "comment_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "comment_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_collaboration"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "accessible_by": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "editor",
+                        "viewer",
+                        "previewer",
+                        "uploader",
+                        "previewer uploader",
+                        "viewer uploader",
+                        "co-owner"
+                      ]
+                    },
+                    "can_view_path": {
+                      "type": "boolean"
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "accessible_by",
+                    "role"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_collaboration"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "accepted",
+                        "pending",
+                        "rejected"
+                      ]
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "collaboration_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "collaboration_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_collaboration"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "collaboration_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "collaboration_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_file_metadata"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "template_key": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "scope",
+                    "template_key",
+                    "metadata"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_file_metadata"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "operations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "add",
+                              "replace",
+                              "remove",
+                              "test",
+                              "move",
+                              "copy"
+                            ]
+                          },
+                          "path": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "from": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "value": {}
+                        },
+                        "required": [
+                          "op",
+                          "path"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 100
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "template_key": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "scope",
+                    "template_key",
+                    "operations"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_file_metadata"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "template_key": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "scope",
+                    "template_key"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_task"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "file"
+                          ]
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "review",
+                        "complete"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "due_at": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "completion_rule": {
+                      "type": "string",
+                      "enum": [
+                        "all_assignees",
+                        "any_assignee"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "item"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_task"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "review",
+                        "complete"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "due_at": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "completion_rule": {
+                      "type": "string",
+                      "enum": [
+                        "all_assignees",
+                        "any_assignee"
+                      ]
+                    },
+                    "task_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "task_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_task"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "task_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "task_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_task_assignment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "task": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "assign_to": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "login": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "task",
+                    "assign_to"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_task_assignment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "resolution_state": {
+                      "type": "string",
+                      "enum": [
+                        "completed",
+                        "incomplete",
+                        "approved",
+                        "rejected"
+                      ]
+                    },
+                    "task_assignment_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "task_assignment_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_task_assignment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "task_assignment_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "task_assignment_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_webhook"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "target": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "address": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "triggers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 100
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "address",
+                    "triggers"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_webhook"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "target": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "address": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "triggers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 100
+                    },
+                    "webhook_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "webhook_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_webhook"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "webhook_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "webhook_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_size": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "file_name": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id",
+                    "file_size",
+                    "file_name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_file_version_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "file_size": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "file_name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "file_size"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "upload_session_part"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "total_size": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content_base64": {
+                      "type": "string"
+                    },
+                    "upload_session_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "upload_session_id",
+                    "offset",
+                    "total_size",
+                    "content_base64"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "commit_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "parts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "part_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "size": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "sha1": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "part_id",
+                          "offset",
+                          "size",
+                          "sha1"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 10000
+                    },
+                    "sha1_base64": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "upload_session_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "upload_session_id",
+                    "parts",
+                    "sha1_base64"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "abort_upload_session"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "upload_session_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "upload_session_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "remove_file_shared_link"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "file_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "remove_folder_shared_link"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "folder_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "folder_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://write_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.box.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result

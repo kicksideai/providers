@@ -1,0 +1,112 @@
+version: '1.0'
+namespace: kickside.airtable.oauth
+entries:
+  - name: client_id
+    kind: env.variable
+    variable: AIRTABLE_CLIENT_ID
+    meta:
+      comment: Airtable OAuth client id.
+  - name: setting_client_id
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.airtable.oauth
+    key: client_id
+    value_type: secret
+    default: ''
+    description: Airtable OAuth client id.
+    scope: global
+    editable: true
+  - name: client_secret
+    kind: env.variable
+    variable: AIRTABLE_CLIENT_SECRET
+    meta:
+      comment: Airtable OAuth client secret.
+  - name: setting_client_secret
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.airtable.oauth
+    key: client_secret
+    value_type: secret
+    default: ''
+    description: Airtable OAuth client secret.
+    scope: global
+    editable: true
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: component
+      title: Airtable
+      comment: Authorize Airtable with OAuth.
+      group: Productivity
+      tags:
+        - airtable
+        - oauth
+      class:
+        - connection
+        - oauth_connection
+      component:
+        icon: simple-icons:airtable
+      oauth_provider: airtable
+    description: Connect Airtable with OAuth.
+    component_contract_id: kickside.oauth:oauth_connection
+    connector_contract:
+      implementation_id: kickside.oauth:base_connector
+      context_values:
+        oauth_authorization_endpoint: https://airtable.com/oauth2/v1/authorize
+        oauth_token_endpoint: https://airtable.com/oauth2/v1/token
+        oauth_client_id_env: kickside.airtable.oauth:client_id
+        oauth_client_secret_env: kickside.airtable.oauth:client_secret
+        oauth_client_id_setting: kickside.airtable.oauth:client_id
+        oauth_client_secret_setting: kickside.airtable.oauth:client_secret
+        oauth_use_pkce: true
+        oauth_pkce_method: S256
+        oauth_token_auth_method: client_secret_basic
+        oauth_token_body_encoding: form
+        oauth_extra_auth_params: {}
+    default_scopes:
+      - data.records:read
+      - data.records:write
+      - schema.bases:read
+      - schema.bases:write
+      - data.recordComments:read
+      - data.recordComments:write
+      - webhook:manage
+    available_scopes:
+      - name: data.records:read
+        description: data.records:read
+        scope: data.records:read
+      - name: data.records:write
+        description: data.records:write
+        scope: data.records:write
+      - name: schema.bases:read
+        description: schema.bases:read
+        scope: schema.bases:read
+      - name: schema.bases:write
+        description: schema.bases:write
+        scope: schema.bases:write
+      - name: data.recordComments:read
+        description: data.recordComments:read
+        scope: data.recordComments:read
+      - name: data.recordComments:write
+        description: data.recordComments:write
+        scope: data.recordComments:write
+      - name: webhook:manage
+        description: webhook:manage
+        scope: webhook:manage
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+    key: airtable
+    title: Airtable
+    icon: simple-icons:airtable
+    group: Integrations
+    order: 40
+    namespace: kickside.airtable.oauth
+    component_tag: kickside-settings-provider
+    config:
+      namespace: kickside.airtable.oauth
+      title: Airtable
+      help: OAuth application credentials for Airtable. Access-token connections do not require these settings.

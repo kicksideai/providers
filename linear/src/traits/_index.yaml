@@ -1,0 +1,2474 @@
+version: '1.0'
+namespace: kickside.linear.traits
+entries:
+  - name: reader
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Linear Reader
+      public: true
+      comment: Read Linear resources through a selected connection.
+      icon: simple-icons:linear
+      tags:
+        - linear
+        - read
+      provider: linear
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use LinearRead for Linear. Actions: get_viewer, list_issues, get_issue, list_teams, get_team, list_users,
+      get_user, list_projects, get_project, list_cycles, get_cycle, list_comments, get_comment, list_documents,
+      get_document, list_labels, get_label, list_workflow_states, get_workflow_state, search_issues. Pass action-specific
+      params. Follow next_cursor using the provider cursor parameter. Select the account on this capability. Use
+      the writer capability for changes.'
+    tools:
+      - kickside.linear.traits:read_tool
+  - name: read_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Linear Read
+      llm_alias: LinearRead
+      llm_description: Read Linear using named API operations. params is validated separately for each action. Responses
+        include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "get_viewer",
+                "list_issues",
+                "get_issue",
+                "list_teams",
+                "get_team",
+                "list_users",
+                "get_user",
+                "list_projects",
+                "get_project",
+                "list_cycles",
+                "get_cycle",
+                "list_comments",
+                "get_comment",
+                "list_documents",
+                "get_document",
+                "list_labels",
+                "get_label",
+                "list_workflow_states",
+                "get_workflow_state",
+                "search_issues"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_viewer"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {},
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_issues"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_issue"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_teams"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_team"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_users"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_user"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_projects"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_project"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_cycles"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_cycle"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_comments"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_documents"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_document"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_labels"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_label"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "list_workflow_states"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "filter": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "get_workflow_state"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "search_issues"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "first": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "after": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "includeArchived": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "query"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://read_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.linear.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result
+  - name: writer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Linear Writer
+      public: true
+      comment: Modify Linear resources through a selected connection.
+      icon: simple-icons:linear
+      tags:
+        - linear
+        - write
+      provider: linear
+      web_component: kickside-connection-trait-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+        additionalProperties: false
+    prompt: 'Use LinearWrite for Linear. Actions: create_issue, update_issue, create_project, update_project, create_cycle,
+      update_cycle, create_comment, update_comment, create_document, update_document, create_label, update_label,
+      archive_issue, unarchive_issue, delete_issue, archive_project, unarchive_project, delete_project, delete_comment,
+      delete_document, delete_label, delete_issueRelation, create_issue_relation. Pass action-specific params. Follow
+      next_cursor using the provider cursor parameter. Select the account on this capability. Confirm the intended
+      target before destructive changes.'
+    tools:
+      - kickside.linear.traits:write_tool
+  - name: write_tool
+    kind: function.lua
+    meta:
+      type: tool
+      title: Linear Write
+      llm_alias: LinearWrite
+      llm_description: Write Linear using named API operations. params is validated separately for each action.
+        Responses include success, data and available pagination cursors. File content uses base64.
+      mcp:
+        required_scopes:
+          - state.read
+          - state.write
+      input_schema: |-
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create_issue",
+                "update_issue",
+                "create_project",
+                "update_project",
+                "create_cycle",
+                "update_cycle",
+                "create_comment",
+                "update_comment",
+                "create_document",
+                "update_document",
+                "create_label",
+                "update_label",
+                "archive_issue",
+                "unarchive_issue",
+                "delete_issue",
+                "archive_project",
+                "unarchive_project",
+                "delete_project",
+                "delete_comment",
+                "delete_document",
+                "delete_label",
+                "delete_issueRelation",
+                "create_issue_relation"
+              ]
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action",
+            "params"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_issue"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "assigneeId": {
+                          "type": "string"
+                        },
+                        "completedAt": {
+                          "type": "string"
+                        },
+                        "createAsUser": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "cycleId": {
+                          "type": "string"
+                        },
+                        "delegateId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "descriptionData": {},
+                        "displayIconUrl": {
+                          "type": "string"
+                        },
+                        "dueDate": {
+                          "type": "string"
+                        },
+                        "estimate": {
+                          "type": "integer",
+                          "minimum": -2147483648,
+                          "maximum": 2147483647
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "inheritsSharedAccess": {
+                          "type": "boolean"
+                        },
+                        "labelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "lastAppliedTemplateId": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "preserveSortOrderOnCreate": {
+                          "type": "boolean"
+                        },
+                        "priority": {
+                          "type": "integer",
+                          "minimum": -2147483648,
+                          "maximum": 2147483647
+                        },
+                        "prioritySortOrder": {
+                          "type": "number"
+                        },
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "projectMilestoneId": {
+                          "type": "string"
+                        },
+                        "referenceCommentId": {
+                          "type": "string"
+                        },
+                        "releaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "slaBreachesAt": {
+                          "type": "string"
+                        },
+                        "slaStartedAt": {
+                          "type": "string"
+                        },
+                        "slaType": {
+                          "type": "string",
+                          "enum": [
+                            "all",
+                            "onlyBusinessDays"
+                          ]
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "sourceCommentId": {
+                          "type": "string"
+                        },
+                        "sourcePullRequestCommentId": {
+                          "type": "string"
+                        },
+                        "stateId": {
+                          "type": "string"
+                        },
+                        "subIssueSortOrder": {
+                          "type": "number"
+                        },
+                        "subscriberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "teamId": {
+                          "type": "string"
+                        },
+                        "templateId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "useDefaultTemplate": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "teamId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_issue"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "addedLabelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "addedReleaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "assigneeId": {
+                          "type": "string"
+                        },
+                        "autoClosedByParentClosing": {
+                          "type": "boolean"
+                        },
+                        "cycleId": {
+                          "type": "string"
+                        },
+                        "delegateId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "descriptionData": {},
+                        "dueDate": {
+                          "type": "string"
+                        },
+                        "estimate": {
+                          "type": "integer",
+                          "minimum": -2147483648,
+                          "maximum": 2147483647
+                        },
+                        "inheritsSharedAccess": {
+                          "type": "boolean"
+                        },
+                        "labelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "lastAppliedTemplateId": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "priority": {
+                          "type": "integer",
+                          "minimum": -2147483648,
+                          "maximum": 2147483647
+                        },
+                        "prioritySortOrder": {
+                          "type": "number"
+                        },
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "projectMilestoneId": {
+                          "type": "string"
+                        },
+                        "releaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "removedLabelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "removedReleaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "slaBreachesAt": {
+                          "type": "string"
+                        },
+                        "slaStartedAt": {
+                          "type": "string"
+                        },
+                        "slaType": {
+                          "type": "string",
+                          "enum": [
+                            "all",
+                            "onlyBusinessDays"
+                          ]
+                        },
+                        "snoozedById": {
+                          "type": "string"
+                        },
+                        "snoozedUntilAt": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "stateId": {
+                          "type": "string"
+                        },
+                        "subIssueSortOrder": {
+                          "type": "number"
+                        },
+                        "subscriberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "teamId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "trashed": {
+                          "type": "boolean"
+                        },
+                        "trusted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clear_fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "teamId",
+                          "description",
+                          "assigneeId",
+                          "stateId",
+                          "projectId",
+                          "cycleId",
+                          "estimate",
+                          "dueDate",
+                          "parentId"
+                        ]
+                      },
+                      "minItems": 1,
+                      "maxItems": 9
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_project"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "color": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "convertedFromIssueId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "icon": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "labelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "lastAppliedTemplateId": {
+                          "type": "string"
+                        },
+                        "leadId": {
+                          "type": "string"
+                        },
+                        "leadTeamId": {
+                          "type": "string"
+                        },
+                        "memberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "priority": {
+                          "type": "integer",
+                          "minimum": -2147483648,
+                          "maximum": 2147483647
+                        },
+                        "prioritySortOrder": {
+                          "type": "number"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "startDate": {
+                          "type": "string"
+                        },
+                        "startDateResolution": {
+                          "type": "string",
+                          "enum": [
+                            "halfYear",
+                            "month",
+                            "quarter",
+                            "year"
+                          ]
+                        },
+                        "statusId": {
+                          "type": "string"
+                        },
+                        "targetDate": {
+                          "type": "string"
+                        },
+                        "targetDateResolution": {
+                          "type": "string",
+                          "enum": [
+                            "halfYear",
+                            "month",
+                            "quarter",
+                            "year"
+                          ]
+                        },
+                        "teamIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "templateId": {
+                          "type": "string"
+                        },
+                        "useDefaultTemplate": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "teamIds"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_project"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "canceledAt": {
+                          "type": "string"
+                        },
+                        "color": {
+                          "type": "string"
+                        },
+                        "completedAt": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "convertedFromIssueId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "frequencyResolution": {
+                          "type": "string",
+                          "enum": [
+                            "daily",
+                            "weekly"
+                          ]
+                        },
+                        "icon": {
+                          "type": "string"
+                        },
+                        "labelIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "lastAppliedTemplateId": {
+                          "type": "string"
+                        },
+                        "leadId": {
+                          "type": "string"
+                        },
+                        "leadTeamId": {
+                          "type": "string"
+                        },
+                        "memberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "priority": {
+                          "type": "integer",
+                          "minimum": -2147483648,
+                          "maximum": 2147483647
+                        },
+                        "prioritySortOrder": {
+                          "type": "number"
+                        },
+                        "projectUpdateRemindersPausedUntilAt": {
+                          "type": "string"
+                        },
+                        "slackIssueComments": {
+                          "type": "boolean"
+                        },
+                        "slackIssueStatuses": {
+                          "type": "boolean"
+                        },
+                        "slackNewIssue": {
+                          "type": "boolean"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "startDate": {
+                          "type": "string"
+                        },
+                        "startDateResolution": {
+                          "type": "string",
+                          "enum": [
+                            "halfYear",
+                            "month",
+                            "quarter",
+                            "year"
+                          ]
+                        },
+                        "statusId": {
+                          "type": "string"
+                        },
+                        "targetDate": {
+                          "type": "string"
+                        },
+                        "targetDateResolution": {
+                          "type": "string",
+                          "enum": [
+                            "halfYear",
+                            "month",
+                            "quarter",
+                            "year"
+                          ]
+                        },
+                        "teamIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "trashed": {
+                          "type": "boolean"
+                        },
+                        "updateReminderFrequency": {
+                          "type": "number"
+                        },
+                        "updateReminderFrequencyInWeeks": {
+                          "type": "number"
+                        },
+                        "updateRemindersDay": {
+                          "type": "string",
+                          "enum": [
+                            "Friday",
+                            "Monday",
+                            "Saturday",
+                            "Sunday",
+                            "Thursday",
+                            "Tuesday",
+                            "Wednesday"
+                          ]
+                        },
+                        "updateRemindersHour": {
+                          "type": "integer",
+                          "minimum": -2147483648,
+                          "maximum": 2147483647
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clear_fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "description",
+                          "leadId",
+                          "startDate",
+                          "targetDate",
+                          "icon",
+                          "color"
+                        ]
+                      },
+                      "minItems": 1,
+                      "maxItems": 6
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_cycle"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "completedAt": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "endsAt": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "startsAt": {
+                          "type": "string"
+                        },
+                        "teamId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "endsAt",
+                        "startsAt",
+                        "teamId"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_cycle"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "completedAt": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "endsAt": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "startsAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clear_fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "description"
+                        ]
+                      },
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "body": {
+                          "type": "string"
+                        },
+                        "bodyData": {},
+                        "createAsUser": {
+                          "type": "string"
+                        },
+                        "createOnSyncedSlackThread": {
+                          "type": "boolean"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "displayIconUrl": {
+                          "type": "string"
+                        },
+                        "doNotSubscribeToIssue": {
+                          "type": "boolean"
+                        },
+                        "documentContentId": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "initiativeId": {
+                          "type": "string"
+                        },
+                        "initiativeUpdateId": {
+                          "type": "string"
+                        },
+                        "issueId": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "postId": {
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "projectUpdateId": {
+                          "type": "string"
+                        },
+                        "quotedText": {
+                          "type": "string"
+                        },
+                        "subscriberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "body": {
+                          "type": "string"
+                        },
+                        "bodyData": {},
+                        "doNotSubscribeToIssue": {
+                          "type": "boolean"
+                        },
+                        "quotedText": {
+                          "type": "string"
+                        },
+                        "resolvingCommentId": {
+                          "type": "string"
+                        },
+                        "resolvingUserId": {
+                          "type": "string"
+                        },
+                        "subscriberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clear_fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": []
+                      },
+                      "minItems": 1,
+                      "maxItems": 0
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_document"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "color": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "cycleId": {
+                          "type": "string"
+                        },
+                        "icon": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "initiativeId": {
+                          "type": "string"
+                        },
+                        "issueId": {
+                          "type": "string"
+                        },
+                        "lastAppliedTemplateId": {
+                          "type": "string"
+                        },
+                        "ownerId": {
+                          "type": "string"
+                        },
+                        "parentDocumentId": {
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "releaseId": {
+                          "type": "string"
+                        },
+                        "resourceFolderId": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "subDocumentSortOrder": {
+                          "type": "number"
+                        },
+                        "subscriberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "teamId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_document"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "color": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "cycleId": {
+                          "type": "string"
+                        },
+                        "hiddenAt": {
+                          "type": "string"
+                        },
+                        "icon": {
+                          "type": "string"
+                        },
+                        "initiativeId": {
+                          "type": "string"
+                        },
+                        "issueId": {
+                          "type": "string"
+                        },
+                        "lastAppliedTemplateId": {
+                          "type": "string"
+                        },
+                        "ownerId": {
+                          "type": "string"
+                        },
+                        "parentDocumentId": {
+                          "type": "string"
+                        },
+                        "personalUserId": {
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "releaseId": {
+                          "type": "string"
+                        },
+                        "resourceFolderId": {
+                          "type": "string"
+                        },
+                        "sortOrder": {
+                          "type": "number"
+                        },
+                        "subDocumentSortOrder": {
+                          "type": "number"
+                        },
+                        "subscriberIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 100
+                        },
+                        "teamId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "trashed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clear_fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "projectId",
+                          "issueId",
+                          "icon",
+                          "color"
+                        ]
+                      },
+                      "minItems": 1,
+                      "maxItems": 4
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_label"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "color": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "groupType": {
+                          "type": "string",
+                          "enum": [
+                            "multiSelect",
+                            "singleSelect"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "isGroup": {
+                          "type": "boolean"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "retiredAt": {
+                          "type": "string"
+                        },
+                        "teamId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "update_label"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "color": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "groupType": {
+                          "type": "string",
+                          "enum": [
+                            "multiSelect",
+                            "singleSelect"
+                          ]
+                        },
+                        "isGroup": {
+                          "type": "boolean"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "retiredAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clear_fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "description",
+                          "color",
+                          "parentId"
+                        ]
+                      },
+                      "minItems": 1,
+                      "maxItems": 3
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "archive_issue"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "unarchive_issue"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_issue"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "archive_project"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "unarchive_project"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_project"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_comment"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_document"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_label"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "delete_issueRelation"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create_issue_relation"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "issueId": {
+                          "type": "string"
+                        },
+                        "relatedIssueId": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "blocks",
+                            "duplicate",
+                            "related",
+                            "similar"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "issueId",
+                        "relatedIssueId",
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "action",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      output_schema: '{"type": "object", "properties": {"success": {"type": "boolean"}, "data": {}, "error": {"type":
+        "string"}, "status_code": {"type": "integer"}, "next_cursor": {"type": "string"}, "has_more": {"type": "boolean"},
+        "retry_after_ms": {"type": "integer"}}, "required": ["success"]}'
+    source: file://write_tool.lua
+    method: handler
+    modules:
+      - ctx
+    imports:
+      service: kickside.linear.client:service
+      types: kickside.connection.client:types
+      tool_result: kickside.contract:tool_result

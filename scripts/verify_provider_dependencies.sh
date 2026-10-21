@@ -61,6 +61,11 @@ verify_module() {
 
 # Registry namespaces are not Hub package identities. In particular,
 # kickside.data:* is published by kickside/contract.
+verify_module notion kickside/component kickside/connection kickside/contract kickside/oauth kickside/settings
+verify_module linear kickside/component kickside/connection kickside/contract kickside/oauth kickside/settings
+verify_module airtable kickside/component kickside/connection kickside/contract kickside/oauth kickside/settings
+verify_module dropbox kickside/component kickside/connection kickside/contract kickside/oauth kickside/settings
+verify_module box kickside/component kickside/connection kickside/contract kickside/oauth kickside/settings
 verify_module atlassian kickside/component kickside/connection kickside/contract kickside/oauth kickside/settings
 verify_module github kickside/component kickside/connection kickside/contract kickside/oauth kickside/settings
 verify_module gitlab kickside/component kickside/connection kickside/contract
@@ -101,4 +106,4 @@ if [[ "$failed" != 0 ]]; then
   exit 1
 fi
 
-printf 'provider dependency declarations verified (19 modules)\n'
+printf 'provider dependency declarations verified (24 modules)\n'

@@ -16,3 +16,5 @@ Install the package you need through **System → Modules** in KickSide, then co
 License: [KickSide Community License 1.0](LICENSE.md) · [Third-party notices](THIRD_PARTY_NOTICES.md).
 
 [Documentation](https://github.com/kicksideai/docs) · [KickSide](https://kickside.ai)
+
+Native productivity and storage drivers: [Notion](notion), [Linear](linear), [Airtable](airtable), [Dropbox](dropbox), and [Box](box). Each supports OAuth and access-token connections, separate reader/writer traits, provider-native pagination, and deterministic HTTP fixtures. These adapters run through Wippy HTTP without host CLI dependencies.

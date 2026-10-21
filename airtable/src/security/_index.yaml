@@ -1,0 +1,55 @@
+version: '1.0'
+namespace: kickside.airtable.security
+entries:
+  - name: module_access
+    kind: security.policy
+    meta:
+      title: Airtable
+      surface: kickside.airtable
+      intent: module_access
+      includes:
+        - kickside.airtable.security:module_runtime
+    groups: []
+    policy:
+      resources:
+        - kickside.airtable:*
+        - kickside.airtable.client:*
+        - kickside.airtable.connection:*
+        - kickside.airtable.oauth:*
+        - kickside.airtable.traits:*
+        - kickside.airtable.security:*
+      actions:
+        - registry.get
+        - registry.find
+        - contract.get
+        - contract.open
+        - contract.call
+        - contract.implementations
+        - contract.security
+        - funcs.call
+        - funcs.security
+      effect: allow
+  - name: module_runtime
+    kind: security.policy
+    meta:
+      private: true
+    groups: []
+    policy:
+      resources:
+        - kickside.airtable:*
+        - kickside.airtable.client:*
+        - kickside.airtable.connection:*
+        - kickside.airtable.oauth:*
+        - kickside.airtable.traits:*
+        - kickside.airtable.security:*
+      actions:
+        - registry.get
+        - registry.find
+        - contract.get
+        - contract.open
+        - contract.call
+        - contract.implementations
+        - contract.security
+        - funcs.call
+        - funcs.security
+      effect: allow

@@ -1,0 +1,88 @@
+version: '1.0'
+namespace: kickside.box
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Box
+      comment: Box HTTP connection provider with OAuth and separate reader/writer capabilities.
+  - name: dep.kickside.component
+    kind: ns.dependency
+    component: kickside/component
+    version: '*'
+  - name: dep.kickside.connection
+    kind: ns.dependency
+    component: kickside/connection
+    version: '*'
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '*'
+  - name: dep.kickside.oauth
+    kind: ns.dependency
+    component: kickside/oauth
+    version: '*'
+  - name: dep.kickside.settings
+    kind: ns.dependency
+    component: kickside/settings
+    version: '*'
+  - name: endpoints
+    kind: registry.entry
+    meta:
+      type: kickside.connection:endpoints
+    endpoints:
+      api: https://api.box.com/2.0
+      upload: https://upload.box.com/api/2.0
+      authorization: https://account.box.com/api/oauth2/authorize
+      token: https://api.box.com/oauth2/token
+  - name: endpoint_api
+    kind: ns.requirement
+    meta:
+      comment: Host supplied endpoint api.
+      description: Host supplied endpoint api.
+    targets:
+      - entry: kickside.box:endpoints
+        path: .endpoints.api
+    default: https://api.box.com/2.0
+  - name: endpoint_upload
+    kind: ns.requirement
+    meta:
+      comment: Host supplied endpoint upload.
+      description: Host supplied endpoint upload.
+    targets:
+      - entry: kickside.box:endpoints
+        path: .endpoints.upload
+    default: https://upload.box.com/api/2.0
+  - name: endpoint_authorization
+    kind: ns.requirement
+    meta:
+      comment: Host supplied endpoint authorization.
+      description: Host supplied endpoint authorization.
+    targets:
+      - entry: kickside.box:endpoints
+        path: .endpoints.authorization
+      - entry: kickside.box.oauth:provider
+        path: .connector_contract.context_values.oauth_authorization_endpoint
+    default: https://account.box.com/api/oauth2/authorize
+  - name: endpoint_token
+    kind: ns.requirement
+    meta:
+      comment: Host supplied endpoint token.
+      description: Host supplied endpoint token.
+    targets:
+      - entry: kickside.box:endpoints
+        path: .endpoints.token
+      - entry: kickside.box.oauth:provider
+        path: .connector_contract.context_values.oauth_token_endpoint
+    default: https://api.box.com/oauth2/token
+  - name: env_storage
+    kind: ns.requirement
+    meta:
+      comment: Host supplied env storage.
+      description: Host supplied env storage.
+    targets:
+      - entry: kickside.box.oauth:client_id
+        path: .storage
+      - entry: kickside.box.oauth:client_secret
+        path: .storage

@@ -1,0 +1,18 @@
+version: '1.0'
+namespace: kickside.linear.client
+entries:
+  - name: config
+    kind: library.lua
+    source: file://config.lua
+    modules:
+      - json
+    imports:
+      endpoints: kickside.connection:endpoints
+      types: kickside.connection.client:types
+  - name: service
+    kind: library.lua
+    source: file://service.lua
+    imports:
+      driver: kickside.connection.client:driver
+      config: kickside.linear.client:config
+      types: kickside.connection.client:types
