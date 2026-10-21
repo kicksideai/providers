@@ -13,7 +13,7 @@ entries:
       comment: Brave search provider for WebScout — trait search plus the typed Research Source.
 
   - name: dep.kickside.webscout
-    version: '*'
+    version: '>=0.1.32'
     kind: ns.dependency
     meta:
       comment: Supplies the provider protocol, the HTTP client and the transport defaults.
