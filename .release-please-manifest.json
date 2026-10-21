@@ -23,5 +23,10 @@
   "telegram": "0.2.4",
   "webscout": "0.1.33",
   "webscout-brave": "0.1.5",
-  "webscout-tavily": "0.1.4"
+  "webscout-tavily": "0.1.4",
+  "notion": "0.1.0",
+  "linear": "0.1.0",
+  "airtable": "0.1.0",
+  "dropbox": "0.1.0",
+  "box": "0.1.0"
 }
