@@ -38,6 +38,16 @@ local function cases()
             local result, err = service.new(deps).run("upload_file", {path = "/x", content_base64 = "not!base64"}, nil, true)
             test.is_nil(result); test.is_true(errors.is(err, errors.INVALID)); test.eq(state.writes, 0); state.done()
         end)
+        test.it("escapes Unicode paths in Dropbox's ASCII-only argument header", function()
+            local deps, state = fixture.new("dropbox", {{method = "POST", url = "https://content.dropboxapi.com/2/files/upload",
+                reply = {id = "unicode"}, check = function(o)
+                    local header = o.headers["Dropbox-API-Arg"]
+                    test.is_nil(header:find("[\128-\255]"))
+                    test.eq(json.decode(header).path, "/报告🚀.txt")
+                end}})
+            local result, err = service.new(deps).run("upload_file", {path = "/报告🚀.txt", content_base64 = "aGk="}, nil, true)
+            test.is_nil(err); test.eq(result.success, true); state.done()
+        end)
     end)
 end
 return {run = test.run_cases(cases)}
