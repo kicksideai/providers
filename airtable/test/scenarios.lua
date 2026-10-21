@@ -36,6 +36,12 @@ local function cases()
             local result, err = service.new(deps).run("clear_record_fields", {base_id = "app1", table_id = "tbl1", record_id = "rec1", clear_fields = {"Assignee", "Due"}}, nil, true)
             test.is_nil(err); test.eq(result.success, true); state.done()
         end)
+        test.it("keeps webhook MAC credentials out of the agent result", function()
+            local deps, state = fixture.new("airtable", {{method = "POST", url = "https://api.airtable.com/v0/bases/app1/webhooks",
+                reply = {id = "ach1", macSecretBase64 = "fixture-signing-secret", expirationTime = "2026-12-01T00:00:00Z"}}})
+            local result, err = service.new(deps).run("create_webhook", {base_id = "app1", specification = {options = {filters = {dataTypes = {"tableData"}}}}}, nil, true)
+            test.is_nil(err); test.eq(result.data.id, "ach1"); test.is_nil(result.data.macSecretBase64); state.done()
+        end)
     end)
 end
 return {run = test.run_cases(cases)}
