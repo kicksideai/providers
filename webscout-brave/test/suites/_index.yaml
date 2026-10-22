@@ -24,6 +24,7 @@ entries:
       test: wippy.test:test
       search: kickside.webscout.providers.brave:search
       available: kickside.webscout.providers.brave:available
+      dispatcher: kickside.webscout.traits:search
 
   - name: source_test
     kind: function.lua
