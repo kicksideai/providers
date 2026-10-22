@@ -1,5 +1,6 @@
 local test = require("test")
 local fixture = require("fixture")
+local json = require("json")
 
 local function values(items: { any }): { [string]: any }
     local out = {}
@@ -316,6 +317,20 @@ local function define_tests()
             local id, err = fixture.op(user, "resolve_memory", { context = context })
             test.is_nil(err, tostring(err))
             test.eq(id, memory)
+        end)
+
+        test.it("compiles an agent mounting the trait with its lifecycle, after_persist and checkpoint behavior", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local compiled, err = fixture.op(user, "compile", { spec = {
+                id = "agent-compiled", name = "compiled", prompt = "You plan trips.", model = "test-fast",
+                traits = { { id = "kickside.memory:knowledge_based_memory", context = { memory_id = memory } } },
+            } })
+            test.is_nil(err, tostring(err))
+            local text = json.encode(compiled)
+            test.is_true(text:find("kickside.memory:lifecycle_binding", 1, true) ~= nil, text)
+            test.is_true(text:find("after_persist", 1, true) ~= nil, text)
+            test.is_true(text:find("kickside.memory:checkpoint_binding", 1, true) ~= nil, text)
         end)
 
         test.it("resolves the memory from trait contexts of earlier releases and refuses anything else", function()

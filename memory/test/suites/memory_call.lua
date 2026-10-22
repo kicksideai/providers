@@ -10,6 +10,7 @@ local ledger = require("memory_ledger")
 local jobs = require("memory_jobs")
 local bindings = require("memory_bindings")
 local component = require("component")
+local agent_compiler = require("agent_compiler")
 
 local OPS: { [string]: (any) -> (any, any) } = {
     create = function(a: any) return ops.create(a.component_id, a.fields) end,
@@ -20,6 +21,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
     remember = function(a: any) return writer.remember(a.candidates, a.opts, a.idempotency) end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
     apply = function(a: any) return runtime.apply(a.payload) end,
+    compile = function(a: any) return agent_compiler.compile(a.spec) end,
     resolve_memory = function(a: any)
         local id, _, err = runtime.memory({ context = a.context }, component.ACCESS.READ)
         return id, err

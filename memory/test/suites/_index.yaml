@@ -25,6 +25,7 @@ entries:
       memory_jobs: kickside.memory.engine:jobs
       memory_bindings: kickside.memory.engine:bindings
       component: kickside.component:component
+      agent_compiler: wippy.agent.compiler:compiler
 
   - name: history
     kind: library.lua
@@ -80,6 +81,7 @@ entries:
       timeout: 300s
     source: file://agent_test.lua
     method: run
+    modules: [json]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
