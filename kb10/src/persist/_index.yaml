@@ -23,6 +23,8 @@ entries:
       - sql
       - json
       - registry
+    imports:
+      search_index: kickside.search_index:index
 
   - name: reader
     kind: library.lua
@@ -38,6 +40,7 @@ entries:
     imports:
       kb10_ops: kickside.kb10.persist:ops
       kb10: kickside.kb10:types
+      search_index: kickside.search_index:index
 
   - name: writer
     kind: library.lua
@@ -56,6 +59,7 @@ entries:
       kb10_ops: kickside.kb10.persist:ops
       llm: wippy.llm:llm
       kb10: kickside.kb10:types
+      search_index: kickside.search_index:index
 
   - name: store
     kind: library.lua

@@ -1,0 +1,33 @@
+version: '1.0'
+namespace: app
+entries:
+  - name: db
+    kind: db.sql.sqlite
+    file: ':memory:'
+
+  - name: dep.wippy.test
+    kind: ns.dependency
+    component: wippy/test
+    version: '*'
+
+  - name: dep.kickside.search_index
+    kind: ns.dependency
+    component: kickside/search-index
+    version: '*'
+
+  - name: processes
+    kind: process.host
+    lifecycle:
+      auto_start: true
+
+  - name: index_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: search_index
+    source: file://index_test.lua
+    method: run
+    modules: [sql, uuid]
+    imports:
+      test: wippy.test:test
+      index: kickside.search_index:index

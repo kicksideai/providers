@@ -1,0 +1,4 @@
+organization: kickside
+module: search-index-test
+type: application
+description: Search index primitives against real SQLite and PostgreSQL tables.

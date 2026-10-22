@@ -13,6 +13,7 @@ local time = require("time")
 local uuid = require("uuid")
 local llm = require("llm")
 local ops = require("kb10_ops")
+local search_index = require("search_index")
 local kb10 = require("kb10")
 
 local writer = {}
@@ -66,23 +67,7 @@ local function root_embedding(embedding_model: any, embed_str: string): any?
     return vec.result[1]
 end
 
-local function insert_rows_tx(tx: any, table_name: string, columns: {string}, rows: {any}): any?
-    -- Stay below SQLite's 999-parameter floor and bound each statement's payload.
-    local batch_size = math.min(100, math.floor(999 / #columns))
-    for first = 1, #rows, batch_size do
-        local values: {string} = {}
-        local args: {any} = {}
-        for i = first, math.min(first + batch_size - 1, #rows) do
-            local offset = (i - first) * #columns
-            values[#values + 1] = "(" .. ops.placeholders(#columns, offset + 1) .. ")"
-            for j = 1, #columns do args[offset + j] = rows[i][j] end
-        end
-        local _, err = tx:execute("INSERT INTO " .. table_name .. " (" .. table.concat(columns, ", ") ..
-            ") VALUES " .. table.concat(values, ", "), args)
-        if err then return err end
-    end
-    return nil
-end
+local insert_rows_tx = search_index.insert_rows_tx
 
 local function insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}): ({string}?, any?)
     local ids: {string} = {}
