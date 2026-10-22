@@ -583,12 +583,14 @@ jobs:
             source_root="$PWD"
             export TMPDIR="$source_root/.scratch"
             mkdir -p "$TMPDIR"
+            make -C memory ui-kit
             npm --prefix memory/ui ci
             npm --prefix memory/ui run type-check
+            npm --prefix memory/ui test
             npm --prefix memory/ui run build
             make -C memory lockrefresh
             cd memory/test
-            wippy lint --ns app --level error
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error
             wippy test  2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -602,8 +604,10 @@ jobs:
             source_root="$PWD"
             export TMPDIR="$source_root/.scratch"
             mkdir -p "$TMPDIR"
+            make -C memory ui-kit
             npm --prefix memory/ui ci
             npm --prefix memory/ui run type-check
+            npm --prefix memory/ui test
             npm --prefix memory/ui run build
             make -C memory lockrefresh
             cd memory/test
@@ -613,7 +617,7 @@ jobs:
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
             createdb "$database"
             databases+=("$database")
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
             wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -755,7 +759,7 @@ jobs:
             mkdir -p "$TMPDIR"
             make -C sso-github lockrefresh
             cd sso-github/test
-            wippy lint --ns app --level error
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error
             wippy test  2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -777,7 +781,7 @@ jobs:
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
             createdb "$database"
             databases+=("$database")
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
             wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -793,7 +797,7 @@ jobs:
             mkdir -p "$TMPDIR"
             make -C sso-google lockrefresh
             cd sso-google/test
-            wippy lint --ns app --level error
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error
             wippy test  2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -815,7 +819,7 @@ jobs:
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
             createdb "$database"
             databases+=("$database")
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
             wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -831,7 +835,7 @@ jobs:
             mkdir -p "$TMPDIR"
             make -C sso-microsoft lockrefresh
             cd sso-microsoft/test
-            wippy lint --ns app --level error
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error
             wippy test  2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -853,7 +857,7 @@ jobs:
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
             createdb "$database"
             databases+=("$database")
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
             wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -869,7 +873,7 @@ jobs:
             mkdir -p "$TMPDIR"
             make -C sso-oidc lockrefresh
             cd sso-oidc/test
-            wippy lint --ns app --level error
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error
             wippy test  2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
@@ -891,7 +895,7 @@ jobs:
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
             createdb "$database"
             databases+=("$database")
-            wippy lint --ns app --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
             wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
