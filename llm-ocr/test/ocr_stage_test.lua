@@ -92,8 +92,13 @@ local function define_tests()
                 })
                 test.eq(result.metadata.ocr_pages, 2)
                 test.eq(result.metadata.ocr_total_pages, 3)
-                if fail_page then test.contains(result.metadata.ocr_error, "page two vision failure")
-                else test.is_false(result.metadata.ocr_error) end
+                if fail_page then
+                    test.eq(result.metadata.ocr_error, "transcription_failed")
+                    test.contains(result.metadata._ocr_error_detail, "page two vision failure")
+                else
+                    test.is_false(result.metadata.ocr_error)
+                    test.is_false(result.metadata._ocr_error_detail)
+                end
                 local primary, err = artifact_parts_repo.read_primary_content(upload_id)
                 test.is_nil(err)
                 test.contains(primary.content, "Text from page 1")
@@ -187,7 +192,7 @@ local function define_tests()
             test.eq(image_count(params.upload_id), 1)
         end)
 
-        test.it("stores the real provider error while preserving the upload", function()
+        test.it("stores a stable code and keeps the provider error private", function()
             set_setting("ocr_enabled", true)
             set_setting("ocr_images", true)
             local params = seed_image(uuid_v4(), "error.png")
@@ -195,7 +200,8 @@ local function define_tests()
                 transcribe = function() return nil, "provider rejected vision request: unsupported image" end,
             })
             test.eq(result.success, true)
-            test.contains(result.metadata.ocr_error, "provider rejected vision request: unsupported image")
+            test.eq(result.metadata.ocr_error, "transcription_failed")
+            test.contains(result.metadata._ocr_error_detail, "provider rejected vision request: unsupported image")
         end)
 
         test.it("stores thrown page and checkpoint errors without losing successful pages", function()
@@ -204,13 +210,15 @@ local function define_tests()
             local params = seed_image(uuid_v4(), "throw.png")
             local thrown = stage.run(params, { transcribe = function() error("vision connection reset") end })
             test.eq(thrown.success, true)
-            test.contains(thrown.metadata.ocr_error, "vision connection reset")
+            test.eq(thrown.metadata.ocr_error, "transcription_failed")
+            test.contains(thrown.metadata._ocr_error_detail, "vision connection reset")
             local checkpoint = stage.run(params, {
                 transcribe = function() return "recognized", nil end,
                 persist = function() return false, "transcript storage unavailable" end,
             })
             test.eq(checkpoint.success, true)
-            test.contains(checkpoint.metadata.ocr_error, "transcript storage unavailable")
+            test.eq(checkpoint.metadata.ocr_error, "persist_failed")
+            test.contains(checkpoint.metadata._ocr_error_detail, "transcript storage unavailable")
             test.eq(image_count(params.upload_id), 1)
         end)
 
@@ -219,10 +227,12 @@ local function define_tests()
             set_setting("ocr_images", true)
             local params = seed_image(uuid_v4(), "retry-after-error.png")
             local failed = stage.run(params, { transcribe = function() return nil, "temporary upstream failure" end })
-            test.contains(failed.metadata.ocr_error, "temporary upstream failure")
+            test.eq(failed.metadata.ocr_error, "transcription_failed")
+            test.contains(failed.metadata._ocr_error_detail, "temporary upstream failure")
 
             local retried = stage.run(params, { transcribe = function() return "recovered text", nil end })
             test.is_false(retried.metadata.ocr_error)
+            test.is_false(retried.metadata._ocr_error_detail)
             test.eq(retried.metadata.ocr_pages, 1)
         end)
 

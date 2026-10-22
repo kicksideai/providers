@@ -1,0 +1,24 @@
+organization: kickside
+module: search-index
+type: library
+description: Hybrid vector and full-text search primitives over module-owned SQLite (vec0, fts5) and PostgreSQL (pgvector, tsvector) tables.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords:
+  - kickside
+  - search
+  - vector
+  - full-text
+exclude_meta:
+  type:
+    - test
+    - test_helper
+    - test_support
+exclude:
+  - test/**
+  - test:**
+  - .wippy/**
+  - .wippy:**
+  - app:**
+  - app.**:**

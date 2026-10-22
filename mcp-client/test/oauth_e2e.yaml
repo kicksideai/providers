@@ -32,7 +32,7 @@ entries:
     kind: function.lua
     source: file://oauth_init_source.lua
     method: handler
-    modules: [http, contract, env, logger, process, security]
+    modules: [http, contract, env, logger, process, security, funcs]
     imports:
       http_errors: kickside.contract:http_errors
       component: kickside.component:component
