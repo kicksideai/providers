@@ -11,20 +11,30 @@ local model_failure = require("model_failure")
 local M = {}
 
 -- Span roles that state something: memories cite one of these messages.
--- Assistant text is context only.
+-- Assistant text is context only and is shown without an id.
 local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
 local EXTRACTION_PROMPT = [[You extract durable memory about the user from a conversation span.
 
-Keep only what the user states or confirms about themselves, their work and their world:
-facts, preferences, decisions, corrections, and outcomes of finished work. A correction is
-a new item with the corrected value. Skip greetings, chit-chat, questions without an
-answer, the assistant's suggestions and narration, raw tool output, and anything inside
-recalled-memory notes.
+Keep only what the user states about themselves, their work and their world that will
+still matter in a later conversation: facts, preferences, decisions, corrections, and
+outcomes of finished work. A correction is a new item with the corrected value.
+
+Each item must be stated in the message it cites, in the user's own words. Skip:
+- requests, questions and instructions to the assistant ("find me...", "where do I live?",
+  "one trip idea please"): asking states nothing about the user; a request that also states
+  something durable ("find a quiet hotel, I can't sleep with noise") keeps only that part;
+- the current task's chatter: options picked, things to check later, scheduling of the
+  work at hand;
+- statements too vague to act on later ("I've traveled before", "I forgot where I was");
+- greetings, thanks, acknowledgements and small talk;
+- the assistant's suggestions, answers and narration, raw tool output, and anything inside
+  recalled-memory notes - none of these is the user stating anything.
 
 Each item has:
 - kind: fact | preference | profile_slot | skill | lesson
-  (profile_slot = a stable attribute such as name, location, employer, role, timezone)
+  (profile_slot = a stable single-valued attribute such as name, home city, employer, role,
+  diet, timezone)
 - key: a short stable topic, e.g. "home_city", "preferred_language", "employer"
 - value: the value only, e.g. "Berlin"
 - content: one self-contained sentence in the third person about the user
@@ -39,19 +49,30 @@ local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of
 Choose exactly one action:
 - ADD: the new memory is about something none of the existing memories cover.
 - NOOP: an existing memory already says the same thing, even under another kind or key.
-- SUPERSEDE: the new memory updates or corrects existing memories about the same thing.
+- SUPERSEDE: the new memory updates or corrects existing memories about the same thing. A
+  statement that something changed ("I moved", "now", "since", "no longer", "actually") is
+  an update.
 - MERGE: the new memory and existing memories are the same memory phrased differently and the new one is the most complete.
-- CONFLICT: the new memory contradicts existing memories and the conversation does not say which is right.
+- CONFLICT: the new memory contradicts existing memories and nothing says which is right:
+  the person says they are unsure, or two sources disagree.
 
 new_memory.stated, when present, is what the person said; it tells an update from a contradiction.
 target_ids lists the existing memory ids the action applies to (empty for ADD).
 Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
 
-local REFLECTION_PROMPT = [[You consolidate a person's memories. From the current memories, derive
-stable profile attributes (kind profile_slot) and lessons about how to help this person
-(kind lesson) that are not already stated. Use only what the memories support. Each item
-has kind, key, value, content (one third-person sentence), event_id (use ""), valid_at
-(use ""), confidence. Return {"items": []} when nothing new follows.]]
+local REFLECTION_PROMPT = [[You review a person's numbered memories and derive lessons: concrete
+ways to help this person that no single memory says. A lesson combines at least two
+memories into guidance for acting, e.g. memories "the dog hates long car rides" and "always
+travels with the dog" give "propose rail routes that allow dogs and avoid long car
+transfers".
+
+Never restate, rephrase or summarise one memory ("as the user is vegan, plan vegan food"),
+never repeat a profile attribute, and never guess beyond what the memories say. Most
+memory sets support no lesson; return {"items": []} then.
+
+Each lesson has kind "lesson", key (a short stable topic), value (the guidance in a few
+words), content (one sentence of guidance), based_on (the numbers of the memories it draws
+on, at least two), event_id "", valid_at "", confidence.]]
 
 local WORKING_SUMMARY_PROMPT = [[Summarize the conversation so far as working state for continuing it:
 goals, decisions, open questions, constraints and the next step. Be compact and factual.]]
@@ -74,7 +95,7 @@ end
 -- Kinds a model may propose; identity and rules are set by people.
 local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PROFILE_SLOT, types.KIND.SKILL, types.KIND.LESSON }
 
-local function candidate_schema(event_ids: { string }?): any
+local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
     local event_id: any = { type = "string" }
     if event_ids then event_id = { type = "string", enum = event_ids } end
     return {
@@ -89,7 +110,7 @@ local function candidate_schema(event_ids: { string }?): any
                     additionalProperties = false,
                     required = { "kind", "key", "value", "content", "event_id", "valid_at", "confidence" },
                     properties = {
-                        kind = { type = "string", enum = CANDIDATE_KINDS },
+                        kind = { type = "string", enum = kinds or CANDIDATE_KINDS },
                         key = { type = "string" },
                         value = { type = "string" },
                         content = { type = "string" },
@@ -141,8 +162,13 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     local lines: { string } = {}
     local ids: { string } = {}
     for _, message in ipairs(span) do
-        if STATEMENT_ROLES[message.role] then ids[#ids + 1] = message.id end
-        lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
+        if STATEMENT_ROLES[message.role] then
+            ids[#ids + 1] = message.id
+            lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
+        else
+            -- Context lines carry no id: nothing can cite them.
+            lines[#lines + 1] = string.format("(%s, context only) %s", message.role, message.text)
+        end
     end
     if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
@@ -156,14 +182,37 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
 end
 
 -- items: { { id, kind, key, content } }
+-- Reflection may only propose lessons, each drawing on at least two of the
+-- listed memories; a lesson that leans on one memory restates it and is dropped
+-- here, whatever the model says.
+local REFLECTION_MIN_SOURCES = 2
+
 function M.reflect(model: string, items: { any }): (any?, error?)
     local lines: { string } = {}
-    for _, item in ipairs(items) do
-        lines[#lines + 1] = string.format("- (%s/%s) %s", item.kind, item.key, item.content)
+    local numbers: { integer } = {}
+    for index, item in ipairs(items) do
+        lines[#lines + 1] = string.format("%d. (%s/%s) %s", index, item.kind, item.key, item.content)
+        numbers[index] = index
     end
-    local response, err = llm.structured_output(candidate_schema(nil), messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
+    local schema = candidate_schema(nil, { types.KIND.LESSON })
+    local item_schema = schema.properties.items.items
+    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES }
+    item_schema.required[#item_schema.required + 1] = "based_on"
+    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
     if err then return nil, wrap("memory reflection", err) end
-    return read_candidates(response, "memory reflection")
+    local candidates, read_err = read_candidates(response, "memory reflection")
+    if read_err then return nil, read_err end
+    local grounded: { any } = {}
+    for _, candidate in ipairs(candidates :: any) do
+        local sources: { [integer]: boolean } = {}
+        local count = 0
+        for _, number in ipairs(type(candidate.based_on) == "table" and candidate.based_on or {}) do
+            local n = math.floor(tonumber(number) or 0)
+            if items[n] and not sources[n] then sources[n] = true; count = count + 1 end
+        end
+        if candidate.kind == types.KIND.LESSON and count >= REFLECTION_MIN_SOURCES then grounded[#grounded + 1] = candidate end
+    end
+    return grounded, nil
 end
 
 -- Returns { action, target_ids } over the stable ids of `neighbors`, choosing

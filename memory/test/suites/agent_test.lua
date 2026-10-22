@@ -75,6 +75,10 @@ local function define_tests()
             fixture.wait_runs(user, id, "derive", 2)
             local schema = fixture.script.requests("structured_output")[1]
             test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "n2")
+            local span = fixture.script.prompts("structured_output")[1].user
+            test.is_true(span:find("[n2]", 1, true) ~= nil, span)
+            test.is_true(span:find("[n3]", 1, true) == nil, span)
+            test.is_true(span:find("(assistant, context only) Sure, Rome has great opera.", 1, true) ~= nil, span)
         end)
 
         test.it("offers extraction the keys already in use for the person, so a restated attribute keeps its key", function()

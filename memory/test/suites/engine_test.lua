@@ -196,6 +196,19 @@ local function define_tests()
             test.eq(#fixture.script.requests("structured_output"), 2)
         end)
 
+        test.it("treats a key as one attribute across kinds: a profile slot value is never added beside another kind's value of that key", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, { fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", "d1") }, "kind-1")
+            fixture.settle(user, id)
+            local vegetarian = fixture.items(user, id)[1]
+            fixture.verdict("SUPERSEDE", { vegetarian.id })
+            local vegan = fixture.remember(user, id, { fixture.candidate("profile_slot", "diet", "vegan", "The user is vegan.", "d2") }, "kind-2")
+            test.eq(vegan.stats.superseded, 1)
+            local offered = fixture.script.requests("structured_output")[1].properties.action.enum
+            test.eq(table.concat(offered, ","), "SUPERSEDE,MERGE,NOOP,CONFLICT")
+        end)
+
         test.it("keeps a conflict open when a contested memory is replaced", function()
             local user = fixture.user()
             local id = fixture.memory(user)

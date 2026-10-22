@@ -1,5 +1,5 @@
 -- Candidate-then-judge reconciliation. Each candidate memory is matched by its
--- content-derived id first, then against same-key items of its kind and the
+-- content-derived id first, then against same-key items of any kind and the
 -- nearest items of its scope. Only an ambiguous neighborhood reaches the model, which
 -- classifies the relationship over stable ids from a closed action set. Which
 -- value wins a supersession is decided here by event time.
@@ -41,14 +41,14 @@ local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
 -- merges or contests their own statements.
 local REFLECTION_ACTIONS = { types.ACTION.ADD, types.ACTION.NOOP }
 
--- A profile slot holds one value per person: a new value for a slot the
--- neighborhood already holds can replace, merge with or contest it, never be
--- added beside it.
+-- A key names one attribute of a person whatever kind carries it, and a profile
+-- slot holds one value: when the candidate or a same-key neighbor is a profile
+-- slot, the candidate can replace, merge with or contest the held value, never
+-- be added beside it.
 local function allowed_actions(base: { string }, kind: string, key: string, neighbors: { any }): { string }
-    if kind ~= types.KIND.PROFILE_SLOT then return base end
     local held = false
     for _, row in ipairs(neighbors) do
-        if row.kind == types.KIND.PROFILE_SLOT and row.key == key then held = true end
+        if row.key == key and (kind == types.KIND.PROFILE_SLOT or row.kind == types.KIND.PROFILE_SLOT) then held = true end
     end
     if not held then return base end
     local out: { string } = {}
@@ -141,12 +141,12 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
                 end
             end
             local same_key, key_err = items.list(opts.component_id, {
-                kinds = { candidate.kind }, statuses = LIVE, scope_keys = { scope_key }, key = key, limit = NEIGHBORS,
+                statuses = LIVE, scope_keys = { scope_key }, key = key, limit = NEIGHBORS,
             })
             if key_err then return nil, key_err end
             for _, row in ipairs(same_key :: any) do admit(row) end
             for _, row in pairs(overlay) do
-                if row.scope_key == scope_key and row.kind == candidate.kind and row.key == key then admit(row) end
+                if row.scope_key == scope_key and row.key == key then admit(row) end
             end
             -- Nearest items of every kind in the scope: the same fact can arrive
             -- as a preference from one span and a profile slot from another.

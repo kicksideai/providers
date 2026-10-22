@@ -1,6 +1,7 @@
--- Capture and reconcile eval: runs each case through two captures of an agent
--- session on a fresh memory, classifies what the second capture did from its
--- derive run, and scores precision and recall per action. A scripted target
+-- Capture and reconcile eval: runs each case on a fresh memory, through an
+-- optional seed capture and then a follow-up capture or a consolidation,
+-- classifies what that last run did, and scores precision and recall per
+-- action. A scripted target
 -- answers every model call with the case's ideal answers; a live target names
 -- real models and leaves the answers to them.
 
@@ -64,33 +65,65 @@ local function capture(user: string, memory: string, session: string, messages: 
     return nil, "no derive run for session " .. session
 end
 
--- Scripts the ideal follow-up answers; a verdict targets the seeded items.
-local function script_follow(case: any, seeded: { any })
-    fixture.extraction(case.ideal.follow)
-    if case.ideal.verdict then
-        local ids = {}
-        for _, item in ipairs(seeded) do ids[#ids + 1] = item.id end
-        fixture.verdict(case.ideal.verdict, case.ideal.verdict == "ADD" and {} or ids)
+-- Scripts a verdict for the ideal follow-up: it targets the seeded memories of
+-- the same key, or every seeded memory when none shares it.
+local function script_verdict(verdict: string?, candidate: any?, seeded: { any })
+    if not verdict then return end
+    if verdict == "ADD" then fixture.verdict("ADD", {}); return end
+    local all, same = {}, {}
+    for _, item in ipairs(seeded) do
+        all[#all + 1] = item.id
+        if candidate and item.key == candidate.key then same[#same + 1] = item.id end
     end
+    fixture.verdict(verdict, #same > 0 and same or all)
 end
 
--- Runs both captures of a case; a failed capture is the case's outcome.
+local function held(user: string, memory: string): string
+    local out = {}
+    for _, item in ipairs(fixture.items(user, memory)) do
+        out[#out + 1] = string.format("%s/%s=%s(%s)", item.kind, item.key, tostring(item.value), item.status)
+    end
+    return table.concat(out, "; ")
+end
+
+-- Runs a case's seed capture and its follow-up capture or consolidation; a
+-- failed run is the case's outcome.
 local function outcome(case: any, target: any, user: string, memory: string): (string, string)
     local session = "eval-" .. memory .. "-"
-    if target.scripted then fixture.script.reset(); fixture.extraction(case.ideal.seed) end
-    local _, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, 1)
-    if seed_err then return "ERROR", seed_err end
-    if target.scripted then script_follow(case, fixture.items(user, memory)) end
-    local run, err = capture(user, memory, session .. "2", case.follow, FOLLOW_AT, 2)
-    if err then return "ERROR", err end
+    local derived = 0
+    if target.scripted then fixture.script.reset() end
+    if case.seed then
+        if target.scripted then fixture.extraction(case.ideal.seed) end
+        derived = 1
+        local _, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, derived)
+        if seed_err then return "ERROR", seed_err end
+    end
+    local stats: any
+    if case.reflect then
+        if target.scripted then
+            fixture.extraction(case.ideal.reflection)
+            script_verdict(case.ideal.verdict, nil, {})
+        end
+        local _, wake_err = fixture.op(user, "wake", { component_id = memory })
+        if wake_err then return "ERROR", tostring(wake_err) end
+        local run = fixture.wait_runs(user, memory, "consolidate", 1)[1]
+        if run.status ~= "succeeded" then return "ERROR", "consolidation failed: " .. tostring(run.last_error) end
+        stats = run.stats
+    else
+        if target.scripted then
+            fixture.extraction(case.ideal.follow)
+            script_verdict(case.ideal.verdict, case.ideal.follow[1], fixture.items(user, memory))
+        end
+        local run, err = capture(user, memory, session .. "2", case.follow, FOLLOW_AT, derived + 1)
+        if err then return "ERROR", err end
+        stats = run.stats
+    end
     if target.scripted and fixture.script.pending("structured_output") > 0 then
         return "ERROR", "the pipeline left a scripted model answer unused"
     end
-    local held = {}
-    for _, item in ipairs(fixture.items(user, memory)) do
-        held[#held + 1] = string.format("%s/%s=%s(%s)", item.kind, item.key, tostring(item.value), item.status)
-    end
-    return M.classify(run.stats), json.encode(run.stats) .. " " .. table.concat(held, "; ")
+    fixture.settle(user, memory)
+    local action = case.reflect and (((stats.added or 0) > 0) and "ADD" or "IGNORE") or M.classify(stats)
+    return action, json.encode(stats) .. " " .. held(user, memory)
 end
 
 local function run_case(case: any, target: any): any
