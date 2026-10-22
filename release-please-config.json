@@ -131,6 +131,11 @@
       "component": "box",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0"
+    },
+    "search-index": {
+      "component": "search-index",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0"
     }
   }
 }
