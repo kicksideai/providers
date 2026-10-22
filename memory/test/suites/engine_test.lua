@@ -25,7 +25,7 @@ local function define_tests()
     test.describe("memory knowledge base engine", function()
         test.before_each(function() fixture.script.reset() end)
 
-        test.it("creating a memory provisions its store, ledger projection and consolidation slot", function()
+        test.it("creating a memory through the knowledge control plane provisions its store, ledger projection and consolidation slot", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local store = rows("SELECT kb_type, embedding_model FROM kickside_memory_stores WHERE component_id = $1", { id })
@@ -200,7 +200,7 @@ local function define_tests()
             test.not_nil(limit_err)
         end)
 
-        test.it("deleting the memory component purges its ledger and every row", function()
+        test.it("deleting the memory through the knowledge control plane purges its ledger and every row", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             fixture.remember(user, id, {
@@ -211,7 +211,7 @@ local function define_tests()
             test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1", { id }), 2)
             local result, err = fixture.delete_memory(user, id)
             test.is_nil(err, tostring(err))
-            test.is_true(result.success == true, json.encode(result))
+            test.is_true(result.deleted == true, json.encode(result))
             for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_provenance", "kickside_memory_embeddings",
                 "kickside_memory_cursors", "kickside_memory_runs", "kickside_memory_stores" }) do
                 test.eq(count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)

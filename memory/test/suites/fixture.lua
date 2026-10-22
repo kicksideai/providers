@@ -114,10 +114,17 @@ function M.op(user_id: string, op: string, args: any, context: any?): (any, any)
     return M.call_as(user_id, "app.suites:memory_call", { op = op, args = args }, context)
 end
 
--- Creates a memory knowledge base owned by the user (see app.suites:provision).
+-- Creates a memory knowledge base owned by the user through the knowledge
+-- control plane.
 function M.try_memory(user_id: string, config: any?): (string?, any)
-    local created, err = M.call_as(user_id, "app.suites:provision", { name = "memory " .. uuid.v7(), config = config })
+    local def, err = contract.get("kickside.knowledge:knowledge_bases")
     if err then return nil, err end
+    local inst, open_err = def:with_actor(security.new_actor(user_id, {})):with_scope(scope()):open()
+    if open_err then return nil, open_err end
+    local created, create_err = inst:create({
+        name = "memory " .. uuid.v7(), kb_type = "memory", embedding_model = "test-embed", config = config,
+    })
+    if create_err then return nil, create_err end
     return created.component_id, nil
 end
 
@@ -127,14 +134,14 @@ function M.memory(user_id: string, config: any?): string
     return id
 end
 
--- Deletes the memory component through the component service, which runs the
--- memory's deletable cleanup.
+-- Deletes the memory knowledge base through the knowledge control plane, which
+-- tears the component down through the memory's deletable cleanup.
 function M.delete_memory(user_id: string, component_id: string): (any, any)
-    local def, err = contract.get("kickside.component:component_service")
+    local def, err = contract.get("kickside.knowledge:knowledge_bases")
     if err then return nil, err end
-    local svc, open_err = def:with_actor(security.new_actor(user_id, {})):with_scope(scope()):open()
+    local inst, open_err = def:with_actor(security.new_actor(user_id, {})):with_scope(scope()):open()
     if open_err then return nil, open_err end
-    return svc:delete({ component_id = component_id })
+    return inst:delete({ component_id = component_id })
 end
 
 -- Reconcile options for owner-scoped writes of a user.

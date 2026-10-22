@@ -29,6 +29,22 @@ Scopes: `agent:<agent id>` (identity and rules, edited by people with write
 access) and `owner:<user id>` (everything captured from a user's
 conversations). Status: `current, superseded, conflict, forgotten`.
 
+## Engine contracts
+
+The engine descriptor `kickside.memory:engine_memory` names
+`kickside.memory:kb_store_lifecycle` as its store contract: the knowledge
+control plane opens an engine's store contract without a binding, so memory
+declares its own contract with the methods of
+`kickside.knowledge:kb_store_lifecycle` (`create_store`, `get_store`,
+`update_config`, `delete_store`). The component impl binding
+`kickside.memory:memory_kb` implements `embeddable`, `queryable` (current items
+in the caller's scopes; `meta.node_type`, `meta.similarity`, `meta.created_at`)
+and `deletable` (bounded purge after the ledger is purged);
+`kickside.memory:maintainable` implements `kickside.knowledge:maintainable`
+(resummarize brings consolidation forward; reembed recomputes every vector).
+Configuration is validated against the descriptor's `config_schema` on create
+and update.
+
 ## Write path
 
 1. Capture (trait `before_step`, `after_persist`, `deactivate`, checkpoint)

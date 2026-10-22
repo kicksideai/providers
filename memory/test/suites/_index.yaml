@@ -25,15 +25,6 @@ entries:
       memory_jobs: kickside.memory.engine:jobs
       memory_bindings: kickside.memory.engine:bindings
 
-  - name: provision
-    kind: function.lua
-    meta: { comment: Creates a memory knowledge base as the calling user, following the control plane's create sequence. }
-    source: file://provision.lua
-    method: run
-    modules: [contract, security, uuid]
-    imports:
-      component: kickside.component:component
-
   - name: history
     kind: library.lua
     source: file://history.lua

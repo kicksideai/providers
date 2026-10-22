@@ -233,13 +233,67 @@ entries:
         methods:
           delete: kickside.memory.engine:delete_func
 
+  # The knowledge control plane opens an engine's store_contract without naming a
+  # binding, so every engine that binds kickside.knowledge:kb_store_lifecycle
+  # resolves to that contract's default binding. Memory therefore declares its
+  # own store contract with the same four methods and names it as the engine's
+  # store_contract; the control plane routes create, read, update and delete of
+  # memory stores to it through that descriptor field.
+  - name: kb_store_lifecycle
+    kind: contract.definition
+    meta:
+      title: Memory Store Lifecycle
+      comment: Per-component memory store lifecycle (create/get/update/delete) the knowledge control plane drives for kb_type memory; the method shapes of kickside.knowledge:kb_store_lifecycle.
+    methods:
+      - name: create_store
+        description: Create the memory store row. Input { component_id, embedding_model, config?, opts? }; config is validated against the engine config_schema. Arms the memory's consolidation slot.
+        input_schemas:
+          - definition: |
+              { "type": "object", "properties": { "component_id": { "type": "string" }, "embedding_model": { "type": "string" }, "config": { "type": "object" }, "opts": { "type": "object" } }, "required": ["component_id", "embedding_model"] }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object", "properties": { "success": { "type": "boolean" }, "store_id": {}, "error": { "type": "string" } } }
+            format: application/schema+json
+      - name: get_store
+        description: Fetch the memory store row. Input { component_id }. Returns { success, component_id, kb_type, embedding_model, config, created_at, updated_at }.
+        input_schemas:
+          - definition: |
+              { "type": "object", "properties": { "component_id": { "type": "string" } }, "required": ["component_id"] }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object", "properties": { "success": { "type": "boolean" }, "component_id": { "type": "string" }, "kb_type": { "type": "string" }, "embedding_model": { "type": "string" }, "config": { "type": "object" }, "error": { "type": "string" } } }
+            format: application/schema+json
+      - name: update_config
+        description: Replace the memory configuration. Input { component_id, config }; validated against the engine config_schema.
+        input_schemas:
+          - definition: |
+              { "type": "object", "properties": { "component_id": { "type": "string" }, "config": { "type": "object" } }, "required": ["component_id", "config"] }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object", "properties": { "success": { "type": "boolean" }, "error": { "type": "string" } } }
+            format: application/schema+json
+      - name: delete_store
+        description: Delete the memory store and every row it keeps. Input { component_id }.
+        input_schemas:
+          - definition: |
+              { "type": "object", "properties": { "component_id": { "type": "string" } }, "required": ["component_id"] }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object", "properties": { "success": { "type": "boolean" }, "error": { "type": "string" } } }
+            format: application/schema+json
+
   - name: store_lifecycle
     kind: contract.binding
     meta:
       title: Memory Store Lifecycle
-      comment: Memory engine implementation of kickside.knowledge:kb_store_lifecycle.
+      comment: Memory engine implementation of kickside.memory:kb_store_lifecycle.
     contracts:
-      - contract: kickside.knowledge:kb_store_lifecycle
+      - contract: kickside.memory:kb_store_lifecycle
+        default: true
         methods:
           create_store: kickside.memory.engine:create_store
           get_store: kickside.memory.engine:get_store
@@ -271,7 +325,7 @@ entries:
       embed_binding: kickside.memory:memory_kb
       query_binding: kickside.memory:memory_kb
       maintenance_binding: kickside.memory:maintainable
-      store_contract: kickside.knowledge:kb_store_lifecycle
+      store_contract: kickside.memory:kb_store_lifecycle
       is_graph: false
       thread:
         class: kickside.knowledge.injection
