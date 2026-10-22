@@ -37,6 +37,10 @@ type Options = {
 
 local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
 
+-- Reflection derives new memories from what people said; it never replaces,
+-- merges or contests their own statements.
+local REFLECTION_ACTIONS = { types.ACTION.ADD, types.ACTION.NOOP }
+
 local function provenance_of(opts: Options, candidate: Candidate): { any }
     local event_id = types.trim(candidate.event_id)
     if event_id == "" or not opts.host_kind then return {} end
@@ -145,7 +149,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
             if #neighbors > 0 then
                 local judged, judge_err = M._models.judge(opts.judge_model, {
                     kind = candidate.kind, key = key, content = candidate.content, valid_at = valid_at,
-                }, neighbors)
+                }, neighbors, opts.source == types.ITEM_SOURCE.REFLECTION and REFLECTION_ACTIONS or types.ACTIONS)
                 if judge_err then return nil, judge_err end
                 verdict = judged
                 stats.judged = stats.judged + 1

@@ -15,6 +15,9 @@ end
 function M.ensure()
     local conn = db()
     local _, err = conn:execute("CREATE TABLE IF NOT EXISTS app_llm_script (seq INTEGER NOT NULL, method TEXT NOT NULL, response TEXT, failure TEXT)")
+    if not err then
+        _, err = conn:execute("CREATE TABLE IF NOT EXISTS app_llm_requests (seq INTEGER NOT NULL, method TEXT NOT NULL, schema TEXT)")
+    end
     conn:release()
     if err then error(tostring(err)) end
 end
@@ -23,6 +26,7 @@ function M.reset()
     M.ensure()
     local conn = db()
     conn:execute("DELETE FROM app_llm_script")
+    conn:execute("DELETE FROM app_llm_requests")
     conn:release()
 end
 
@@ -51,6 +55,28 @@ function M.take(method: string): (any, string?)
     conn:release()
     if rows[1].failure and rows[1].failure ~= "" then return nil, rows[1].failure end
     return json.decode(rows[1].response), nil
+end
+
+-- Records the schema a structured_output call asked for.
+function M.record(method: string, schema: any)
+    M.ensure()
+    local conn = db()
+    local rows = conn:query("SELECT COUNT(*) AS n FROM app_llm_requests")
+    local seq = (rows and rows[1] and tonumber(rows[1].n) or 0) + 1
+    conn:execute("INSERT INTO app_llm_requests (seq, method, schema) VALUES ($1, $2, $3)",
+        { seq, method, schema ~= nil and json.encode(schema) or sql.NULL })
+    conn:release()
+end
+
+-- Schemas of the recorded calls of a method, oldest first.
+function M.requests(method: string): { any }
+    M.ensure()
+    local conn = db()
+    local rows = conn:query("SELECT schema FROM app_llm_requests WHERE method = $1 ORDER BY seq", { method }) or {}
+    conn:release()
+    local out = {}
+    for _, row in ipairs(rows) do out[#out + 1] = json.decode(row.schema) end
+    return out
 end
 
 function M.pending(method: string): integer

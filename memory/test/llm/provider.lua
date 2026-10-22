@@ -30,7 +30,8 @@ local function embed(args: any): (any, any)
     return { success = true, result = { embeddings = out }, tokens = { prompt_tokens = 1, total_tokens = 1 } }
 end
 
-local function structured_output(_args: any): (any, any)
+local function structured_output(args: any): (any, any)
+    script.record("structured_output", args.schema)
     local response, failure = script.take("structured_output")
     if failure then return nil, failure end
     return { success = true, result = { data = response }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }

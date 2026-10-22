@@ -141,8 +141,9 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     return read_candidates(response, "memory reflection")
 end
 
--- Returns { action, target_ids } over the stable ids of `neighbors`.
-function M.judge(model: string, candidate: any, neighbors: { any }): (any?, error?)
+-- Returns { action, target_ids } over the stable ids of `neighbors`, choosing
+-- among `actions`.
+function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)
     local ids: { string } = {}
     local known: { [string]: boolean } = {}
     local listing: { any } = {}
@@ -156,7 +157,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }): (any?, erro
         additionalProperties = false,
         required = { "action", "target_ids", "reason" },
         properties = {
-            action = { type = "string", enum = types.ACTIONS },
+            action = { type = "string", enum = actions },
             target_ids = { type = "array", items = { type = "string", enum = ids } },
             reason = { type = "string" },
         },
@@ -171,7 +172,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }): (any?, erro
         return nil, types.unavailable("memory reconcile judge returned malformed output")
     end
     local valid_action = false
-    for _, action in ipairs(types.ACTIONS) do if action == data.action then valid_action = true end end
+    for _, action in ipairs(actions) do if action == data.action then valid_action = true end end
     if not valid_action then return nil, types.unavailable("memory reconcile judge returned an unknown action") end
     local targets: { string } = {}
     for _, id in ipairs(data.target_ids) do
