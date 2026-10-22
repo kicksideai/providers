@@ -29,19 +29,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <Transition name="kc-modal">
-    <div v-if="open" class="kc-modal-mask" @click.self="!busy && emit('cancel')">
-      <div class="kc-modal" :class="{ danger }" role="dialog" aria-modal="true" :aria-label="title">
-        <div class="kc-modal-h">
-          <span class="kc-modal-h-ico"><Icon :icon="icon" aria-hidden="true" /></span>
-          <span class="kc-modal-h-text">
-            <span class="kc-modal-h-title">{{ title }}</span>
-            <span v-if="subtitle" class="kc-modal-h-sub">{{ subtitle }}</span>
+  <Transition name="kx-modal">
+    <div v-if="open" class="kx-modal-mask" @click.self="!busy && emit('cancel')">
+      <div class="kx-modal" :class="{ danger }" role="dialog" aria-modal="true" :aria-label="title">
+        <div class="kx-modal-h">
+          <span class="kx-modal-h-ico"><Icon :icon="icon" aria-hidden="true" /></span>
+          <span class="kx-modal-h-text">
+            <span class="kx-modal-h-title">{{ title }}</span>
+            <span v-if="subtitle" class="kx-modal-h-sub">{{ subtitle }}</span>
           </span>
           <IconButton icon="tabler:x" label="Close" :disabled="busy" @click="emit('cancel')" />
         </div>
-        <div class="kc-modal-body"><slot /></div>
-        <div class="kc-modal-foot">
+        <div class="kx-modal-body"><slot /></div>
+        <div class="kx-modal-foot">
           <KbButton variant="ghost" :disabled="busy" @click="emit('cancel')">{{ cancelLabel }}</KbButton>
           <KbButton :variant="danger ? 'danger' : 'primary'" :loading="busy" :disabled="busy" @click="emit('confirm')">{{ confirmLabel }}</KbButton>
         </div>

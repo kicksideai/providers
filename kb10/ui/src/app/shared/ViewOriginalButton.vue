@@ -11,7 +11,7 @@ const emit = defineEmits<{ (e: 'open'): void }>()
 </script>
 
 <template>
-  <button type="button" class="kc-btn kc-btn-ghost sm" @click="emit('open')">
+  <button type="button" class="kx-btn kx-btn-ghost sm" @click="emit('open')">
     <Icon icon="tabler:file-search" aria-hidden="true" />
     <span>{{ label || 'View original' }}</span>
   </button>

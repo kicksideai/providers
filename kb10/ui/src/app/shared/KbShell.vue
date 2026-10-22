@@ -5,8 +5,8 @@
 </script>
 
 <template>
-  <div class="kc-shell">
-    <aside class="kc-rail"><slot name="rail" /></aside>
-    <main class="kc-main"><slot /></main>
+  <div class="kx-shell">
+    <aside class="kx-rail"><slot name="rail" /></aside>
+    <main class="kx-main"><slot /></main>
   </div>
 </template>

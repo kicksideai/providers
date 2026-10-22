@@ -16,13 +16,13 @@ const emit = defineEmits<{ (e: 'cta'): void }>()
 </script>
 
 <template>
-  <div class="es">
-    <div class="es-ico" :class="tone === 'muted' ? 'muted' : 'primary'">
+  <div class="kx-empty kx-empty-spacious">
+    <div class="kx-empty-ico" :class="tone === 'muted' ? 'muted' : 'primary'">
       <Icon :icon="icon" aria-hidden="true" />
     </div>
-    <div class="es-t">{{ title }}</div>
-    <div v-if="hint" class="es-s">{{ hint }}</div>
-    <button v-if="cta" class="es-cta" @click="emit('cta')">
+    <div class="kx-empty-title">{{ title }}</div>
+    <div v-if="hint" class="kx-empty-sub">{{ hint }}</div>
+    <button v-if="cta" class="kx-btn kx-btn-primary kx-empty-cta" @click="emit('cta')">
       <Icon v-if="ctaIcon" :icon="ctaIcon" aria-hidden="true" />
       {{ cta }}
     </button>

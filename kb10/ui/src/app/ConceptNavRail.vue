@@ -83,7 +83,7 @@ watch([() => treeIndex.value, navFolderId], () => {
         <Icon icon="tabler:x" aria-hidden="true" />
       </button>
     </div>
-    <nav class="kc-rail-body" aria-label="Contents">
+    <nav class="kx-rail-body" aria-label="Contents">
       <WikiNav
         :crumbs="navCrumbs"
         :entries="navEntries"

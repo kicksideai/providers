@@ -210,7 +210,7 @@ function onReload() { load() }
       <button
         v-if="canRetry"
         type="button"
-        class="kc-notice-action"
+        class="kx-notice-action"
         :disabled="retrying"
         @click="retryEnrichment"
       >{{ retrying ? 'Retrying…' : 'Retry' }}</button>

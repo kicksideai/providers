@@ -1,5 +1,5 @@
 /* kb10 DOCUMENT library — shadow-DOM styles for kx-kb-document only. Layered on
-   top of the shared styles.css; uses the same --p-* / --kb-* vocabulary so it
+   top of the shared styles.css; uses the same --p-* / --kx-* vocabulary so it
    renders in light and dark. All selectors are prefixed kx-/dl-/dr-/ds-/dz- to
    stay clear of the shared and sibling-element rules. */
 
@@ -18,7 +18,7 @@
 .dr-badge {
   width: 52px; height: 60px; flex-shrink: 0; border-radius: 11px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
-  background: var(--kb-primary-soft); color: var(--kb-primary);
+  background: color-mix(in srgb, var(--p-primary-color) 14%, transparent); color: var(--p-primary-color);
   border: 1px solid color-mix(in srgb, var(--p-primary-color) 22%, transparent);
 }
 .dr-badge svg { width: 24px; height: 24px; }
@@ -26,35 +26,35 @@
 .dr-head-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 /* Title row + right-aligned top action (View original toggle). */
 .dr-head-top { display: flex; align-items: flex-start; gap: 14px; }
-.dr-title { margin: 0; flex: 1; min-width: 0; font-size: 21px; font-weight: 700; line-height: 1.25; color: var(--kb-text); letter-spacing: -.01em; }
+.dr-title { margin: 0; flex: 1; min-width: 0; font-size: 21px; font-weight: 700; line-height: 1.25; color: var(--p-text-color); letter-spacing: -.01em; }
 .dr-orig-btn { flex: none; }
-.dr-orig-btn.on { border-color: var(--kb-primary); color: var(--kb-primary); background: var(--kb-primary-soft); }
+.dr-orig-btn.on { border-color: var(--p-primary-color); color: var(--p-primary-color); background: color-mix(in srgb, var(--p-primary-color) 14%, transparent); }
 .dr-facts { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.dr-fact { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--kb-muted); text-decoration: none; }
+.dr-fact { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--p-text-muted-color); text-decoration: none; }
 button.dr-fact { appearance: none; background: none; border: 0; margin: 0; padding: 0; font-family: inherit; line-height: inherit; cursor: pointer; }
 .dr-fact svg { width: 14px; height: 14px; }
-.dr-fact.link { color: var(--kb-primary); font-weight: 600; }
+.dr-fact.link { color: var(--p-primary-color); font-weight: 600; }
 .dr-fact.link:hover { text-decoration: underline; }
 .dr-chip {
   font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
   font-size: 9px; font-weight: 600;
   padding: 2px 6px; border-radius: 6px;
-  background: var(--kb-surface-2); color: var(--kb-muted); border: 1px solid var(--kb-border);
+  background: var(--kx-surface-2); color: var(--p-text-muted-color); border: 1px solid var(--p-content-border-color);
 }
 
 .dr-paper {
   max-width: 720px;
-  background: var(--kb-surface); border: 1px solid var(--kb-border); border-radius: var(--doc-radius);
+  background: var(--kx-surface-1); border: 1px solid var(--p-content-border-color); border-radius: var(--doc-radius);
   padding: 28px 32px;
 }
-.dr-prose { margin: 0; font-size: 14.5px; line-height: 1.75; color: var(--kb-text); white-space: pre-wrap; }
+.dr-prose { margin: 0; font-size: 14.5px; line-height: 1.75; color: var(--p-text-color); white-space: pre-wrap; }
 
-.dr-state { display: flex; align-items: center; gap: 8px; padding: 28px 8px; color: var(--kb-faint); font-size: 13px; font-style: italic; }
+.dr-state { display: flex; align-items: center; gap: 8px; padding: 28px 8px; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); font-size: 13px; font-style: italic; }
 .dr-state svg { width: 16px; height: 16px; }
-.dr-state.err { color: var(--kb-danger); font-style: normal; }
+.dr-state.err { color: var(--p-danger-500); font-style: normal; }
 
 .dr-skel { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
-.dr-skel-line { height: 14px; border-radius: 6px; background: var(--kb-surface-2); position: relative; overflow: hidden; }
+.dr-skel-line { height: 14px; border-radius: 6px; background: var(--kx-surface-2); position: relative; overflow: hidden; }
 .dr-skel-line:nth-child(2n) { width: 92%; }
 .dr-skel-line:nth-child(3n) { width: 78%; }
 
@@ -62,34 +62,34 @@ button.dr-fact { appearance: none; background: none; border: 0; margin: 0; paddi
 /* Contextual embedding surfacing. */
 .dr-cx-note {
   display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border-radius: 10px; font-size: 12px; line-height: 1.45;
-  background: var(--kb-primary-soft); color: var(--kb-primary);
+  background: color-mix(in srgb, var(--p-primary-color) 14%, transparent); color: var(--p-primary-color);
   border: 1px solid color-mix(in srgb, var(--p-primary-color) 26%, transparent);
 }
 .dr-cx-note svg { width: 15px; height: 15px; flex: none; margin-top: 1px; }
 .dr-chunk-cx {
   display: flex; align-items: flex-start; gap: 7px; margin: 9px 0 0; padding: 8px 10px; border-radius: 8px;
   font-size: 11.5px; line-height: 1.5; font-style: italic;
-  background: color-mix(in srgb, var(--p-primary-color) 6%, transparent); color: var(--kb-muted);
+  background: color-mix(in srgb, var(--p-primary-color) 6%, transparent); color: var(--p-text-muted-color);
 }
-.dr-chunk-cx svg { width: 13px; height: 13px; flex: none; margin-top: 2px; color: var(--kb-primary); }
+.dr-chunk-cx svg { width: 13px; height: 13px; flex: none; margin-top: 2px; color: var(--p-primary-color); }
 .dr-chunk {
   cursor: pointer;
-  background: var(--kb-surface); border: 1px solid var(--kb-border); border-radius: 14px;
+  background: var(--kx-surface-1); border: 1px solid var(--p-content-border-color); border-radius: 14px;
   padding: 14px 16px;
   transition: border-color .14s, box-shadow .14s;
 }
-.dr-chunk:hover { border-color: var(--kb-border-strong); }
+.dr-chunk:hover { border-color: color-mix(in srgb, var(--p-text-color) 18%, transparent); }
 .dr-chunk.open { box-shadow: 0 2px 10px color-mix(in srgb, var(--p-text-color) 7%, transparent); }
 .dr-chunk-h { width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
 .dr-chunk-n {
   width: 24px; height: 24px; flex-shrink: 0; border-radius: 6px;
   display: grid; place-items: center;
   font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
-  background: var(--kb-primary-soft); color: var(--kb-primary);
+  background: color-mix(in srgb, var(--p-primary-color) 14%, transparent); color: var(--p-primary-color);
 }
-.dr-chunk-label { font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--kb-muted); }
-.dr-chunk-chev { width: 16px; height: 16px; margin-left: auto; color: var(--kb-faint); }
-.dr-chunk-body { margin: 10px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--kb-muted); white-space: pre-wrap; }
+.dr-chunk-label { font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--p-text-muted-color); }
+.dr-chunk-chev { width: 16px; height: 16px; margin-left: auto; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); }
+.dr-chunk-body { margin: 10px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--p-text-muted-color); white-space: pre-wrap; }
 .dr-chunk-body.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* ── Two-pane document library (kx-kb-document v2) ───────────────────────────
@@ -113,30 +113,30 @@ button.dr-fact { appearance: none; background: none; border: 0; margin: 0; paddi
   padding: 7px 8px; border-radius: 8px; cursor: pointer; border: none; background: transparent;
   font: inherit; transition: background .12s;
 }
-.kd-row:hover { background: var(--kb-surface-2); }
-.kd-row.on { background: var(--wk-trail, color-mix(in srgb, var(--p-primary-color) 9%, transparent)); box-shadow: inset 2px 0 0 var(--kb-primary); }
-.kd-row.on .kd-row-title { color: var(--kb-primary); font-weight: 700; }
+.kd-row:hover { background: var(--kx-surface-2); }
+.kd-row.on { background: var(--wk-trail, color-mix(in srgb, var(--p-primary-color) 9%, transparent)); box-shadow: inset 2px 0 0 var(--p-primary-color); }
+.kd-row.on .kd-row-title { color: var(--p-primary-color); font-weight: 700; }
 .kd-row-ic {
   width: 28px; height: 28px; flex: none; border-radius: 8px; display: grid; place-items: center;
-  background: color-mix(in srgb, var(--p-primary-color) 11%, transparent); color: var(--kb-primary);
+  background: color-mix(in srgb, var(--p-primary-color) 11%, transparent); color: var(--p-primary-color);
 }
 .kd-row-ic svg { width: 16px; height: 16px; }
 .kd-row-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-.kd-row-title { font-size: 12.8px; font-weight: 600; color: var(--kb-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kd-row-sub { font-size: 10.5px; color: var(--kb-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kd-row-title { font-size: 12.8px; font-weight: 600; color: var(--p-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kd-row-sub { font-size: 10.5px; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kd-row-del { flex: none; opacity: 0; transition: opacity .12s; }
 .kd-row:hover .kd-row-del, .kd-row-del:disabled { opacity: 1; }
 .kd-pager {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 10px; border-top: 1px solid var(--kb-border, var(--kb-surface-2));
+  padding: 8px 10px; border-top: 1px solid var(--p-content-border-color, var(--kx-surface-2));
 }
-.kd-pager-label { font-size: 11.5px; color: var(--kb-faint); white-space: nowrap; }
-.kd-list-empty { padding: 24px 12px; text-align: center; font-size: 12.5px; color: var(--kb-faint); }
+.kd-pager-label { font-size: 11.5px; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); white-space: nowrap; }
+.kd-list-empty { padding: 24px 12px; text-align: center; font-size: 12.5px; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); }
 .kd-list-skel { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
-.kd-skel-row { height: 42px; border-radius: 8px; background: var(--kb-surface-2); animation: kd-pulse 1.3s ease-in-out infinite; }
+.kd-skel-row { height: 42px; border-radius: 8px; background: var(--kx-surface-2); animation: kd-pulse 1.3s ease-in-out infinite; }
 @keyframes kd-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 
-/* Reader pane: scroll + padding come from the shared .kc-main-scroll. The reader
+/* Reader pane: scroll + padding come from the shared .kx-main-scroll. The reader
    wrapper is a column so the empty state's auto margins center and the viewer
    content stacks from the top. */
 .kd-reader { display: flex; flex-direction: column; min-height: 0; }
@@ -154,17 +154,17 @@ button.dr-fact { appearance: none; background: none; border: 0; margin: 0; paddi
 .dr-clamp.clamped { max-height: 720px; overflow: hidden; }
 .dr-clamp-fade {
   position: absolute; left: 0; right: 0; bottom: 0; height: 96px; pointer-events: none;
-  background: linear-gradient(to bottom, transparent, var(--kb-bg) 92%);
+  background: linear-gradient(to bottom, transparent, var(--p-content-background) 92%);
 }
 .dr-more {
   align-self: flex-start;
   display: inline-flex; align-items: center; gap: 6px;
-  height: var(--kb-ctl-sm, 30px); padding: 0 14px; border-radius: 8px; cursor: pointer;
+  height: var(--kx-control-height-sm, 30px); padding: 0 14px; border-radius: 8px; cursor: pointer;
   font: inherit; font-size: 12.5px; font-weight: 600;
-  background: var(--kb-surface-2); color: var(--kb-text); border: 1px solid var(--kb-border);
+  background: var(--kx-surface-2); color: var(--p-text-color); border: 1px solid var(--p-content-border-color);
   transition: border-color .14s, background .14s;
 }
-.dr-more:hover { border-color: var(--kb-primary); color: var(--kb-primary); }
+.dr-more:hover { border-color: var(--p-primary-color); color: var(--p-primary-color); }
 .dr-more svg { width: 15px; height: 15px; }
 
 .dr-doc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }

@@ -129,7 +129,7 @@ function onAdded() { sheet.value = ''; emit('changed') }
     ref="railRef"
     class="wk"
     :class="{ 'wk-dragging': navDragging }"
-    :style="{ '--kb-nav-w': navWidth + 'px' }"
+    :style="{ '--kx-rail-width': navWidth + 'px' }"
   >
     <KbShell v-if="concepts.length">
       <template #rail>
@@ -158,7 +158,7 @@ function onAdded() { sheet.value = ''; emit('changed') }
         ><span class="wn-resizer-grip" /></div>
       </template>
 
-      <div v-if="searchOpen" class="kc-main-scroll">
+      <div v-if="searchOpen" class="kx-main-scroll">
         <KbSearch
           :kb-id="kbId"
           layout="panel"
@@ -169,7 +169,7 @@ function onAdded() { sheet.value = ''; emit('changed') }
         />
       </div>
 
-      <div v-else class="kc-main-scroll wk-doc-inner">
+      <div v-else class="kx-main-scroll wk-doc-inner">
         <div v-if="crumbTrail.length || editable" class="wk-pagebar">
           <nav v-if="crumbTrail.length" class="wk-crumbs" aria-label="Wiki path">
             <template v-for="(c, i) in crumbTrail" :key="c.id">

@@ -17,7 +17,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
 
 <template>
   <button
-    class="kc-iconbtn"
+    class="kx-iconbtn"
     :class="[
       variant === 'bordered' && 'bordered',
       variant === 'danger' && 'danger',

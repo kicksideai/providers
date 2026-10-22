@@ -13,17 +13,17 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="kc-search">
-    <Icon class="kc-search-ico" icon="tabler:search" aria-hidden="true" />
+  <div class="kx-search">
+    <Icon class="kx-search-ico" icon="tabler:search" aria-hidden="true" />
     <input
-      class="kc-search-input"
+      class="kx-search-input"
       type="text"
       :value="modelValue"
       :placeholder="placeholder || 'Search…'"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @keyup.enter="emit('enter')"
     />
-    <button v-if="modelValue" class="kc-search-clear" aria-label="Clear" @click="emit('update:modelValue', ''); emit('clear')">
+    <button v-if="modelValue" class="kx-search-clear" aria-label="Clear" @click="emit('update:modelValue', ''); emit('clear')">
       <Icon icon="tabler:x" aria-hidden="true" />
     </button>
   </div>

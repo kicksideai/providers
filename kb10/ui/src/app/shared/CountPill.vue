@@ -4,5 +4,5 @@ defineProps<{ value: number | string }>()
 </script>
 
 <template>
-  <span class="kc-count">{{ value }}</span>
+  <span class="kx-count">{{ value }}</span>
 </template>

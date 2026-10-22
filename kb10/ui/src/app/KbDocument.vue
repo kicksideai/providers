@@ -177,7 +177,7 @@ watch(routeParam, (r) => {
         </div>
       </template>
 
-      <div class="kc-main-scroll kd-reader">
+      <div class="kx-main-scroll kd-reader">
         <KbSearch v-if="searchOpen" :kb-id="kbId" layout="panel" :ask="canAnswer" @open="(h) => h.parent_id && selectById(h.parent_id)" @close="searchOpen = false" />
         <DocReader v-else-if="selected" :kb-id="kbId" :node="selected" />
         <EmptyState

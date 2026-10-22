@@ -6,8 +6,8 @@ withDefaults(defineProps<{ icon?: string; label?: string }>(), { icon: 'tabler:l
 </script>
 
 <template>
-  <div class="kc-loading">
-    <div class="kc-loading-inner">
+  <div class="kx-loading kx-loading-centered">
+    <div class="kx-loading-inner">
       <Icon :icon="icon" class="spin" aria-hidden="true" />
       <span v-if="label">{{ label }}</span>
     </div>
