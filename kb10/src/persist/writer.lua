@@ -925,7 +925,10 @@ end
 -- a re-dispatch) idempotent. Deletes the matching document nodes, cascading to
 -- their chunks/summaries/embeddings via delete_node.
 function writer.delete_documents_by_external_id(store_id: any, external_source: any, external_id: any)
-    if not store_id or not external_id or external_id == "" then return 0 end
+    if not is_str(store_id) or not is_str(external_id) then
+        return 0, errors.new({ kind = errors.INVALID, retryable = false,
+            message = "store_id and external_id are required" })
+    end
     local db, err = ops.get_db()
     if err then return 0, err end
 
