@@ -10,6 +10,10 @@ local model_failure = require("model_failure")
 
 local M = { _llm = llm }
 
+-- Span roles that state something: memories cite one of these messages.
+-- Assistant text is context only.
+M.STATEMENT_ROLES = { user = true, tool = true, document = true }
+
 local EXTRACTION_PROMPT = [[You extract durable memory about the user from a conversation span.
 
 Keep only what the user states or confirms about themselves, their work and their world:
@@ -24,7 +28,7 @@ Each item has:
 - key: a short stable topic, e.g. "home_city", "preferred_language", "employer"
 - value: the value only, e.g. "Berlin"
 - content: one self-contained sentence in the third person about the user
-- event_id: the id of the message that states it
+- event_id: the id of the user, tool or document message that states it
 - valid_at: when it became true if the span says so (RFC3339), else ""
 - confidence: 0..1
 
@@ -68,11 +72,7 @@ end
 
 local function candidate_schema(event_ids: { string }?): any
     local event_id: any = { type = "string" }
-    if event_ids and #event_ids > 0 then
-        local allowed = { "" }
-        for _, id in ipairs(event_ids) do allowed[#allowed + 1] = id end
-        event_id = { type = "string", enum = allowed }
-    end
+    if event_ids then event_id = { type = "string", enum = event_ids } end
     return {
         type = "object",
         additionalProperties = false,
@@ -115,14 +115,16 @@ local function read_candidates(response: any, step: string): (any?, error?)
     return out, nil
 end
 
--- span: { { id, role, text, created_at } }
+-- span: { { id, role, text, created_at } }. A span in which nobody states
+-- anything yields no candidates without a model call.
 function M.extract(model: string, span: { any }, instructions: string?): (any?, error?)
     local lines: { string } = {}
     local ids: { string } = {}
     for _, message in ipairs(span) do
-        ids[#ids + 1] = message.id
+        if M.STATEMENT_ROLES[message.role] then ids[#ids + 1] = message.id end
         lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
     end
+    if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local response, err = M._llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })

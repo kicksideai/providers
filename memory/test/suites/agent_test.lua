@@ -51,6 +51,31 @@ local function define_tests()
             test.eq(cursor.last_event_id, "h4")
         end)
 
+        test.it("derives memories only from what the user states, never from assistant narration", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, {
+                { id = "n1", role = "assistant", content = "You told me you live in Rome and love opera." },
+            })
+            local applied = apply(user, "before_step", id, session, "agent-a")
+            test.is_true(applied.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            test.eq(runs[1].stats.candidates, 0)
+            test.eq(#fixture.script.requests("structured_output"), 0)
+
+            fixture.history.record(session, {
+                { id = "n2", role = "user", content = "Book me an opera night next week." },
+                { id = "n3", role = "assistant", content = "Sure, Rome has great opera." },
+            })
+            fixture.extraction({ fixture.candidate("preference", "evening", "opera", "The user wants an opera night.", "n2") })
+            apply(user, "before_step", id, session, "agent-a")
+            fixture.wait_runs(user, id, "derive", 2)
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "n2")
+        end)
+
         test.it("captures each persisted record once across after_persist and before_step", function()
             local user = fixture.user()
             local id = fixture.memory(user)
