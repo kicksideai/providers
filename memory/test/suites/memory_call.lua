@@ -10,6 +10,8 @@ local ledger = require("memory_ledger")
 local jobs = require("memory_jobs")
 local bindings = require("memory_bindings")
 local component = require("component")
+local contract = require("contract")
+local security = require("security")
 local agent_compiler = require("agent_compiler")
 
 local OPS: { [string]: (any) -> (any, any) } = {
@@ -21,6 +23,13 @@ local OPS: { [string]: (any) -> (any, any) } = {
     remember = function(a: any) return writer.remember(a.candidates, a.opts, a.idempotency) end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
     apply = function(a: any) return runtime.apply(a.payload) end,
+    store = function(a: any): (any, any)
+        local def, def_err = contract.get("kickside.knowledge:kb_store_lifecycle")
+        if def_err then return nil, def_err end
+        local store, open_err = def:with_actor(security.actor()):with_scope(security.scope()):open("kickside.memory:store_lifecycle")
+        if open_err then return nil, open_err end
+        return store:get_store({ component_id = a.component_id })
+    end,
     compile = function(a: any) return agent_compiler.compile(a.spec) end,
     resolve_memory = function(a: any)
         local id, _, err = runtime.memory({ context = a.context }, component.ACCESS.READ)

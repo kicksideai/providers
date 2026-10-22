@@ -1,6 +1,7 @@
 local test = require("test")
 local fixture = require("fixture")
 local json = require("json")
+local registry = require("registry")
 
 local function rows(statement: string, params: { any }): { any }
     local db = fixture.db()
@@ -41,6 +42,18 @@ local function define_tests()
             test.is_true(type(slot[1].job_id) == "string" and slot[1].job_id ~= "")
             local job = rows("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { slot[1].job_id })
             test.eq(job[1].status, "pending")
+        end)
+
+        test.it("serves its stores through the platform store contract and its own named binding", function()
+            local descriptor = registry.get("kickside.memory:engine_memory")
+            test.eq(descriptor.meta.store_contract, "kickside.knowledge:kb_store_lifecycle")
+            test.eq(descriptor.meta.store_binding, "kickside.memory:store_lifecycle")
+            local _, missing = registry.get("kickside.memory:kb_store_lifecycle")
+            test.not_nil(missing, "memory keeps no private copy of the store contract")
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local row = fixture.op(user, "store", { component_id = id })
+            test.eq(row.kb_type, "memory")
         end)
 
         test.it("refuses configuration the engine schema does not declare", function()

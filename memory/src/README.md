@@ -32,10 +32,8 @@ conversations). Status: `current, superseded, conflict, forgotten`.
 ## Engine contracts
 
 The engine descriptor `kickside.memory:engine_memory` names
-`kickside.memory:kb_store_lifecycle` as its store contract: the knowledge
-control plane opens an engine's store contract without a binding, so memory
-declares its own contract with the methods of
-`kickside.knowledge:kb_store_lifecycle` (`create_store`, `get_store`,
+`kickside.knowledge:kb_store_lifecycle` as its store contract and
+`kickside.memory:store_lifecycle` as its store binding (`create_store`, `get_store`,
 `update_config`, `delete_store`). The component impl binding
 `kickside.memory:memory_kb` implements `embeddable`, `queryable` (current items
 in the caller's scopes; `meta.node_type`, `meta.similarity`, `meta.created_at`)
