@@ -1,0 +1,247 @@
+local test = require("test")
+local fixture = require("fixture")
+local json = require("json")
+
+local function rows(statement: string, params: { any }): { any }
+    local db = fixture.db()
+    local result, err = db:query(statement, params)
+    db:release()
+    if err then error(tostring(err)) end
+    return result or {}
+end
+
+local function by_key(items: { any }): { [string]: any }
+    local out = {}
+    for _, item in ipairs(items) do out[item.value .. ""] = item end
+    return out
+end
+
+local function count(statement: string, params: { any }): integer
+    local result = rows(statement, params)
+    return math.floor(tonumber(result[1] and result[1].n) or 0)
+end
+
+local function define_tests()
+    test.describe("memory knowledge base engine", function()
+        test.before_each(function() fixture.script.reset() end)
+
+        test.it("creating a memory provisions its store, ledger projection and consolidation slot", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local store = rows("SELECT kb_type, embedding_model FROM kickside_memory_stores WHERE component_id = $1", { id })
+            test.eq(#store, 1)
+            test.eq(store[1].kb_type, "memory")
+            test.eq(store[1].embedding_model, "test-embed")
+            local projections = rows("SELECT kind FROM kickside_projection WHERE thread_id = $1", { id })
+            local kinds = {}
+            for _, row in ipairs(projections) do kinds[row.kind] = true end
+            test.is_true(kinds["kickside.memory.ledger"] == true, json.encode(projections))
+            local slot = rows("SELECT run_type, job_id FROM kickside_memory_runs WHERE id = $1", { "consolidate:" .. id })
+            test.eq(#slot, 1)
+            test.is_true(type(slot[1].job_id) == "string" and slot[1].job_id ~= "")
+            local job = rows("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { slot[1].job_id })
+            test.eq(job[1].status, "pending")
+        end)
+
+        test.it("refuses configuration the engine schema does not declare", function()
+            local user = fixture.user()
+            local _, unknown_err = fixture.try_memory(user, { recall_max_itemz = 3 })
+            test.not_nil(unknown_err)
+            test.is_true(tostring(unknown_err):find("recall_max_itemz", 1, true) ~= nil, tostring(unknown_err))
+            local _, range_err = fixture.try_memory(user, { recall_max_items = 0 })
+            test.not_nil(range_err)
+            local _, type_err = fixture.try_memory(user, { capture_conversation = "yes" })
+            test.not_nil(type_err)
+            local id = fixture.memory(user, { recall_max_items = 7, judge_model = "test-fast" })
+            local store = rows("SELECT config FROM kickside_memory_stores WHERE component_id = $1", { id })
+            test.eq(json.decode(store[1].config).recall_max_items, 7)
+        end)
+
+        test.it("folds an owner operation through the ledger into a current item", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local created, err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", content = "You are Ada, a travel assistant.",
+            } })
+            test.is_nil(err, tostring(err))
+            fixture.settle(user, id)
+            local item = fixture.op(user, "get", { component_id = id, item_id = created.item_id })
+            test.not_nil(item)
+            test.eq(item.status, "current")
+            test.eq(item.kind, "identity")
+            test.eq(item.scope_key, "agent:agent-a")
+            test.eq(item.source, "owner")
+            test.eq(item.version, 1)
+        end)
+
+        test.it("supersedes by event time: the later statement is current, a late older one is history", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local paris = fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "m1", "2026-03-01T10:00:00Z")
+            local first, err = fixture.remember(user, id, { paris }, "t1")
+            test.is_nil(err, tostring(err))
+            test.eq(first.stats.added, 1)
+            test.eq(first.stats.judged, 0)
+            local paris_id = first.item_ids[1]
+
+            fixture.verdict("SUPERSEDE", { paris_id })
+            local berlin = fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "m2", "2026-06-01T10:00:00Z")
+            local second, second_err = fixture.remember(user, id, { berlin }, "t2")
+            test.is_nil(second_err, tostring(second_err))
+            test.eq(second.stats.superseded, 1)
+            local berlin_id = second.item_ids[1]
+
+            fixture.settle(user, id)
+            local items = fixture.items(user, id, { kinds = { "profile_slot" } })
+            local values = by_key(items)
+            test.eq(values.Paris.status, "superseded")
+            test.eq(values.Paris.superseded_by, berlin_id)
+            test.eq(values.Berlin.status, "current")
+            test.eq(values.Berlin.version, 2)
+
+            fixture.verdict("SUPERSEDE", { berlin_id })
+            local lyon = fixture.candidate("profile_slot", "home_city", "Lyon", "The user lives in Lyon.", "m0", "2025-01-01T10:00:00Z")
+            local third, third_err = fixture.remember(user, id, { lyon }, "t3")
+            test.is_nil(third_err, tostring(third_err))
+            fixture.settle(user, id)
+            values = by_key(fixture.items(user, id, { kinds = { "profile_slot" } }))
+            test.eq(values.Lyon.status, "superseded")
+            test.eq(values.Lyon.superseded_by, berlin_id)
+            test.eq(values.Berlin.status, "current")
+            test.eq(fixture.script.pending("structured_output"), 0)
+        end)
+
+        test.it("keeps contradicting memories in a conflict group until a person resolves it", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local acme = fixture.remember(user, id, {
+                fixture.candidate("fact", "employer", "Acme", "The user works at Acme.", "m1", "2026-05-01T10:00:00Z"),
+            }, "c1")
+            fixture.verdict("CONFLICT", { acme.item_ids[1] })
+            local globex, err = fixture.remember(user, id, {
+                fixture.candidate("fact", "employer", "Globex", "The user works at Globex.", "m2", "2026-05-01T10:00:00Z"),
+            }, "c2")
+            test.is_nil(err, tostring(err))
+            test.eq(globex.stats.conflicted, 1)
+            fixture.settle(user, id)
+            local conflicted = fixture.items(user, id, { statuses = { "conflict" } })
+            test.eq(#conflicted, 2)
+            test.eq(conflicted[1].conflict_group, conflicted[2].conflict_group)
+
+            local resolved, resolve_err = fixture.op(user, "resolve", {
+                component_id = id, group_id = conflicted[1].conflict_group, winner_id = globex.item_ids[1],
+            })
+            test.is_nil(resolve_err, tostring(resolve_err))
+            test.eq(resolved.superseded, 1)
+            fixture.settle(user, id)
+            local values = by_key(fixture.items(user, id, { kinds = { "fact" } }))
+            test.eq(values.Globex.status, "current")
+            test.is_nil(values.Globex.conflict_group)
+            test.eq(values.Acme.status, "superseded")
+            test.eq(values.Acme.superseded_by, globex.item_ids[1])
+        end)
+
+        test.it("is idempotent under redelivery: the same memory and the same decision write once", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local tea = fixture.candidate("preference", "drink", "tea", "The user prefers tea.", "m1")
+            local first = fixture.remember(user, id, { tea }, "r1")
+            local again, err = fixture.remember(user, id, { fixture.candidate("preference", "Drink", " TEA ", "The user prefers tea.", "m9") }, "r2")
+            test.is_nil(err, tostring(err))
+            test.eq(again.stats.noop, 1)
+            test.eq(again.stats.added, 0)
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id, { kinds = { "preference" } }), 1)
+            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { first.item_ids[1] }), 2)
+
+            local head = rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count
+            local replay, replay_err = fixture.remember(user, id, { tea }, "r1")
+            test.is_nil(replay_err, tostring(replay_err))
+            test.eq(replay.inserted, 0)
+            test.eq(rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count, head)
+        end)
+
+        test.it("forgets an item out of recall and restores it", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local stored = fixture.remember(user, id, { fixture.candidate("fact", "allergy", "peanuts", "The user is allergic to peanuts.", "m1") }, "f1")
+            local item_id = stored.item_ids[1]
+            fixture.settle(user, id)
+            local context = { component_id = id }
+            local found = fixture.op(user, "query", { request = { query = "peanuts allergy", limit = 5 } }, context)
+            test.eq(found.count, 1)
+            local _, err = fixture.op(user, "forget", { component_id = id, item_id = item_id, reason = "asked" })
+            test.is_nil(err, tostring(err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = item_id }).status, "forgotten")
+            test.eq(fixture.op(user, "query", { request = { query = "peanuts allergy", limit = 5 } }, context).count, 0)
+            local _, restore_err = fixture.op(user, "restore", { component_id = id, item_id = item_id })
+            test.is_nil(restore_err, tostring(restore_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = item_id }).status, "current")
+            test.eq(fixture.op(user, "query", { request = { query = "peanuts allergy", limit = 5 } }, context).count, 1)
+        end)
+
+        test.it("answers the queryable contract with current items in the caller's scope only", function()
+            local alice, bob = fixture.user("alice"), fixture.user("bob")
+            local id = fixture.memory(alice)
+            fixture.remember(alice, id, { fixture.candidate("fact", "pet", "cat", "The user has a cat named Miso.", "m1") }, "q1")
+            fixture.remember(alice, id, { fixture.candidate("fact", "pet", "dog", "The user has a dog named Rex.", "m2") }, "q2",
+                { scope_id = bob })
+            fixture.settle(alice, id)
+            local result, err = fixture.op(alice, "query", { request = { query = "pet named", limit = 10 } }, { component_id = id })
+            test.is_nil(err, tostring(err))
+            test.eq(result.count, 1)
+            test.eq(result.items[1].content, "The user has a cat named Miso.")
+            test.eq(result.items[1].meta.node_type, "fact")
+            test.not_nil(result.items[1].meta.similarity)
+            test.not_nil(result.items[1].meta.created_at)
+            local _, limit_err = fixture.op(alice, "query", { request = { query = "pet", limit = 500 } }, { component_id = id })
+            test.not_nil(limit_err)
+        end)
+
+        test.it("deleting the memory component purges its ledger and every row", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("fact", "a", "one", "Fact one.", "m1"),
+                fixture.candidate("fact", "b", "two", "Fact two.", "m2"),
+            }, "d1")
+            fixture.settle(user, id)
+            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1", { id }), 2)
+            local result, err = fixture.delete_memory(user, id)
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success == true, json.encode(result))
+            for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_provenance", "kickside_memory_embeddings",
+                "kickside_memory_cursors", "kickside_memory_runs", "kickside_memory_stores" }) do
+                test.eq(count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
+            end
+            test.eq(count("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id = $1", { id }), 0)
+        end)
+
+        test.it("records a failed derive run with the model's failure instead of storing nothing", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.script.fail("structured_output", "provider overloaded")
+            fixture.script.fail("structured_output", "provider overloaded")
+            fixture.script.fail("structured_output", "provider overloaded")
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "h1", role = "user", content = "I moved to Oslo last month." } })
+            local applied, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") },
+                fixture.agent_context({ id }, session, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.is_true(applied.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "failed")
+            local job = fixture.wait_job(runs[1].job_id, "dead")
+            test.eq(job.attempts, 3)
+            test.eq(fixture.script.pending("structured_output"), 0)
+            test.is_true(tostring(runs[1].last_error):find("provider overloaded", 1, true) ~= nil, tostring(runs[1].last_error))
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id), 0)
+        end)
+    end)
+end
+
+local run_cases = test.run_cases(define_tests)
+return { run = function(options) return run_cases(options) end }

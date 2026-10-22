@@ -1,0 +1,283 @@
+-- Contract surface of the memory knowledge-base engine: the store lifecycle the
+-- knowledge control plane drives, embeddable ingestion, scoped hybrid query,
+-- bounded deletion, and maintenance.
+
+local ctx = require("ctx")
+local security = require("security")
+local types = require("types")
+local config = require("memory_config")
+local stores = require("memory_stores")
+local items = require("memory_items")
+local models = require("memory_models")
+local runs = require("memory_runs")
+local jobs = require("memory_jobs")
+local thread_ingest = require("thread_ingest")
+local component = require("component")
+
+local M = {
+    _stores = stores, _items = items, _models = models, _runs = runs, _jobs = jobs,
+    _thread_ingest = thread_ingest, _component = component,
+}
+
+-- Store pages a single deletable call removes before reporting progress.
+M.DELETE_PAGES = 20
+M.QUERY_MAX = 100
+
+local function args_of(value: any): any
+    return type(value) == "table" and value or {}
+end
+
+local function context_component(): (string?, error?)
+    local id = types.trim(ctx.get("component_id"))
+    if id == "" then return nil, types.invalid("component_id is required in the binding context") end
+    return id, nil
+end
+
+-- kb_store_lifecycle -------------------------------------------------------
+
+function M.create_store(value: any): (any?, error?)
+    local args = args_of(value)
+    local component_id = types.trim(args.component_id)
+    local embedding_model = types.trim(args.embedding_model)
+    local opts = args_of(args.opts)
+    if component_id == "" then return nil, types.invalid("component_id is required") end
+    if embedding_model == "" then return nil, types.invalid("embedding_model is required") end
+    local kb_type = types.trim(opts.kb_type)
+    if kb_type ~= "" and kb_type ~= types.KB_TYPE then
+        return nil, types.invalid("the memory engine stores kb_type '" .. types.KB_TYPE .. "', not '" .. kb_type .. "'")
+    end
+    local cfg = args.config or {}
+    local invalid = config.validate(cfg)
+    if invalid then return nil, invalid end
+    local created, err = M._stores.create(component_id, types.KB_TYPE, embedding_model, cfg)
+    if err then return nil, err end
+    local effective, cfg_err = config.effective(cfg)
+    if cfg_err then return nil, cfg_err end
+    local _, arm_err = M._jobs.arm_consolidation(component_id, tonumber((effective :: any).consolidation_interval_hours) or 24)
+    if arm_err then return nil, arm_err end
+    return created, nil
+end
+
+function M.get_store(value: any): (any?, error?)
+    local component_id = types.trim(args_of(value).component_id)
+    if component_id == "" then return nil, types.invalid("component_id is required") end
+    local row, err = M._stores.get(component_id)
+    if err then return nil, err end
+    local result = {}
+    for k, v in pairs(row :: any) do result[k] = v end
+    result.success = true
+    return result, nil
+end
+
+function M.update_config(value: any): (any?, error?)
+    local args = args_of(value)
+    local component_id = types.trim(args.component_id)
+    if component_id == "" then return nil, types.invalid("component_id is required") end
+    local invalid = config.validate(args.config)
+    if invalid then return nil, invalid end
+    local _, read_err = M._stores.get(component_id)
+    if read_err then return nil, read_err end
+    return M._stores.update_config(component_id, args.config or {})
+end
+
+local function purge(component_id: string, pages: integer): (boolean?, error?)
+    for _ = 1, pages do
+        local page, err = M._stores.purge_page(component_id)
+        if err then return nil, err end
+        if (page :: any).done then return true, nil end
+    end
+    return false, nil
+end
+
+function M.delete_store(value: any): (any?, error?)
+    local component_id = types.trim(args_of(value).component_id)
+    if component_id == "" then return nil, types.invalid("component_id is required") end
+    while true do
+        local done, err = purge(component_id, M.DELETE_PAGES)
+        if err then return nil, err end
+        if done then return { success = true }, nil end
+    end
+end
+
+-- deletable ----------------------------------------------------------------
+
+-- Stops the ledger first, so a failed purge leaves inert rows, then removes a
+-- bounded number of pages. A memory larger than one call reports pending
+-- cleanup and the component teardown resumes it.
+function M.delete(_value: any): (any?, error?)
+    local component_id, id_err = context_component()
+    if id_err then return nil, id_err end
+    local _, thread_err = M._thread_ingest.purge_thread(component_id :: string)
+    if thread_err then return nil, thread_err end
+    local done, err = purge(component_id :: string, M.DELETE_PAGES)
+    if err then return nil, err end
+    if not done then
+        return nil, errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = "memory cleanup continues",
+            details = { cleanup_pending = true, needs_continue = true } })
+    end
+    return { success = true }, nil
+end
+
+-- embeddable ---------------------------------------------------------------
+
+-- Ingests content into the memory ledger thread; the ledger projection derives
+-- typed memory from it.
+function M.embed_content(value: any): (any?, error?)
+    local req = args_of(value)
+    local component_id, id_err = context_component()
+    if id_err then return nil, id_err end
+    local content = req.content
+    if type(content) ~= "string" or types.trim(content) == "" then
+        return { success = false, error = "content is required" }, nil
+    end
+    local metadata = {}
+    for k, v in pairs(args_of(req.metadata)) do metadata[k] = v end
+    metadata.source = types.trim(metadata.source) ~= "" and metadata.source or types.SOURCE
+    local title = types.trim(req.title or metadata.title)
+    local queued, err = M._thread_ingest.append_content(component_id :: string, {
+        content = content,
+        content_type = types.trim(req.content_type) ~= "" and req.content_type or "text/plain",
+        metadata = metadata,
+        title = title ~= "" and title or nil,
+        external_id = req.external_id,
+        external_version = req.external_version,
+        source_ref = { kind = "manual", origin = "kickside.memory.embed_content", title = title ~= "" and title or nil },
+    })
+    if err or not queued then return { success = false, error = "memory ingest failed: " .. tostring(err) }, nil end
+    return { success = true, status = "queued", kb_id = component_id, thread_id = (queued :: any).thread_id,
+        external_id = (queued :: any).external_id, external_version = (queued :: any).external_version }, nil
+end
+
+-- queryable ----------------------------------------------------------------
+
+-- Scopes an actor may read in a memory: its own owner scope and, when the
+-- caller runs as an agent, that agent's scope.
+function M.visible_scopes(agent_id: string?): { string }
+    local actor = security.actor()
+    local scopes: { string } = {}
+    if actor and actor:id() ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.OWNER, actor:id()) end
+    local agent = types.trim(agent_id)
+    if agent ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.AGENT, agent) end
+    return scopes
+end
+
+function M.to_query_item(row: any): any
+    return {
+        id = row.id,
+        content = row.content,
+        meta = {
+            node_type = row.kind,
+            kind = row.kind,
+            key = row.key,
+            scope_family = row.scope_family,
+            status = row.status,
+            valid_at = row.valid_at,
+            source = row.source,
+            similarity = row.similarity,
+            created_at = row.recorded_at,
+        },
+    }
+end
+
+type SearchRequest = {
+    component_id: string,
+    query: string,
+    limit: integer,
+    kinds: { string }?,
+    scopes: { string },
+    exclude: { [string]: boolean }?,
+}
+
+-- Hybrid current-only search of one memory within the given scopes.
+function M.search(req: SearchRequest): (any?, error?)
+    if #req.scopes == 0 then return {}, nil end
+    local store, store_err = M._stores.get(req.component_id)
+    if store_err then return nil, store_err end
+    local vectors, embed_err = M._models.embed((store :: any).embedding_model, { req.query })
+    if embed_err then return nil, embed_err end
+    local exclude = req.exclude or {}
+    local excluded = 0
+    for _ in pairs(exclude) do excluded = excluded + 1 end
+    local rows, err = M._items.search(req.component_id, (vectors :: any)[1], {
+        kinds = req.kinds, statuses = { types.STATUS.CURRENT }, scope_keys = req.scopes,
+        query_text = req.query, limit = req.limit + excluded,
+    })
+    if err then return nil, err end
+    local out: { any } = {}
+    for _, row in ipairs(rows :: any) do
+        if not exclude[row.id] and #out < req.limit then out[#out + 1] = row end
+    end
+    return out, nil
+end
+
+function M.query(value: any): (any?, error?)
+    local req = args_of(value)
+    local component_id, id_err = context_component()
+    if id_err then return nil, id_err end
+    local query = types.trim(req.query)
+    if query == "" then return nil, types.invalid("query is required") end
+    local limit = math.floor(tonumber(req.limit) or 10)
+    if limit < 1 or limit > M.QUERY_MAX then return nil, types.invalid("limit must be between 1 and " .. M.QUERY_MAX) end
+    local offset = math.floor(tonumber(req.offset) or 0)
+    if offset < 0 then return nil, types.invalid("offset must not be negative") end
+    local rows, err = M.search({
+        component_id = component_id :: string, query = query, limit = offset + limit + 1,
+        scopes = M.visible_scopes(ctx.get("agent_id")),
+    })
+    if err then return nil, err end
+    local page: { any } = {}
+    for i = offset + 1, math.min(offset + limit, #(rows :: any)) do page[#page + 1] = M.to_query_item((rows :: any)[i]) end
+    local result: { [string]: any } = { success = true, items = page, count = #page }
+    if #(rows :: any) > offset + limit then result.next_offset = offset + limit end
+    return result, nil
+end
+
+-- maintainable -------------------------------------------------------------
+
+local function authorize(access: integer): (string?, error?)
+    local component_id, id_err = context_component()
+    if id_err then return nil, id_err end
+    local _, access_err = M._component.validate_access(component_id :: string, access)
+    if access_err then return nil, access_err end
+    return component_id, nil
+end
+
+local function run_view(run: any): any
+    if not run then return nil end
+    return {
+        id = run.id, run_type = run.run_type, status = run.status, job_id = run.job_id, last_error = run.last_error,
+        stats = run.stats, created_at = run.created_at, started_at = run.started_at, finished_at = run.finished_at,
+        in_flight = run.status == types.RUN_STATUS.RUNNING or run.status == types.RUN_STATUS.SCHEDULED,
+    }
+end
+
+-- Consolidation is the memory engine's whole-store rewrite; the control
+-- plane's resummarize verb brings it forward.
+function M.schedule_resummarize(_value: any): (any?, error?)
+    local component_id, err = authorize(M._component.ACCESS.WRITE)
+    if err then return nil, err end
+    local woken, wake_err = M._jobs.wake_consolidation(component_id :: string)
+    if wake_err then return nil, wake_err end
+    local run = M._runs.get((woken :: any).run_id)
+    return { kb_id = component_id, job_id = (woken :: any).job_id, scheduled = true, run = run_view(run) }, nil
+end
+
+function M.schedule_reembed(_value: any): (any?, error?)
+    local component_id, err = authorize(M._component.ACCESS.WRITE)
+    if err then return nil, err end
+    local scheduled, schedule_err = M._jobs.schedule_reembed(component_id :: string)
+    if schedule_err then return nil, schedule_err end
+    local run = M._runs.get((scheduled :: any).run_id)
+    return { kb_id = component_id, job_id = (scheduled :: any).job_id, scheduled = true, run = run_view(run) }, nil
+end
+
+function M.maintenance_status(_value: any): (any?, error?)
+    local component_id, err = authorize(M._component.ACCESS.READ)
+    if err then return nil, err end
+    local consolidation = M._runs.get("consolidate:" .. component_id)
+    local reembeds, list_err = M._runs.list(component_id :: string, types.RUN_TYPE.REEMBED, 1)
+    if list_err then return nil, list_err end
+    return { resummarize = run_view(consolidation), reembed = run_view((reembeds :: any)[1]) }, nil
+end
+
+return M

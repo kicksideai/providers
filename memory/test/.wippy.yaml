@@ -20,6 +20,25 @@ profiles:
 workspace:
   replacements:
     kickside/memory: ..
+    kickside/search-index: ../../search-index
     kickside/component: ../../../kickside/core/component
     kickside/contract: ../../../kickside/core/contract
+    kickside/core: ../../../kickside/core/core
+    kickside/doc2md: ../../../converters/doc2md
     kickside/execution: ../../../kickside/core/execution
+    kickside/jobs: ../../../kickside/core/jobs
+    kickside/knowledge: ../../../kickside/platform/knowledge
+    kickside/models: ../../../kickside/platform/models
+    kickside/realtime: ../../../kickside/platform/realtime
+    kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
+    kickside/security: ../../../kickside/platform/security
+    kickside/settings: ../../../kickside/platform/settings
+    kickside/uploads: ../../../kickside/platform/uploads
+    kickside/users: ../../../kickside/platform/users
+registry:
+  dispatch_internal_kinds:
+  - registry.entry
+  - ns.requirement
+  - ns.dependency
+  - ns.definition
+  - security.scope

@@ -1,0 +1,24 @@
+version: "1.0"
+namespace: kickside.memory.migrations
+
+entries:
+  - name: 01_memory_schema
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, memory, schema]
+      comment: Memory read model - stores, typed items, provenance, embeddings, full-text index, capture cursors and deferred runs.
+      target_db: ""
+      timestamp: "2026-10-21T00:00:00Z"
+    source: file://_fn_01_memory_schema.lua
+    imports:
+      operation_impl: kickside.memory.migrations:01_memory_schema_implementation
+    method: migrate
+
+  - name: 01_memory_schema_implementation
+    kind: library.lua
+    meta:
+      comment: Implementation for kickside.memory.migrations:01_memory_schema.
+    source: file://01_memory_schema.lua
+    imports:
+      migration: wippy.migration:migration

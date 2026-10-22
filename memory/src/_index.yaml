@@ -4,43 +4,141 @@ namespace: kickside.memory
 entries:
   - name: definition
     kind: ns.definition
+    readme: file://README.md
     meta:
       title: KickSide Memory
-      comment: Agent memory capabilities. Owns lifecycle/checkpoint policy; storage is delegated to provider contracts such as knowledge-base queryable/embeddable.
+      comment: Memory knowledge bases (kb_type memory) holding typed, versioned memory items on a ledger thread, and the agent trait and memory provider that capture conversations into them, render the pinned soul, and recall from them.
 
   - name: dep.wippy.agent
     kind: ns.dependency
     component: wippy/agent
     version: '*'
+    meta:
+      comment: Lifecycle, checkpoint, memory and run_context contracts; the after_persist lifecycle phase.
 
   - name: dep.wippy.llm
     kind: ns.dependency
     component: wippy/llm
     version: '*'
 
+  - name: dep.wippy.migration
+    kind: ns.dependency
+    component: wippy/migration
+    version: '*'
+
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
     version: '*'
+    meta:
+      comment: Memory knowledge bases are components; access, public meta and the write fence go through the component service.
 
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
     version: '*'
+    meta:
+      comment: Implements embeddable, queryable and deletable; shared error helpers.
 
+  - name: dep.kickside.core
+    kind: ns.dependency
+    component: kickside/core
+    version: '*'
+    meta:
+      comment: The memory ledger is the knowledge base's thread; the ledger projection folds it.
+
+  - name: dep.kickside.jobs
+    kind: ns.dependency
+    component: kickside/jobs
+    version: '*'
+    meta:
+      comment: Derive, consolidation and re-embed runs execute as jobs.
+
+  - name: dep.kickside.execution
+    kind: ns.dependency
+    component: kickside/execution
+    version: '*'
+    meta:
+      comment: Deferred runs hold and re-admit the requester's execution identity.
+
+  - name: dep.kickside.knowledge
+    kind: ns.dependency
+    component: kickside/knowledge
+    version: '*'
+    meta:
+      comment: Memory is a knowledge-base engine of the knowledge control plane.
+
+  - name: dep.kickside.search_index
+    kind: ns.dependency
+    component: kickside/search-index
+    version: '*'
+    meta:
+      comment: Hybrid vector and full-text search over the memory item tables.
+
+  # Host requirements.
   - name: ui_server
     kind: ns.requirement
     meta:
-      comment: HTTP server the memory capability config component is served from.
-      description: HTTP server the memory capability config component is served from.
+      comment: HTTP server the memory web components are served from.
+      description: HTTP server the memory web components are served from.
     targets:
       - entry: kickside.memory:ui_static
         path: .meta.server
 
+  - name: api_router
+    kind: ns.requirement
+    meta:
+      comment: Authenticated HTTP router for the memory API.
+      description: Authenticated HTTP router for the memory API.
+    targets:
+      - { entry: kickside.memory.api:list_items.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:get_item.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:create_item.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:edit_item.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:forget_item.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:restore_item.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:list_conflicts.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:resolve_conflict.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:status.endpoint, path: .meta.router }
+
+  - name: target_db
+    kind: ns.requirement
+    meta:
+      comment: SQL database resource backing the kickside_memory_* tables; the component database.
+      description: SQL database resource backing the kickside_memory_* tables; the component database.
+    targets:
+      - entry: kickside.memory.migrations:01_memory_schema
+        path: .meta.target_db
+      - entry: kickside.memory:db_config
+        path: .meta.db_id
+
+  - name: db_config
+    kind: registry.entry
+    meta:
+      comment: Holds the configured memory database id (rewritten by target_db).
+      db_id: ""
+
+  - name: types
+    kind: library.lua
+    meta:
+      comment: Memory vocabulary - kinds, scopes, statuses, ledger events, run types and value helpers.
+    source: file://types.lua
+    modules: [time, hash, json]
+
+  - name: config
+    kind: library.lua
+    meta:
+      comment: Engine configuration - defaults and schema from the engine descriptor, server-side validation.
+    source: file://config.lua
+    modules: [registry]
+    imports:
+      types: kickside.memory:types
+
+  # Web components.
   - name: ui_fs
     kind: fs.directory
     meta:
-      comment: Built/plain KickSide memory web components.
+      comment: Built KickSide memory web components.
     directory: ./static
 
   - name: ui_static
@@ -57,50 +155,286 @@ entries:
     meta:
       type: view.component
       name: knowledge_memory_component
-      title: Knowledge Base Memory Capability
+      title: Memory Trait Settings
       tag_name: kickside-knowledge-memory
       base_path: kickside-memory
       entry_point: knowledge_memory.js
       announced: true
       auto_register: false
 
+  - name: memory_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: memory_view
+      title: Memory
+      tag_name: kickside-memory-kb
+      base_path: kickside-memory
+      entry_point: memory_kb.js
+      announced: true
+      auto_register: true
+
+  # Knowledge-base engine. The component impl binding carries the store
+  # contracts; the descriptor declares the ledger thread, its projection,
+  # configuration and the manage view.
+  - name: memory_kb
+    kind: contract.binding
+    meta:
+      title: Memory
+      comment: Memory knowledge base - typed memory items on a ledger thread with hybrid recall.
+      icon: tabler:brain
+      class: [knowledge]
+      events:
+        output:
+          - type: kickside.memory.events:item.added
+          - type: kickside.memory.events:item.superseded
+          - type: kickside.memory.events:item.merged
+          - type: kickside.memory.events:item.conflicted
+          - type: kickside.memory.events:item.forgotten
+          - type: kickside.memory.events:item.restored
+          - type: kickside.memory.events:provenance.added
+          - type: kickside.memory.events:provenance.removed
+          - type: kickside.memory.events:capture.advanced
+          - type: kickside.memory.events:consolidation.completed
+          - type: kickside.knowledge.events:content.upserted
+          - type: kickside.knowledge.events:content.deleted
+      component:
+        create: { view: kickside.knowledge:kb_create_view }
+        manage: { view: kickside.knowledge:knowledge_view, deep_link: true }
+    contracts:
+      - contract: kickside.contract:component
+        methods:
+          get_status: kickside.core.threads:thread_status
+      - contract: kickside.contract:embeddable
+        context_required: [component_id]
+        methods:
+          embed_content: kickside.memory.engine:embed_func
+          embed_reference: kickside.knowledge.binding:embed_reference_func
+      - contract: kickside.contract:queryable
+        context_required: [component_id]
+        methods:
+          query: kickside.memory.engine:query_func
+      - contract: kickside.contract:deletable
+        context_required: [component_id]
+        methods:
+          delete: kickside.memory.engine:delete_func
+
+  - name: store_lifecycle
+    kind: contract.binding
+    meta:
+      title: Memory Store Lifecycle
+      comment: Memory engine implementation of kickside.knowledge:kb_store_lifecycle.
+    contracts:
+      - contract: kickside.knowledge:kb_store_lifecycle
+        methods:
+          create_store: kickside.memory.engine:create_store
+          get_store: kickside.memory.engine:get_store
+          update_config: kickside.memory.engine:update_config
+          delete_store: kickside.memory.engine:delete_store
+
+  - name: maintainable
+    kind: contract.binding
+    meta:
+      comment: Memory maintenance - bring consolidation forward, re-embed every item, read the latest runs.
+    contracts:
+      - contract: kickside.knowledge:maintainable
+        context_required: [component_id]
+        methods:
+          schedule_resummarize: kickside.memory.engine:schedule_resummarize_func
+          schedule_reembed: kickside.memory.engine:schedule_reembed_func
+          maintenance_status: kickside.memory.engine:maintenance_status_func
+
+  - name: engine_memory
+    kind: registry.entry
+    meta:
+      type: kickside.kb_engine
+      kb_type: memory
+      title: Memory
+      label: Memory
+      comment: Typed long-term memory for agents - facts, preferences, profile, identity and rules, versioned with provenance.
+      icon: tabler:brain
+      impl_id: kickside.memory:memory_kb
+      embed_binding: kickside.memory:memory_kb
+      query_binding: kickside.memory:memory_kb
+      maintenance_binding: kickside.memory:maintainable
+      store_contract: kickside.knowledge:kb_store_lifecycle
+      is_graph: false
+      thread:
+        class: kickside.knowledge.injection
+      # The ledger is the source of truth and the read model is rebuilt from it,
+      # so its events are kept for the lifetime of the memory.
+      retention:
+        event_days: 36500
+      ui:
+        badge: { label: Memory, icon: tabler:brain, tone: info }
+        stats:
+          - { path: item_count, singular: memory, plural: memories, icon: tabler:brain }
+          - { path: conflict_count, singular: conflict, plural: conflicts, icon: tabler:alert-triangle, min: 1 }
+      component:
+        create: { view: kickside.memory:memory_view }
+        manage: { view: kickside.memory:memory_view }
+      projections:
+        - kind: kickside.memory.ledger
+          projection_key: ledger
+          cursor_key: ledger
+          worker_ref: "func://kickside.memory.engine:ledger_projection"
+          input_mode: prefetch_events
+          events:
+            input:
+              - type: kickside.memory.events:item.added
+              - type: kickside.memory.events:item.superseded
+              - type: kickside.memory.events:item.merged
+              - type: kickside.memory.events:item.conflicted
+              - type: kickside.memory.events:item.forgotten
+              - type: kickside.memory.events:item.restored
+              - type: kickside.memory.events:provenance.added
+              - type: kickside.memory.events:provenance.removed
+              - type: kickside.memory.events:capture.advanced
+              - type: kickside.memory.events:consolidation.completed
+              - type: kickside.knowledge.events:content.upserted
+              - type: kickside.knowledge.events:content.deleted
+      default_config:
+        extraction_model: class:fast
+        judge_model: class:fast
+        extraction_instructions: ""
+        recall_max_items: 5
+        recall_max_length: 4000
+        soul_agent_max_chars: 2000
+        soul_owner_max_chars: 2000
+        consolidation_interval_hours: 24
+        capture_conversation: true
+        capture_experience: false
+      config_schema:
+        type: object
+        additionalProperties: false
+        properties:
+          extraction_model:
+            type: string
+            minLength: 1
+            title: Extraction model
+            description: Model that reads captured conversation and extracts candidate memories.
+            role: picker
+            web_component: wc-model-picker
+          judge_model:
+            type: string
+            minLength: 1
+            title: Reconcile model
+            description: Model that classifies a candidate against similar memories (add, update, merge, keep, conflict).
+            role: picker
+            web_component: wc-model-picker
+          extraction_instructions:
+            type: string
+            title: Memory policy
+            description: Extra instructions for what this memory keeps.
+            format: textarea
+          recall_max_items:
+            type: integer
+            minimum: 1
+            maximum: 50
+            title: Recall items
+            description: Memories recalled per step.
+          recall_max_length:
+            type: integer
+            minimum: 200
+            maximum: 50000
+            title: Recall budget (characters)
+          soul_agent_max_chars:
+            type: integer
+            minimum: 0
+            maximum: 20000
+            title: Agent identity and rules budget (characters)
+          soul_owner_max_chars:
+            type: integer
+            minimum: 0
+            maximum: 20000
+            title: User profile budget (characters)
+          consolidation_interval_hours:
+            type: number
+            minimum: 1
+            maximum: 720
+            title: Consolidation every (hours)
+          capture_conversation:
+            type: boolean
+            title: Capture conversations
+          capture_experience:
+            type: boolean
+            title: Capture tool outcomes
+
+  # Agent side. The runtime library keeps its published id.
   - name: runtime
     kind: library.lua
     meta:
       name: runtime
-      comment: KB-backed lifecycle/checkpoint runtime for the Knowledge Base Memory capability.
+      comment: Agent memory runtime - capture, pinned soul, recall, checkpoint and memory tools.
     source: file://runtime.lua
-    modules: [ctx, contract, json]
-    imports:
+    modules: [ctx, contract, security, json]
+    imports: &runtime_imports
       component: kickside.component:component
-      llm: wippy.llm:llm
-      prompt: wippy.llm:prompt
+      types: kickside.memory:types
+      memory_config: kickside.memory:config
+      memory_stores: kickside.memory.persist:stores
+      memory_items: kickside.memory.persist:items
+      memory_runs: kickside.memory.persist:runs
+      memory_jobs: kickside.memory.engine:jobs
+      memory_models: kickside.memory.engine:models
+      memory_writer: kickside.memory.engine:writer
+      memory_ledger: kickside.memory.engine:ledger
+      memory_ops: kickside.memory.engine:ops
+      memory_bindings: kickside.memory.engine:bindings
 
   - name: runtime_lifecycle
     kind: function.lua
     meta:
-      comment: Lifecycle binding for Knowledge Based Memory.
+      comment: wippy.agent:lifecycle apply - pins the soul on activate, captures on before_step, after_persist and deactivate.
     source: file://runtime_lifecycle.lua
-    modules: [ctx, contract, json]
     imports:
-      component: kickside.component:component
-      llm: wippy.llm:llm
-      prompt: wippy.llm:prompt
       implementation: kickside.memory:runtime
     method: apply
 
   - name: runtime_checkpoint
     kind: function.lua
     meta:
-      comment: Checkpoint binding for Knowledge Based Memory.
+      comment: wippy.agent:checkpoint create - working summary for the host and capture of the compacted range.
     source: file://runtime_checkpoint.lua
-    modules: [ctx, contract, json]
     imports:
-      component: kickside.component:component
-      llm: wippy.llm:llm
-      prompt: wippy.llm:prompt
       implementation: kickside.memory:runtime
     method: create
+
+  - name: memory_provider_recall
+    kind: function.lua
+    meta:
+      comment: wippy.agent:memory recall - scoped hybrid recall of current memories, skipping previously injected ids. Called by the agent runtime each step, not by the model.
+    source: file://memory_provider_recall.lua
+    imports:
+      implementation: kickside.memory:runtime
+    method: recall
+
+  - name: list_memory_targets
+    kind: function.lua
+    meta:
+      comment: Lists the memory knowledge bases the caller can read, for the agent memory picker.
+    source: file://memory_provider_recall.lua
+    imports:
+      implementation: kickside.memory:runtime
+    method: list_targets
+
+  - name: memory_build
+    kind: function.lua
+    meta:
+      comment: Trait build function - contributes the agent's identity, rules, skills and lessons to the compiled prompt.
+    source: file://memory_soul.lua
+    imports:
+      implementation: kickside.memory:runtime
+    method: build
+
+  - name: memory_prompt
+    kind: function.lua
+    meta:
+      comment: Trait prompt function - the owner profile and preferences pinned when the agent activated in this host.
+    source: file://memory_soul.lua
+    imports:
+      implementation: kickside.memory:runtime
+    method: prompt
 
   - name: memory_recall_tool
     kind: function.lua
@@ -109,49 +443,89 @@ entries:
       mcp: { required_scopes: [state.read] }
       title: Search Long-Term Memory
       llm_alias: SearchMemory
-      llm_description: "Search long-term memory. Returns compact identifiers, title, type, score and a provider snippet where available. Follow next_cursor with the same query. fields explicitly selects content, text, metadata or other provider fields; [\"*\"] returns full matched records."
+      llm_description: "Search long-term memory: current memories about the user and this agent, ranked by relevance. Returns compact rows; follow next_cursor with the same query. fields selects extra fields; [\"*\"] returns full records."
       input_schema: |
         {
           "type": "object",
           "properties": {
-            "fields": {"type": "array", "items": {"type": "string"}, "description": "Additional provider fields to return. Use [\"*\"] for the whole record. Default list rows contain identifiers and selection metadata."},
+            "fields": {"type": "array", "items": {"type": "string"}, "description": "Additional fields to return. Use [\"*\"] for the whole record."},
             "query": { "type": "string", "description": "What memory to search for" },
-            "kb_id": { "type": "string", "description": "Optional memory knowledge base id. Omit to search the capability's configured KBs." },
-            "limit": { "type": "integer", "description": "Maximum memories to return in this page", "minimum": 1, "maximum": 100 },
-            "cursor": { "type": "string", "description": "next_cursor from a previous SearchMemory result with the same query, to read the following page" }
+            "kb_id": { "type": "string", "description": "Optional id of one attached memory. Omit to search every attached memory." },
+            "limit": { "type": "integer", "description": "Maximum memories to return in this page", "minimum": 1, "maximum": 50 },
+            "cursor": { "type": "string", "description": "next_cursor from a previous SearchMemory result with the same query" }
           },
           "required": ["query"]
         }
       output_schema: |
         {
           "type": "object",
-          "description": "A ranked memory page {success,query,count,items,next_cursor?,note}. items are compact summaries by default; fields requests additional provider fields. Domain errors return {success:false,error}; infrastructure failures return (nil,typed error).",
+          "description": "A ranked memory page {success,query,count,items,next_cursor?,note}. Domain errors return {success:false,error}; infrastructure failures return (nil,typed error).",
           "properties": {
-            "success": {"type": "boolean", "description": "true when the search ran; false with error otherwise."},
-            "error": {"type": "string", "description": "Failure reason when success is false."},
-            "query": {"type": "string", "description": "The query that was searched (present when success is true)."},
-            "count": {"type": "integer", "description": "Number of memories returned in items."},
-            "items": {"type": "array", "description": "Matched memory records from the configured knowledge base(s).", "items": {"type": "object", "description": "A compact knowledge-base match with its source kb id. fields requests content/text/summary/metadata explicitly.", "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "source": {"type": "string"}, "score": {"type": "number"}, "kb_id": {"type": "string", "description": "Id of the knowledge base the memory came from."}, "content": {"type": "string", "description": "Memory content, when the item exposes it."}, "text": {"type": "string", "description": "Memory text, when the item exposes it."}, "summary": {"type": "string", "description": "Memory summary, when the item exposes it."}, "snippet": {"type": "string", "description": "Memory snippet, when the item exposes it."}}}},
-            "next_cursor": {"type": "string", "description": "Pass as cursor with the same query to read the next page; absent on the last page."},
-            "message": {"type": "string", "description": "Message for a disabled-recall domain outcome."},
-            "note": {"type": "string", "description": "Caveat that memory may be incomplete or inaccurate (present when success is true)."}
+            "success": {"type": "boolean"},
+            "error": {"type": "string"},
+            "query": {"type": "string"},
+            "count": {"type": "integer"},
+            "items": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "kb_id": {"type": "string"}, "content": {"type": "string"}, "node_type": {"type": "string"}, "score": {"type": "number"}, "source": {"type": "string"}, "created_at": {"type": "string"}}}},
+            "next_cursor": {"type": "string"},
+            "note": {"type": "string"}
           },
           "required": ["success"]
         }
     source: file://memory_recall_tool.lua
-    modules: [ctx, contract, json]
     imports:
-      component: kickside.component:component
-      llm: wippy.llm:llm
-      prompt: wippy.llm:prompt
       implementation: kickside.memory:runtime
     method: recall
+
+  - name: memory_remember_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.write] }
+      title: Remember
+      llm_alias: Remember
+      llm_description: "Store a durable memory about the user that should hold in future conversations: a fact, preference, profile attribute, skill or lesson. The memory is reconciled with what is already known (an update replaces the older value)."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "content": {"type": "string", "description": "One self-contained sentence about the user, e.g. 'The user lives in Berlin.'"},
+            "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson"]},
+            "key": {"type": "string", "description": "Short stable topic, e.g. home_city"},
+            "value": {"type": "string", "description": "The value only, e.g. Berlin"},
+            "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"},
+            "memory_id": {"type": "string", "description": "Optional id of one attached memory; defaults to the agent's write memory"}
+          },
+          "required": ["content"]
+        }
+      output_schema: |
+        {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_ids": {"type": "array", "items": {"type": "string"}}, "outcome": {"type": "object"}}, "required": ["success"]}
+    source: file://memory_tools.lua
+    imports:
+      implementation: kickside.memory:runtime
+    method: remember
+
+  - name: memory_forget_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.write] }
+      title: Forget Memory
+      llm_alias: ForgetMemory
+      llm_description: "Forget a memory by its id (from SearchMemory) when the user asks to forget it or it is wrong. It stops being recalled; the memory's owner can restore it."
+      input_schema: |
+        {"type": "object", "properties": {"item_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["item_id"]}
+      output_schema: |
+        {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_id": {"type": "string"}}, "required": ["success"]}
+    source: file://memory_tools.lua
+    imports:
+      implementation: kickside.memory:runtime
+    method: forget
 
   - name: lifecycle_binding
     kind: contract.binding
     meta:
-      title: Knowledge Based Memory Lifecycle
-      comment: Implements wippy.agent:lifecycle for KB-backed memory recall and final commit.
+      title: Memory Lifecycle
+      comment: Implements wippy.agent:lifecycle - pins the soul on activate and captures conversation on before_step, after_persist and deactivate.
     contracts:
       - contract: wippy.agent:lifecycle
         methods:
@@ -160,68 +534,84 @@ entries:
   - name: checkpoint_binding
     kind: contract.binding
     meta:
-      title: Knowledge Based Memory Checkpoint
-      comment: Supplies working session summaries and separate durable KB digests when an agent mounts Knowledge Base Memory.
+      title: Memory Checkpoint
+      comment: Supplies the working session summary and captures the compacted range into memory.
     contracts:
       - contract: wippy.agent:checkpoint
         methods:
           create: kickside.memory:runtime_checkpoint
+
+  - name: memory_binding
+    kind: contract.binding
+    meta:
+      title: Memory Recall
+      comment: Implements wippy.agent:memory recall over a memory knowledge base.
+    contracts:
+      - contract: wippy.agent:memory
+        context_required: [component_id]
+        methods:
+          recall: kickside.memory:memory_provider_recall
+
+  - name: memory_provider
+    kind: registry.entry
+    meta:
+      type: agent.memory_provider
+      title: Memory
+      comment: Recalls typed long-term memory from a selected memory knowledge base each step.
+      icon: tabler:brain
+      order: 20
+      implementation_id: kickside.memory:memory_binding
+      list_targets: kickside.memory:list_memory_targets
 
   - name: knowledge_based_memory
     kind: registry.entry
     meta:
       type: agent.trait
       public: true
-      title: Knowledge Base Memory
+      title: Memory
       icon: tabler:brain
-      comment: Explicitly mounts Memory for working session checkpoints, durable knowledge-base storage and recall.
+      comment: Captures conversations into attached memory knowledge bases, renders the agent's identity and rules and the user's profile into the prompt, and gives the agent Remember, SearchMemory and ForgetMemory.
       tags: [memory, checkpoint, knowledge]
       web_component: kickside-knowledge-memory
       context_schema:
         type: object
         properties:
+          memory_ids:
+            type: array
+            title: Memories
+            description: Memory knowledge bases this agent uses; the first is the one it writes to.
+            role: picker
+            web_component: wc-kb-picker
+            items: { type: string }
           kb_ids:
             type: array
-            title: Memory knowledge bases
+            title: Memories (earlier releases)
+            description: Read when memory_ids is empty.
             role: picker
             web_component: wc-kb-picker
             items: { type: string }
           write_kb_id:
             type: string
-            title: Write target knowledge base
+            title: Write memory
+            description: Memory captured conversation is written to; defaults to the first memory.
             role: picker
             web_component: wc-kb-picker
           read_enabled:
             type: boolean
-            title: Recall memory
+            title: Search memory tool
             role: value
           write_enabled:
             type: boolean
-            title: Write checkpoints
+            title: Capture conversations
             role: value
           recall_limit:
             type: integer
-            title: Recall result limit
-            role: value
-          recall_max_chars:
-            type: integer
-            title: Recall character budget
-            role: value
-          recall_prompt:
-            type: string
-            title: Recall prompt
+            title: Search result limit
             role: value
           checkpoint_model:
             type: string
             title: Checkpoint model
-            role: value
-          checkpoint_prompt:
-            type: string
-            title: Checkpoint prompt
-            role: value
-          checkpoint_temperature:
-            type: number
-            title: Checkpoint temperature
+            description: Model for the working summary when the agent has none.
             role: value
           checkpoint_max_tokens:
             type: integer
@@ -229,27 +619,49 @@ entries:
             role: value
           checkpoint_source_max_chars:
             type: integer
-            title: Checkpoint source chars
+            title: Checkpoint source characters
+            role: value
+          recall_max_chars:
+            type: integer
+            title: Recall character budget (earlier releases)
+            description: Accepted from earlier releases; the memory's own recall budget applies.
+            role: value
+          recall_prompt:
+            type: string
+            title: Recall prompt (earlier releases)
+            description: Accepted from earlier releases; has no effect.
+            role: value
+          checkpoint_prompt:
+            type: string
+            title: Checkpoint prompt (earlier releases)
+            description: Accepted from earlier releases; the memory policy in the memory's settings applies.
+            role: value
+          checkpoint_temperature:
+            type: number
+            title: Checkpoint temperature (earlier releases)
+            description: Accepted from earlier releases; has no effect.
             role: value
         additionalProperties: false
     prompt: |
-      You have Knowledge Base Memory. Relevant long-term memory may
-      be injected when you become active, including after an agent switch. This
-      memory is derived from prior chats and may be incomplete or
-      inaccurate. Treat it as advisory context; decide what is useful before
-      relying on it.
+      You have long-term memory. What you know about the user and your own
+      identity and rules appear in your instructions; relevant memories may be
+      added as notes. Memory comes from earlier conversations and can be out of
+      date: prefer what the user says now.
 
-      Use SearchMemory when you need to query memory explicitly. When
-      checkpoint persistence is enabled, checkpoints and session deactivation
-      store relevant details for future chats in the selected
-      knowledge base. This does not grant a general knowledge-base authoring
-      tool.
+      Use SearchMemory to look something up, Remember to keep a durable fact or
+      preference the user states, and ForgetMemory when the user asks you to
+      forget something. Conversations are also captured into memory
+      automatically; you do not need to Remember everything the user says.
     tools:
       - kickside.memory:memory_recall_tool
+      - kickside.memory:memory_remember_tool
+      - kickside.memory:memory_forget_tool
+    build_func_id: kickside.memory:memory_build
+    prompt_func_id: kickside.memory:memory_prompt
     behaviors:
       - id: knowledge_memory
         kind: memory
-        handles: [activate, checkpoint, deactivate]
+        handles: [activate, before_step, after_persist, deactivate, checkpoint]
         handlers:
           lifecycle: kickside.memory:lifecycle_binding
           checkpoint: kickside.memory:checkpoint_binding

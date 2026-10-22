@@ -1,0 +1,177 @@
+-- Shared fixture for the memory suites: seeded users, calls under a user's
+-- actor, memory knowledge bases created through the knowledge control plane,
+-- and the scripted model provider.
+
+local sql = require("sql")
+local contract = require("contract")
+local security = require("security")
+local funcs = require("funcs")
+local uuid = require("uuid")
+local time = require("time")
+local script = require("script")
+local history = require("history")
+
+local M = { script = script, history = history }
+
+M.RUN_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.suites:history_binding" }
+
+-- Lifecycle payload of a session host.
+function M.payload(phase: string, session_id: string, agent_id: string, extra: any?): any
+    local host = { kind = "session", session_id = session_id }
+    local payload = {
+        phase = phase, host = host, agent = { id = agent_id, model = "test-fast" },
+        run_context = { contract = M.RUN_CONTEXT.contract, binding = M.RUN_CONTEXT.binding, host = host },
+    }
+    for k, v in pairs(extra or {}) do payload[k] = v end
+    return payload
+end
+
+-- Context an agent step carries: trait context plus the agent_run pointer.
+function M.agent_context(memory_ids: { string }, session_id: string, agent_id: string, extra: any?): any
+    local host = { kind = "session", session_id = session_id }
+    local context = {
+        memory_ids = memory_ids, agent_id = agent_id,
+        agent_run = { host = host, agent = { id = agent_id }, run_context = { contract = M.RUN_CONTEXT.contract, binding = M.RUN_CONTEXT.binding, host = host } },
+    }
+    for k, v in pairs(extra or {}) do context[k] = v end
+    return context
+end
+
+-- Waits for the memory's runs of a type to reach a terminal status; returns
+-- them newest first.
+function M.wait_runs(user_id: string, component_id: string, run_type: string, count: integer): { any }
+    local deadline = time.now():add(60 * time.SECOND)
+    while true do
+        local rows = M.op(user_id, "runs", { component_id = component_id, run_type = run_type }) or {}
+        local done = 0
+        for _, run in ipairs(rows) do
+            if run.status == "succeeded" or run.status == "failed" then done = done + 1 end
+        end
+        if done >= count then return rows end
+        if time.now():after(deadline) then error("memory runs did not finish: " .. tostring(#rows) .. " runs") end
+        time.sleep(100 * time.MILLISECOND)
+    end
+end
+
+-- Waits for a job to reach a status.
+function M.wait_job(job_id: string, status: string): any
+    local deadline = time.now():add(60 * time.SECOND)
+    while true do
+        local db = M.db()
+        local rows = db:query("SELECT status, attempts, scheduled_at FROM kickside_job WHERE id = $1", { job_id }) or {}
+        db:release()
+        if rows[1] and rows[1].status == status then
+            rows[1].attempts = tonumber(rows[1].attempts)
+            return rows[1]
+        end
+        if time.now():after(deadline) then error("job " .. job_id .. " did not reach " .. status .. ": " .. tostring(rows[1] and rows[1].status)) end
+        time.sleep(100 * time.MILLISECOND)
+    end
+end
+
+function M.db(): any
+    local db, err = sql.get("app:db")
+    if err then error(tostring(err)) end
+    return db
+end
+
+function M.ensure_user(user_id: string)
+    local db = M.db()
+    local sqlite = db:type() == sql.type.SQLITE
+    local email = user_id:gsub("[^%w_%-]", "_") .. "@memory.test"
+    if sqlite then
+        db:execute([[INSERT OR IGNORE INTO app_users (user_id, email, full_name, password_hash, status, created_at, updated_at)
+            VALUES ($1, $2, 'Memory Test User', '!test:no-password', 'active', strftime('%s', 'now'), strftime('%s', 'now'))]], { user_id, email })
+        db:execute([[INSERT OR IGNORE INTO app_user_groups (user_id, group_id, created_at) VALUES ($1, 'app:user', strftime('%s', 'now'))]], { user_id })
+    else
+        db:execute([[INSERT INTO app_users (user_id, email, full_name, password_hash, status, created_at, updated_at)
+            VALUES ($1, $2, 'Memory Test User', '!test:no-password', 'active', now(), now()) ON CONFLICT (user_id) DO NOTHING]], { user_id, email })
+        db:execute([[INSERT INTO app_user_groups (user_id, group_id, created_at) VALUES ($1, 'app:user', now())
+            ON CONFLICT (user_id, group_id) DO NOTHING]], { user_id })
+    end
+    db:release()
+end
+
+function M.user(prefix: string?): string
+    local id = (prefix or "memuser") .. "_" .. uuid.v7():gsub("%-", ""):sub(-12)
+    M.ensure_user(id)
+    return id
+end
+
+local function scope(): any
+    return security.named_scope("wippy.security:process")
+end
+
+-- Calls a function entry as the user, with an optional context.
+function M.call_as(user_id: string, fn_id: string, args: any, context: any?): (any, any)
+    local executor = funcs.new():with_actor(security.new_actor(user_id, {})):with_scope(scope())
+    if context then executor = executor:with_context(context) end
+    return executor:call(fn_id, args)
+end
+
+-- Runs a named memory operation (see app.suites:memory_call) as the user.
+function M.op(user_id: string, op: string, args: any, context: any?): (any, any)
+    return M.call_as(user_id, "app.suites:memory_call", { op = op, args = args }, context)
+end
+
+-- Creates a memory knowledge base owned by the user (see app.suites:provision).
+function M.try_memory(user_id: string, config: any?): (string?, any)
+    local created, err = M.call_as(user_id, "app.suites:provision", { name = "memory " .. uuid.v7(), config = config })
+    if err then return nil, err end
+    return created.component_id, nil
+end
+
+function M.memory(user_id: string, config: any?): string
+    local id, err = M.try_memory(user_id, config)
+    if err or not id then error("memory create failed: " .. tostring(err)) end
+    return id
+end
+
+-- Deletes the memory component through the component service, which runs the
+-- memory's deletable cleanup.
+function M.delete_memory(user_id: string, component_id: string): (any, any)
+    local def, err = contract.get("kickside.component:component_service")
+    if err then return nil, err end
+    local svc, open_err = def:with_actor(security.new_actor(user_id, {})):with_scope(scope()):open()
+    if open_err then return nil, open_err end
+    return svc:delete({ component_id = component_id })
+end
+
+-- Reconcile options for owner-scoped writes of a user.
+function M.opts(component_id: string, user_id: string, extra: any?): any
+    local opts = {
+        component_id = component_id, embedding_model = "test-embed", judge_model = "test-fast",
+        scope_family = "owner", scope_id = user_id, source = "capture", host_kind = "session", host_id = "s-test",
+    }
+    for k, v in pairs(extra or {}) do opts[k] = v end
+    return opts
+end
+
+function M.remember(user_id: string, component_id: string, candidates: { any }, idempotency: string, extra: any?): (any, any)
+    return M.op(user_id, "remember", { candidates = candidates, opts = M.opts(component_id, user_id, extra), idempotency = idempotency })
+end
+
+function M.items(user_id: string, component_id: string, filter: any?): { any }
+    local rows, err = M.op(user_id, "list", { component_id = component_id, filter = filter or {} })
+    if err then error(tostring(err)) end
+    return rows
+end
+
+function M.settle(user_id: string, component_id: string)
+    local _, err = M.op(user_id, "settle", { component_id = component_id })
+    if err then error(tostring(err)) end
+end
+
+function M.extraction(items: { any })
+    script.respond("structured_output", { items = items })
+end
+
+function M.verdict(action: string, target_ids: { string })
+    script.respond("structured_output", { action = action, target_ids = target_ids, reason = "test" })
+end
+
+function M.candidate(kind: string, key: string, value: string, content: string, event_id: string?, valid_at: string?): any
+    return { kind = kind, key = key, value = value, content = content, event_id = event_id or "", valid_at = valid_at or "", confidence = 0.9 }
+end
+
+return M

@@ -1,0 +1,234 @@
+local test = require("test")
+local fixture = require("fixture")
+
+local function values(items: { any }): { [string]: any }
+    local out = {}
+    for _, item in ipairs(items) do out[tostring(item.value)] = item end
+    return out
+end
+
+local function apply(user: string, phase: string, memory: string, session: string, agent: string, extra: any?): (any, any)
+    return fixture.op(user, "apply", { payload = fixture.payload(phase, session, agent, extra) },
+        fixture.agent_context({ memory }, session, agent))
+end
+
+local function define_tests()
+    test.describe("memory agent runtime", function()
+        test.before_each(function() fixture.script.reset() end)
+
+        test.it("captures the conversation since the cursor before a step, keeping user and assistant text only", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { capture_experience = true })
+            local session = "s-" .. user
+            fixture.history.record(session, {
+                { id = "h1", role = "user", content = "Hi! I live in Paris and I am vegetarian." },
+                { id = "h2", role = "developer", content = "- The user likes jazz.", metadata = { memory_ids = { "x" } } },
+                { id = "h3", role = "function", content = "{\"rows\": 42}", metadata = { function_name = "lookup", status = "success" } },
+                { id = "h4", role = "assistant", content = "Nice to meet you." },
+            })
+            fixture.extraction({
+                fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "h1"),
+                fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", "h1"),
+            })
+            local applied, err = apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(err, tostring(err))
+            test.is_true(applied.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            local span = runs[1].input.span
+            test.eq(#span, 3)
+            test.eq(span[1].id, "h1")
+            test.eq(span[2].text, "tool lookup success")
+            test.eq(span[3].id, "h4")
+            test.eq(runs[1].input.owner_id, user)
+            fixture.settle(user, id)
+            local items = values(fixture.items(user, id))
+            test.eq(items.Paris.scope_key, "owner:" .. user)
+            test.eq(items.vegetarian.kind, "preference")
+            local provenance = fixture.op(user, "get", { component_id = id, item_id = items.Paris.id })
+            test.not_nil(provenance)
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+            test.eq(cursor.last_event_id, "h4")
+        end)
+
+        test.it("captures each persisted record once across after_persist and before_step", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, {
+                { id = "p1", role = "user", content = "My manager is Dana." },
+                { id = "p2", role = "assistant", content = "Noted." },
+            })
+            fixture.extraction({ fixture.candidate("fact", "manager", "Dana", "The user's manager is Dana.", "p1") })
+            local persisted, err = apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p2" } })
+            test.is_nil(err, tostring(err))
+            test.is_true(persisted.metadata.capture.captured)
+            local again = apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p2" } })
+            test.eq(again.metadata.capture.captured, false)
+            local step = apply(user, "before_step", id, session, "agent-a")
+            test.eq(step.metadata.capture.captured, false)
+            test.eq(step.metadata.capture.reason, "no_new_history")
+            fixture.history.record(session, { { id = "p3", role = "user", content = "Dana moved to the Berlin office." } })
+            fixture.extraction({ fixture.candidate("fact", "manager_office", "Berlin", "The user's manager Dana works in the Berlin office.", "p3") })
+            fixture.verdict("ADD", {})
+            local next_step = apply(user, "before_step", id, session, "agent-a")
+            test.is_true(next_step.metadata.capture.captured)
+            local stale = apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p3" } })
+            test.eq(stale.metadata.capture.reason, "already_captured")
+            local runs = fixture.wait_runs(user, id, "derive", 2)
+            test.eq(#runs, 2)
+            for _, run in ipairs(runs) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id), 2)
+        end)
+
+        test.it("recalls current memories of the caller and agent scopes only, skipping injected ids", function()
+            local alice, bob = fixture.user("alice"), fixture.user("bob")
+            local id = fixture.memory(alice)
+            fixture.remember(alice, id, { fixture.candidate("fact", "trip", "Lisbon", "The user is planning a trip to Lisbon in May.", "m1") }, "a1")
+            fixture.remember(alice, id, { fixture.candidate("fact", "trip_budget", "2000", "The user's trip budget is 2000 euros.", "m2") }, "a2")
+            fixture.remember(alice, id, { fixture.candidate("fact", "trip", "Tokyo", "The user is planning a trip to Tokyo.", "m3") }, "b1",
+                { scope_id = bob })
+            fixture.op(alice, "create", { component_id = id, fields = {
+                kind = "lesson", scope_family = "agent", scope_id = "agent-a", key = "trip_lesson", content = "Trips: always ask for travel dates first.",
+            } })
+            fixture.op(alice, "create", { component_id = id, fields = {
+                kind = "lesson", scope_family = "agent", scope_id = "agent-b", key = "trip_lesson", content = "Trips: prefer trains over flights.",
+            } })
+            fixture.settle(alice, id)
+            local input = { recent_actions = { "user: help me plan my trip" }, constraints = { max_items = 10 } }
+            local recalled, err = fixture.op(alice, "recall", { input = input }, { component_id = id, agent_id = "agent-a" })
+            test.is_nil(err, tostring(err))
+            local seen = {}
+            for _, memory in ipairs(recalled.memories) do seen[memory.content] = memory end
+            test.not_nil(seen["The user is planning a trip to Lisbon in May."])
+            test.not_nil(seen["Trips: always ask for travel dates first."])
+            test.is_nil(seen["The user is planning a trip to Tokyo."])
+            test.is_nil(seen["Trips: prefer trains over flights."])
+            local lisbon = seen["The user is planning a trip to Lisbon in May."]
+            test.eq(lisbon.metadata.type, "fact")
+
+            local skipped = fixture.op(alice, "recall", { input = {
+                recent_actions = input.recent_actions, constraints = input.constraints, previous_memories = { lisbon.id },
+            } }, { component_id = id, agent_id = "agent-a" })
+            for _, memory in ipairs(skipped.memories) do test.neq(memory.id, lisbon.id) end
+            test.eq(#skipped.memories, #recalled.memories - 1)
+
+            local bobs = fixture.op(bob, "recall", { input = input }, { component_id = id, agent_id = "agent-b" })
+            test.is_nil(bobs, "bob has no access to alice's memory")
+        end)
+
+        test.it("renders the pinned owner slice byte-identically until the next activation", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.remember(user, id, { fixture.candidate("preference", "tone", "concise", "The user prefers concise answers.", "m1") }, "p1")
+            fixture.remember(user, id, { fixture.candidate("profile_slot", "name", "Sam", "The user's name is Sam.", "m2") }, "p2")
+            fixture.settle(user, id)
+            local _, err = apply(user, "activate", id, session, "agent-a")
+            test.is_nil(err, tostring(err))
+            local context = fixture.agent_context({ id }, session, "agent-a")
+            local first = fixture.op(user, "prompt", {}, context)
+            test.eq(first, "## What you know about the user\n- [profile_slot] The user's name is Sam.\n- [preference] The user prefers concise answers.")
+            fixture.verdict("ADD", {})
+            local _, add_err = fixture.remember(user, id, { fixture.candidate("preference", "format", "bullets", "The user likes bullet lists.", "m3") }, "p3")
+            test.is_nil(add_err, tostring(add_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "prompt", {}, context), first)
+            apply(user, "activate", id, session, "agent-a")
+            local second = fixture.op(user, "prompt", {}, context)
+            test.neq(second, first)
+            test.is_true(second:find("bullet lists", 1, true) ~= nil)
+        end)
+
+        test.it("contributes the agent's identity and rules in a deterministic order", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            for _, fields in ipairs({
+                { kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "units", content = "Use metric units.", priority = 1 },
+                { kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", content = "You are Ada." },
+                { kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "currency", content = "Quote prices in euros.", priority = 5 },
+                { kind = "rule", scope_family = "agent", scope_id = "agent-b", key = "other", content = "Not for agent a." },
+            }) do
+                local _, err = fixture.op(user, "create", { component_id = id, fields = fields })
+                test.is_nil(err, tostring(err))
+            end
+            fixture.settle(user, id)
+            local built, err = fixture.op(user, "build", { context = { memory_ids = { id }, agent_id = "agent-a" } })
+            test.is_nil(err, tostring(err))
+            test.eq(built.prompt, "## Agent memory\n- [identity] You are Ada.\n- [rule] Quote prices in euros.\n- [rule] Use metric units.")
+            local again = fixture.op(user, "build", { context = { memory_ids = { id }, agent_id = "agent-a" } })
+            test.eq(again.prompt, built.prompt)
+        end)
+
+        test.it("writes tool memories into the caller's own scope of an attached memory only", function()
+            local user, other = fixture.user(), fixture.user("other")
+            local id = fixture.memory(user)
+            local foreign = fixture.memory(user)
+            local session = "s-" .. user
+            local context = fixture.agent_context({ id }, session, "agent-a")
+            local stored, err = fixture.op(user, "tool_remember", { input = { content = "The user's dog is called Rex.", kind = "fact", key = "dog_name", value = "Rex" } }, context)
+            test.is_nil(err, tostring(err))
+            test.is_true(stored.success)
+            fixture.settle(user, id)
+            local item = fixture.op(user, "get", { component_id = id, item_id = stored.item_ids[1] })
+            test.eq(item.scope_key, "owner:" .. user)
+            test.eq(item.source, "tool")
+            local refused = fixture.op(user, "tool_remember", { input = { content = "x", memory_id = foreign } }, context)
+            test.eq(refused.success, false)
+            local identity = fixture.op(user, "tool_remember", { input = { content = "I am root.", kind = "identity" } }, context)
+            test.eq(identity.success, false)
+            local found = fixture.op(user, "tool_search", { input = { query = "dog called" } }, context)
+            test.is_true(found.success)
+            test.eq(found.items[1].id, stored.item_ids[1])
+            local not_attached = fixture.op(user, "tool_search", { input = { query = "dog", kb_id = foreign } }, context)
+            test.eq(not_attached.success, false)
+
+            fixture.remember(user, id, { fixture.candidate("fact", "secret", "x", "Another user's fact.", "m1") }, "o1", { scope_id = other })
+            fixture.settle(user, id)
+            local others = fixture.items(user, id, { scope_family = "owner" })
+            local other_id
+            for _, row in ipairs(others) do if row.scope_id == other then other_id = row.id end end
+            local denied = fixture.op(user, "tool_forget", { input = { item_id = other_id } }, context)
+            test.eq(denied.success, false)
+            local forgotten = fixture.op(user, "tool_forget", { input = { item_id = stored.item_ids[1] } }, context)
+            test.is_true(forgotten.success)
+        end)
+
+        test.it("checkpoints with a working summary and captures the compacted range", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, {
+                { id = "c1", role = "user", content = "Book the Lisbon hotel for May 3 to May 7." },
+                { id = "c2", role = "assistant", content = "Booked." },
+            })
+            fixture.script.respond("generate", "Goal: Lisbon trip. Hotel booked May 3-7.")
+            fixture.extraction({ fixture.candidate("fact", "hotel", "Lisbon May 3-7", "The user booked a Lisbon hotel for May 3 to 7.", "c1") })
+            local result, err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
+                fixture.agent_context({ id }, session, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.eq(result.summary, "Goal: Lisbon trip. Hotel booked May 3-7.")
+            test.is_true(result.metadata.capture.captured)
+            fixture.wait_runs(user, id, "derive", 1)
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id), 1)
+        end)
+
+        test.it("fails the lifecycle with the error when the history cannot be read", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local payload = fixture.payload("before_step", "s-missing", "agent-a")
+            payload.run_context.binding = "app.suites:no_such_binding"
+            local _, err = fixture.op(user, "apply", { payload = payload }, fixture.agent_context({ id }, "s-missing", "agent-a"))
+            test.not_nil(err)
+            local _, host_err = fixture.op(user, "apply", { payload = { phase = "before_step" } }, fixture.agent_context({ id }, "s", "a"))
+            test.not_nil(host_err)
+            local ignored = fixture.op(user, "apply", { payload = fixture.payload("after_step", "s", "agent-a") }, fixture.agent_context({ id }, "s", "a"))
+            test.is_true(ignored.metadata.ignored)
+        end)
+    end)
+end
+
+local run_cases = test.run_cases(define_tests)
+return { run = function(options) return run_cases(options) end }

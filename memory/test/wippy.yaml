@@ -1,6 +1,5 @@
-description: Tests of the memory runtime argument and durable-memory boundaries.
-module: memory-unit-test
 organization: kickside
-directories:
-  src: .
-  modules: .wippy
+module: memory-test
+description: Harness that boots kickside/memory with the knowledge control plane, core threads and jobs, and runs its suites on SQLite and PostgreSQL.
+options:
+    unpack_modules: true

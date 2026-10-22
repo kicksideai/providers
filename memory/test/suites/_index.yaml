@@ -1,0 +1,106 @@
+version: "1.0"
+namespace: app.suites
+
+entries:
+  - name: fixture
+    kind: library.lua
+    source: file://fixture.lua
+    modules: [sql, contract, security, funcs, uuid, time]
+    imports:
+      script: app.llm:script
+      history: app.suites:history
+
+  - name: memory_call
+    kind: function.lua
+    meta: { comment: Runs a named memory operation in the caller's frame. }
+    source: file://memory_call.lua
+    method: call
+    imports:
+      memory_ops: kickside.memory.engine:ops
+      memory_writer: kickside.memory.engine:writer
+      runtime: kickside.memory:runtime
+      memory_items: kickside.memory.persist:items
+      memory_runs: kickside.memory.persist:runs
+      memory_ledger: kickside.memory.engine:ledger
+      memory_jobs: kickside.memory.engine:jobs
+      memory_bindings: kickside.memory.engine:bindings
+
+  - name: provision
+    kind: function.lua
+    meta: { comment: Creates a memory knowledge base as the calling user, following the control plane's create sequence. }
+    source: file://provision.lua
+    method: run
+    modules: [contract, security, uuid]
+    imports:
+      component: kickside.component:component
+
+  - name: history
+    kind: library.lua
+    source: file://history.lua
+    modules: [sql, json]
+
+  - name: history_get_history
+    kind: function.lua
+    source: file://history.lua
+    method: get_history
+    modules: [sql, json]
+
+  - name: history_get_prompt
+    kind: function.lua
+    source: file://history.lua
+    method: get_prompt
+    modules: [sql, json]
+
+  - name: history_get_context
+    kind: function.lua
+    source: file://history.lua
+    method: get_context
+    modules: [sql, json]
+
+  - name: history_binding
+    kind: contract.binding
+    meta: { comment: Test run_context over app_history. }
+    contracts:
+      - contract: wippy.agent:run_context
+        methods:
+          get_history: app.suites:history_get_history
+          get_prompt: app.suites:history_get_prompt
+          get_context: app.suites:history_get_context
+
+  - name: engine_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_engine
+      timeout: 300s
+    source: file://engine_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: agent_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_agent
+      timeout: 300s
+    source: file://agent_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: consolidation_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_consolidation
+      timeout: 300s
+    source: file://consolidation_test.lua
+    method: run
+    modules: [time]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture

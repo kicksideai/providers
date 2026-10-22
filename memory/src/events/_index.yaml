@@ -1,0 +1,244 @@
+# Typed ledger events of a memory knowledge base thread.
+version: '1.0'
+namespace: kickside.memory.events
+entries:
+- name: item.added
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A typed memory item enters the memory.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      kind:
+        type: string
+        enum:
+        - identity
+        - rule
+        - profile_slot
+        - fact
+        - preference
+        - skill
+        - lesson
+      scope_family:
+        type: string
+        enum:
+        - agent
+        - owner
+        - session
+        - group
+      scope_id:
+        type: string
+      key:
+        type: string
+      value: {}
+      content:
+        type: string
+      valid_at:
+        type: string
+      source:
+        type: string
+        enum:
+        - capture
+        - tool
+        - reflection
+        - owner
+      provenance:
+        type: array
+        items:
+          type: object
+          properties:
+            host_kind:
+              type: string
+            host_id:
+              type: string
+            event_id:
+              type: string
+          required:
+          - host_kind
+          - host_id
+          - event_id
+      confidence:
+        type: number
+      priority:
+        type: integer
+    required:
+    - item_id
+    - kind
+    - scope_family
+    - scope_id
+    - key
+    - content
+    - valid_at
+    - source
+- name: item.superseded
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item stops being current because a newer item replaces it.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      by:
+        type: string
+      invalid_at:
+        type: string
+    required:
+    - item_id
+    - by
+- name: item.merged
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: Items are folded into one item that carries their provenance.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_ids:
+        type: array
+        items:
+          type: string
+      into:
+        type: string
+    required:
+    - item_ids
+    - into
+- name: item.conflicted
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: Items contradict each other and wait for a person to resolve the group.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_ids:
+        type: array
+        items:
+          type: string
+      group_id:
+        type: string
+    required:
+    - item_ids
+    - group_id
+- name: item.forgotten
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A person or agent tool forgets an item; it leaves recall and the soul.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      actor:
+        type: string
+      reason:
+        type: string
+    required:
+    - item_id
+- name: item.restored
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A forgotten, superseded or conflicting item is current again.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      actor:
+        type: string
+      reason:
+        type: string
+    required:
+    - item_id
+- name: provenance.added
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item is seen again in a host record.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      host_kind:
+        type: string
+      host_id:
+        type: string
+      event_id:
+        type: string
+    required:
+    - item_id
+    - host_kind
+    - host_id
+    - event_id
+- name: provenance.removed
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A host record no longer supports an item.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      host_kind:
+        type: string
+      host_id:
+        type: string
+      event_id:
+        type: string
+    required:
+    - item_id
+    - host_kind
+    - host_id
+    - event_id
+- name: capture.advanced
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A host's conversation is captured through a record.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      host_kind:
+        type: string
+      host_id:
+        type: string
+      agent_id:
+        type: string
+      last_event_id:
+        type: string
+    required:
+    - host_kind
+    - host_id
+    - last_event_id
+- name: consolidation.completed
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A consolidation run finished.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      run_id:
+        type: string
+      stats:
+        type: object
+    required:
+    - run_id
