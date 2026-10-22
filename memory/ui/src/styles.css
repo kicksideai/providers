@@ -1,21 +1,21 @@
-/* Knowledge Base Memory capability config surface. Styled only with the
-   universal --p-* theme vocabulary (with literal fallbacks) so it renders
-   correctly inside the shadow DOM of the trait config host. Ported verbatim
-   from the original hand-written element. */
-:host { display: block; color: var(--p-text-color, #172033); font: 13px/1.4 Inter, system-ui, sans-serif; }
-.km { display: grid; gap: 12px; }
+/* Memory trait settings, mounted in the agent editor's trait panel. Styled only
+   with --p-* theme tokens. */
+:host { display: block; height: 100%; min-height: 0; color: var(--p-text-color); font: 13px/1.45 Inter, system-ui, sans-serif; }
+.km { display: grid; gap: 12px; height: 100%; overflow-y: auto; }
 .field { display: grid; gap: 6px; font-weight: 600; }
 .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; }
-.switches { display: flex; flex-wrap: wrap; gap: 8px 14px; }
-.check { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
-.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--p-primary-color, #2563eb); }
-input, textarea {
-  width: 100%; box-sizing: border-box; border: 1px solid var(--p-content-border-color, #d0d7e2);
-  border-radius: 6px; padding: 8px 10px; background: var(--p-inputtext-background, #fff);
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 600; }
+input {
+  width: 100%; box-sizing: border-box; border: 1px solid var(--p-content-border-color);
+  border-radius: 8px; padding: 7px 10px; background: var(--p-inputtext-background, var(--p-content-background));
   color: inherit; font: inherit;
 }
-textarea { min-height: 78px; resize: vertical; }
-details { border-top: 1px solid var(--p-content-border-color, #e2e8f0); padding-top: 10px; }
-summary { cursor: pointer; color: var(--p-text-muted-color, #64748b); font-weight: 600; }
-.hint { color: var(--p-text-muted-color, #64748b); font-size: 12px; font-weight: 400; }
+.hint { color: var(--p-text-muted-color); font-size: 12px; font-weight: 400; }
+.error { color: var(--p-danger-500); font-size: 12px; font-weight: 400; }
+.mm-switch { position: relative; flex: none; width: 40px; height: 23px; padding: 0; border: 1px solid color-mix(in srgb, var(--p-text-color) 18%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--p-text-color) 16%, transparent); cursor: pointer; }
+.mm-switch.on { background: var(--p-primary-color); border-color: var(--p-primary-color); }
+.mm-switch-knob { position: absolute; top: 50%; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; transform: translateY(-50%); transition: left .16s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.mm-switch.on .mm-switch-knob { left: 19px; }
+.mm-switch:focus-visible { outline: var(--p-focus-ring-width) var(--p-focus-ring-style) var(--p-focus-ring-color); outline-offset: var(--p-focus-ring-offset); box-shadow: var(--p-focus-ring-shadow); }
+.mm-notice.error { color: var(--p-danger-500); font-size: 12px; }
 @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }

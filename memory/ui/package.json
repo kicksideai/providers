@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "specification": "wippy-component-1.0",
   "title": "KickSide Memory",
-  "description": "Knowledge Base Memory capability config web component for kickside/memory.",
-  "browser": "dist/knowledge_memory.js",
+  "description": "Memory trait settings, memory create pane and memory knowledge base page for kickside/memory.",
+  "browser": "dist/index.js",
   "files": [
     "dist/",
     "src/",
@@ -41,7 +41,7 @@
       "properties": {
         "config": {
           "type": "object",
-          "description": "Trait activation context and agent_options.checkpoint policy for the memory capability.",
+          "description": "Trait context { memory_ids, write_enabled, read_enabled, recall_limit, checkpoint_model } and agent_options.checkpoint policy.",
           "default": {}
         }
       }
@@ -51,7 +51,7 @@
       "properties": {
         "config-changed": {
           "type": "object",
-          "description": "Edited memory config: { context, agent_options.checkpoint }."
+          "description": "Edited trait config: { context, agent_options.checkpoint }."
         }
       }
     },

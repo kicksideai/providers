@@ -110,7 +110,7 @@ entries:
   # Deferred workers. Each re-admits the identity its run record holds.
   - name: derive_worker
     kind: function.lua
-    meta: { comment: Derive job - re-admits the run identity. }
+    meta: { comment: Derive job - started by capture (trait lifecycle phases and checkpoint) and by content ingested into the memory; re-admits the run identity. }
     source: file://jobs.lua
     method: derive_run
     imports: *jobs_imports
@@ -126,7 +126,7 @@ entries:
 
   - name: consolidate_worker
     kind: function.lua
-    meta: { comment: Consolidation slot job - re-admits the run identity. }
+    meta: { comment: Consolidation slot job - armed when the memory is created, re-armed on its cadence, brought forward by deactivate and resummarize; re-admits the run identity. }
     source: file://jobs.lua
     method: consolidate_run
     imports: *jobs_imports
@@ -142,7 +142,7 @@ entries:
 
   - name: reembed_worker
     kind: function.lua
-    meta: { comment: Re-embed job - re-admits the run identity. }
+    meta: { comment: Re-embed job - started by the maintainable schedule_reembed method; re-admits the run identity. }
     source: file://jobs.lua
     method: reembed_run
     imports: *jobs_imports

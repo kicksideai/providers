@@ -8,16 +8,14 @@ Knowledge Base component; agents attach one or more memories.
 The knowledge base thread (`thread_id == component_id`) is the ledger. Writers
 append typed events at an expected head:
 
-| Event | Body |
-|---|---|
-| `kickside.memory.events:item.added` | `item_id, kind, scope_family, scope_id, key, value, content, valid_at, source, provenance[]` |
-| `item.superseded` | `item_id, by, invalid_at` |
-| `item.merged` | `item_ids, into` |
-| `item.conflicted` | `item_ids, group_id` |
-| `item.forgotten` / `item.restored` | `item_id, actor, reason` |
-| `provenance.added` / `provenance.removed` | `item_id, host_kind, host_id, event_id` |
-| `capture.advanced` | `host_kind, host_id, last_event_id` |
-| `consolidation.completed` | `run_id, stats` |
+- `kickside.memory.events:item.added`: `item_id, kind, scope_family, scope_id, key, value, content, valid_at, source, provenance[]`
+- `item.superseded`: `item_id, by, invalid_at`
+- `item.merged`: `item_ids, into`
+- `item.conflicted`: `item_ids, group_id`
+- `item.forgotten` and `item.restored`: `item_id, actor, reason`
+- `provenance.added` and `provenance.removed`: `item_id, host_kind, host_id, event_id`
+- `capture.advanced`: `host_kind, host_id, last_event_id`
+- `consolidation.completed`: `run_id, stats`
 
 The ledger projection folds events into `kickside_memory_items`,
 `kickside_memory_provenance`, the full-text index and cursors; the tables are

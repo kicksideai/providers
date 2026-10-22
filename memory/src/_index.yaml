@@ -10,68 +10,68 @@ entries:
       comment: Memory knowledge bases (kb_type memory) holding typed, versioned memory items on a ledger thread, and the agent trait and memory provider that capture conversations into them, render the pinned soul, and recall from them.
 
   - name: dep.wippy.agent
+    version: '*'
     kind: ns.dependency
     component: wippy/agent
-    version: '*'
     meta:
       comment: Lifecycle, checkpoint, memory and run_context contracts; the after_persist lifecycle phase.
 
   - name: dep.wippy.llm
+    version: '*'
     kind: ns.dependency
     component: wippy/llm
-    version: '*'
 
   - name: dep.wippy.migration
+    version: '*'
     kind: ns.dependency
     component: wippy/migration
-    version: '*'
 
   - name: dep.kickside.component
+    version: '*'
     kind: ns.dependency
     component: kickside/component
-    version: '*'
     meta:
       comment: Memory knowledge bases are components; access, public meta and the write fence go through the component service.
 
   - name: dep.kickside.contract
+    version: '*'
     kind: ns.dependency
     component: kickside/contract
-    version: '*'
     meta:
       comment: Implements embeddable, queryable and deletable; shared error helpers.
 
   - name: dep.kickside.core
+    version: '*'
     kind: ns.dependency
     component: kickside/core
-    version: '*'
     meta:
       comment: The memory ledger is the knowledge base's thread; the ledger projection folds it.
 
   - name: dep.kickside.jobs
+    version: '*'
     kind: ns.dependency
     component: kickside/jobs
-    version: '*'
     meta:
       comment: Derive, consolidation and re-embed runs execute as jobs.
 
   - name: dep.kickside.execution
+    version: '*'
     kind: ns.dependency
     component: kickside/execution
-    version: '*'
     meta:
       comment: Deferred runs hold and re-admit the requester's execution identity.
 
   - name: dep.kickside.knowledge
+    version: '*'
     kind: ns.dependency
     component: kickside/knowledge
-    version: '*'
     meta:
       comment: Memory is a knowledge-base engine of the knowledge control plane.
 
   - name: dep.kickside.search_index
+    version: '*'
     kind: ns.dependency
     component: kickside/search-index
-    version: '*'
     meta:
       comment: Hybrid vector and full-text search over the memory item tables.
 
@@ -158,7 +158,7 @@ entries:
       title: Memory Trait Settings
       tag_name: kickside-knowledge-memory
       base_path: kickside-memory
-      entry_point: knowledge_memory.js
+      entry_point: index.js
       announced: true
       auto_register: false
 
@@ -168,9 +168,23 @@ entries:
       type: view.component
       name: memory_view
       title: Memory
+      comment: Memory knowledge base page - memories, conflicts, activity and settings.
       tag_name: kickside-memory-kb
       base_path: kickside-memory
       entry_point: memory_kb.js
+      announced: true
+      auto_register: true
+
+  - name: memory_create_view
+    kind: registry.entry
+    meta:
+      type: view.component
+      name: memory_create_view
+      title: Memory Settings
+      comment: The memory engine's pane of the knowledge base create and edit dialog.
+      tag_name: kickside-memory-create
+      base_path: kickside-memory
+      entry_point: memory_create.js
       announced: true
       auto_register: true
 
@@ -271,7 +285,7 @@ entries:
           - { path: item_count, singular: memory, plural: memories, icon: tabler:brain }
           - { path: conflict_count, singular: conflict, plural: conflicts, icon: tabler:alert-triangle, min: 1 }
       component:
-        create: { view: kickside.memory:memory_view }
+        create: { view: kickside.memory:memory_create_view }
         manage: { view: kickside.memory:memory_view }
       projections:
         - kind: kickside.memory.ledger
