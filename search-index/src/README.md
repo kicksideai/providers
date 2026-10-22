@@ -28,5 +28,10 @@ passes an open connection and a table spec.
   equality or `IN` constraints.
 - `vector_literal`, `placeholders`, `insert_rows_tx`, `VECTOR_DIMENSIONS`.
 
+`db` is a pooled connection, not a transaction: on PostgreSQL a dense search
+runs in its own read transaction with `hnsw.iterative_scan = strict_order`, so
+an HNSW index keeps scanning until the partition and filters admit `limit`
+rows. This needs pgvector 0.8 or later.
+
 Each hit carries `id` and `similarity`; fused hits also carry
 `vector_similarity`, `vector_rank`, `lexical_rank` and `hybrid_score`.

@@ -145,6 +145,29 @@ local function has_filters(filters: { Filter }?): boolean
     return false
 end
 
+-- An HNSW index scan returns its ef_search nearest rows before the partition
+-- and row filters apply, so a filtered pgvector search could come back short
+-- or empty while eligible rows exist. Iterative scan keeps walking the graph,
+-- in exact distance order, until the filters admit `limit` rows (pgvector 0.8 or
+-- later); it is set for this read only.
+local function filtered_hnsw_query(db: any, query: string, params: { any }): (any, any?)
+    local tx, begin_err = db:begin()
+    if begin_err then return nil, begin_err end
+    local _, set_err = tx:execute("SET LOCAL hnsw.iterative_scan = strict_order")
+    if set_err then
+        tx:rollback()
+        return nil, set_err
+    end
+    local rows, err = tx:query(query, params)
+    if err then
+        tx:rollback()
+        return nil, err
+    end
+    local _, commit_err = tx:commit()
+    if commit_err then return nil, commit_err end
+    return rows, nil
+end
+
 -- Nearest rows by vector distance. Each row carries `similarity` in [0, 1]:
 -- exp(-distance) for vec0 L2, 1 - cosine_distance/2 for pgvector.
 function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts: SearchOptions): (any, any?)
@@ -181,7 +204,12 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
         query = query .. " ORDER BY vector_distance ASC LIMIT $" .. idx
     end
     params[#params + 1] = limit
-    local rows, err = db:query(query, params)
+    local rows, err
+    if sqlite then
+        rows, err = db:query(query, params)
+    else
+        rows, err = filtered_hnsw_query(db, query, params)
+    end
     if err then return nil, err end
     rows = rows or {}
     for _, row in ipairs(rows) do

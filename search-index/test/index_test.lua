@@ -47,6 +47,7 @@ local function create_schema()
         exec(db, "CREATE TABLE IF NOT EXISTS si_rows (id text PRIMARY KEY, part text NOT NULL, kind text NOT NULL, status text NOT NULL, content text, meta jsonb, " ..
             "search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', regexp_replace(COALESCE(content, ''), '[^[:alnum:]]+', ' ', 'g'))) STORED)")
         exec(db, "CREATE TABLE IF NOT EXISTS si_vectors (row_id text PRIMARY KEY, part text NOT NULL, kind text NOT NULL, embedding vector(512) NOT NULL)")
+        exec(db, "CREATE INDEX IF NOT EXISTS si_vectors_hnsw ON si_vectors USING hnsw (embedding vector_cosine_ops)")
     end
     db:release()
 end
@@ -69,6 +70,30 @@ local function insert(part: string, kind: string, status: string, content: strin
     tx:commit()
     db:release()
     return id
+end
+
+-- Inserts `count` rows in one transaction, each with a distinct vector near
+-- (first, second).
+local function insert_many(part: string, kind: string, count: integer, first: number, second: number)
+    local db, sqlite = open()
+    local tx, tx_err = db:begin()
+    if tx_err then error(tostring(tx_err)) end
+    local rows, vectors, texts = {}, {}, {}
+    for i = 1, count do
+        local id = uuid.v7()
+        local v = vector(first, second)
+        v[3 + (i % 500)] = 0.01 * ((i % 7) + 1)
+        rows[i] = { id, part, kind, "current", kind .. " row " .. i, '{"source":"test"}' }
+        vectors[i] = { id, part, kind, index.vector_literal(v) }
+        texts[i] = { id, kind .. " row " .. i }
+    end
+    local err = index.insert_rows_tx(tx, "si_rows", { "id", "part", "kind", "status", "content", "meta" }, rows)
+    if not err then err = index.insert_rows_tx(tx, "si_vectors", { "row_id", "part", "kind", "embedding" }, vectors) end
+    if not err and sqlite then err = index.insert_rows_tx(tx, "si_fts", { "row_id", "content" }, texts) end
+    if err then tx:rollback(); db:release(); error(tostring(err)) end
+    tx:commit()
+    if not sqlite then exec(db, "ANALYZE si_rows"); exec(db, "ANALYZE si_vectors") end
+    db:release()
 end
 
 local function search(opts: any): any
@@ -110,6 +135,19 @@ local function define_tests()
             } })
             test.eq(#rows, 1)
             test.eq(rows[1].id, current)
+        end)
+
+        test.it("returns every eligible row up to the limit when nearer rows of other partitions and scopes crowd the vector index", function()
+            local part = uuid.v7()
+            insert_many(uuid.v7(), "fact", 2000, 1, 0)
+            insert_many(part, "fact", 1500, 1, 0)
+            insert_many(part, "lesson", 600, 0, 1)
+            local filters = { { column = "kind", values = { "lesson" }, table = "vectors" } }
+            local rows = search({ partition = part, limit = 5, filters = filters })
+            test.eq(#rows, 5)
+            rows = search({ partition = part, limit = 50, filters = filters })
+            test.eq(#rows, 50)
+            for _, row in ipairs(rows) do test.eq(row.kind, "lesson") end
         end)
 
         test.it("fuses lexical identifier hits ahead of dense neighbors", function()
