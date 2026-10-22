@@ -19,6 +19,7 @@ entries:
       memory_stores: kickside.memory.persist:stores
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
+      memory_models: kickside.memory.engine:models
       memory_ops: kickside.memory.engine:ops
 
   - name: list_items
@@ -200,3 +201,39 @@ entries:
     method: GET
     func: status
     path: /memory/{id}/status
+
+  - name: list_memories
+    kind: function.lua
+    meta:
+      comment: Lists accessible memory knowledge bases (READ).
+    source: file://handlers.lua
+    method: list_memories
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: list_memories.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Lists accessible memory knowledge bases (READ).
+    method: GET
+    func: list_memories
+    path: /memory
+
+  - name: list_topics
+    kind: function.lua
+    meta:
+      comment: Lists canonical topics and current item counts (READ).
+    source: file://handlers.lua
+    method: list_topics
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: list_topics.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Lists canonical topics and current item counts (READ).
+    method: GET
+    func: list_topics
+    path: /memory/{id}/topics

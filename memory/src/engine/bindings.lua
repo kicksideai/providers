@@ -122,14 +122,16 @@ function M.embed_content(value: any): (any?, error?)
     local req = args_of(value)
     local component_id, id_err = context_component()
     if id_err then return nil, id_err end
+    local _, access_err = component.validate_access(component_id :: string, component.ACCESS.WRITE)
+    if access_err then return nil, access_err end
     local content = req.content
     if type(content) ~= "string" or types.trim(content) == "" then
         return { success = false, error = "content is required" }, nil
     end
-    local source_event_id, hash_err = types.digest({ "memory.embed_content", component_id, req.external_id, req.external_version, content })
+    local source_event_id, hash_err = types.digest({ operation = "memory.embed_content", component_id = component_id, external_id = req.external_id, external_version = req.external_version, content = content })
     if hash_err then return { success = false, error = "memory ingest failed: " .. tostring(hash_err) }, nil end
     local queued, err = jobs.ingest(component_id :: string, source_event_id :: string, {
-        { id = source_event_id, role = "document", text = content, created_at = types.now() },
+        { id = source_event_id, role = "document", text = types.trim(req.title) ~= "" and (types.trim(req.title) .. "\n\n" .. content) or content, created_at = types.now() },
     })
     if err or not queued then return { success = false, error = "memory ingest failed: " .. tostring(err) }, nil end
     return { success = true, status = "queued", kb_id = component_id,

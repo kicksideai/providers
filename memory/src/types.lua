@@ -133,22 +133,57 @@ function M.normalize_key(value: any): string
     return text
 end
 
+-- One input budget for capture and both ingestion entry points, applied before
+-- a run persists the span or offers it to extraction.
+function M.bounded_span(span: { any }): { any }
+    local remaining = 24000
+    local out: { any } = {}
+    for _, message in ipairs(span) do
+        if remaining == 0 then break end
+        local text = type(message.text) == "string" and message.text:sub(1, remaining) or ""
+        if text ~= "" then
+            local entry: { [string]: any } = {}
+            for k, v in pairs(message) do entry[k] = v end
+            entry.text = text
+            remaining = remaining - #text
+            out[#out + 1] = entry
+        end
+    end
+    return out
+end
+
 -- Topic identity is independent of the text and value it labels.
 function M.topic_key(value: any, content: string, claim_value: any?): (string?, error?)
     local key = M.normalize_key(value)
     if #key == 0 or #key > 64 or not key:match("^[a-z][a-z0-9_]*$") then
         return nil, M.invalid("a topic key of up to 64 letters, digits and underscores is required")
     end
-    local compact = key:gsub("_", "")
-    local content_key = M.normalize_key(content):gsub("_", "")
-    if content_key ~= "" and compact:find(content_key, 1, true) then return nil, M.invalid("topic key must not contain memory content") end
-    if claim_value ~= nil then
-        local value_text, encode_err = json.encode(claim_value)
-        if encode_err then return nil, M.invalid("memory value must be JSON", { cause = tostring(encode_err) }) end
-        local value_key = M.normalize_key(value_text):gsub("_", "")
-        if value_key ~= "" and compact:find(value_key, 1, true) then
-            return nil, M.invalid("topic key must not contain the memory value")
+    local tokens: { string } = {}
+    for token in key:gmatch("[^_]+") do tokens[#tokens + 1] = token end
+    local function copied(text: string): boolean
+        local normalized = M.normalize_key(text):gsub("_", "")
+        if normalized == "" then return false end
+        for first = 1, #tokens do
+            local combined = ""
+            for last = first, #tokens do
+                combined = combined .. tokens[last]
+                if combined == normalized then return true end
+            end
         end
+        return false
+    end
+    if copied(content) then return nil, M.invalid("topic key must not contain memory content") end
+    if claim_value ~= nil then
+        local _, encode_err = json.encode(claim_value)
+        if encode_err then return nil, M.invalid("memory value must be JSON", { cause = tostring(encode_err) }) end
+        local function copied_leaf(leaf: any): boolean
+            if type(leaf) == "table" then
+                for _, child in pairs(leaf) do if copied_leaf(child) then return true end end
+                return false
+            end
+            return leaf ~= nil and copied(tostring(leaf))
+        end
+        if copied_leaf(claim_value) then return nil, M.invalid("topic key must not contain the memory value") end
     end
     return key, nil
 end

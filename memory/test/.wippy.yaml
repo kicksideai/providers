@@ -5,6 +5,8 @@ vars:
   pg_database: kickside_test_memory
   pg_username: kickside
   pg_password: kickside
+override:
+  kickside.memory.persist:items:imports.memory_db: app.suites:measured_db
 profiles:
   postgres:
     override:

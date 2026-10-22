@@ -13,6 +13,7 @@ local stores = require("memory_stores")
 local items = require("memory_items")
 local runs = require("memory_runs")
 local ops = require("memory_ops")
+local models = require("memory_models")
 
 local M = {}
 
@@ -82,20 +83,91 @@ local function int_param(req: any, name: string, default: integer, min: integer,
 end
 
 function M.list_items()
+    local res, req, id, store = open(component.ACCESS.READ)
+    if not res then return end
+    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
+    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
+    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
+    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local query = types.trim(req:query("q"))
+    local filter = {
+        kinds = list_param(req, "kind"), statuses = list_param(req, "status"), limit = (limit :: integer) + 1, offset = offset,
+    }
+    local rows, err
+    if query == "" then
+        rows, err = items.list(id :: string, filter)
+    else
+        local vectors, embed_err = models.embed(store.embedding_model, { query })
+        if embed_err then return fail(res, embed_err) end
+        filter.query_text = query
+        filter.limit = (offset :: integer) + (limit :: integer) + 1
+        local ranked, search_err = items.search(id :: string, vectors[1], filter)
+        err = search_err
+        rows = {}
+        for i = (offset :: integer) + 1, #(ranked or {}) do rows[#rows + 1] = ranked[i] end
+    end
+    if err then return fail(res, err) end
+    local page: { any } = {}
+    for i = 1, math.min(limit :: integer, #(rows :: any)) do page[i] = (rows :: any)[i] end
+    local result: { [string]: any } = { success = true, items = page, count = #page }
+    if #(rows :: any) > (limit :: integer) then result.next_offset = (offset :: integer) + (limit :: integer) end
+    reply(res, http.STATUS.OK, result)
+end
+
+function M.list_memories()
+    local res, req = http.response(), http.request()
+    if not res or not req then return end
+    if not security.actor() then return refuse(res, http.STATUS.UNAUTHORIZED, "authentication required") end
+    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
+    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
+    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
+    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local query = types.trim(req:query("q")):lower()
+    local matches, scanned = 0, 0
+    local page: { any } = {}
+    local more = false
+    while true do
+        local rows, err = component.query({
+            impl_ids = { "kickside.memory:memory_kb" }, include = { meta = true }, access_mask = component.ACCESS.READ,
+            text = query, order_by = { field = "created_at", direction = "DESC" }, limit = MAX_PAGE, offset = scanned,
+        })
+        if err then return fail(res, err) end
+        for _, row in ipairs(rows or {}) do
+            local meta = row.meta or {}
+            local name = meta.title or ""
+            if query == "" or name:lower():find(query, 1, true) then
+                matches = matches + 1
+                if matches > (offset :: integer) then
+                    if #page == (limit :: integer) then more = true; break end
+                    page[#page + 1] = { id = row.component_id, name = name, title = name,
+                        description = meta.comment or "", item_count = tonumber(meta.item_count) or 0 }
+                end
+            end
+        end
+        if more or #(rows or {}) < MAX_PAGE then break end
+        scanned = scanned + #rows
+    end
+    local result: { [string]: any } = { success = true, items = page, count = #page }
+    if more then result.next_offset = (offset :: integer) + (limit :: integer) end
+    reply(res, http.STATUS.OK, result)
+end
+
+function M.list_topics()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
     local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
     if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
     local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
     if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
-    local rows, err = items.list(id :: string, {
-        kinds = list_param(req, "kind"), statuses = list_param(req, "status"), limit = (limit :: integer) + 1, offset = offset,
-    })
+    local family, kind = types.trim(req:query("scope_family")), types.trim(req:query("kind"))
+    if family ~= "" and not types.SCOPE_SET[family] then return refuse(res, http.STATUS.BAD_REQUEST, "invalid scope_family") end
+    if kind ~= "" and not types.KIND_SET[kind] then return refuse(res, http.STATUS.BAD_REQUEST, "invalid kind") end
+    local topics, err = items.topics(id :: string, family, kind, (limit :: integer) + 1, offset :: integer)
     if err then return fail(res, err) end
-    local page: { any } = {}
-    for i = 1, math.min(limit :: integer, #(rows :: any)) do page[i] = (rows :: any)[i] end
-    local result: { [string]: any } = { success = true, items = page, count = #page }
-    if #(rows :: any) > (limit :: integer) then result.next_offset = (offset :: integer) + (limit :: integer) end
+    local more = #topics > (limit :: integer)
+    if more then table.remove(topics) end
+    local result: { [string]: any } = { success = true, topics = topics, count = #topics }
+    if more then result.next_offset = (offset :: integer) + (limit :: integer) end
     reply(res, http.STATUS.OK, result)
 end
 

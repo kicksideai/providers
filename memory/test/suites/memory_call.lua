@@ -123,6 +123,11 @@ local OPS: { [string]: (any) -> (any, any) } = {
     run = function(a: any) return runs.get(a.run_id) end,
     runs = function(a: any) return runs.list(a.component_id, a.run_type, a.limit or 50) end,
     query = function(a: any) return bindings.query(a.request) end,
+    embed_contract = function(a: any)
+        local inst, err = component.open(a.component_id, component.ACCESS.READ, "kickside.contract:embeddable")
+        if err then return nil, err end
+        return (inst :: any):embed_content(a.request)
+    end,
     embed = function(a: any) return bindings.embed_content(a.request) end,
     wake = function(a: any) return jobs.wake_consolidation(a.component_id) end,
 }

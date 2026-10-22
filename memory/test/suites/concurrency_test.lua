@@ -23,9 +23,14 @@ local function duplicate_write(user: string, component_id: string): (any?, error
     })
 end
 
-local function wait_for_reflections(count: integer)
+local function wait_for_reflections(count: integer, component_id: string)
     local deadline = time.now():add(60 * time.SECOND)
     while #fixture.script.requests("structured_output") < count do
+        local db = fixture.db()
+        local jobs, err = db:query("SELECT j.status, j.last_error FROM kickside_job j JOIN kickside_memory_runs r ON r.job_id = CAST(j.id AS TEXT) WHERE r.component_id = $1 AND j.status = 'dead'", { component_id })
+        db:release()
+        if err then error(tostring(err)) end
+        if jobs and jobs[1] then error("memory job failed before the model barrier: " .. tostring(jobs[1].last_error)) end
         if time.now():after(deadline) then error("reflection did not reach the scripted barrier") end
         time.sleep(10 * time.MILLISECOND)
     end
@@ -85,7 +90,7 @@ local function define_tests()
             local woken, wake_err = fixture.op(user, "wake", { component_id = component_id })
             test.is_nil(wake_err, tostring(wake_err))
             test.is_true(woken.woken)
-            wait_for_reflections(1)
+            wait_for_reflections(1, component_id)
 
             local _, forget_err = fixture.op(user, "forget", { component_id = component_id, item_id = evidence[1].id })
             test.is_nil(forget_err, tostring(forget_err))
@@ -96,6 +101,35 @@ local function define_tests()
             test.eq(run.status, "succeeded", tostring(run.last_error))
             test.eq(#fixture.script.requests("structured_output"), 3)
             test.eq(#fixture.items(user, component_id, { kinds = { "lesson" } }), 0)
+        end)
+
+        test.it("keeps a held model failure content free after Forget erases its input", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, { fixture.candidate("fact", "access_code", "Kestrel-42", "The access code is Kestrel-42.") }, "failure-seed")
+            fixture.settle(user, id)
+            local item = fixture.items(user, id)[1]
+            fixture.script.hold("structured_output")
+            fixture.script.fail("structured_output", "Provider refused Kestrel-42", errors.INVALID, false)
+            local queued, err = fixture.op(user, "embed_contract", { component_id = id, request = {
+                content = "The access code is Kestrel-42.", external_id = "held-failure", external_version = "1",
+            } })
+            test.is_nil(err, tostring(err))
+            test.is_true(queued.success, tostring(queued.error))
+            wait_for_reflections(1, id)
+            local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = item.id })
+            test.is_nil(forget_err, tostring(forget_err))
+            fixture.settle(user, id)
+            fixture.script.release("structured_output")
+            local run = fixture.wait_runs(user, id, "derive", 1)[1]
+            test.is_nil(run.input.span)
+            test.is_nil(run.last_error)
+            fixture.wait_job(run.job_id, "dead")
+            local db = fixture.db()
+            local rows, query_err = db:query("SELECT last_error FROM kickside_job WHERE id = $1", { run.job_id })
+            db:release()
+            test.is_nil(query_err, tostring(query_err))
+            test.is_true(tostring(rows[1].last_error):find("Kestrel", 1, true) == nil)
         end)
 
         test.it("discards extraction from a captured input erased while the model is held", function()
@@ -110,7 +144,7 @@ local function define_tests()
             fixture.extraction({ fixture.candidate("fact", "city_knowledge", "Paris", "The user resides in Paris.", "held-message") })
             local _, capture_err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") }, fixture.agent_context(component_id, session_id, "agent-a"))
             test.is_nil(capture_err, tostring(capture_err))
-            wait_for_reflections(1)
+            wait_for_reflections(1, component_id)
             local _, forget_err = fixture.op(user, "forget", { component_id = component_id, item_id = original.id })
             test.is_nil(forget_err, tostring(forget_err))
             fixture.settle(user, component_id)

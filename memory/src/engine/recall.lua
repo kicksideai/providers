@@ -21,6 +21,7 @@ function M.visible_scopes(agent_id: string?): { string }
 end
 
 type SearchRequest = {
+    group_by: string?,
     component_id: string,
     query: string,
     limit: integer,
@@ -43,7 +44,7 @@ function M.search(req: SearchRequest): (any?, error?)
     for _ in pairs(exclude) do excluded = excluded + 1 end
     local rows, err = items.search(req.component_id, (vectors :: any)[1], {
         kinds = req.kinds, statuses = req.statuses or { types.STATUS.CURRENT }, scope_keys = req.scopes,
-        query_text = req.query, limit = req.limit + excluded,
+        query_text = req.query, limit = req.limit + excluded, group_by = req.group_by,
     })
     if err then return nil, err end
     local out: { any } = {}

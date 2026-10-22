@@ -136,9 +136,11 @@ entries:
     method: call
     modules: [sql]
     imports:
+      measured_db: app.suites:measured_db
       memory_writer: kickside.memory.engine:writer
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
+      search_index: kickside.search_index:index
       types: kickside.memory:types
 
   - name: rework_test
@@ -166,3 +168,9 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+
+  - name: measured_db
+    kind: library.lua
+    source: file://measured_db.lua
+    imports:
+      memory_db: kickside.memory.persist:db

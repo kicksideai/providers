@@ -9,14 +9,11 @@ local jobs = require("memory_jobs")
 
 local M = {}
 
--- Characters of one ingested document a derive run reads.
-local CONTENT_MAX_CHARS = 24000
-
 local function content_text(body: any): string
     local content = type(body) == "table" and body.content or nil
     if type(content) ~= "string" then return "" end
     local title = types.trim(body.title)
-    local text = content:sub(1, CONTENT_MAX_CHARS)
+    local text = content
     if title ~= "" then text = title .. "\n\n" .. text end
     return text
 end

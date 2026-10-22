@@ -28,6 +28,7 @@ type Spec = {
 }
 
 type SearchOptions = {
+    group_by: string?,
     partition: any,
     limit: integer?,
     filters: { Filter }?,
@@ -179,7 +180,17 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
     local params: { any }
     local idx: integer
     local query: string
-    if sqlite then
+    if opts.group_by then
+        local group = opts.group_by :: string
+        local distance = sqlite and ("vec_distance_L2(e." .. vector_column .. ", $1)") or
+            ("e." .. vector_column .. " <=> ($1::vector)")
+        query = "SELECT n." .. group .. " AS id, MIN(" .. distance .. ") AS vector_distance FROM " .. spec.rows ..
+            " n JOIN " .. spec.vectors .. " e ON n." .. spec.row_key .. " = e." .. spec.vector_key ..
+            " WHERE n." .. spec.partition .. " = $2 AND n." .. group .. " IS NOT NULL"
+        params = { index.vector_literal(query_vector), opts.partition }
+        query, idx = append_filters(query, params, 2, opts.filters, aliases)
+        query = query .. " GROUP BY n." .. group .. " ORDER BY vector_distance, n." .. group .. " LIMIT $" .. (idx + 1)
+    elseif sqlite then
         local knn_k = limit
         if has_filters(opts.filters) then
             knn_k = math.min(limit * VECTOR_OVERFETCH_FACTOR, VECTOR_OVERFETCH_MAX)
@@ -248,7 +259,12 @@ function index.lexical_search(db: any, spec: Spec, query_text: string, opts: Sea
     if type_err then return nil, type_err, false end
     local match, anchored = index.lexical_query(query_text, sqlite :: boolean)
     if not match then return {}, nil, false end
-    local query = "SELECT " .. row_select(spec, "n", nil)
+    local selection = row_select(spec, "n", nil)
+    if opts.group_by then
+        selection = "n." .. opts.group_by .. " AS id, " .. (sqlite and ("bm25(" .. spec.fts .. ")") or
+            ("-ts_rank(n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32)")) .. " AS lexical_distance"
+    end
+    local query = "SELECT " .. selection
     if sqlite then
         query = query .. " FROM " .. spec.fts .. " JOIN " .. spec.rows .. " n ON n." .. spec.row_key .. " = " .. spec.fts .. "." .. spec.fts_key ..
             " WHERE " .. spec.fts .. " MATCH $1 AND n." .. spec.partition .. " = $2"
@@ -258,7 +274,11 @@ function index.lexical_search(db: any, spec: Spec, query_text: string, opts: Sea
     local params: { any } = { match, opts.partition }
     local idx = 2
     query, idx = append_filters(query, params, idx, opts.filters, { rows = "n", vectors = "n" })
-    if sqlite then
+    if opts.group_by then
+        query = query .. " AND n." .. opts.group_by .. " IS NOT NULL"
+        query = "WITH matches AS MATERIALIZED (" .. query .. ") SELECT id, MIN(lexical_distance) AS lexical_distance FROM matches " ..
+            "GROUP BY id ORDER BY lexical_distance, id"
+    elseif sqlite then
         query = query .. " ORDER BY bm25(" .. spec.fts .. "), n." .. spec.row_key
     else
         query = query .. " ORDER BY ts_rank(n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32) DESC, n." .. spec.row_key
@@ -313,12 +333,17 @@ end
 -- query text, lexical and dense candidates (max(50, 4 * limit) each) are fused;
 -- when nothing matches lexically the dense ranking is returned unchanged.
 function index.search(db: any, spec: Spec, query_vector: { number }, opts: SearchOptions): (any, any?)
+    if opts.group_by then
+        local known = false
+        for _, column in ipairs(spec.columns) do if column == opts.group_by then known = true end end
+        if not known then return nil, errors.new({ kind = errors.INVALID, message = "search group must be a row column" }) end
+    end
     if not opts.query_text or opts.query_text == "" then
         return index.dense_search(db, spec, query_vector, opts)
     end
     local limit = opts.limit or 10
     local expanded: SearchOptions = {
-        partition = opts.partition, limit = math.max(50, limit * 4), filters = opts.filters,
+        partition = opts.partition, limit = math.max(50, limit * 4), filters = opts.filters, group_by = opts.group_by,
     }
     local lexical, lex_err, anchored = index.lexical_search(db, spec, opts.query_text :: string, expanded)
     if lex_err then return nil, errors.wrap(lex_err, "lexical search failed") end

@@ -333,6 +333,101 @@ local function define_tests()
             test.is_true(json.encode(events):find(secret, 1, true) == nil, json.encode(events))
         end)
 
+        test.it("admits embeddable writes before retaining input for readers and unrelated callers", function()
+            local owner, reader, unrelated = fixture.user(), fixture.user(), fixture.user()
+            local id = fixture.memory(owner)
+            local grant, grant_err = fixture.call_as(owner, "kickside.component.binding:grant_subtree_func", {
+                root_component_id = id, subject = { subject_id = reader, subject_type = "user" }, access_mask = 1,
+            })
+            test.is_nil(grant_err, tostring(grant_err))
+            test.is_true(grant.success, json.encode(grant))
+            for _, user in ipairs({ reader, unrelated }) do
+                local result, err = fixture.op(user, "embed_contract", { component_id = id, request = {
+                    content = "Rejected input.", external_id = "denied", external_version = "1",
+                } })
+                test.is_true(err ~= nil or result.success == false)
+            end
+            test.eq(#fixture.op(owner, "runs", { component_id = id, run_type = "derive" }), 0)
+        end)
+
+        test.it("accepts every optional ingest identifier combination", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            for i, request in ipairs({ {}, { external_id = "document" }, { external_version = "1" },
+                { external_id = "document", external_version = "1" } }) do
+                request.content = "Optional input " .. tostring(i)
+                fixture.extraction({})
+                local result, err = fixture.op(user, "embed_contract", { component_id = id, request = request })
+                test.is_nil(err, tostring(err))
+                test.is_true(result.success, json.encode(result))
+                fixture.wait_runs(user, id, "derive", i)
+            end
+        end)
+
+        test.it("bounds direct ingestion before persistence and extraction", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.extraction({})
+            local result, err = fixture.op(user, "embed_contract", { component_id = id, request = {
+                content = string.rep("x", 30000) .. "tail-marker", title = string.rep("title", 10000),
+                external_id = "large", external_version = "1",
+            } })
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, json.encode(result))
+            local run = fixture.wait_runs(user, id, "derive", 1)[1]
+            test.eq(run.status, "succeeded", tostring(run.last_error))
+            test.is_true(#run.input.span[1].text <= 24000)
+            test.is_true(#fixture.script.prompts("structured_output")[1].user < 25000)
+        end)
+
+        test.it("rolls back ingest enrollment on queue failure and schedules the retry", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local db = fixture.db()
+            local sqlite = db:type() == "sqlite"
+            local statements = sqlite and {
+                [[CREATE TRIGGER app_reject_derive BEFORE INSERT ON kickside_job WHEN NEW.job_type = 'kickside.memory.engine:derive_worker'
+                    BEGIN SELECT RAISE(ABORT, 'queue enrollment rejected'); END]],
+            } or {
+                [[CREATE FUNCTION app_reject_derive_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+                    IF NEW.job_type = 'kickside.memory.engine:derive_worker' THEN RAISE EXCEPTION 'queue enrollment rejected'; END IF; RETURN NEW; END $$]],
+                [[CREATE TRIGGER app_reject_derive BEFORE INSERT ON kickside_job FOR EACH ROW EXECUTE FUNCTION app_reject_derive_fn()]],
+            }
+            for _, statement in ipairs(statements) do
+                local _, err = db:execute(statement)
+                test.is_nil(err, tostring(err))
+            end
+            db:release()
+            local request = { content = "Atomic input.", external_id = "atomic", external_version = "1" }
+            local failed, failure = fixture.op(user, "embed_contract", { component_id = id, request = request })
+            db = fixture.db()
+            local _, drop_err = db:execute(sqlite and "DROP TRIGGER app_reject_derive" or "DROP TRIGGER app_reject_derive ON kickside_job")
+            test.is_nil(drop_err, tostring(drop_err))
+            if not sqlite then
+                local _, fn_err = db:execute("DROP FUNCTION app_reject_derive_fn()")
+                test.is_nil(fn_err, tostring(fn_err))
+            end
+            db:release()
+            test.is_true(failure ~= nil or failed.success == false)
+            test.eq(#fixture.op(user, "runs", { component_id = id, run_type = "derive" }), 0)
+            fixture.extraction({})
+            local retried, retry_err = fixture.op(user, "embed_contract", { component_id = id, request = request })
+            test.is_nil(retry_err, tostring(retry_err))
+            test.is_true(retried.success, json.encode(retried))
+            local completed = fixture.wait_runs(user, id, "derive", 1)[1]
+            test.eq(completed.status, "succeeded")
+            fixture.wait_job(completed.job_id, "done")
+            local replayed, replay_err = fixture.op(user, "embed_contract", { component_id = id, request = request })
+            test.is_nil(replay_err, tostring(replay_err))
+            test.is_true(replayed.success, json.encode(replayed))
+            test.eq(replayed.run_id, retried.run_id)
+            db = fixture.db()
+            local jobs, jobs_err = db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE job_type = 'kickside.memory.engine:derive_worker' AND thread_id = $1", { id })
+            db:release()
+            test.is_nil(jobs_err, tostring(jobs_err))
+            test.eq(tonumber(jobs[1].n), 1)
+        end)
+
         test.it("deleting the memory through the knowledge control plane purges its ledger and every row", function()
             local user = fixture.user()
             local id = fixture.memory(user)

@@ -41,7 +41,7 @@ local function frozen_identity(): (any?, any?, error?)
     return identity, row, nil
 end
 
-local function enqueue(run: any, identity: any, run_type: string, extra: any): (any?, error?)
+local function enrollment(run: any, identity: any, run_type: string, extra: any): any
     local params: { [string]: any } = {
         namespace = "kickside.memory." .. run_type,
         scope = run.component_id,
@@ -53,16 +53,7 @@ local function enqueue(run: any, identity: any, run_type: string, extra: any): (
         immutable_payload = { component_id = run.component_id, run_id = run.id, run_type = run_type },
     }
     for k, v in pairs(extra) do params[k] = v end
-    local queued, err = jobs.enqueue(params)
-    if err or type(queued) ~= "table" or type(queued.id) ~= "string" then
-        local reason = "the memory run could not be scheduled: " .. tostring(err or "the queue accepted no job")
-        local _, close_err = runs.finish(run.id, types.RUN_STATUS.FAILED, reason)
-        if close_err then reason = reason .. " (the run record also failed to close: " .. tostring(close_err) .. ")" end
-        return nil, types.unavailable(reason)
-    end
-    local _, attach_err = runs.attach_job(run.id, queued.id)
-    if attach_err then return nil, attach_err end
-    return queued, nil
+    return params
 end
 
 -- A derive run over a span, under the caller's frozen identity; its id is
@@ -77,7 +68,7 @@ local function new_derive_run(component_id: string, host_kind: string, host_id: 
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
         host_kind = host_kind, host_id = host_id, agent_id = agent_id,
         from_event_id = from_event_id, to_event_id = to_event_id,
-        input = { span = span, owner_id = (identity :: any).principal.id },
+        input = { span = types.bounded_span(span), owner_id = (identity :: any).principal.id },
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }, identity, nil
 end
@@ -99,24 +90,14 @@ function M.capture(capture: Capture): (any?, error?)
     local run, identity, err = new_derive_run(capture.component_id, capture.host_kind, capture.host_id, capture.agent_id,
         capture.from_event_id, capture.to_event_id, capture.span)
     if err then return nil, err end
-    local advanced, advance_err = runs.capture(run, capture.from_event_id)
-    if advance_err then return nil, advance_err end
-    if not (advanced :: any).advanced then return { scheduled = false }, nil end
-    local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS })
-    if enqueue_err then return nil, enqueue_err end
-    return { scheduled = true, run_id = (run :: any).id }, nil
+    return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }), capture.from_event_id)
 end
 
 -- Schedules a derive run over ingested content (no capture cursor).
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
     local run, identity, err = new_derive_run(component_id, "content", component_id, nil, source_event_id, source_event_id, span)
     if err then return nil, err end
-    local created_run, created, create_err = runs.create(run)
-    if create_err then return nil, create_err end
-    if not created then return { scheduled = false, run_id = (created_run :: any).id }, nil end
-    local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS })
-    if enqueue_err then return nil, enqueue_err end
-    return { scheduled = true, run_id = (run :: any).id }, nil
+    return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }))
 end
 
 -- The consolidation slot of a memory: one stable run and job that re-arms on
@@ -125,19 +106,13 @@ function M.arm_consolidation(component_id: string, interval_hours: number): (any
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, id_err end
     local run_id = "consolidate:" .. component_id
-    local run, created, err = runs.create({
+    local run = {
         id = run_id, component_id = component_id, run_type = types.RUN_TYPE.CONSOLIDATE,
         input = {}, actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
-    })
-    if err then return nil, err end
-    if not created and (run :: any).job_id and (run :: any).job_id ~= "" then
-        return { job_id = (run :: any).job_id, run_id = run_id }, nil
-    end
-    local queued, enqueue_err = enqueue(run, identity, types.RUN_TYPE.CONSOLIDATE, {
+    }
+    return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.CONSOLIDATE, {
         slot = true, scheduled_at = types.after_seconds(interval_hours * 3600), queue_tier = "maintenance",
-    })
-    if enqueue_err then return nil, enqueue_err end
-    return { job_id = (queued :: any).id, run_id = run_id }, nil
+    }))
 end
 
 -- Brings the consolidation slot forward to now.
@@ -157,14 +132,11 @@ function M.schedule_reembed(component_id: string): (any?, error?)
     if id_err then return nil, id_err end
     local run_id, hash_err = types.digest({ "reembed", component_id, types.now() })
     if hash_err then return nil, hash_err end
-    local run, _created, err = runs.create({
+    local run = {
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.REEMBED, input = {},
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
-    })
-    if err then return nil, err end
-    local queued, enqueue_err = enqueue(run, identity, types.RUN_TYPE.REEMBED, { max_attempts = 1, queue_tier = "maintenance" })
-    if enqueue_err then return nil, enqueue_err end
-    return { run_id = run_id, job_id = (queued :: any).id }, nil
+    }
+    return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.REEMBED, { max_attempts = 1, queue_tier = "maintenance" }))
 end
 
 local function retryable(err: any): boolean
@@ -176,11 +148,14 @@ end
 local function fail(run_id: string, err: any): any
     local message = tostring(err)
     local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message)
-    if close_err then message = message .. " (the run record also failed to close: " .. tostring(close_err) .. ")" end
+    if close_err then error(close_err) end
+    -- Queue diagnostics outlive erasable input, so they carry classification only.
+    local diagnostic = "memory operation failed"
+    if type(err) == "userdata" then diagnostic = diagnostic .. " (" .. tostring(err:kind()) .. ")" end
     if retryable(err) then
-        error(errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = message }))
+        error(errors.new({ kind = err:kind(), retryable = true, message = diagnostic }))
     end
-    return { ok = false, job_error = message, failure_class = "deterministic" }
+    return { ok = false, job_error = diagnostic, failure_class = "deterministic" }
 end
 
 local function load_run(value: any, run_type: string): (any?, any?)

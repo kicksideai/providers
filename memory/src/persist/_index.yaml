@@ -46,6 +46,8 @@ entries:
     source: file://runs.lua
     modules: [sql, json]
     imports:
+      jobs: kickside.core.jobs:jobs
+      jobs_wake: kickside.core.jobs.persist:wake
       memory_db: kickside.memory.persist:db
       types: kickside.memory:types
       search_index: kickside.search_index:index

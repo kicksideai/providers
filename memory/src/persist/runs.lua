@@ -7,6 +7,8 @@ local json = require("json")
 local db = require("memory_db")
 local types = require("types")
 local search_index = require("search_index")
+local jobs = require("jobs")
+local jobs_wake = require("jobs_wake")
 
 local M = {}
 
@@ -33,10 +35,14 @@ type RunInput = {
     actor_context: string?,
 }
 
-local function insert_tx(tx: any, run: RunInput): (boolean?, error?)
-    local existing, read_err = tx:query("SELECT id FROM kickside_memory_runs WHERE id = $1", { run.id })
+local function insert_tx(tx: any, run: RunInput): (any?, error?)
+    local existing, read_err = tx:query("SELECT id, job_id FROM kickside_memory_runs WHERE id = $1", { run.id })
     if read_err then return nil, types.failed("memory run lookup failed", read_err) end
-    if existing and #existing > 0 then return false, nil end
+    if existing and #existing > 0 then
+        local job_id = existing[1].job_id
+        if type(job_id) ~= "string" or job_id == "" then return nil, types.internal("memory run has no queue enrollment") end
+        return { created = false, job_id = job_id }, nil
+    end
     local _, err = tx:execute(
         "INSERT INTO kickside_memory_runs (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, " ..
         "to_event_id, input, stats, actor_id, actor_context, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, '{}', $11, $12, $13)",
@@ -44,49 +50,42 @@ local function insert_tx(tx: any, run: RunInput): (boolean?, error?)
             run.agent_id or "", run.from_event_id or "", run.to_event_id or "", json.encode(run.input or {}),
             run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now() })
     if err then return nil, types.failed("memory run insert failed", err) end
-    return true, nil
+    return { created = true }, nil
 end
 
--- Records a run. Returns (run, created): created is false when a run with the
--- same id already exists, which makes replayed scheduling idempotent.
-function M.create(run: RunInput): (any?, boolean, error?)
-    local created, err = db.write(run.component_id, function(tx: any, _sqlite: boolean): (any, error?)
-        return insert_tx(tx, run)
-    end)
-    if err then return nil, false, err end
-    local row, read_err = M.get(run.id)
-    if read_err then return nil, false, read_err end
-    return row, created == true, nil
-end
-
--- Moves the host's capture cursor from `expected` to `run.to_event_id` and
--- records the derive run in one transaction. A cursor that moved since the
--- caller read it means another capture of the same span won: nothing is
--- written and `advanced` is false.
-function M.capture(run: RunInput, expected: string): (any?, error?)
-    return db.write(run.component_id, function(tx: any, _sqlite: boolean): (any, error?)
-        local rows, err = tx:query(
-            "SELECT last_event_id FROM kickside_memory_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3",
-            { run.component_id, run.host_kind, run.host_id })
-        if err then return nil, types.failed("memory cursor read failed", err) end
-        local current = rows and rows[1] and tostring(rows[1].last_event_id or "") or nil
-        if (current or "") ~= expected then return { advanced = false }, nil end
-        local now = types.now()
-        if current == nil then
-            local _, ins_err = tx:execute(
-                "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
-                { run.component_id, run.host_kind, run.host_id, run.agent_id or "", run.to_event_id, now })
-            if ins_err then return nil, types.failed("memory cursor insert failed", ins_err) end
-        else
-            local _, upd_err = tx:execute(
-                "UPDATE kickside_memory_cursors SET last_event_id = $1, agent_id = $2, updated_at = $3 WHERE component_id = $4 AND host_kind = $5 AND host_id = $6 AND last_event_id = $7",
-                { run.to_event_id, run.agent_id or "", now, run.component_id, run.host_kind, run.host_id, expected })
-            if upd_err then return nil, types.failed("memory cursor update failed", upd_err) end
+-- Run creation, capture reservation and queue enrollment are one write.
+function M.schedule(run: RunInput, params: any, expected: string?): (any?, error?)
+    local scheduled, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any, error?)
+        if expected ~= nil then
+            local rows, read_err = tx:query(
+                "SELECT last_event_id FROM kickside_memory_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3" ..
+                (sqlite and "" or " FOR UPDATE"), { run.component_id, run.host_kind, run.host_id })
+            if read_err then return nil, types.failed("memory cursor read failed", read_err) end
+            local current = rows and rows[1] and tostring(rows[1].last_event_id or "") or nil
+            if (current or "") ~= expected then return { scheduled = false }, nil end
+            local _, cursor_err = tx:execute(
+                "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) " ..
+                "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE " ..
+                "SET agent_id = excluded.agent_id, last_event_id = excluded.last_event_id, updated_at = excluded.updated_at",
+                { run.component_id, run.host_kind, run.host_id, run.agent_id or "", run.to_event_id, types.now() })
+            if cursor_err then return nil, types.failed("memory cursor reservation failed", cursor_err) end
         end
-        local created, run_err = insert_tx(tx, run)
-        if run_err then return nil, run_err end
-        return { advanced = true, created = created }, nil
+        local proof, create_err = insert_tx(tx, run)
+        if create_err then return nil, create_err end
+        if not proof.created then return { scheduled = false, run_id = run.id, job_id = proof.job_id }, nil end
+        local queued, queue_err = jobs.enqueue_tx(tx, sqlite and "sqlite" or "postgres", params)
+        if queue_err then return nil, queue_err end
+        if not queued or type(queued.id) ~= "string" then return nil, types.internal("memory queue enrollment returns no job") end
+        local _, attach_err = tx:execute("UPDATE kickside_memory_runs SET job_id = $1 WHERE id = $2", { queued.id, run.id })
+        if attach_err then return nil, types.failed("memory run enrollment failed", attach_err) end
+        return { scheduled = true, run_id = run.id, job_id = queued.id }, nil
     end)
+    if err then return nil, err end
+    if scheduled.scheduled then
+        local _, wake_err = jobs_wake.nudge_workers(nil, nil)
+        if wake_err then return nil, wake_err end
+    end
+    return scheduled, nil
 end
 
 function M.cursor(component_id: string, host_kind: string, host_id: string): (any?, error?)
@@ -153,14 +152,6 @@ function M.list(component_id: string, run_type: string?, limit: integer): (any?,
     end)
 end
 
-function M.attach_job(run_id: string, job_id: string): (any?, error?)
-    return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
-        local _, err = tx:execute("UPDATE kickside_memory_runs SET job_id = $1 WHERE id = $2", { job_id, run_id })
-        if err then return nil, types.failed("memory run job attach failed", err) end
-        return true, nil
-    end)
-end
-
 -- Claims a run for the executing job. The job lease already makes one
 -- execution exclusive, so a run left running or failed by an earlier attempt of
 -- the same job is claimable again. A succeeded run is claimable only when
@@ -190,8 +181,8 @@ end
 function M.finish(run_id: string, status: string, last_error: string?, stats: any?): (any?, error?)
     return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
         local _, err = tx:execute(
-            "UPDATE kickside_memory_runs SET status = $1, last_error = $2, stats = $3, finished_at = $4 WHERE id = $5",
-            { status, last_error or sql.NULL, json.encode(stats or {}), types.now(), run_id })
+            "UPDATE kickside_memory_runs SET status = $1, last_error = CASE WHEN run_type = $2 AND CAST(input AS TEXT) = '{}' THEN NULL ELSE $3 END, stats = $4, finished_at = $5 WHERE id = $6",
+            { status, types.RUN_TYPE.DERIVE, last_error or sql.NULL, json.encode(stats or {}), types.now(), run_id })
         if err then return nil, types.failed("memory run close failed", err) end
         return true, nil
     end)

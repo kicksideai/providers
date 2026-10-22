@@ -67,6 +67,152 @@ local function define_tests()
             test.eq(fixture.op(user, "get", { component_id = id, item_id = added.item_id }).value, false)
         end)
 
+        test.it("erases a large lineage with one indexed traversal and one retained run scan", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local seeded, seed_err = op(user, "seed", { component_id = id, user = user, count = 201, same_value = true })
+            test.is_nil(seed_err, tostring(seed_err))
+            fixture.settle(user, id)
+            local db = fixture.db()
+            for i = 1, 20 do
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
+                    (id, component_id, run_type, status, input, created_at)
+                    VALUES ($1, $2, 'derive', 'failed', $3, '2026-01-01T00:00:00Z')]],
+                    { "cost:" .. id .. ":" .. tostring(i), id, json.encode({ span = { { id = tostring(i), text = "shared" } } }) })
+                test.is_nil(insert_err, tostring(insert_err))
+            end
+            db:release()
+            local result, err = op(user, "erase_cost", { component_id = id, item_id = seeded.item_ids[1], seq = 10000 })
+            test.is_nil(err, tostring(err))
+            test.eq(result.erased, 201)
+            test.eq(result.lineage_queries, 1)
+            test.eq(result.run_scans, 1)
+            test.eq(result.run_rows, 21)
+            if result.sqlite then
+                test.is_true(result.plan:find("idx_kickside_memory_items_claim", 1, true) ~= nil, result.plan)
+                test.is_true(result.plan:find("idx_kickside_memory_items_successor", 1, true) ~= nil, result.plan)
+            end
+        end)
+
+        test.it("validates structured leaves and permits short topic values", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local _, err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "access_code_kestrel42",
+                value = { code = "Kestrel-42", enabled = true }, content = "The access code is configured.",
+            } })
+            test.not_nil(err)
+            local added, short_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "rating", value = "A", content = "The rating is A.",
+            } })
+            test.is_nil(short_err, tostring(short_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = added.item_id }).value, "A")
+            local team, team_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "team", value = "tea", content = "The team serves tea.",
+            } })
+            test.is_nil(team_err, tostring(team_err))
+            test.not_nil(team)
+            for _, key in ipairs({ "a", "rating_a" }) do
+                local _, copied = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "fact", scope_family = "owner", key = key, value = "A", content = "The rating is A.",
+                } })
+                test.not_nil(copied)
+            end
+            fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
+            fixture.settle(user, id)
+            test.is_true(json.encode(fixture.op(user, "ledger", { component_id = id })):find("kestrel", 1, true) == nil)
+            for _, stored in ipairs(fixture.op(user, "stored_text", { component_id = id })) do
+                test.is_true(stored:lower():find("kestrel", 1, true) == nil)
+            end
+        end)
+
+        test.it("erases retained numeric boolean and structured mentions and diagnostics", function()
+            local user = fixture.user()
+            for _, case in ipairs({
+                { value = 12345, mention = "12345" },
+                { value = false, mention = "false" },
+                { value = { nested = { code = "Kestrel-42" }, enabled = true }, mention = "Kestrel-42" },
+            }) do
+                local id = fixture.memory(user)
+                local added, err = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "fact", scope_family = "owner", key = "setting", value = case.value, content = "The setting is configured.",
+                } })
+                test.is_nil(err, tostring(err))
+                fixture.settle(user, id)
+                local db = fixture.db()
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
+                    (id, component_id, run_type, status, input, last_error, created_at)
+                    VALUES ($1, $2, 'derive', 'failed', $3, $4, '2026-01-01T00:00:00Z')]],
+                    { "retained:" .. id, id, json.encode({ span = { { id = "uncited", text = "The setting is " .. case.mention } } }),
+                        "Provider rejected " .. case.mention })
+                db:release()
+                test.is_nil(insert_err, tostring(insert_err))
+                local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
+                test.is_nil(forget_err, tostring(forget_err))
+                fixture.settle(user, id)
+                local run = fixture.op(user, "run", { run_id = "retained:" .. id })
+                test.is_nil(run.input.span)
+                test.is_nil(run.last_error)
+            end
+        end)
+
+        test.it("erases typed repeated evidence through provenance when reconciliation is a no-op", function()
+            local user = fixture.user()
+            for _, value in ipairs({ 12345, false, { enabled = true, nested = { setting = "configured" } } }) do
+                local id = fixture.memory(user)
+                local added, create_err = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "fact", scope_family = "owner", key = "setting", value = value, content = "The setting is configured.",
+                } })
+                test.is_nil(create_err, tostring(create_err))
+                fixture.settle(user, id)
+                local run_id = "repeat:" .. id
+                local db = fixture.db()
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
+                    (id, component_id, run_type, status, input, last_error, created_at)
+                    VALUES ($1, $2, 'derive', 'failed', $3, 'Repeated evidence failed', '2026-01-01T00:00:00Z')]],
+                    { run_id, id, json.encode({ span = { { id = "repeat-message", text = "It stays unchanged." } } }) })
+                db:release()
+                test.is_nil(insert_err, tostring(insert_err))
+                local repeated, repeat_err = fixture.remember(user, id, { {
+                    kind = "fact", key = "setting", cardinality = "multi", value = value,
+                    content = "The setting is configured.", event_id = "repeat-message",
+                } }, "repeat", { run_id = run_id })
+                test.is_nil(repeat_err, tostring(repeat_err))
+                test.eq(repeated.stats.noop, 1)
+                fixture.settle(user, id)
+                local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
+                test.is_nil(forget_err, tostring(forget_err))
+                fixture.settle(user, id)
+                local run = fixture.op(user, "run", { run_id = run_id })
+                test.is_nil(run.input.span)
+                test.is_nil(run.last_error)
+            end
+        end)
+
+        test.it("rejects a stale reembed between revision staging and folding", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local added = create(user, id, "Paris")
+            local result, err = op(user, "revision_race", { component_id = id, item_id = added.item_id })
+            test.is_nil(err, tostring(err))
+            test.eq(result.stale_written, false)
+            test.eq(result.item.content, "Revised presentation.")
+        end)
+
+        test.it("keeps lexical search on the newest revision after older and repeated delivery", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local added = create(user, id, "Paris")
+            local _, err = op(user, "revision_redelivery", { component_id = id, item_id = added.item_id })
+            test.is_nil(err, tostring(err))
+            local matches, match_err = op(user, "lexical", { component_id = id, query = "newestword" })
+            test.is_nil(match_err, tostring(match_err))
+            test.eq(#matches, 1)
+            local stale = op(user, "lexical", { component_id = id, query = "olderword" })
+            test.eq(#stale, 0)
+        end)
+
         test.it("rolls back payloads and vectors when the ledger head moves during a decision", function()
             local user = fixture.user()
             local id = fixture.memory(user)

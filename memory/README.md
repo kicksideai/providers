@@ -89,6 +89,26 @@ plan. Existing explicit bindings take precedence over defaults.
 - [`kickside.memory:target_db`](src/_index.yaml): the component database for the memory tables.
 - [`kickside.memory.security:user_security_scope`](src/security/_index.yaml): defaults to the platform Members group.
 
+## API
+
+These routes use the ambient authenticated actor and the memory component ACL.
+READ access permits browsing all scopes in a memory; WRITE access permits mutations.
+Responses use `success: true`. Lists accept `limit` (1–200, default 50) and
+`offset` (default 0), return `count` for this page, and include `next_offset`
+only when another page exists. Errors use `success: false` and `error`.
+
+| Route | Response | Filters |
+| --- | --- | --- |
+| `GET /memory` | `{success, items: [{id, name, title, description, item_count}], count, next_offset?}` | Optional `q` matches memory names, case-insensitively. The component control plane supplies access, names and counts. |
+| `GET /memory/{id}/items` | `{success, items: [item], count, next_offset?}` | Optional comma-separated `status` and `kind`. Nonempty `q` uses the shared hybrid search with the memory's embedding model and returns ranking fields; an absent or empty `q` preserves list ordering. |
+| `GET /memory/{id}/topics` | `{success, topics: [{key, cardinality, current_count}], count, next_offset?}` | Optional `scope_family=agent\|owner` and `kind`. Counts cover current items matching these filters; canonical topics remain available when their current count is zero. Ordered by key and cardinality. |
+| `GET /memory/{id}/items/{item_id}` | `{success, item, provenance, versions, next_offset?}` | `limit` and `offset` page versions of the same scope and topic across kinds. |
+
+Item rows include `id`, `kind`, `scope_family`, `scope_id`, `key`,
+`cardinality`, `content`, typed `value`, `status`, `version` and validity times.
+Search adds `similarity` and, when lexical and dense ranks are fused,
+`hybrid_score`, `vector_rank`, and `lexical_rank`.
+
 ## Requirements
 
 Wippy 0.3.x; repository validation uses 0.3.47a. The `after_persist` capture

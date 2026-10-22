@@ -552,18 +552,12 @@ function M.search(args: any): (any?, error?)
         page[#page + 1] = out
     end
     local contested, contested_err = recall.search({
-        component_id = memory_id :: string, query = query, limit = SEARCH_MAX,
+        component_id = memory_id :: string, query = query, limit = offset + limit + 1, group_by = "conflict_group",
         scopes = scopes, statuses = { types.STATUS.CONFLICT },
     })
     if contested_err then return nil, contested_err end
     local group_ids: { string } = {}
-    local seen_groups: { [string]: boolean } = {}
-    for _, row in ipairs(contested :: any) do
-        if row.conflict_group and not seen_groups[row.conflict_group] then
-            seen_groups[row.conflict_group] = true
-            group_ids[#group_ids + 1] = row.conflict_group
-        end
-    end
+    for _, row in ipairs(contested :: any) do group_ids[#group_ids + 1] = row.id end
     local page_groups: { string } = {}
     for i = offset + 1, math.min(offset + limit, #group_ids) do page_groups[#page_groups + 1] = group_ids[i] end
     local members, members_err = items.group_members(memory_id :: string, page_groups, scopes)

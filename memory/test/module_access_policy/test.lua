@@ -3,6 +3,8 @@ local registry = require("registry")
 local security = require("security")
 
 local ENDPOINTS = {
+    "kickside.memory.api:list_memories.endpoint",
+    "kickside.memory.api:list_topics.endpoint",
     "kickside.memory.api:list_items.endpoint",
     "kickside.memory.api:get_item.endpoint",
     "kickside.memory.api:create_item.endpoint",

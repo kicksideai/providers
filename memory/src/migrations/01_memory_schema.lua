@@ -87,6 +87,7 @@ local POSTGRES = {
     [=[CREATE TABLE kickside_memory_embeddings (
         item_id text PRIMARY KEY,
         component_id text NOT NULL,
+        content_hash text NOT NULL,
         embedding vector(512) NOT NULL
     )]=],
     [=[CREATE INDEX idx_kickside_memory_embeddings_component ON kickside_memory_embeddings (component_id)]=],
@@ -200,7 +201,8 @@ local SQLITE = {
     [=[CREATE VIRTUAL TABLE kickside_memory_embeddings USING vec0(
         item_id TEXT PRIMARY KEY,
         component_id TEXT PARTITION KEY,
-        embedding float[512]
+        embedding float[512],
+        +content_hash TEXT
     )]=],
     [=[CREATE TABLE kickside_memory_cursors (
         component_id TEXT NOT NULL,
