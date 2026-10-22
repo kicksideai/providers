@@ -1,0 +1,13 @@
+version: '1.0'
+namespace: app
+entries:
+  - name: engine_config_test
+    kind: function.lua
+    meta: {type: test, suite: engine_config}
+    source: file://engine_config_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      engines: kickside.knowledge:engines
+      view_components: wippy.views:component_registry

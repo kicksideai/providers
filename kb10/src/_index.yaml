@@ -419,6 +419,9 @@ entries:
         digest_context_tokens: 48000
         digest_chars_per_token: 4
         # Ask: how a grounded answer is produced (built-in synthesis | agentic agent).
+        analysis_model: ""
+        extra_prompt: ""
+        enable_reranking: false
         query_strategy: plain
         self_tuning: false
         self_tuning_query_interval: 25
@@ -427,6 +430,22 @@ entries:
       config_schema:
         type: object
         properties:
+          analysis_model:
+            type: [string, boolean]
+            default: ""
+            label: Query analysis model
+            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables analysis.
+          extra_prompt:
+            type: string
+            default: ""
+            label: Retrieval instructions
+            description: Additional instructions for document analysis and reranking.
+            format: textarea
+          enable_reranking:
+            type: boolean
+            default: false
+            label: Rerank results
+            description: Rerank retrieved chunks using the query analysis model.
           query_strategy:
             type: string
             enum: [plain, hyde]
@@ -577,7 +596,9 @@ entries:
         extraction_model: "class:nano"
         retrieval_model: "class:nano"
         max_retrieval_iterations: 3
-        fallback_node_types: [chunk, summary]
+        analysis_model: ""
+        extra_prompt: ""
+        enable_reranking: false
         query_strategy: plain
         self_tuning: false
         self_tuning_query_interval: 25
@@ -592,6 +613,22 @@ entries:
       config_schema:
         type: object
         properties:
+          analysis_model:
+            type: [string, boolean]
+            default: ""
+            label: Query analysis model
+            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables analysis.
+          extra_prompt:
+            type: string
+            default: ""
+            label: Retrieval instructions
+            description: Additional instructions for document analysis and reranking.
+            format: textarea
+          enable_reranking:
+            type: boolean
+            default: false
+            label: Rerank results
+            description: Rerank retrieved chunks using the query analysis model.
           query_strategy:
             type: string
             enum: [plain, hyde]
