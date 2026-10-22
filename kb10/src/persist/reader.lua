@@ -8,14 +8,9 @@ local sql = require("sql")
 local json = require("json")
 local ops = require("kb10_ops")
 local kb10 = require("kb10")
+local search_index = require("search_index")
 
 local reader = {}
-
--- vec0 KNN resolves k nearest THEN applies SQL filters, so a filtered SQLite
--- vector search must over-fetch k and trim to limit afterward to still return
--- a full page of matching rows. The cap bounds worst-case KNN scan cost.
-local VECTOR_OVERFETCH_FACTOR = 8
-local VECTOR_OVERFETCH_MAX = 500
 
 function reader.get_store(component_id: any)
     local db, err = ops.get_db()
@@ -44,215 +39,18 @@ function reader.get_store(component_id: any)
     return row
 end
 
-local function dense_search(store_id: any, query_vector: any, opts: any)
-    local search_opts = (type(opts) == "table" and opts or {}) :: kb10.VectorSearchOptions
-    local limit = search_opts.limit or 10
-    local node_types = search_opts.node_types
-    local parent_id = search_opts.parent_id
-
-    local db, err = ops.get_db()
-    if err then return nil, err end
-
-    local db_type = ops.get_db_type(db)
-    local results
-
-    if db_type == sql.type.SQLITE then
-        local select_fields = {
-            "e.node_id as id",
-            "e.store_id",
-            "e.node_type",
-            "e.parent_id",
-            "e.distance",
-            "n.content",
-            "n.content_type",
-            "n.metadata",
-            "n.created_at",
-            "n.updated_at"
-        }
-
-        local has_filter = (node_types and #node_types > 0) or (parent_id and parent_id ~= "")
-
-        -- vec0 resolves the k nearest neighbors in the partition FIRST, then the
-        -- WHERE filters trim that set — so a filtered search using k = limit
-        -- under-returns (the limit nearest are mostly filtered out). Over-fetch
-        -- k when filters are present, then trim to limit after filtering.
-        local knn_k = limit
-        if has_filter then
-            knn_k = limit * VECTOR_OVERFETCH_FACTOR
-            if knn_k > VECTOR_OVERFETCH_MAX then knn_k = VECTOR_OVERFETCH_MAX end
-        end
-
-        local query = "SELECT " .. table.concat(select_fields, ", ") ..
-            " FROM kb10_embeddings e" ..
-            " LEFT JOIN kb10_nodes n ON n.id = e.node_id" ..
-            " WHERE e.embedding MATCH $1" ..
-            " AND e.store_id = $2" ..
-            " AND e.k = $3"
-
-        local params = { ops.vector_to_string(query_vector), store_id, knn_k }
-        local idx = 3
-
-        if node_types and #node_types > 0 then
-            if #node_types == 1 then
-                idx = idx + 1
-                query = query .. " AND e.node_type = $" .. idx
-                table.insert(params, node_types[1])
-            else
-                for _, nt in ipairs(node_types) do table.insert(params, nt) end
-                query = query .. " AND e.node_type IN (" .. ops.placeholders(#node_types, idx + 1) .. ")"
-                idx = idx + #node_types
-            end
-        end
-
-        if parent_id and parent_id ~= "" then
-            idx = idx + 1
-            query = query .. " AND e.parent_id = $" .. idx
-            table.insert(params, parent_id)
-        end
-
-        idx = idx + 1
-        query = query .. " ORDER BY e.distance LIMIT $" .. idx
-        table.insert(params, limit)
-
-        results, err = db:query(query, params)
-        if results then
-            for i = 1, #results do
-                local row = results[i]
-                if row.distance then
-                    row.similarity = math.exp(-(tonumber(row.distance) or 0))
-                    row.distance = nil
-                end
-            end
-        end
-    else
-        local select_fields = {
-            "n.id",
-            "n.store_id",
-            "n.node_type",
-            "n.parent_id",
-            "n.content",
-            "n.content_type",
-            "n.metadata",
-            "n.created_at",
-            "n.updated_at",
-            "e.embedding <=> ('" .. ops.vector_to_string(query_vector) .. "'::vector) as vector_distance"
-        }
-
-        local query = "SELECT " .. table.concat(select_fields, ", ") ..
-            " FROM kb10_nodes n" ..
-            " JOIN kb10_embeddings e ON n.id = e.node_id" ..
-            " WHERE n.store_id = $1"
-
-        local params = { store_id }
-        local idx = 1
-
-        if node_types and #node_types > 0 then
-            if #node_types == 1 then
-                idx = idx + 1
-                query = query .. " AND n.node_type = $" .. idx
-                table.insert(params, node_types[1])
-            else
-                for _, nt in ipairs(node_types) do table.insert(params, nt) end
-                query = query .. " AND n.node_type IN (" .. ops.placeholders(#node_types, idx + 1) .. ")"
-                idx = idx + #node_types
-            end
-        end
-
-        if parent_id and parent_id ~= "" then
-            idx = idx + 1
-            query = query .. " AND n.parent_id = $" .. idx
-            table.insert(params, parent_id)
-        end
-
-        idx = idx + 1
-        query = query .. " ORDER BY vector_distance ASC LIMIT $" .. idx
-        table.insert(params, limit)
-
-        results, err = db:query(query, params)
-        if results then
-            for i = 1, #results do
-                local row = results[i]
-                if row.vector_distance then
-                    row.similarity = 1 - (row.vector_distance / 2)
-                    row.vector_distance = nil
-                end
-            end
-        end
-    end
-
-    db:release()
-
-    if err then return nil, err end
-
-    if results then
-        for i = 1, #results do
-            local row = results[i]
-            if row.metadata and type(row.metadata) == "string" then
-                local parsed, parse_err = json.decode(row.metadata)
-                row.metadata = parse_err and {} or parsed
-            elseif not row.metadata then
-                row.metadata = {}
-            end
-        end
-    end
-
-    return results or {}
-end
-
--- Query text never enters either engine's FTS grammar unquoted. Word boundaries
--- match the upgraded indexes; digit-bearing terms anchor arbitrary identifiers,
--- while the remaining terms rank their surrounding attributes and prose.
-local function lexical_query(text: string, sqlite: boolean): (string?, boolean)
-    local terms, anchors, seen = {}, {}, {}
-    for token in text:lower():gmatch("[%w\128-\255]+") do
-        if not seen[token] then
-            seen[token] = true
-            local quoted = sqlite and ('"' .. token .. '"') or ("'" .. token:gsub("'", "''") .. "'")
-            terms[#terms + 1] = quoted
-            if token:find("%d") then anchors[#anchors + 1] = quoted end
-            if #terms >= 64 then break end
-        end
-    end
-    if #terms == 0 then return nil, false end
-    local or_op, and_op = sqlite and " OR " or " | ", sqlite and " AND " or " & "
-    local query = "(" .. table.concat(terms, or_op) .. ")"
-    if #anchors > 0 then query = "(" .. table.concat(anchors, and_op) .. ")" .. and_op .. query end
-    return query, #anchors > 0
-end
-
-local function lexical_search(store_id: any, query_text: string, opts: kb10.VectorSearchOptions): (any, any, boolean)
-    local db, err = ops.get_db()
-    if err then return nil, err, false end
-    local sqlite = ops.get_db_type(db) == sql.type.SQLITE
-    local match, anchored = lexical_query(query_text, sqlite)
-    if not match then db:release(); return {}, nil, false end
-    local query = "SELECT n.id, n.store_id, n.node_type, n.parent_id, n.content, n.content_type, n.metadata, n.created_at, n.updated_at"
-    if sqlite then
-        query = query .. " FROM kb10_nodes_fts JOIN kb10_nodes n ON n.id = kb10_nodes_fts.node_id WHERE kb10_nodes_fts MATCH $1 AND n.store_id = $2"
-    else
-        query = query .. " FROM kb10_nodes n WHERE n.search_vector @@ to_tsquery('simple', $1) AND n.store_id = $2"
-    end
-    local params: { any } = { match, store_id }
-    local idx = 2
-    if opts.node_types and #opts.node_types > 0 then
-        query = query .. " AND n.node_type IN (" .. ops.placeholders(#opts.node_types, idx + 1) .. ")"
-        for _, nt in ipairs(opts.node_types) do params[#params + 1] = nt end
-        idx = idx + #opts.node_types
-    end
-    if opts.parent_id and opts.parent_id ~= "" then
-        idx = idx + 1
-        query = query .. " AND n.parent_id = $" .. idx
-        params[#params + 1] = opts.parent_id
-    end
-    query = query .. (sqlite and " ORDER BY bm25(kb10_nodes_fts), n.id" or " ORDER BY ts_rank(n.search_vector, to_tsquery('simple', $1), 32) DESC, n.id")
-    query = query .. " LIMIT $" .. (idx + 1)
-    params[#params + 1] = opts.limit or 10
-    local rows, query_err = db:query(query, params)
-    db:release()
-    if query_err then return nil, query_err, anchored end
-    ops.decode_metadata(rows)
-    return rows or {}, nil, anchored
-end
+local SEARCH_SPEC = {
+    vectors = "kb10_embeddings",
+    vector_key = "node_id",
+    rows = "kb10_nodes",
+    row_key = "id",
+    partition = "store_id",
+    columns = { "store_id", "node_type", "parent_id", "content", "content_type", "metadata", "created_at", "updated_at" },
+    fts = "kb10_nodes_fts",
+    fts_key = "node_id",
+    tsvector = "search_vector",
+    json_columns = { "metadata" },
+}
 
 -- One retrieval entry point, used by query_func and internal concept retrieval.
 -- Vector-only callers retain their existing semantics. Query-bearing callers
@@ -261,50 +59,21 @@ end
 -- a lexical-only passage. Missing embeddings do not hide indexed text.
 function reader.vector_search(store_id: any, query_vector: any, opts: any)
     local options = (type(opts) == "table" and opts or {}) :: kb10.VectorSearchOptions
-    if not options.query_text or options.query_text == "" then
-        return dense_search(store_id, query_vector, options)
+    local filters: { any } = {}
+    if options.node_types and #options.node_types > 0 then
+        filters[#filters + 1] = { column = "node_type", values = options.node_types, table = "vectors" }
     end
-    local limit = options.limit or 10
-    local candidates = math.max(50, limit * 4)
-    local expanded: kb10.VectorSearchOptions = {
-        limit = candidates, node_types = options.node_types, parent_id = options.parent_id,
-    }
-    local lexical, lex_err, anchored = lexical_search(store_id, options.query_text, expanded)
-    if lex_err then return nil, errors.wrap(lex_err, "lexical search failed") end
-    if #lexical == 0 then return dense_search(store_id, query_vector, options) end
-    local dense, vector_err = dense_search(store_id, query_vector, expanded)
-    if vector_err then return nil, vector_err end
-    local by_id, rows = {}, {}
-    local lexical_weight = anchored and 3 or 1
-    for rank, row in ipairs(dense) do
-        row.vector_similarity = row.similarity
-        row.vector_rank = rank
-        row.hybrid_score = 1 / (10 + rank)
-        by_id[row.id] = row
-        rows[#rows + 1] = row
+    if options.parent_id and options.parent_id ~= "" then
+        filters[#filters + 1] = { column = "parent_id", values = { options.parent_id }, table = "vectors" }
     end
-    for rank, row in ipairs(lexical) do
-        local found = by_id[row.id]
-        if not found then
-            found = row
-            found.hybrid_score = 0
-            by_id[row.id] = found
-            rows[#rows + 1] = found
-        end
-        found.lexical_rank = rank
-        found.hybrid_score = found.hybrid_score + lexical_weight / (10 + rank)
-    end
-    table.sort(rows, function(a, b)
-        if a.hybrid_score ~= b.hybrid_score then return a.hybrid_score > b.hybrid_score end
-        return a.id < b.id
-    end)
-    local results = {}
-    for i = 1, math.min(limit, #rows) do
-        local row = rows[i]
-        row.similarity = row.hybrid_score * 11 / (1 + lexical_weight)
-        results[#results + 1] = row
-    end
-    return results
+    local db, err = ops.get_db()
+    if err then return nil, err end
+    local rows, search_err = search_index.search(db, SEARCH_SPEC, query_vector, {
+        partition = store_id, limit = options.limit or 10, filters = filters, query_text = options.query_text,
+    })
+    db:release()
+    if search_err then return nil, search_err end
+    return rows
 end
 
 function reader.browse_nodes(store_id: any, opts: any)

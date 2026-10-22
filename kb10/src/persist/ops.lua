@@ -1,6 +1,6 @@
 -- ops: cross-cutting helpers shared by the kb10 reader and writer. Owns the
 -- connection acquisition + dialect resolution against the configured target_db, the vector literal
--- encoder, the IN-clause placeholder builder, and in-place metadata decoding.
+-- encoder and IN-clause placeholder builder (from kickside.search_index), and in-place metadata decoding.
 -- Reads and writes both go through these so connection/dialect handling stays in
 -- one place; each public method in reader/writer acquires a connection here,
 -- runs its query, and releases it.
@@ -8,6 +8,7 @@
 local sql = require("sql")
 local json = require("json")
 local registry = require("registry")
+local search_index = require("search_index")
 
 local ops = { _modules = {} }
 
@@ -44,23 +45,10 @@ function ops.get_db_type(db: any)
     return db_type
 end
 
--- Encode an embedding vector as the "[a,b,c]" literal both vec0 and pgvector
--- accept.
-function ops.vector_to_string(vec: any)
-    return "[" .. table.concat(vec, ",") .. "]"
-end
-
--- Build a "$start,$start+1,...,$start+n-1" placeholder list for an IN (...)
--- clause, where `start` is the 1-based position of the first of these
--- parameters within the full statement (default 1). Numbered "$N" placeholders
--- bind positionally on both PostgreSQL and SQLite (mattn/go-sqlite3), so a single
--- numbered style is correct for both dialects — no per-dialect branching needed.
-function ops.placeholders(n: number, start: number?): string
-    local s = start or 1
-    local parts: { string } = {}
-    for i = 0, n - 1 do parts[i + 1] = "$" .. tostring(s + i) end
-    return table.concat(parts, ",")
-end
+-- Vector literal and IN-clause placeholders come from the shared search index
+-- library, so kb10's writes and its searches encode identically.
+ops.vector_to_string = search_index.vector_literal
+ops.placeholders = search_index.placeholders
 
 -- Decode each row's metadata json blob into a table, in place.
 function ops.decode_metadata(rows: any)
@@ -76,6 +64,6 @@ function ops.decode_metadata(rows: any)
     end
 end
 
-ops.VECTOR_DIMENSIONS = 512
+ops.VECTOR_DIMENSIONS = search_index.VECTOR_DIMENSIONS
 
 return ops

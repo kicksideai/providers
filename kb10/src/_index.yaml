@@ -29,6 +29,13 @@ entries:
     meta:
       comment: Implements the shared component and deletable contracts.
 
+  - name: dep.kickside.search_index
+    kind: ns.dependency
+    component: kickside/search-index
+    version: "*"
+    meta:
+      comment: Hybrid vector and full-text search over the kb10 node, embedding and fts tables.
+
   - name: dep.kickside.core
     kind: ns.dependency
     component: kickside/core
