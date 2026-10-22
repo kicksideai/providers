@@ -29,6 +29,22 @@ local OPS: { [string]: (any) -> (any, any) } = {
             return nil, reconcile.decide(d, a.candidates, a.opts)
         end)
     end,
+    seed_history = function(a: any)
+        local written, write_err = writer.write(a.component_id, "history:" .. a.component_id, { source = "owner" }, function(d: any): (any?, error?)
+            local ids: { string } = {}
+            for i = 1, a.count do
+                local item, add_err = d:add({ scope_family = "owner", scope_id = a.user_id }, {
+                    kind = i == a.count and "profile_slot" or "fact", key = "history_topic", cardinality = "multi",
+                    value = "value-" .. tostring(i), content = "History entry " .. tostring(i) .. ".", valid_at = d.now,
+                })
+                if add_err then return nil, add_err end
+                ids[#ids + 1] = item.id
+            end
+            return ids, nil
+        end)
+        if write_err then return nil, write_err end
+        return (written :: any).result, nil
+    end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
     apply = function(a: any) return runtime.apply(a.payload) end,
     store = function(a: any): (any, any)
@@ -70,8 +86,10 @@ local OPS: { [string]: (any) -> (any, any) } = {
         local out = {}
         for _, statement in ipairs({
             "SELECT content, value AS extra FROM kickside_memory_items WHERE component_id = $1",
+            "SELECT key AS content, cardinality AS extra FROM kickside_memory_keys WHERE component_id = $1",
             "SELECT content, value AS extra FROM kickside_memory_payloads WHERE component_id = $1",
-            "SELECT input AS content, '' AS extra FROM kickside_memory_runs WHERE component_id = $1",
+            "SELECT input AS content, last_error AS extra FROM kickside_memory_runs WHERE component_id = $1",
+            "SELECT pinned_prompt AS content, pinned_ids AS extra FROM kickside_memory_cursors WHERE component_id = $1",
         }) do
             local rows, err = db:query(statement, { a.component_id })
             if err then db:release(); return nil, err end
@@ -87,11 +105,25 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return { kind = err:kind(), retryable = err:retryable(), invalid = errors.INVALID, internal = errors.INTERNAL }, nil
     end,
     cursor = function(a: any) return runs.cursor(a.component_id, a.host_kind, a.host_id) end,
+    pinned_ids = function(a: any): (any?, any?)
+        local db, db_err = sql.get("app:db")
+        if db_err then return nil, db_err end
+        local rows, query_err = db:query(
+            "SELECT pinned_ids FROM kickside_memory_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3",
+            { a.component_id, a.host_kind, a.host_id })
+        db:release()
+        if query_err then return nil, query_err end
+        return rows and rows[1] and rows[1].pinned_ids, nil
+    end,
+    pin = function(a: any)
+        return runs.pin(a.component_id, a.host_kind, a.host_id, a.agent_id, a.head, a.prompt, a.selected)
+    end,
     claim = function(a: any) return runs.claim(a.run_id, a.repeatable) end,
     finish = function(a: any) return runs.finish(a.run_id, a.status, a.error) end,
     run = function(a: any) return runs.get(a.run_id) end,
     runs = function(a: any) return runs.list(a.component_id, a.run_type, a.limit or 50) end,
     query = function(a: any) return bindings.query(a.request) end,
+    embed = function(a: any) return bindings.embed_content(a.request) end,
     wake = function(a: any) return jobs.wake_consolidation(a.component_id) end,
 }
 

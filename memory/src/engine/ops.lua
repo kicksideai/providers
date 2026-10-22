@@ -34,15 +34,20 @@ local function load(d: any, item_id: string): (any?, error?)
     return item, nil
 end
 
--- Adds `fields` as a new item replacing what the claim's key holds when the
--- key is single-valued. A claim already current is left unchanged.
+-- Reuses a current claim while applying replacements; otherwise adds a new
+-- occurrence that replaces the values held by a single-valued key.
 local function assert_claim(d: any, scope: any, fields: any, replaces: { any }): (any?, error?)
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
     local claim_id, claim_err = types.claim_id(d.component_id, scope_key, fields.key, fields.value)
     if claim_err then return nil, claim_err end
     local live, live_err = d:claimed(scope_key, claim_id :: string, { types.STATUS.CURRENT })
     if live_err then return nil, live_err end
-    if #(live :: any) > 0 then return { item_id = (live :: any)[1].id, unchanged = true }, nil end
+    if #(live :: any) > 0 then
+        local destination = (live :: any)[1]
+        local reuse_err = d:reuse(destination, {}, replaces)
+        if reuse_err then return nil, reuse_err end
+        return { item_id = destination.id, unchanged = #replaces == 0 }, nil
+    end
     local targets: { any } = {}
     for _, item in ipairs(replaces) do targets[#targets + 1] = item end
     if fields.cardinality == types.CARDINALITY.SINGLE then
@@ -52,7 +57,10 @@ local function assert_claim(d: any, scope: any, fields: any, replaces: { any }):
     end
     local item, add_err = d:add(scope, fields)
     if add_err then return nil, add_err end
-    if #targets > 0 then d:supersede(targets, item, nil) end
+    if #targets > 0 then
+        local transition_err = d:replace(targets, item, nil)
+        if transition_err then return nil, transition_err end
+    end
     return { item_id = (item :: any).id }, nil
 end
 
@@ -66,11 +74,13 @@ function M.create(component_id: string, fields: any): (any?, error?)
     if not types.SCOPE_SET[scope_family] then return nil, types.invalid("unknown memory scope: " .. scope_family) end
     if scope_id == "" then return nil, types.invalid("memory scope id is required") end
     if content == "" then return nil, types.invalid("memory content is required") end
-    local key = types.normalize_key(fields.key ~= nil and fields.key or content)
-    if key == "" then return nil, types.invalid("memory key is required") end
+    local value = fields.value
+    if value == nil then value = content end
+    local key, key_err = types.topic_key(fields.key, content, value)
+    if key_err then return nil, key_err end
     local vector, vector_err = vector_for(component_id, content)
     if vector_err then return nil, vector_err end
-    local idempotency, id_err = types.digest({ "owner.create", scope_family, scope_id, key, fields.value == nil and content or fields.value })
+    local idempotency, id_err = types.digest({ "owner.create", scope_family, scope_id, key, value })
     if id_err then return nil, id_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
         local cardinality = types.trim(fields.cardinality)
@@ -80,7 +90,7 @@ function M.create(component_id: string, fields: any): (any?, error?)
             cardinality = established or types.CARDINALITY.MULTI
         end
         return assert_claim(d, { scope_family = scope_family, scope_id = scope_id }, {
-            kind = kind, key = key, cardinality = cardinality, value = fields.value == nil and content or fields.value,
+            kind = kind, key = key, cardinality = cardinality, value = value,
             content = content, valid_at = d.now, priority = math.floor(tonumber(fields.priority) or 0), vector = vector,
         }, {})
     end)
@@ -92,12 +102,6 @@ end
 function M.edit(component_id: string, item_id: string, fields: any): (any?, error?)
     local content = fields.content ~= nil and types.trim(fields.content) or nil
     if content == "" then return nil, types.invalid("memory content is required") end
-    local vector: { number }? = nil
-    if content then
-        local embedded, vector_err = vector_for(component_id, content)
-        if vector_err then return nil, vector_err end
-        vector = embedded
-    end
     local idempotency, id_err = types.digest({ "owner.edit", item_id, content or "", fields.value == nil and "" or fields.value })
     if id_err then return nil, id_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
@@ -106,6 +110,8 @@ function M.edit(component_id: string, item_id: string, fields: any): (any?, erro
         if item.status ~= types.STATUS.CURRENT and item.status ~= types.STATUS.CONFLICT then
             return nil, types.invalid("only a current memory can be edited")
         end
+        local vector, vector_err = vector_for(component_id, content or item.content)
+        if vector_err then return nil, vector_err end
         local value = fields.value
         if value == nil and content and item.value == item.content then value = content end
         if value ~= nil then
@@ -118,7 +124,7 @@ function M.edit(component_id: string, item_id: string, fields: any): (any?, erro
             if (content or item.content) == item.content and (priority == nil or priority == item.priority) then
                 return { item_id = item.id, unchanged = true }, nil
             end
-            local revise_err = d:revise(item, content or item.content, priority)
+            local revise_err = d:revise(item, content or item.content, priority, vector)
             if revise_err then return nil, revise_err end
             return { item_id = item.id, revised = true }, nil
         end
@@ -141,7 +147,8 @@ function M.resolve_conflict(component_id: string, group_id: string, winner_id: s
             if member.id == winner_id then winner = member else losers[#losers + 1] = member end
         end
         if not winner then return nil, types.invalid("the chosen memory is not part of this conflict") end
-        d:supersede(losers, winner, group_id)
+        local supersede_err = d:replace(losers, winner, group_id)
+        if supersede_err then return nil, supersede_err end
         local restore_err = d:restore(winner)
         if restore_err then return nil, restore_err end
         return { winner = winner_id, superseded = #losers }, nil

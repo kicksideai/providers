@@ -116,8 +116,8 @@ end
 
 -- embeddable ---------------------------------------------------------------
 
--- Ingests content into the memory ledger thread; the ledger projection derives
--- typed memory from it.
+-- Schedules content for derivation. The source id references a hash while the
+-- text stays in the erasable run input.
 function M.embed_content(value: any): (any?, error?)
     local req = args_of(value)
     local component_id, id_err = context_component()
@@ -126,22 +126,14 @@ function M.embed_content(value: any): (any?, error?)
     if type(content) ~= "string" or types.trim(content) == "" then
         return { success = false, error = "content is required" }, nil
     end
-    local metadata = {}
-    for k, v in pairs(args_of(req.metadata)) do metadata[k] = v end
-    metadata.source = types.trim(metadata.source) ~= "" and metadata.source or types.SOURCE
-    local title = types.trim(req.title or metadata.title)
-    local queued, err = thread_ingest.append_content(component_id :: string, {
-        content = content,
-        content_type = types.trim(req.content_type) ~= "" and req.content_type or "text/plain",
-        metadata = metadata,
-        title = title ~= "" and title or nil,
-        external_id = req.external_id,
-        external_version = req.external_version,
-        source_ref = { kind = "manual", origin = "kickside.memory.embed_content", title = title ~= "" and title or nil },
+    local source_event_id, hash_err = types.digest({ "memory.embed_content", component_id, req.external_id, req.external_version, content })
+    if hash_err then return { success = false, error = "memory ingest failed: " .. tostring(hash_err) }, nil end
+    local queued, err = jobs.ingest(component_id :: string, source_event_id :: string, {
+        { id = source_event_id, role = "document", text = content, created_at = types.now() },
     })
     if err or not queued then return { success = false, error = "memory ingest failed: " .. tostring(err) }, nil end
-    return { success = true, status = "queued", kb_id = component_id, thread_id = (queued :: any).thread_id,
-        external_id = (queued :: any).external_id, external_version = (queued :: any).external_version }, nil
+    return { success = true, status = "queued", kb_id = component_id,
+        thread_id = component_id, run_id = (queued :: any).run_id, external_id = req.external_id, external_version = req.external_version }, nil
 end
 
 -- queryable ----------------------------------------------------------------

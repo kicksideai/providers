@@ -56,7 +56,8 @@ function M.update_config(component_id: string, config: any): (any?, error?)
 end
 
 -- Removes one page of the memory's rows. Returns { done, removed }: done is
--- true once no item, provenance, vector, cursor, run or store row is left.
+-- true once no item, payload, provenance, vector, key, cursor, run or store row
+-- is left.
 function M.purge_page(component_id: string): (any?, error?)
     return db.write(nil, function(tx: any, sqlite: boolean): (any, error?)
         local rows, err = tx:query("SELECT id FROM kickside_memory_items WHERE component_id = $1 ORDER BY id LIMIT $2",
@@ -69,6 +70,7 @@ function M.purge_page(component_id: string): (any?, error?)
             local statements = {
                 "DELETE FROM kickside_memory_provenance WHERE item_id IN (" .. marks .. ")",
                 "DELETE FROM kickside_memory_embeddings WHERE item_id IN (" .. marks .. ")",
+                "DELETE FROM kickside_memory_payloads WHERE owner_item_id IN (" .. marks .. ")",
                 "DELETE FROM kickside_memory_items WHERE id IN (" .. marks .. ")",
             }
             if sqlite then table.insert(statements, 1, "DELETE FROM kickside_memory_fts WHERE item_id IN (" .. marks .. ")") end
@@ -81,6 +83,8 @@ function M.purge_page(component_id: string): (any?, error?)
         for _, statement in ipairs({
             "DELETE FROM kickside_memory_provenance WHERE component_id = $1",
             "DELETE FROM kickside_memory_embeddings WHERE component_id = $1",
+            "DELETE FROM kickside_memory_payloads WHERE component_id = $1",
+            "DELETE FROM kickside_memory_keys WHERE component_id = $1",
             "DELETE FROM kickside_memory_cursors WHERE component_id = $1",
             "DELETE FROM kickside_memory_runs WHERE component_id = $1",
             "DELETE FROM kickside_memory_stores WHERE component_id = $1",

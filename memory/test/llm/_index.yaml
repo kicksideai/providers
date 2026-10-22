@@ -9,7 +9,7 @@ entries:
   - name: script
     kind: library.lua
     source: file://script.lua
-    modules: [sql, json]
+    modules: [sql, json, time]
 
   - name: driver_embed
     kind: function.lua

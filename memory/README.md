@@ -70,12 +70,14 @@ See [src/README.md](src/README.md) for the ledger, tables and contracts.
 ### Agent tools
 
 - [`SearchMemory`](src/_index.yaml): `query`, `fields`, `limit`, `cursor`.
-- [`Remember`](src/_index.yaml): `content`, `kind`, `key`, `value`, `cardinality`, `valid_at`.
+- [`Remember`](src/_index.yaml): required `content` and canonical topic `key`; optional `kind`, `value`, `cardinality`, `valid_at`.
 - [`ForgetMemory`](src/_index.yaml): `item_id` (the caller's own memories only).
 
 Tools write only to the memory attached to the agent and only into the calling
 user's own memories, and refuse to write when the trait's `write_enabled` is
-off. `SearchMemory` returns unresolved conflicts separately as `alternatives`.
+off. Topic keys name an attribute, such as `home_city`, and cannot contain the
+memory text or value. `SearchMemory` returns complete unresolved groups
+separately as `alternatives`, with pagination by group.
 
 ### Host requirements
 

@@ -133,6 +133,26 @@ function M.normalize_key(value: any): string
     return text
 end
 
+-- Topic identity is independent of the text and value it labels.
+function M.topic_key(value: any, content: string, claim_value: any?): (string?, error?)
+    local key = M.normalize_key(value)
+    if #key == 0 or #key > 64 or not key:match("^[a-z][a-z0-9_]*$") then
+        return nil, M.invalid("a topic key of up to 64 letters, digits and underscores is required")
+    end
+    local compact = key:gsub("_", "")
+    local content_key = M.normalize_key(content):gsub("_", "")
+    if content_key ~= "" and compact:find(content_key, 1, true) then return nil, M.invalid("topic key must not contain memory content") end
+    if claim_value ~= nil then
+        local value_text, encode_err = json.encode(claim_value)
+        if encode_err then return nil, M.invalid("memory value must be JSON", { cause = tostring(encode_err) }) end
+        local value_key = M.normalize_key(value_text):gsub("_", "")
+        if value_key ~= "" and compact:find(value_key, 1, true) then
+            return nil, M.invalid("topic key must not contain the memory value")
+        end
+    end
+    return key, nil
+end
+
 -- The calling actor's id, or "" without one.
 function M.actor_id(): string
     local actor = security.actor()

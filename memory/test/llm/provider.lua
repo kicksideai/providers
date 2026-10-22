@@ -30,21 +30,26 @@ local function embed(args: any): (any, any)
     return { success = true, result = { embeddings = out }, tokens = { prompt_tokens = 1, total_tokens = 1 } }
 end
 
--- A scripted failure is the provider being unavailable for the moment.
-local function unavailable(failure: string): error
-    return errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = failure })
+-- Scripted failures preserve the dependency classification. The standard
+-- transport failures are transient; every other scripted kind is deterministic.
+local function failed(failure: string, kind: string?, retryable: boolean?): error
+    local failure_kind = kind or errors.UNAVAILABLE
+    local transient = failure_kind == errors.UNAVAILABLE or failure_kind == errors.TIMEOUT or failure_kind == errors.RATE_LIMITED
+    return errors.new({ kind = failure_kind, retryable = retryable ~= nil and retryable or transient, message = failure })
 end
 
 local function structured_output(args: any): (any, any)
     script.record("structured_output", args.schema, args.messages)
-    local response, failure = script.take("structured_output")
-    if failure then return nil, unavailable(failure) end
+    local hold_err = script.await_release("structured_output")
+    if hold_err then return nil, errors.new({ kind = errors.INTERNAL, retryable = false, message = hold_err }) end
+    local response, failure, kind, retryable = script.take("structured_output")
+    if failure then return nil, failed(failure, kind, retryable) end
     return { success = true, result = { data = response }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }
 end
 
 local function generate(_args: any): (any, any)
-    local response, failure = script.take("generate")
-    if failure then return nil, unavailable(failure) end
+    local response, failure, kind, retryable = script.take("generate")
+    if failure then return nil, failed(failure, kind, retryable) end
     return { success = true, result = { content = tostring(response) }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }
 end
 

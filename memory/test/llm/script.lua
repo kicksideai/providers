@@ -5,6 +5,8 @@ local sql = require("sql")
 local json = require("json")
 
 local M = {}
+local BARRIER_PREFIX = "__barrier__:"
+local BARRIER_WAIT_SECONDS = 60
 
 local function db(): any
     local conn, err = sql.get("app:db")
@@ -30,31 +32,67 @@ function M.reset()
     conn:release()
 end
 
-local function push(method: string, response: any, failure: string?)
+local function push(method: string, response: any, failure: string?, failure_kind: string?, retryable: boolean?)
     M.ensure()
     local conn = db()
     local rows = conn:query("SELECT COUNT(*) AS n FROM app_llm_script")
     local seq = (rows and rows[1] and tonumber(rows[1].n) or 0) + 1
+    local failure_details = failure_kind ~= nil and { kind = failure_kind } or {}
+    if retryable ~= nil then failure_details.retryable = retryable end
+    local encoded = response ~= nil and json.encode(response) or (next(failure_details) ~= nil and json.encode(failure_details) or sql.NULL)
     local _, err = conn:execute("INSERT INTO app_llm_script (seq, method, response, failure) VALUES ($1, $2, $3, $4)",
-        { seq, method, response ~= nil and json.encode(response) or sql.NULL, failure or sql.NULL })
+        { seq, method, encoded, failure or sql.NULL })
     conn:release()
     if err then error(tostring(err)) end
 end
 
 function M.respond(method: string, response: any) push(method, response, nil) end
-function M.fail(method: string, failure: string) push(method, nil, failure) end
+function M.fail(method: string, failure: string, kind: string?, retryable: boolean?) push(method, nil, failure, kind, retryable) end
 
--- Next scripted answer for a method: (response, failure).
-function M.take(method: string): (any, string?)
+-- Holds a provider method after it records its request. Tests release the
+-- named hold once the concurrent operation has reached that boundary.
+function M.hold(method: string)
+    push(BARRIER_PREFIX .. method, true, nil)
+end
+
+function M.release(method: string)
+    M.ensure()
+    local conn = db()
+    local _, err = conn:execute("DELETE FROM app_llm_script WHERE method = $1", { BARRIER_PREFIX .. method })
+    conn:release()
+    if err then error(tostring(err)) end
+end
+
+-- Waits for a named hold to be released. The request is already recorded when
+-- this starts, so a test can observe requests(method) before releasing it.
+function M.await_release(method: string): string?
+    local deadline = time.now():add(BARRIER_WAIT_SECONDS * time.SECOND)
+    while true do
+        local conn = db()
+        local rows, err = conn:query("SELECT seq FROM app_llm_script WHERE method = $1 LIMIT 1", { BARRIER_PREFIX .. method })
+        conn:release()
+        if err then return tostring(err) end
+        if not rows or #rows == 0 then return nil end
+        if time.now():after(deadline) then return "scripted " .. method .. " barrier was not released" end
+        time.sleep(10 * time.MILLISECOND)
+    end
+end
+
+-- Next scripted answer for a method: (response, failure, failure kind, retryable).
+function M.take(method: string): (any, string?, string?, boolean?)
     M.ensure()
     local conn = db()
     local rows, err = conn:query("SELECT seq, response, failure FROM app_llm_script WHERE method = $1 ORDER BY seq LIMIT 1", { method })
-    if err then conn:release(); return nil, tostring(err) end
-    if not rows or #rows == 0 then conn:release(); return nil, "no scripted " .. method .. " response" end
+    if err then conn:release(); return nil, tostring(err), nil, nil end
+    if not rows or #rows == 0 then conn:release(); return nil, "no scripted " .. method .. " response", nil, nil end
     conn:execute("DELETE FROM app_llm_script WHERE method = $1 AND seq = $2", { method, rows[1].seq })
     conn:release()
-    if rows[1].failure and rows[1].failure ~= "" then return nil, rows[1].failure end
-    return json.decode(rows[1].response), nil
+    if rows[1].failure and rows[1].failure ~= "" then
+        local details = rows[1].response and json.decode(rows[1].response) or {}
+        return nil, rows[1].failure, type(details) == "table" and details.kind or nil,
+            type(details) == "table" and details.retryable or nil
+    end
+    return json.decode(rows[1].response), nil, nil, nil
 end
 
 -- Records the schema and messages of a structured_output call.

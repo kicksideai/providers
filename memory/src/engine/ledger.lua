@@ -6,6 +6,10 @@
 local contract = require("contract")
 local security = require("security")
 local types = require("types")
+local threads_append = require("threads_append")
+local retention_notifier = require("retention_notifier")
+local jobs_wake = require("jobs_wake")
+local json = require("json")
 
 local M = {}
 
@@ -58,26 +62,22 @@ end
 
 type LedgerEvent = { type: string, body: any }
 
--- Appends typed events atomically at the expected head. `idempotency` names
--- the decision; an exact replay returns the stored events. A moved head is a
--- retryable conflict: the caller decides again on the newer state.
-function M.append(component_id: string, events: { LedgerEvent }, expected_head: integer, idempotency: string): (any?, error?)
-    if #events == 0 then return { inserted = 0 }, nil end
-    local inst, err = threads()
-    if err then return nil, err end
+-- Appends typed events at the expected head inside the caller's transaction,
+-- so the payloads the events reference commit with them or not at all.
+-- `idempotency` names the decision; an exact replay matches the stored events.
+-- A moved head is a retryable conflict: the caller decides again on the newer
+-- state.
+function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, expected_head: integer, idempotency: string): (any?, error?)
     local writes: { any } = {}
     for index, event in ipairs(events) do
         writes[index] = {
             type = event.type,
-            body = event.body,
+            role = "system",
+            body_json = json.encode(event.body),
             external = { external_source = types.SOURCE, external_id = idempotency .. ":" .. tostring(index) },
         }
     end
-    local result, append_err = (inst :: any):append_events({
-        thread_id = component_id,
-        expect = { head = expected_head },
-        events = writes,
-    })
+    local result, append_err = threads_append.append_events_tx(tx, component_id, writes, { expect = { head = expected_head } })
     if append_err then
         if errors.is(append_err, errors.CONFLICT) then
             return nil, types.unavailable("memory ledger moved while deciding; decide again", { expected_head = expected_head })
@@ -85,6 +85,15 @@ function M.append(component_id: string, events: { LedgerEvent }, expected_head: 
         return nil, append_err
     end
     return result, nil
+end
+
+-- Tells the scheduler and retention about events a committed transaction
+-- appended.
+function M.appended(component_id: string): error?
+    local _, notify_err = retention_notifier.notify({ kind = "events_appended", thread_id = component_id })
+    if notify_err then return notify_err end
+    local _, wake_err = jobs_wake.nudge_workers(nil, nil)
+    return wake_err
 end
 
 return M

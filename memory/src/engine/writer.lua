@@ -7,6 +7,8 @@
 local items = require("memory_items")
 local ledger = require("memory_ledger")
 local decision = require("memory_decision")
+local db = require("memory_db")
+local types = require("types")
 
 local M = {}
 
@@ -38,17 +40,31 @@ function M.write(component_id: string, idempotency: string, opts: WriteOptions, 
     for _, event in ipairs(opts.extra_events or {}) do events[#events + 1] = event end
     local inserted = 0
     if #events > 0 then
-        local _, stage_err = items.stage(component_id, d.staged)
-        if stage_err then return nil, stage_err end
-        local appended, append_err = ledger.append(component_id, events, head :: integer, key)
-        if append_err then
-            local payload_ids: { string } = {}
-            for _, staged in ipairs(d.staged) do payload_ids[#payload_ids + 1] = staged.payload_id end
-            local _, unstage_err = items.unstage(component_id, payload_ids)
-            if unstage_err then return nil, unstage_err end
-            return nil, append_err
-        end
+        local appended, append_err = db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
+            local accepted, accept_err = ledger.append_tx(tx, component_id, events, head :: integer, key)
+            if accept_err then return nil, accept_err end
+            if accepted.inserted > 0 then
+                local references: { [string]: boolean } = {}
+                for i, proof in ipairs(accepted.events) do
+                    if not proof.duplicate then
+                        local event = events[i]
+                        if event.type == types.EVENT.ITEM_ADDED then references[event.body.item_id] = true end
+                        if event.type == types.EVENT.ITEM_REVISED then references[event.body.payload_id] = true end
+                    end
+                end
+                local staged: { any } = {}
+                for _, entry in ipairs(d.staged) do
+                    if references[entry.payload_id] then staged[#staged + 1] = entry end
+                end
+                local stage_err = items.stage_tx(tx, component_id, staged)
+                if stage_err then return nil, stage_err end
+            end
+            return accepted, nil
+        end)
+        if append_err then return nil, append_err end
         inserted = appended and (appended :: any).inserted or 0
+        local notify_err = ledger.appended(component_id)
+        if notify_err then return nil, notify_err end
     end
     return { result = result, stats = d.stats, item_ids = d.added, inserted = inserted }, nil
 end

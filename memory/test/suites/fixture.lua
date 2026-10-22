@@ -6,6 +6,7 @@ local sql = require("sql")
 local contract = require("contract")
 local security = require("security")
 local funcs = require("funcs")
+local channel = require("channel")
 local uuid = require("uuid")
 local time = require("time")
 local script = require("script")
@@ -112,6 +113,24 @@ end
 -- Runs a named memory operation (see app.suites:memory_call) as the user.
 function M.op(user_id: string, op: string, args: any, context: any?): (any, any)
     return M.call_as(user_id, "app.suites:memory_call", { op = op, args = args }, context)
+end
+
+-- Starts a memory operation in a separate function frame. Concurrency tests
+-- await the returned command so they exercise the real write transaction.
+function M.async_op(user_id: string, op: string, args: any, context: any?): (any?, error?)
+    local executor = funcs.new():with_actor(security.new_actor(user_id, {})):with_scope(scope())
+    if context then executor = executor:with_context(context) end
+    return executor:async("app.suites:memory_call", { op = op, args = args })
+end
+
+function M.await(command: any): (any?, error?)
+    local selected = channel.select({ command:response():case_receive(), time.after("60s"):case_receive() })
+    if selected.channel ~= command:response() then
+        return nil, errors.new({ kind = errors.TIMEOUT, retryable = false, message = "concurrent memory operation did not answer" })
+    end
+    local payload, err = command:result()
+    if err then return nil, err end
+    return payload:data(), nil
 end
 
 -- Creates a memory knowledge base owned by the user through the knowledge

@@ -245,20 +245,6 @@ function M.derive_authorized(value: any): any
     if declined then return declined end
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
-    local input = run.input
-    local span = input.span
-    local events: { [string]: any } = {}
-    for _, message in ipairs(span) do
-        events[message.id] = { at = types.utc(message.created_at), text = message.text }
-    end
-    local candidates: any = {}
-    if #span > 0 then
-        local keys, keys_err = items.keys(run.component_id, types.scope_key(types.SCOPE.OWNER, types.trim(input.owner_id)), KEY_LIMIT)
-        if keys_err then return fail(run.id, keys_err) end
-        local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions)
-        if extract_err then return fail(run.id, extract_err) end
-        candidates = extracted
-    end
     local deadline = value.job.deadline
     local result, write_err = writer.write(run.component_id, "derive:" .. run.id, {
         source = types.ITEM_SOURCE.CAPTURE, deadline = deadline,
@@ -268,15 +254,32 @@ function M.derive_authorized(value: any): any
             } },
         } or nil,
     }, function(d: any): (any?, error?)
+        local fresh, read_err = runs.get(run.id)
+        if read_err then return nil, read_err end
+        if not fresh then return nil, types.not_found("memory run not found") end
+        local input = fresh.input
+        local span = input.span or {}
+        local events: { [string]: any } = {}
+        for _, message in ipairs(span) do
+            events[message.id] = { at = types.utc(message.created_at), text = message.text }
+        end
+        local candidates: any = {}
+        if #span > 0 then
+            local keys, keys_err = items.keys(run.component_id, types.scope_key(types.SCOPE.OWNER, types.trim(input.owner_id)), KEY_LIMIT)
+            if keys_err then return nil, keys_err end
+            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions)
+            if extract_err then return nil, extract_err end
+            candidates = extracted
+        end
+        d.stats.candidates = #candidates
         return nil, reconcile.decide(d, candidates, {
             embedding_model = store.embedding_model, judge_model = cfg.judge_model,
             scope_family = types.SCOPE.OWNER, scope_id = types.trim(input.owner_id),
-            host_kind = run.host_kind, host_id = run.host_id, events = events,
+            host_kind = run.host_kind, host_id = run.host_id, events = events, run_id = run.id,
         })
     end)
     if write_err then return fail(run.id, write_err) end
     local stats = (result :: any).stats
-    stats.candidates = #candidates
     local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end
     return { ok = true, record = { status = "completed" }, stats = stats }
@@ -294,45 +297,36 @@ function M.consolidate_authorized(value: any): any
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
     local next_at = types.after_seconds(cfg.consolidation_interval_hours * 3600)
-    local current, list_err = items.list(run.component_id, {
-        scope_family = types.SCOPE.OWNER, statuses = { types.STATUS.CURRENT }, limit = 500,
-    })
-    if list_err then return fail(run.id, list_err) end
-    local by_scope: { [string]: { any } } = {}
-    local order: { string } = {}
-    for _, item in ipairs(current :: any) do
-        if not by_scope[item.scope_id] then
-            by_scope[item.scope_id] = {}
-            order[#order + 1] = item.scope_id
+    local result, write_err = writer.write(run.component_id, "consolidate:" .. run.id .. ":" .. run.cycle, {
+        source = types.ITEM_SOURCE.REFLECTION, deadline = value.job.deadline,
+    }, function(d: any): (any?, error?)
+        local current, list_err = items.list(run.component_id, {
+            scope_family = types.SCOPE.OWNER, statuses = { types.STATUS.CURRENT }, limit = 500,
+        })
+        if list_err then return nil, list_err end
+        local by_scope: { [string]: { any } } = {}
+        local order: { string } = {}
+        for _, item in ipairs(current :: any) do
+            if not by_scope[item.scope_id] then by_scope[item.scope_id] = {}; order[#order + 1] = item.scope_id end
+            table.insert(by_scope[item.scope_id], item)
         end
-        table.insert(by_scope[item.scope_id], item)
-    end
-    table.sort(order)
-    local stats = { scopes = 0, added = 0, superseded = 0, merged = 0, conflicted = 0, noop = 0 }
-    local deadline = value.job.deadline
-    for _, scope_id in ipairs(order) do
-        local scope_items = by_scope[scope_id]
-        local reflected, reflect_err = models.reflect(cfg.extraction_model, scope_items)
-        if reflect_err then return fail(run.id, reflect_err) end
-        local result, write_err = writer.write(run.component_id, "consolidate:" .. run.id .. ":" .. scope_id .. ":" .. run.cycle, {
-            source = types.ITEM_SOURCE.REFLECTION, deadline = deadline,
-        }, function(d: any): (any?, error?)
-            return nil, reconcile.decide(d, reflected :: any, {
+        table.sort(order)
+        d.stats.scopes = 0
+        for _, scope_id in ipairs(order) do
+            local reflected, reflect_err = models.reflect(cfg.extraction_model, by_scope[scope_id] :: { any })
+            if reflect_err then return nil, reflect_err end
+            local reconcile_err = reconcile.decide(d, reflected :: any, {
                 embedding_model = store.embedding_model, judge_model = cfg.judge_model,
-                scope_family = types.SCOPE.OWNER, scope_id = scope_id,
+                scope_family = types.SCOPE.OWNER, scope_id = scope_id, run_id = run.id,
             })
-        end)
-        if write_err then return fail(run.id, write_err) end
-        stats.scopes = stats.scopes + 1
-        for key, count in pairs((result :: any).stats) do
-            if stats[key] ~= nil then stats[key] = stats[key] + count end
+            if reconcile_err then return nil, reconcile_err end
+            d.stats.scopes = d.stats.scopes + 1
         end
-    end
-    local _, completed_err = writer.write(run.component_id, "consolidated:" .. run.id .. ":" .. run.cycle, {
-        source = types.ITEM_SOURCE.REFLECTION, deadline = deadline,
-        extra_events = { { type = types.EVENT.CONSOLIDATION_COMPLETED, body = { run_id = run.id, stats = stats } } },
-    }, function(_d: any): (any?, error?) return nil, nil end)
-    if completed_err then return fail(run.id, completed_err) end
+        d:emit(types.EVENT.CONSOLIDATION_COMPLETED, { run_id = run.id, stats = d.stats })
+        return nil, nil
+    end)
+    if write_err then return fail(run.id, write_err) end
+    local stats = result.stats
     local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end
     return { ok = true, record = { status = "completed" }, rearm = next_at, stats = stats }
@@ -359,7 +353,7 @@ function M.reembed_authorized(value: any): any
         local vectors, embed_err = models.embed(store.embedding_model, texts)
         if embed_err then return fail(run.id, embed_err) end
         for i, row in ipairs(page :: any) do
-            local _, vector_err = items.set_embedding(run.component_id, row.id, (vectors :: any)[i])
+            local _, vector_err = items.set_embedding(run.component_id, row.id, (vectors :: any)[i], row.content_hash)
             if vector_err then return fail(run.id, vector_err) end
             embedded = embedded + 1
             after = row.id

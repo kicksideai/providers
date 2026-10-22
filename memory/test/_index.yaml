@@ -56,6 +56,9 @@ entries:
     comment: Test API router.
     server: gateway
   prefix: /api
+  middleware: [token_auth]
+  options:
+    token_store: kickside.users.security:tokens
 - name: api_public
   kind: http.router
   meta:

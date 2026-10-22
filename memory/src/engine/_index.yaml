@@ -9,11 +9,14 @@ entries:
   - name: ledger
     kind: library.lua
     meta:
-      comment: Typed ledger events on the memory thread with expected-head appends.
+      comment: Typed ledger events on the memory thread with expected-head appends in the writer's transaction.
     source: file://ledger.lua
-    modules: [contract, security]
+    modules: [contract, security, json]
     imports:
       types: kickside.memory:types
+      threads_append: kickside.core.threads.persist:append
+      retention_notifier: kickside.core.retention:notifier
+      jobs_wake: kickside.core.jobs.persist:wake
 
   - name: models
     kind: library.lua
@@ -24,7 +27,7 @@ entries:
     imports:
       llm: wippy.llm:llm
       types: kickside.memory:types
-      model_failure: kickside.contract:model_failure
+      error_envelope: kickside.contract:error_envelope
 
   - name: reconcile
     kind: library.lua
@@ -51,9 +54,11 @@ entries:
       comment: The single typed write path - settle, decide, stage payloads, append structure at the head.
     source: file://writer.lua
     imports:
+      types: kickside.memory:types
       memory_items: kickside.memory.persist:items
       memory_ledger: kickside.memory.engine:ledger
       memory_decision: kickside.memory.engine:decision
+      memory_db: kickside.memory.persist:db
 
   - name: ops
     kind: library.lua

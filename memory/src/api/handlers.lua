@@ -102,6 +102,10 @@ end
 function M.get_item()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
+    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
+    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
+    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
+    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
     local item_id = types.trim(req:param("item_id"))
     local item, err = items.get(id :: string, item_id)
     if err then return fail(res, err) end
@@ -109,10 +113,14 @@ function M.get_item()
     local provenance, prov_err = items.provenance(id :: string, item_id)
     if prov_err then return fail(res, prov_err) end
     local history, history_err = items.list(id :: string, {
-        kinds = { (item :: any).kind }, scope_keys = { (item :: any).scope_key }, key = (item :: any).key, limit = 50,
+        scope_keys = { (item :: any).scope_key }, key = (item :: any).key, limit = (limit :: integer) + 1, offset = offset,
     })
     if history_err then return fail(res, history_err) end
-    reply(res, http.STATUS.OK, { success = true, item = item, provenance = provenance, versions = history })
+    local versions: { any } = {}
+    for i = 1, math.min(limit :: integer, #(history :: any)) do versions[i] = (history :: any)[i] end
+    local result: { [string]: any } = { success = true, item = item, provenance = provenance, versions = versions }
+    if #(history :: any) > (limit :: integer) then result.next_offset = (offset :: integer) + (limit :: integer) end
+    reply(res, http.STATUS.OK, result)
 end
 
 local function write_op(fn: (string, any, any) -> (any?, error?))

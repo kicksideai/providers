@@ -9,7 +9,7 @@ The knowledge base thread (`thread_id == component_id`) is the ledger. It holds
 structure only, never memory text: writers append typed events at an expected
 head.
 
-- `kickside.memory.events:item.added`: `item_id, claim_id, content_hash, kind, key, cardinality, scope_family, scope_id, valid_at, source, provenance[]`
+- `kickside.memory.events:item.added`: `item_id, claim_id, content_hash, kind, key, cardinality, scope_family, scope_id, valid_at, source, run_id?, provenance[]`
 - `item.revised`: `item_id, payload_id, content_hash, priority` (new text or priority, same claim)
 - `item.superseded`: `item_id, by, invalid_at, resolved_conflict?`
 - `item.merged`: `item_ids, into`
@@ -20,8 +20,9 @@ head.
 - `capture.advanced`: `host_kind, host_id, last_event_id`
 - `consolidation.completed`: `run_id, stats`
 
-Memory text and typed values live in `kickside_memory_payloads`, staged under
-the item id before the event that adds the item is appended; vectors (512
+Memory text and typed values live in `kickside_memory_payloads`, stored under
+the item id, with each revision under its own payload id and explicit item
+ownership, in the transaction that appends their events; vectors (512
 dimensions, the knowledge base's embedding model) live beside them in
 `kickside_memory_embeddings`. The ledger projection folds events into
 `kickside_memory_items` (with a searchable copy of each payload),
@@ -33,15 +34,21 @@ A claim is one typed value of a canonical key in a scope
 (`claim_id = canonical_json hash(component, scope, key, value)`; values keep
 their JSON type, text compares without case or spacing). An item is one
 occurrence of a claim: the same claim stated again later is a new item with its
-own `valid_at`. Every key has a cardinality: a `single` key holds at most one
+own `valid_at`. Every key has a cardinality persisted in `kickside_memory_keys`, independently
+of its live items: a `single` key holds at most one
 current value per scope, whatever kind labels its items; `multi` keys hold
-several. Versions are numbered per scope and key.
+several. Versions are numbered per scope and key. A key names a topic, such as
+`home_city`; owner creation and Remember require it and reject keys containing
+the supplied text or value.
 
 Forget erases: the item's text, value, vector, full-text row and provenance,
-every other version of its claim, the captured spans that stated it, and every
-pinned prompt that included it. The ledger events stay, carrying no text.
+every occurrence of the same claim and every predecessor or successor linked
+by replacement or merge, the retained run inputs and errors containing it, and
+every pinned prompt that included it. Independent values of a multi key stay. The ledger events stay, carrying no text.
 Archive is the reversible alternative: an archived item leaves recall and the
-prompt until restored.
+prompt until restored. Agent instructions already compiled by `wippy/agent`
+remain in the active runner until the agent is compiled again; memory has no
+framework hook to invalidate that snapshot.
 
 Kinds: `identity, rule, profile_slot, fact, preference, skill, lesson`.
 Scopes: `agent:<agent id>` (identity and rules, edited by people with write
@@ -66,8 +73,10 @@ and update.
 
 Every writer (capture, the Remember tool, reflection, owner operations) settles
 the read model at the ledger head, decides on that state through one decision
-(`engine/decision.lua`) that applies the same state rules, stages new payloads
-and vectors, and appends the decision's events at that head. A moved head is a
+(`engine/decision.lua`) that applies the same state rules, and commits payloads, vectors and the
+decision's events in one transaction at that head. Duplicate appends do not
+restage payloads. Reflection reads its evidence and calls the model inside
+that decision, so a moved head refuses the derived result. A moved head is a
 retryable failure: the writer decides again on the newer state, and nothing it
 staged stays behind.
 
@@ -78,7 +87,7 @@ staged stays behind.
    each: a claim already current is seen again; a forgotten claim is not
    learned again; a single-valued key holding another value relates to that
    value only (the reconcile model chooses `SUPERSEDE | MERGE | NOOP |
-   CONFLICT`; an explicit Remember replaces it); otherwise the nearest live
+   CONFLICT`; an explicit Remember replaces it); otherwise the same-key items, including those added in the same decision, and nearest live
    items of the scope reach the reconcile model, which chooses `ADD | SUPERSEDE
    | MERGE | NOOP | CONFLICT` over their ids. On supersession the later
    `valid_at` wins. Conflicts keep every contested item in one group.

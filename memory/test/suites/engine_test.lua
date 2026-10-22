@@ -316,6 +316,23 @@ local function define_tests()
             test.not_nil(limit_err)
         end)
 
+        test.it("stages embeddable content in the erasable derive input without putting it in the ledger", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local secret = "Juniper-481 memory ingest text"
+            fixture.extraction({})
+            local result, err = fixture.op(user, "embed", { request = {
+                content = secret, content_type = "text/plain", external_id = "ingest-1", external_version = "1",
+            } }, { component_id = id })
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, json.encode(result))
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            test.is_true(json.encode(runs[1].input):find(secret, 1, true) ~= nil, json.encode(runs[1].input))
+            local events = fixture.op(user, "ledger", { component_id = id })
+            test.is_true(json.encode(events):find(secret, 1, true) == nil, json.encode(events))
+        end)
+
         test.it("deleting the memory through the knowledge control plane purges its ledger and every row", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -328,7 +345,7 @@ local function define_tests()
             local result, err = fixture.delete_memory(user, id)
             test.is_nil(err, tostring(err))
             test.is_true(result.deleted == true, json.encode(result))
-            for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_provenance", "kickside_memory_embeddings",
+            for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_payloads", "kickside_memory_keys", "kickside_memory_provenance", "kickside_memory_embeddings",
                 "kickside_memory_cursors", "kickside_memory_runs", "kickside_memory_stores" }) do
                 test.eq(count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
             end

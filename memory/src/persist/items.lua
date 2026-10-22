@@ -2,11 +2,11 @@
 -- model, the reads the engine, agent surfaces and API share, and hybrid search
 -- through the shared search index.
 --
--- The ledger carries structure only. A writer stages each new item's text,
--- typed value and vector under the item id before appending the event that
--- adds it; the fold copies the staged payload into the searchable item row.
--- Forgetting an item erases its payload, vector, full-text row, provenance and
--- every captured span that stated it.
+-- The ledger carries structure only. A writer stores each new item's text,
+-- typed value and vector, and appends the event that adds it, in one
+-- transaction; the fold copies the payload into the searchable item row.
+-- Forgetting an item erases its payloads, vector, full-text row, provenance and
+-- every captured span and run error that held it.
 
 local sql = require("sql")
 local json = require("json")
@@ -22,7 +22,7 @@ local NULL = {}
 local COLUMNS = {
     "component_id", "claim_id", "kind", "scope_family", "scope_id", "scope_key", "key", "cardinality", "content", "value",
     "content_hash", "status", "version", "valid_at", "invalid_at", "recorded_at", "superseded_by", "conflict_group",
-    "confidence", "source", "priority", "last_seq",
+    "confidence", "source", "run_id", "priority", "last_seq",
 }
 
 local SEARCH_SPEC = {
@@ -148,12 +148,15 @@ local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: 
     local content = payload and payload.content or ""
     local _, err = tx:execute(
         "INSERT INTO kickside_memory_items (id, component_id, claim_id, kind, scope_family, scope_id, scope_key, key, cardinality, " ..
-        "content, value, content_hash, status, version, valid_at, recorded_at, confidence, source, priority, last_seq) " ..
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)",
+        "content, value, content_hash, status, version, valid_at, recorded_at, confidence, source, run_id, priority, last_seq) " ..
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)",
         { item_id, component_id, body.claim_id, body.kind, body.scope_family, body.scope_id, scope_key, key, body.cardinality,
             content, payload and encoded(payload.value) or sql.NULL, body.content_hash, status, version, body.valid_at, recorded_at,
-            tonumber(body.confidence) or sql.NULL, body.source, tonumber(body.priority) or 0, seq })
+            tonumber(body.confidence) or sql.NULL, body.source, body.run_id or sql.NULL, tonumber(body.priority) or 0, seq })
     if err then return types.failed("memory item insert failed", err) end
+    local _, key_err = tx:execute("INSERT INTO kickside_memory_keys (component_id, scope_key, key, cardinality) VALUES ($1, $2, $3, $4) " ..
+        "ON CONFLICT (component_id, scope_key, key) DO NOTHING", { component_id, scope_key, key, body.cardinality })
+    if key_err then return types.failed("memory key insert failed", key_err) end
     if not payload then return nil end
     local fts_err = set_fts_tx(tx, sqlite, item_id, content)
     if fts_err then return fts_err end
@@ -161,79 +164,88 @@ local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: 
 end
 
 -- A revision replaces the presentation of an item (its text and priority)
--- with the payload staged under the revision's payload id.
+-- with the payload stored under the revision's payload id; both payloads stay
+-- until the item is forgotten, so a rebuild replays the same text.
 local function apply_revised(tx: any, sqlite: boolean, component_id: string, seq: integer, body: any): error?
     local item_id = types.trim(body.item_id)
     local payload, payload_err = payload_tx(tx, component_id, types.trim(body.payload_id))
     if payload_err then return payload_err end
-    if not payload then return nil end
-    local _, err = tx:execute("UPDATE kickside_memory_payloads SET content = $1, content_hash = $2 WHERE component_id = $3 AND item_id = $4",
-        { payload.content, payload.content_hash, component_id, item_id })
-    if err then return types.failed("memory payload revise failed", err) end
-    local _, drop_err = tx:execute("DELETE FROM kickside_memory_payloads WHERE component_id = $1 AND item_id = $2",
-        { component_id, types.trim(body.payload_id) })
-    if drop_err then return types.failed("memory payload revise failed", drop_err) end
-    local fields: { [string]: any } = { content = payload.content, content_hash = payload.content_hash }
+    local fields: { [string]: any } = { content_hash = body.content_hash }
     if body.priority ~= nil then fields.priority = math.floor(tonumber(body.priority) or 0) end
+    if payload then
+        fields.content = payload.content
+        fields.content_hash = payload.content_hash
+    end
     local update_err = set_status_tx(tx, component_id, item_id, seq, fields)
     if update_err then return update_err end
+    if not payload then return nil end
     return set_fts_tx(tx, sqlite, item_id, payload.content)
 end
 
--- A contested memory replaced by another keeps its contest: the successor
--- joins the predecessor's conflict group, unless the replacement is the
--- resolution of that group.
-local function supersede_tx(tx: any, component_id: string, item_id: string, successor_id: string, seq: integer, invalid_at: string, resolution: boolean): error?
-    local before, read_err = get_tx(tx, component_id, item_id)
-    if read_err then return read_err end
-    local err = set_status_tx(tx, component_id, item_id, seq, {
+local function supersede_tx(tx: any, component_id: string, item_id: string, successor_id: string, seq: integer, invalid_at: string): error?
+    return set_status_tx(tx, component_id, item_id, seq, {
         status = types.STATUS.SUPERSEDED, superseded_by = successor_id, invalid_at = invalid_at, conflict_group = NULL,
     })
-    if err then return err end
-    if resolution or not before or before.status ~= types.STATUS.CONFLICT or not before.conflict_group then return nil end
-    local successor, successor_err = get_tx(tx, component_id, successor_id)
-    if successor_err then return successor_err end
-    if not successor or successor.status ~= types.STATUS.CURRENT then return nil end
-    return set_status_tx(tx, component_id, successor_id, seq, { status = types.STATUS.CONFLICT, conflict_group = before.conflict_group })
 end
 
--- Removes a forgotten item's messages from every captured span that still
--- holds them.
-local function scrub_runs_tx(tx: any, component_id: string, event_ids: { string }): error?
-    if #event_ids == 0 then return nil end
+-- Erases retained inputs and errors linked by run, provenance or retained text.
+local function scrub_runs_tx(tx: any, component_id: string, item: any, event_ids: { string }, payloads: { any }): error?
     local drop: { [string]: boolean } = {}
     for _, id in ipairs(event_ids) do drop[id] = true end
-    local rows, err = tx:query("SELECT id, input FROM kickside_memory_runs WHERE component_id = $1", { component_id })
+    local texts: { string } = {}
+    for _, payload in ipairs(payloads) do
+        if payload.content ~= "" then texts[#texts + 1] = payload.content:lower() end
+        local value = types.decode_json(payload.value)
+        if type(value) == "string" and value ~= "" then texts[#texts + 1] = value:lower() end
+    end
+    local function contains(text: any): boolean
+        if type(text) ~= "string" then return false end
+        local lower = text:lower()
+        for _, held in ipairs(texts) do
+            if lower:find(held, 1, true) then return true end
+        end
+        return false
+    end
+    local rows, err = tx:query("SELECT id, input, last_error FROM kickside_memory_runs WHERE component_id = $1", { component_id })
     if err then return types.failed("memory run read failed", err) end
     for _, row in ipairs(rows or {}) do
         local input = types.decode_json(row.input)
-        local span = type(input) == "table" and input.span or nil
-        if type(span) == "table" then
-            local kept: { any } = {}
-            for _, message in ipairs(span) do
-                if not drop[tostring(message.id)] then kept[#kept + 1] = message end
-            end
-            if #kept ~= #span then
-                input.span = kept
-                local _, update_err = tx:execute("UPDATE kickside_memory_runs SET input = $1 WHERE component_id = $2 AND id = $3",
-                    { json.encode(input), component_id, row.id })
-                if update_err then return types.failed("memory run scrub failed", update_err) end
-            end
+        local affected = item and item.run_id == row.id
+        for _, message in ipairs(type(input) == "table" and input.span or {}) do
+            if drop[tostring(message.id)] or contains(message.text) then affected = true end
+        end
+        if affected or contains(row.last_error) then
+            local _, update_err = tx:execute("UPDATE kickside_memory_runs SET input = $1, last_error = NULL WHERE component_id = $2 AND id = $3",
+                { affected and "{}" or json.encode(input), component_id, row.id })
+            if update_err then return types.failed("memory run scrub failed", update_err) end
         end
     end
+    return nil
+end
+
+local function invalidate_pins_tx(tx: any, component_id: string, item_id: string?): error?
+    local statement = "UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL WHERE component_id = $1"
+    local params: { any } = { component_id }
+    if item_id then statement = statement .. " AND pinned_ids LIKE $2"; params[2] = '%"' .. item_id .. '"%' end
+    local _, err = tx:execute(statement, params)
+    if err then return types.failed("memory pin invalidation failed", err) end
     return nil
 end
 
 -- Erases a forgotten item: its payload and vector, full-text row, provenance,
 -- the captured spans that stated it, and every pinned prompt that included it.
 local function apply_forgotten(tx: any, sqlite: boolean, component_id: string, seq: integer, item_id: string, recorded_at: string): error?
+    local item, item_err = get_tx(tx, component_id, item_id)
+    if item_err then return item_err end
+    local payloads, payload_err = tx:query("SELECT content, value FROM kickside_memory_payloads WHERE component_id = $1 AND owner_item_id = $2", { component_id, item_id })
+    if payload_err then return types.failed("memory erase payload read failed", payload_err) end
     local refs, refs_err = tx:query("SELECT event_id FROM kickside_memory_provenance WHERE component_id = $1 AND item_id = $2",
         { component_id, item_id })
     if refs_err then return types.failed("memory provenance read failed", refs_err) end
     local event_ids: { string } = {}
     for _, ref in ipairs(refs or {}) do event_ids[#event_ids + 1] = tostring(ref.event_id) end
     for _, statement in ipairs({
-        "DELETE FROM kickside_memory_payloads WHERE component_id = $1 AND item_id = $2",
+        "DELETE FROM kickside_memory_payloads WHERE component_id = $1 AND owner_item_id = $2",
         "DELETE FROM kickside_memory_embeddings WHERE component_id = $1 AND item_id = $2",
         "DELETE FROM kickside_memory_provenance WHERE component_id = $1 AND item_id = $2",
     }) do
@@ -242,10 +254,9 @@ local function apply_forgotten(tx: any, sqlite: boolean, component_id: string, s
     end
     local fts_err = set_fts_tx(tx, sqlite, item_id, nil)
     if fts_err then return fts_err end
-    local _, pin_err = tx:execute("UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL " ..
-        "WHERE component_id = $1 AND pinned_ids LIKE $2", { component_id, '%"' .. item_id .. '"%' })
-    if pin_err then return types.failed("memory pin invalidation failed", pin_err) end
-    local scrub_err = scrub_runs_tx(tx, component_id, event_ids)
+    local pin_err = invalidate_pins_tx(tx, component_id, item_id)
+    if pin_err then return pin_err end
+    local scrub_err = scrub_runs_tx(tx, component_id, item, event_ids, payloads or {})
     if scrub_err then return scrub_err end
     return set_status_tx(tx, component_id, item_id, seq, {
         status = types.STATUS.FORGOTTEN, invalid_at = recorded_at, content = "", value = NULL, conflict_group = NULL,
@@ -262,8 +273,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
     elseif kind == types.EVENT.ITEM_REVISED then
         return apply_revised(tx, sqlite, component_id, seq, body)
     elseif kind == types.EVENT.ITEM_SUPERSEDED then
-        return supersede_tx(tx, component_id, types.trim(body.item_id), types.trim(body.by), seq, body.invalid_at or recorded_at,
-            types.trim(body.resolved_conflict) ~= "")
+        return supersede_tx(tx, component_id, types.trim(body.item_id), types.trim(body.by), seq, body.invalid_at or recorded_at)
     elseif kind == types.EVENT.ITEM_MERGED then
         local into = types.trim(body.into)
         for _, item_id in ipairs(type(body.item_ids) == "table" and body.item_ids or {}) do
@@ -271,7 +281,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
                 PROVENANCE_INSERT .. "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance " ..
                 "WHERE component_id = $2 AND item_id = $3 ON CONFLICT DO NOTHING", { into, component_id, item_id })
             if copy_err then return types.failed("memory provenance merge failed", copy_err) end
-            local err = supersede_tx(tx, component_id, item_id, into, seq, recorded_at, false)
+            local err = supersede_tx(tx, component_id, item_id, into, seq, recorded_at)
             if err then return err end
         end
         return nil
@@ -282,10 +292,14 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         end
         return nil
     elseif kind == types.EVENT.ITEM_ARCHIVED then
+        local pin_err = invalidate_pins_tx(tx, component_id, types.trim(body.item_id))
+        if pin_err then return pin_err end
         return set_status_tx(tx, component_id, types.trim(body.item_id), seq, {
             status = types.STATUS.ARCHIVED, invalid_at = recorded_at, conflict_group = NULL,
         })
     elseif kind == types.EVENT.ITEM_RESTORED then
+        local pin_err = invalidate_pins_tx(tx, component_id, nil)
+        if pin_err then return pin_err end
         return set_status_tx(tx, component_id, types.trim(body.item_id), seq, {
             status = types.STATUS.CURRENT, invalid_at = NULL, superseded_by = NULL, conflict_group = NULL,
         })
@@ -321,59 +335,31 @@ end
 
 type Staged = {
     payload_id: string,
+    owner_item_id: string,
     content: string,
     value: any,
     content_hash: string,
     vector: { number }?,
 }
 
--- Stores the payloads (and vectors) a decision is about to reference, under
--- their payload ids, before the decision's events are appended.
-function M.stage(component_id: string, staged: { Staged }): (any?, error?)
-    if #staged == 0 then return true, nil end
-    return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
-        local now = types.now()
-        for _, entry in ipairs(staged) do
-            local _, del_err = tx:execute("DELETE FROM kickside_memory_payloads WHERE component_id = $1 AND item_id = $2",
-                { component_id, entry.payload_id })
-            if del_err then return nil, types.failed("memory payload stage failed", del_err) end
-            local _, err = tx:execute(
-                "INSERT INTO kickside_memory_payloads (item_id, component_id, content, value, content_hash, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-                { entry.payload_id, component_id, entry.content, encoded(entry.value), entry.content_hash, now })
-            if err then return nil, types.failed("memory payload stage failed", err) end
-            if entry.vector then
-                local _, vec_del_err = tx:execute("DELETE FROM kickside_memory_embeddings WHERE component_id = $1 AND item_id = $2",
-                    { component_id, entry.payload_id })
-                if vec_del_err then return nil, types.failed("memory vector stage failed", vec_del_err) end
-                local vec_err = index.insert_rows_tx(tx, "kickside_memory_embeddings", { "item_id", "component_id", "embedding" },
-                    { { entry.payload_id, component_id, index.vector_literal(entry.vector :: { number }) } })
-                if vec_err then return nil, types.failed("memory vector stage failed", vec_err) end
-            end
+-- Stages immutable payloads in the transaction that appends their events.
+function M.stage_tx(tx: any, component_id: string, staged: { Staged }): error?
+    for _, entry in ipairs(staged) do
+        local _, err = tx:execute(
+            "INSERT INTO kickside_memory_payloads (item_id, component_id, owner_item_id, content, value, content_hash, created_at) " ..
+            "VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (item_id) DO NOTHING",
+            { entry.payload_id, component_id, entry.owner_item_id, entry.content, encoded(entry.value), entry.content_hash, types.now() })
+        if err then return types.failed("memory payload stage failed", err) end
+        if entry.vector then
+            local owner = entry.owner_item_id
+            local _, del_err = tx:execute("DELETE FROM kickside_memory_embeddings WHERE component_id = $1 AND item_id = $2", { component_id, owner })
+            if del_err then return types.failed("memory vector stage failed", del_err) end
+            local vec_err = index.insert_rows_tx(tx, "kickside_memory_embeddings", { "item_id", "component_id", "embedding" },
+                { { owner, component_id, index.vector_literal(entry.vector :: { number }) } })
+            if vec_err then return types.failed("memory vector stage failed", vec_err) end
         end
-        return true, nil
-    end)
-end
-
--- Removes staged payloads and vectors that no item references: what a refused
--- append left behind.
-function M.unstage(component_id: string, payload_ids: { string }): (any?, error?)
-    if #payload_ids == 0 then return true, nil end
-    return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
-        for _, payload_id in ipairs(payload_ids) do
-            local existing, read_err = get_tx(tx, component_id, payload_id)
-            if read_err then return nil, read_err end
-            if not existing then
-                for _, statement in ipairs({
-                    "DELETE FROM kickside_memory_payloads WHERE component_id = $1 AND item_id = $2",
-                    "DELETE FROM kickside_memory_embeddings WHERE component_id = $1 AND item_id = $2",
-                }) do
-                    local _, err = tx:execute(statement, { component_id, payload_id })
-                    if err then return nil, types.failed("memory unstage failed", err) end
-                end
-            end
-        end
-        return true, nil
-    end)
+    end
+    return nil
 end
 
 function M.get(component_id: string, item_id: string): (any?, error?)
@@ -426,6 +412,74 @@ function M.list(component_id: string, filter: ListFilter): (any?, error?)
     end)
 end
 
+-- Complete reads for state transitions; public pages retain their limits.
+function M.all(component_id: string, filter: ListFilter): (any?, error?)
+    local out: { any } = {}
+    local page_filter: any = {}
+    for k, v in pairs(filter) do page_filter[k] = v end
+    page_filter.limit = 200
+    page_filter.offset = 0
+    while true do
+        local page, err = M.list(component_id, page_filter)
+        if err then return nil, err end
+        for _, row in ipairs(page) do out[#out + 1] = row end
+        if #page < page_filter.limit then return out, nil end
+        page_filter.offset = page_filter.offset + #page
+    end
+end
+
+function M.key_cardinality(component_id: string, scope_key: string, key: string): (string?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local rows, err = conn:query("SELECT cardinality FROM kickside_memory_keys WHERE component_id = $1 AND scope_key = $2 AND key = $3",
+            { component_id, scope_key, key })
+        if err then return nil, types.failed("memory key cardinality read failed", err) end
+        return rows and rows[1] and rows[1].cardinality or nil, nil
+    end)
+end
+
+function M.count_current(component_id: string, scope_key: string, key: string): (number?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local rows, err = conn:query("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND key = $3 AND status = $4",
+            { component_id, scope_key, key, types.STATUS.CURRENT })
+        if err then return nil, types.failed("memory current count failed", err) end
+        return tonumber(rows[1].n), nil
+    end)
+end
+
+-- Same claims and explicit supersession edges form a lineage, independently
+-- of other values sharing a multi-valued key.
+function M.lineage(component_id: string, item: any): (any?, error?)
+    local rows, err = M.all(component_id, { scope_keys = { item.scope_key } })
+    if err then return nil, err end
+    local by_id: { [string]: any } = {}
+    local by_claim: { [string]: { any } } = {}
+    local predecessors: { [string]: { any } } = {}
+    for _, row in ipairs(rows) do
+        by_id[row.id] = row
+        by_claim[row.claim_id] = by_claim[row.claim_id] or {}
+        table.insert(by_claim[row.claim_id], row)
+        if row.superseded_by then
+            predecessors[row.superseded_by] = predecessors[row.superseded_by] or {}
+            table.insert(predecessors[row.superseded_by], row)
+        end
+    end
+    local queue: { any } = { item }
+    local seen: { [string]: boolean } = { [item.id] = true }
+    local cursor = 1
+    local function add(row: any)
+        if row and not seen[row.id] then seen[row.id] = true; queue[#queue + 1] = row end
+    end
+    while cursor <= #queue do
+        local row = queue[cursor]
+        for _, same in ipairs(by_claim[row.claim_id] or {}) do add(same) end
+        for _, previous in ipairs(predecessors[row.id] or {}) do add(previous) end
+        if row.superseded_by then add(by_id[row.superseded_by]) end
+        cursor = cursor + 1
+    end
+    table.sort(queue, function(a: any, b: any): boolean return a.id < b.id end)
+    return queue, nil
+end
+
 -- Distinct { kind, key, cardinality } of the live items of a scope, ordered.
 function M.keys(component_id: string, scope_key: string, limit: integer): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
@@ -452,14 +506,19 @@ function M.conflict_groups(component_id: string, offset: integer, limit: integer
     end)
 end
 
--- Every current member of the given conflict groups.
-function M.group_members(component_id: string, groups: { string }): (any?, error?)
+-- Every current member of the given conflict groups, optionally limited to
+-- scopes the caller is authorized to read.
+function M.group_members(component_id: string, groups: { string }, scope_keys: { string }?): (any?, error?)
     if #groups == 0 then return {}, nil end
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local params: { any } = { component_id, types.STATUS.CONFLICT }
         for _, group in ipairs(groups) do params[#params + 1] = group end
-        local rows, err = conn:query(SELECT .. " WHERE component_id = $1 AND status = $2 AND conflict_group IN (" ..
-            index.placeholders(#groups, 3) .. ") ORDER BY conflict_group, id", params)
+        local where = " WHERE component_id = $1 AND status = $2 AND conflict_group IN (" .. index.placeholders(#groups, 3) .. ")"
+        if scope_keys and #scope_keys > 0 then
+            where = where .. " AND scope_key IN (" .. index.placeholders(#scope_keys, #params + 1) .. ")"
+            for _, scope_key in ipairs(scope_keys) do params[#params + 1] = scope_key end
+        end
+        local rows, err = conn:query(SELECT .. where .. " ORDER BY conflict_group, id", params)
         if err then return nil, types.failed("memory conflict member read failed", err) end
         return decode_all(rows), nil
     end)
@@ -505,8 +564,12 @@ function M.counts(component_id: string): (any?, error?)
     end)
 end
 
-function M.set_embedding(component_id: string, item_id: string, vector: { number }): (any?, error?)
-    return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
+function M.set_embedding(component_id: string, item_id: string, vector: { number }, content_hash: string): (any?, error?)
+    return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
+        local rows, read_err = tx:query("SELECT status, content_hash FROM kickside_memory_items WHERE component_id = $1 AND id = $2" ..
+            (sqlite and "" or " FOR SHARE"), { component_id, item_id })
+        if read_err then return nil, types.failed("memory embedding snapshot read failed", read_err) end
+        if not rows or not rows[1] or rows[1].status == types.STATUS.FORGOTTEN or rows[1].content_hash ~= content_hash then return false, nil end
         local _, del_err = tx:execute("DELETE FROM kickside_memory_embeddings WHERE component_id = $1 AND item_id = $2", { component_id, item_id })
         if del_err then return nil, types.failed("memory vector delete failed", del_err) end
         local err = index.insert_rows_tx(tx, "kickside_memory_embeddings", { "item_id", "component_id", "embedding" },
@@ -544,7 +607,7 @@ end
 function M.page_for_embedding(component_id: string, after_id: string, limit: integer): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(
-            "SELECT id, content FROM kickside_memory_items WHERE component_id = $1 AND id > $2 AND status <> $3 ORDER BY id LIMIT $4",
+            "SELECT id, content, content_hash FROM kickside_memory_items WHERE component_id = $1 AND id > $2 AND status <> $3 ORDER BY id LIMIT $4",
             { component_id, after_id, types.STATUS.FORGOTTEN, limit })
         if err then return nil, types.failed("memory embedding page read failed", err) end
         return rows or {}, nil

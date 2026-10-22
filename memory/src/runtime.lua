@@ -216,21 +216,21 @@ end
 
 -- Deterministic bounded rendering: kind, priority, key order; whole lines only.
 -- Renders whole lines in kind, priority and key order within `max_chars`, and
--- returns the ids of the items it rendered.
-local function render(rows: { any }, heading: string, max_chars: integer): (string, { string })
+-- returns the item snapshots it rendered.
+local function render(rows: { any }, heading: string, max_chars: integer): (string, { any })
     sort_soul(rows)
     local lines: { string } = {}
-    local ids: { string } = {}
+    local selected: { any } = {}
     local used = #heading
     for _, row in ipairs(rows) do
         local line = "- [" .. row.kind .. "] " .. row.content
         if used + #line + 1 > max_chars then break end
         lines[#lines + 1] = line
-        ids[#ids + 1] = row.id
+        selected[#selected + 1] = { id = row.id, version = row.version, content_hash = row.content_hash }
         used = used + #line + 1
     end
-    if #lines == 0 then return "", ids end
-    return heading .. "\n" .. table.concat(lines, "\n"), ids
+    if #lines == 0 then return "", selected end
+    return heading .. "\n" .. table.concat(lines, "\n"), selected
 end
 
 local function soul_rows(component_id: string, scope_key: string, kinds: { string }): (any?, error?)
@@ -470,10 +470,11 @@ function M.remember(args: any): (any?, error?)
     if refusal then return refusal, nil end
     local owner = types.actor_id()
     if owner == "" then return tool_error("remember requires a signed-in user"), nil end
-    local key = types.trim(input.key)
-    if key == "" then key = content end
-    local value = input.value ~= nil and input.value or content
-    local idempotency, hash_err = types.digest({ "tool.remember", owner, types.normalize_key(key), value, content })
+    local value = input.value
+    if value == nil then value = content end
+    local key, key_err = types.topic_key(input.key, content, value)
+    if key_err then return tool_error(key_err), nil end
+    local idempotency, hash_err = types.digest({ "tool.remember", owner, key, value, content })
     if hash_err then return nil, hash_err end
     local run = ctx.get("agent_run")
     local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
@@ -527,9 +528,10 @@ function M.search(args: any): (any?, error?)
     if offset < 0 then return tool_error("cursor is invalid"), nil end
     local memory_id, _, err = M.memory({}, component.ACCESS.READ)
     if err then return tool_error(err), nil end
+    local scopes = recall.visible_scopes(ctx.get("agent_id"))
     local rows, search_err = recall.search({
         component_id = memory_id :: string, query = query, limit = offset + limit + 1,
-        scopes = recall.visible_scopes(ctx.get("agent_id")),
+        scopes = scopes,
     })
     if search_err then return nil, search_err end
     local fields = type(input.fields) == "table" and input.fields or {}
@@ -550,27 +552,41 @@ function M.search(args: any): (any?, error?)
         page[#page + 1] = out
     end
     local contested, contested_err = recall.search({
-        component_id = memory_id :: string, query = query, limit = limit,
-        scopes = recall.visible_scopes(ctx.get("agent_id")), statuses = { types.STATUS.CONFLICT },
+        component_id = memory_id :: string, query = query, limit = SEARCH_MAX,
+        scopes = scopes, statuses = { types.STATUS.CONFLICT },
     })
     if contested_err then return nil, contested_err end
+    local group_ids: { string } = {}
+    local seen_groups: { [string]: boolean } = {}
+    for _, row in ipairs(contested :: any) do
+        if row.conflict_group and not seen_groups[row.conflict_group] then
+            seen_groups[row.conflict_group] = true
+            group_ids[#group_ids + 1] = row.conflict_group
+        end
+    end
+    local page_groups: { string } = {}
+    for i = offset + 1, math.min(offset + limit, #group_ids) do page_groups[#page_groups + 1] = group_ids[i] end
+    local members, members_err = items.group_members(memory_id :: string, page_groups, scopes)
+    if members_err then return nil, members_err end
     local groups: { [string]: any } = {}
     local alternatives: { any } = {}
-    for _, row in ipairs(contested :: any) do
+    for _, group_id in ipairs(page_groups) do
+        local group = { group_id = group_id, status = "unresolved", options = {} }
+        groups[group_id] = group
+        alternatives[#alternatives + 1] = group
+    end
+    for _, row in ipairs(members :: any) do
         local group = groups[row.conflict_group]
-        if not group then
-            group = { group_id = row.conflict_group, status = "unresolved", options = {} }
-            groups[row.conflict_group] = group
-            alternatives[#alternatives + 1] = group
-        end
+        if group then
         group.options[#group.options + 1] = { id = row.id, content = row.content, valid_at = row.valid_at }
+        end
     end
     local result: { [string]: any } = {
         success = true, query = query, count = #page, items = page, alternatives = alternatives,
         note = "Memory is derived from prior conversations and may be incomplete or out of date. Alternatives are " ..
             "unresolved: the person has said contradicting things; ask before relying on either.",
     }
-    if #(rows :: any) > offset + limit then result.next_cursor = tostring(offset + limit) end
+    if #(rows :: any) > offset + limit or #group_ids > offset + limit then result.next_cursor = tostring(offset + limit) end
     return result, nil
 end
 

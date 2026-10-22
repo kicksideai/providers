@@ -5,7 +5,7 @@ entries:
   - name: fixture
     kind: library.lua
     source: file://fixture.lua
-    modules: [sql, contract, security, funcs, uuid, time]
+    modules: [sql, contract, security, funcs, channel, uuid, time]
     imports:
       script: app.llm:script
       history: app.suites:history
@@ -111,6 +111,58 @@ entries:
     source: file://state_test.lua
     method: run
     modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: surface_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_surface
+      timeout: 300s
+    source: file://surface_test.lua
+    method: run
+    modules: [json, http_client, registry]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+      session: kickside.users:session
+      user_groups_repo: kickside.users.persist:user_groups_repo
+
+  - name: rework_call
+    kind: function.lua
+    source: file://rework_call.lua
+    method: call
+    modules: [sql]
+    imports:
+      memory_writer: kickside.memory.engine:writer
+      memory_items: kickside.memory.persist:items
+      memory_models: kickside.memory.engine:models
+      types: kickside.memory:types
+
+  - name: rework_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_rework
+      timeout: 300s
+    source: file://rework_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: concurrency_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_concurrency
+      timeout: 300s
+    source: file://concurrency_test.lua
+    method: run
+    modules: [sql, time]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture

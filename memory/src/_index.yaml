@@ -524,12 +524,12 @@ entries:
           "properties": {
             "content": {"type": "string", "description": "One self-contained sentence about the user, e.g. 'The user lives in Berlin.'"},
             "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson"]},
-            "key": {"type": "string", "description": "Short stable topic, e.g. home_city"},
-            "value": {"type": "string", "description": "The value only, e.g. Berlin"},
+            "key": {"type": "string", "description": "Required canonical topic key: 1-64 lowercase letters, digits or underscores, beginning with a letter. Name the attribute (for example home_city), never the memory sentence or value."},
+            "value": {"description": "The typed value only, e.g. Berlin or false."},
             "cardinality": {"type": "string", "enum": ["single", "multi"], "description": "single when the user holds one value of this key at a time (home city, diet); multi when several hold together (allergies). A key the memory already knows keeps its cardinality."},
             "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"}
           },
-          "required": ["content"]
+          "required": ["content", "key"]
         }
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_ids": {"type": "array", "items": {"type": "string"}}, "outcome": {"type": "object"}}, "required": ["success"]}

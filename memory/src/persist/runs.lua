@@ -101,12 +101,23 @@ function M.cursor(component_id: string, host_kind: string, host_id: string): (an
     end)
 end
 
--- Pins the owner slice a host renders into every step's prompt, with the ledger
--- head it was rendered at. The slice stays byte-identical until the next pin.
--- Pins the rendered owner slice and the ids of the items it holds, so
--- forgetting one of them invalidates the pin.
-function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, item_ids: { string }): (any?, error?)
-    return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
+-- Pins the rendered owner slice only while every source item remains current
+-- with the version and text that was rendered.
+function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, selected: { any }): (any?, error?)
+    return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
+        local item_ids: { string } = {}
+        for _, item in ipairs(selected) do
+            local suffix = sqlite and "" or " FOR SHARE"
+            local rows, read_err = tx:query(
+                "SELECT version, content_hash FROM kickside_memory_items WHERE component_id = $1 AND id = $2 AND status = $3" .. suffix,
+                { component_id, item.id, types.STATUS.CURRENT })
+            if read_err then return nil, types.failed("memory pin source read failed", read_err) end
+            local current = rows and rows[1]
+            if not current or tonumber(current.version) ~= tonumber(item.version) or current.content_hash ~= item.content_hash then
+                return nil, types.invalid("memory pin source is no longer current")
+            end
+            item_ids[#item_ids + 1] = item.id
+        end
         local _, err = tx:execute(
             "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at) " ..
             "VALUES ($1, $2, $3, $4, '', $5, $6, $7, $8) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..

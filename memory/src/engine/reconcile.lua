@@ -44,6 +44,7 @@ type Options = {
     host_id: string?,
     -- Span messages candidates cite, by id: when it was said and its text.
     events: { [string]: { at: string?, text: string? } }?,
+    run_id: string?,
 }
 
 local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
@@ -74,9 +75,9 @@ local function apply(d: any, action: string, scope: any, fields: any, targets: {
     local item, add_err = d:add(scope, fields)
     if add_err then return add_err end
     if action == types.ACTION.SUPERSEDE then
-        d:supersede(targets, item, nil)
+        return d:supersede(targets, item, nil)
     elseif action == types.ACTION.MERGE then
-        d:merge(targets, item)
+        return d:merge(targets, item)
     elseif action == types.ACTION.CONFLICT then
         local contested: { any } = { item }
         for _, target in ipairs(targets) do contested[#contested + 1] = target end
@@ -118,7 +119,7 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             kind = candidate.kind, key = key, value = value, content = candidate.content,
             cardinality = established or candidate.cardinality or types.CARDINALITY.MULTI,
             valid_at = types.utc(candidate.valid_at) or event.at or d.now,
-            confidence = candidate.confidence, provenance = provenance, vector = (embedded :: any)[index],
+            confidence = candidate.confidence, provenance = provenance, vector = (embedded :: any)[index], run_id = opts.run_id,
         }
         local claim_id, claim_err = types.claim_id(d.component_id, scope_key, key, value)
         if claim_err then return claim_err end
@@ -131,7 +132,7 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
         if held_err then return held_err end
 
         if #(live :: any) > 0 then
-            local seen_err = d:seen((live :: any)[1], provenance)
+            local seen_err = d:reuse((live :: any)[1], provenance, {})
             if seen_err then return seen_err end
             d.stats.noop = d.stats.noop + 1
         elseif #(erased :: any) > 0 and not opts.explicit then
@@ -155,13 +156,15 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             if near_err then return near_err end
             local neighbors: { any } = {}
             local by_id: { [string]: any } = {}
-            for _, row in ipairs(near :: any) do
+            local function consider(row: any)
                 local state = d.overlay[row.id] or row
-                if state.status == types.STATUS.CURRENT or state.status == types.STATUS.CONFLICT then
+                if not by_id[state.id] and (state.status == types.STATUS.CURRENT or state.status == types.STATUS.CONFLICT) then
                     neighbors[#neighbors + 1] = state
                     by_id[state.id] = state
                 end
             end
+            for _, row in ipairs(held :: any) do consider(row) end
+            for _, row in ipairs(near :: any) do consider(row) end
             if #neighbors == 0 then
                 local _, add_err = d:add(scope, fields)
                 if add_err then return add_err end

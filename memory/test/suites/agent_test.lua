@@ -323,6 +323,47 @@ local function define_tests()
             test.eq(id, memory)
         end)
 
+        test.it("classifies deterministic and transient model failures through checkpoint and derive surfaces", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "model-1", role = "user", content = "I live in Oslo." } })
+
+            fixture.script.fail("generate", "model rejected the summary request", errors.INVALID, true)
+            local _, invalid_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
+                fixture.agent_context(id, session, "agent-a"))
+            test.not_nil(invalid_err)
+            test.eq(invalid_err:kind(), errors.INTERNAL)
+            test.eq(invalid_err:retryable(), false)
+            test.eq(invalid_err:details().cause.kind, errors.INVALID)
+
+            fixture.script.fail("generate", "model denied the summary request", errors.PERMISSION_DENIED)
+            local _, denied_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
+                fixture.agent_context(id, session, "agent-a"))
+            test.not_nil(denied_err)
+            test.eq(denied_err:kind(), errors.INTERNAL)
+            test.eq(denied_err:retryable(), false)
+            test.eq(denied_err:details().cause.kind, errors.PERMISSION_DENIED)
+
+            fixture.script.fail("generate", "model timed out", errors.TIMEOUT)
+            local _, transient_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
+                fixture.agent_context(id, session, "agent-a"))
+            test.not_nil(transient_err)
+            test.eq(transient_err:kind(), errors.TIMEOUT)
+            test.eq(transient_err:retryable(), true)
+            test.eq(transient_err:details().cause.kind, errors.TIMEOUT)
+
+            fixture.script.fail("structured_output", "model rejected extraction", errors.INVALID)
+            local applied, apply_err = apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(apply_err, tostring(apply_err))
+            test.is_true(applied.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "failed")
+            local job = fixture.wait_job(runs[1].job_id, "dead")
+            test.eq(job.attempts, 1)
+            test.is_true(tostring(runs[1].last_error):find("model rejected extraction", 1, true) ~= nil, tostring(runs[1].last_error))
+        end)
+
         test.it("compiles an agent mounting the trait with its lifecycle, after_persist and checkpoint behavior", function()
             local user = fixture.user()
             local memory = fixture.memory(user)

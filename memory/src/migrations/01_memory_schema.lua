@@ -1,8 +1,9 @@
 -- Memory storage. The ledger holds structure only; memory text and typed
--- values live in kickside_memory_payloads, written before the event that adds
+-- values live in kickside_memory_payloads, committed with the event that adds
 -- the item and erased on forget. kickside_memory_items is the projection of the
 -- ledger with a searchable copy of each payload, so a rebuild restores
--- structure from the ledger and text from the payloads. kickside_memory_runs and
+-- structure from the ledger and text from the payloads. kickside_memory_keys
+-- holds each key's cardinality per scope, set by the first item of the key. kickside_memory_runs and
 -- kickside_memory_cursors hold the frozen identity and progress of deferred
 -- capture work.
 
@@ -45,6 +46,7 @@ local POSTGRES = {
         conflict_group text,
         confidence real,
         source text NOT NULL,
+        run_id text,
         priority integer NOT NULL DEFAULT 0,
         last_seq bigint NOT NULL,
         search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', regexp_replace(COALESCE(content, ''), '[^[:alnum:]]+', ' ', 'g'))) STORED
@@ -53,16 +55,25 @@ local POSTGRES = {
     [=[CREATE INDEX idx_kickside_memory_items_key ON kickside_memory_items (component_id, scope_key, key, status)]=],
     [=[CREATE INDEX idx_kickside_memory_items_claim ON kickside_memory_items (component_id, claim_id)]=],
     [=[CREATE INDEX idx_kickside_memory_items_conflict ON kickside_memory_items (component_id, conflict_group)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_successor ON kickside_memory_items (component_id, superseded_by)]=],
     [=[CREATE INDEX idx_kickside_memory_items_fts ON kickside_memory_items USING gin (search_vector)]=],
     [=[CREATE TABLE kickside_memory_payloads (
         item_id text PRIMARY KEY,
         component_id text NOT NULL,
+        owner_item_id text NOT NULL,
         content text NOT NULL,
         value jsonb,
         content_hash text NOT NULL,
         created_at text NOT NULL
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_payloads_hash ON kickside_memory_payloads (component_id, content_hash)]=],
+    [=[CREATE INDEX idx_kickside_memory_payloads_owner ON kickside_memory_payloads (component_id, owner_item_id)]=],
+    [=[CREATE TABLE kickside_memory_keys (
+        component_id text NOT NULL,
+        scope_key text NOT NULL,
+        key text NOT NULL,
+        cardinality text NOT NULL,
+        PRIMARY KEY (component_id, scope_key, key)
+    )]=],
     [=[CREATE TABLE kickside_memory_provenance (
         item_id text NOT NULL,
         component_id text NOT NULL,
@@ -146,6 +157,7 @@ local SQLITE = {
         conflict_group TEXT,
         confidence REAL,
         source TEXT NOT NULL,
+        run_id TEXT,
         priority INTEGER NOT NULL DEFAULT 0,
         last_seq INTEGER NOT NULL
     )]=],
@@ -153,6 +165,7 @@ local SQLITE = {
     [=[CREATE INDEX idx_kickside_memory_items_key ON kickside_memory_items (component_id, scope_key, key, status)]=],
     [=[CREATE INDEX idx_kickside_memory_items_claim ON kickside_memory_items (component_id, claim_id)]=],
     [=[CREATE INDEX idx_kickside_memory_items_conflict ON kickside_memory_items (component_id, conflict_group)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_successor ON kickside_memory_items (component_id, superseded_by)]=],
     [=[CREATE VIRTUAL TABLE kickside_memory_fts USING fts5(
         item_id UNINDEXED, content,
         tokenize = 'unicode61 remove_diacritics 2'
@@ -160,12 +173,20 @@ local SQLITE = {
     [=[CREATE TABLE kickside_memory_payloads (
         item_id TEXT PRIMARY KEY,
         component_id TEXT NOT NULL,
+        owner_item_id TEXT NOT NULL,
         content TEXT NOT NULL,
         value TEXT,
         content_hash TEXT NOT NULL,
         created_at TEXT NOT NULL
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_payloads_hash ON kickside_memory_payloads (component_id, content_hash)]=],
+    [=[CREATE INDEX idx_kickside_memory_payloads_owner ON kickside_memory_payloads (component_id, owner_item_id)]=],
+    [=[CREATE TABLE kickside_memory_keys (
+        component_id TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        key TEXT NOT NULL,
+        cardinality TEXT NOT NULL,
+        PRIMARY KEY (component_id, scope_key, key)
+    )]=],
     [=[CREATE TABLE kickside_memory_provenance (
         item_id TEXT NOT NULL,
         component_id TEXT NOT NULL,
@@ -222,6 +243,7 @@ local DROP = {
     "DROP TABLE kickside_memory_embeddings",
     "DROP TABLE kickside_memory_provenance",
     "DROP TABLE kickside_memory_payloads",
+    "DROP TABLE kickside_memory_keys",
     "DROP TABLE kickside_memory_items",
     "DROP TABLE kickside_memory_stores",
 }

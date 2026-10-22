@@ -1,15 +1,39 @@
 -- Model calls of the memory engine: candidate extraction from a captured span,
 -- the closed-set reconcile judge, reflection over stored items, vectors, and
 -- the working summary a checkpoint hands back to its host. Every failure is a
--- typed error that keeps the provider's kind and retry flag; malformed model
--- output is never read as "nothing to remember".
+-- typed error that keeps a transient provider's kind and records a
+-- deterministic provider failure as an internal memory failure; malformed
+-- model output is never read as "nothing to remember".
 
 local llm = require("llm")
 local json = require("json")
 local types = require("types")
-local model_failure = require("model_failure")
+local error_envelope = require("error_envelope")
 
 local M = {}
+
+-- A model request is an implementation detail of memory. Only transient provider
+-- failures remain retryable in the provider's vocabulary; every other provider
+-- failure is an internal memory failure that retains its diagnostic cause.
+local TRANSIENT_KINDS = {
+    [errors.UNAVAILABLE] = true,
+    [errors.TIMEOUT] = true,
+    [errors.RATE_LIMITED] = true,
+}
+
+local function model_error(step: string, err: any): error
+    local message = step .. " failed: " .. tostring(err)
+    if type(err) ~= "userdata" then
+        return types.internal(message, { step = step, cause = { message = tostring(err), retryable = false } })
+    end
+    local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
+    return errors.new({
+        kind = retryable and err:kind() or errors.INTERNAL,
+        retryable = retryable,
+        message = message,
+        details = { step = step, cause_kind = err:kind(), cause = error_envelope.encode(err) },
+    })
+end
 
 -- Span roles that state something: memories cite one of these messages.
 -- Assistant text is context only and is shown without an id.
@@ -173,7 +197,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local response, err = llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })
-    if err then return nil, model_failure.wrap("memory extraction", err) end
+    if err then return nil, model_error("memory extraction", err) end
     return read_candidates(response, "memory extraction")
 end
 
@@ -195,7 +219,7 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES }
     item_schema.required[#item_schema.required + 1] = "based_on"
     local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
-    if err then return nil, model_failure.wrap("memory reflection", err) end
+    if err then return nil, model_error("memory reflection", err) end
     local candidates, read_err = read_candidates(response, "memory reflection")
     if read_err then return nil, read_err end
     local grounded: { any } = {}
@@ -237,7 +261,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
                 stated = candidate.stated },
             existing_memories = listing,
         })), { model = model })
-    if err then return nil, model_failure.wrap("memory reconcile judge", err) end
+    if err then return nil, model_error("memory reconcile judge", err) end
     local data = response and response.result
     if type(data) ~= "table" or type(data.action) ~= "string" or type(data.target_ids) ~= "table" then
         return nil, types.unavailable("memory reconcile judge returned malformed output")
@@ -258,7 +282,7 @@ end
 
 function M.embed(model: string, texts: { string }): (any?, error?)
     local response, err = llm.embed(texts, { model = model, dimensions = types.EMBEDDING_DIMENSIONS })
-    if err then return nil, model_failure.wrap("memory embedding", err) end
+    if err then return nil, model_error("memory embedding", err) end
     local vectors = response and response.result
     if type(vectors) ~= "table" or #vectors ~= #texts then
         return nil, types.unavailable("memory embedding returned " .. tostring(type(vectors) == "table" and #vectors or 0) ..
@@ -274,7 +298,7 @@ end
 
 function M.working_summary(model: string, text: string, max_tokens: integer): (string?, any?, error?)
     local response, err = llm.generate(messages(WORKING_SUMMARY_PROMPT, text), { model = model, max_tokens = max_tokens })
-    if err then return nil, nil, model_failure.wrap("working summary", err) end
+    if err then return nil, nil, model_error("working summary", err) end
     if not response or response.finish_reason ~= "stop" or type(response.result) ~= "string" or types.trim(response.result) == "" then
         return nil, nil, types.unavailable("working summary did not complete")
     end
