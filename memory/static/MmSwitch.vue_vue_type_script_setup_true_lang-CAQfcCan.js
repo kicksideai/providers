@@ -1,62 +1,62 @@
-import { hasInjectionContext as x, inject as b, effectScope as B, ref as d, markRaw as U, createApp as D, onMounted as P, onUnmounted as j, watch as k, defineComponent as R, openBlock as g, createElementBlock as C, normalizeClass as W, createElementVNode as z, toDisplayString as M, createCommentVNode as F } from "vue";
-import { addCollection as K } from "@iconify/vue";
-import { config as E, addIcons as Y, on as J, applyThemeMode as m, host as q, hostCss as G, loadCss as Q, loadByTagName as X } from "@wippy-fe/proxy";
-var w = "data-wippy-visible";
+import { hasInjectionContext as T, inject as m, effectScope as N, ref as _, markRaw as H, createApp as $, onMounted as x, onUnmounted as U, watch as B, defineComponent as j, openBlock as D, createElementBlock as W, normalizeClass as z, createElementVNode as F } from "vue";
+import { addCollection as M } from "@iconify/vue";
+import { config as C, addIcons as k, on as K, applyThemeMode as b, host as Y, hostCss as J, loadCss as q } from "@wippy-fe/proxy";
+var g = "data-wippy-visible";
 function V(t) {
-  const e = t.getAttribute(w);
+  const e = t.getAttribute(g);
   return e === "true" ? !0 : e === "false" ? !1 : null;
 }
-var Z = Object.defineProperty, tt = (t, e, s) => e in t ? Z(t, e, { enumerable: !0, configurable: !0, writable: !0, value: s }) : t[e] = s, u = (t, e, s) => tt(t, typeof e != "symbol" ? e + "" : e, s), et = [
+var G = Object.defineProperty, Q = (t, e, s) => e in t ? G(t, e, { enumerable: !0, configurable: !0, writable: !0, value: s }) : t[e] = s, u = (t, e, s) => Q(t, typeof e != "symbol" ? e + "" : e, s), X = [
   "themeConfigUrl",
   "primeVueCssUrl",
   "markdownCssUrl",
   "iframeCssUrl"
-], st = [
+], Z = [
   ":where([data-wippy-theme-root]).w-theme-light",
   ":where([data-wippy-theme-root]).w-theme-dark"
 ].join(`,
 `);
-function S(t) {
+function w(t) {
   const e = t.startsWith("--") ? t : `--${t}`;
   return /^--[-\w\u0080-\uFFFF]+$/.test(e) ? e : null;
 }
-function it(...t) {
+function tt(...t) {
   const e = /* @__PURE__ */ new Set();
   for (const s of t)
     if (s)
       for (const [i, n] of Object.entries(s)) {
         if ((i === "@light" || i === "@dark") && n && typeof n == "object") {
           for (const [o, a] of Object.entries(n)) {
-            const c = typeof a == "string" ? S(o) : null;
+            const c = typeof a == "string" ? w(o) : null;
             c && e.add(c);
           }
           continue;
         }
-        const r = typeof n == "string" ? S(i) : null;
+        const r = typeof n == "string" ? w(i) : null;
         r && e.add(r);
       }
   return [...e].sort();
 }
-function nt(t) {
+function et(t) {
   if (t.length === 0)
     return "";
   const e = t.map((s) => `  ${s}: inherit;`).join(`
 `);
-  return `${st} {
+  return `${Z} {
 ${e}
 }`;
 }
-function rt(t, e) {
-  const s = nt(e);
-  s && I(t, s, "@wippy-fe/css-variables-bridge");
+function st(t, e) {
+  const s = et(e);
+  s && E(t, s, "@wippy-fe/css-variables-bridge");
 }
-function ot(t, e) {
-  const i = (e ?? et).map(async (n) => {
-    const r = G[n];
+function it(t, e) {
+  const i = (e ?? X).map(async (n) => {
+    const r = J[n];
     if (!r)
       return console.warn(`[wippy-fe/webcomponent-core] hostCss key "${n}" is undefined — skipping. Remove it from hostCssKeys if the CSS was removed.`), null;
     try {
-      return await Q(r);
+      return await q(r);
     } catch (o) {
       return console.warn(`[wippy-fe/webcomponent-core] Failed to load hostCss "${n}" (${r}):`, o), null;
     }
@@ -70,11 +70,11 @@ function ot(t, e) {
     }
   });
 }
-function at(t, e) {
+function nt(t, e) {
   const s = document.createElement("style");
   s.textContent = e, t.appendChild(s);
 }
-function I(t, e, s) {
+function E(t, e, s) {
   if (typeof CSSStyleSheet < "u" && "replaceSync" in CSSStyleSheet.prototype) {
     const n = new CSSStyleSheet();
     n.replaceSync(e), t.adoptedStyleSheets = [...t.adoptedStyleSheets, n];
@@ -83,16 +83,16 @@ function I(t, e, s) {
   const i = document.createElement("style");
   i.setAttribute("role", s), i.textContent = e, t.appendChild(i);
 }
-function lt(t, e) {
-  I(t, e, "@wippy-fe/custom-css");
+function rt(t, e) {
+  E(t, e, "@wippy-fe/custom-css");
 }
-function A(t) {
+function S(t) {
   return t.__wippyHost ?? null;
 }
-function ct(t) {
+function ot(t) {
   return t.replace(/-([a-z])/g, (e, s) => s.toUpperCase());
 }
-function ut(t, e, s) {
+function at(t, e, s) {
   switch (s.type) {
     case "string":
       return { value: e };
@@ -121,17 +121,17 @@ function ut(t, e, s) {
 function y(t, e) {
   const s = {}, i = [];
   for (const [n, r] of Object.entries(e.properties)) {
-    const o = t.getAttribute(n), a = ct(n);
+    const o = t.getAttribute(n), a = ot(n);
     if (o === null) {
       r.default !== void 0 && (s[a] = r.default);
       continue;
     }
-    const c = ut(n, o, r);
+    const c = at(n, o, r);
     c.error ? i.push(c.error) : s[a] = c.value;
   }
   return { props: s, errors: i };
 }
-var ht = class {
+var lt = class {
   constructor(t, e) {
     u(this, "_props"), u(this, "_errors"), u(this, "_content"), u(this, "_hostVisibility"), u(this, "_propsListeners", /* @__PURE__ */ new Set()), u(this, "_contentListeners", /* @__PURE__ */ new Set()), u(this, "_hostVisibilityListeners", /* @__PURE__ */ new Set()), u(this, "_disposed", !1), u(this, "_emitToDom"), u(this, "props"), u(this, "events"), u(this, "content"), u(this, "hostVisibility"), this._props = t.props, this._errors = t.errors, this._content = t.content, this._hostVisibility = t.hostVisibility, this._emitToDom = e;
     const s = this;
@@ -223,7 +223,7 @@ var ht = class {
     };
     return e?.signal?.addEventListener("abort", s, { once: !0 }), s;
   }
-}, pt = class extends HTMLElement {
+}, ct = class extends HTMLElement {
   constructor() {
     super(), u(this, "_internals"), u(this, "_contentObserver", null), u(this, "_initialized", !1), u(this, "_container", null), u(this, "_reactive", null), u(this, "_lastProps", null), u(this, "_lastErrors", []), u(this, "_lastContent", null), u(this, "_themeUnsub", null), u(this, "_hostVisible", null), this._internals = this.attachInternals(), this._hostVisible = V(this);
   }
@@ -244,7 +244,7 @@ var ht = class {
    */
   static get observedAttributes() {
     const t = this.wippyConfig, e = Object.keys(t.propsSchema.properties), s = t.extraObservedAttributes ?? [];
-    return [.../* @__PURE__ */ new Set([...e, ...s, w])];
+    return [.../* @__PURE__ */ new Set([...e, ...s, g])];
   }
   /**
    * Host-owned logical activity. `null` means no host manages this element.
@@ -268,7 +268,7 @@ var ht = class {
    * cases can fall back to `import { host } from '@wippy-fe/proxy'`.
    */
   get host() {
-    return A(this);
+    return S(this);
   }
   /**
    * Emit a CustomEvent that bubbles and crosses shadow DOM boundaries.
@@ -312,7 +312,7 @@ var ht = class {
         t.validateProps && r.errors.push(...t.validateProps(r.props)), s = r.props, i = r.errors, this._lastProps = s, this._lastErrors = i;
       }
       const n = e ? this._lastContent ?? this._extractContent(t.contentTemplate) : null;
-      e && this._lastContent === null && (this._lastContent = n), this._reactive = new ht(
+      e && this._lastContent === null && (this._lastContent = n), this._reactive = new lt(
         { props: s, errors: i, content: n, hasContent: e, hostVisibility: this._hostVisible },
         this.emitEvent.bind(this)
       );
@@ -328,27 +328,27 @@ var ht = class {
       if (e)
         i = this._container;
       else {
-        this.onInit(s), t.inlineCss && at(s, t.inlineCss);
+        this.onInit(s), t.inlineCss && nt(s, t.inlineCss);
         try {
-          const l = E?.theming, p = it(
+          const l = C?.theming, p = tt(
             l?.global?.cssVariables,
             l?.children?.cssVariables
           );
-          rt(s, p);
+          st(s, p);
         } catch {
         }
         if (t.customCss !== !1)
           try {
-            const l = E?.theming, p = [l?.global?.customCSS, l?.children?.customCSS].filter(Boolean).join(`
+            const l = C?.theming, p = [l?.global?.customCSS, l?.children?.customCSS].filter(Boolean).join(`
 `);
-            p && lt(s, p);
+            p && rt(s, p);
           } catch {
           }
-        (t.hostCssKeys === void 0 || t.hostCssKeys.length > 0) && ot(s, t.hostCssKeys), i = document.createElement("div"), i.setAttribute("data-wippy-theme-root", "");
+        (t.hostCssKeys === void 0 || t.hostCssKeys.length > 0) && it(s, t.hostCssKeys), i = document.createElement("div"), i.setAttribute("data-wippy-theme-root", "");
         const c = t.containerClasses ?? [];
-        c.length > 0 && i.classList.add(...c), s.appendChild(i), this._container = i, Y(K);
+        c.length > 0 && i.classList.add(...c), s.appendChild(i), this._container = i, k(M);
       }
-      this._applyTheme(), this._themeUnsub || (this._themeUnsub = J("@theme", (c) => this._applyTheme(c)));
+      this._applyTheme(), this._themeUnsub || (this._themeUnsub = K("@theme", (c) => this._applyTheme(c)));
       const { props: n, errors: r } = y(this, t.propsSchema);
       t.validateProps && r.push(...t.validateProps(n));
       const o = n;
@@ -379,16 +379,16 @@ var ht = class {
    * No-op for an older proxy without `getThemeMode` — `applyThemeMode` clamps
    * `undefined` to 'auto'.
    */
-  _applyTheme(t = q.getThemeMode?.()) {
-    m(t, this), this._container && m(t, this._container);
+  _applyTheme(t = Y.getThemeMode?.()) {
+    b(t, this), this._container && b(t, this._container);
   }
   disconnectedCallback() {
-    this._themeUnsub && (this._themeUnsub(), this._themeUnsub = null), m("auto", this), this._container && m("auto", this._container), this._contentObserver && (this._contentObserver.disconnect(), this._contentObserver = null), this.onUnmount(), this.emitEvent("unload"), this._internals.states.clear(), this._reactive?.dispose(), this._reactive = null, this._lastProps = null, this._lastErrors = [], this._lastContent = null, delete this.__wippyHost, delete this.__wippyHostBus;
+    this._themeUnsub && (this._themeUnsub(), this._themeUnsub = null), b("auto", this), this._container && b("auto", this._container), this._contentObserver && (this._contentObserver.disconnect(), this._contentObserver = null), this.onUnmount(), this.emitEvent("unload"), this._internals.states.clear(), this._reactive?.dispose(), this._reactive = null, this._lastProps = null, this._lastErrors = [], this._lastContent = null, delete this.__wippyHost, delete this.__wippyHostBus;
   }
   attributeChangedCallback(t, e, s) {
     if (e === s)
       return;
-    if (t === w) {
+    if (t === g) {
       const a = this._hostVisible, c = V(this);
       if (c === a)
         return;
@@ -431,10 +431,10 @@ var ht = class {
   onContentChanged(t) {
   }
 };
-function dt(t) {
+function ut(t) {
   return t.__wippyHostBus ?? null;
 }
-function ft(t) {
+function ht(t) {
   return t.dataset.wippyPanelId ?? null;
 }
 /*!
@@ -442,17 +442,17 @@ function ft(t) {
  * (c) 2026 Eduardo San Martin Morote
  * @license MIT
  */
-let O;
-const T = (t) => O = t, _t = () => x() && b(L) || O, L = (
+let P;
+const R = (t) => P = t, pt = () => T() && m(I) || P, I = (
   /* istanbul ignore next */
   Symbol()
 );
-function mt() {
-  const t = B(!0), e = t.run(() => d({}));
+function dt() {
+  const t = N(!0), e = t.run(() => _({}));
   let s = [], i = [];
-  const n = U({
+  const n = H({
     install(r) {
-      T(n), n._a = r, r.provide(L, n), r.config.globalProperties.$pinia = n, i.forEach((o) => s.push(o)), i = [];
+      R(n), n._a = r, r.provide(I, n), r.config.globalProperties.$pinia = n, i.forEach((o) => s.push(o)), i = [];
     },
     use(r) {
       return this._a ? s.push(r) : i.push(r), this;
@@ -465,27 +465,27 @@ function mt() {
   });
   return n;
 }
-var bt = Object.defineProperty, vt = (t, e, s) => e in t ? bt(t, e, { enumerable: !0, configurable: !0, writable: !0, value: s }) : t[e] = s, _ = (t, e, s) => vt(t, typeof e != "symbol" ? e + "" : e, s), N = /* @__PURE__ */ Symbol("wippy:emit"), $ = /* @__PURE__ */ Symbol("wippy:props"), yt = /* @__PURE__ */ Symbol("wippy:props_error"), gt = /* @__PURE__ */ Symbol("wippy:content"), Ct = /* @__PURE__ */ Symbol("wippy:panel-id"), wt = /* @__PURE__ */ Symbol("wippy:layout-bus"), Et = /* @__PURE__ */ Symbol("wippy:host"), H = /* @__PURE__ */ Symbol("wippy:host-visibility");
-function Tt() {
-  const t = b($);
+var ft = Object.defineProperty, _t = (t, e, s) => e in t ? ft(t, e, { enumerable: !0, configurable: !0, writable: !0, value: s }) : t[e] = s, f = (t, e, s) => _t(t, typeof e != "symbol" ? e + "" : e, s), A = /* @__PURE__ */ Symbol("wippy:emit"), O = /* @__PURE__ */ Symbol("wippy:props"), bt = /* @__PURE__ */ Symbol("wippy:props_error"), mt = /* @__PURE__ */ Symbol("wippy:content"), vt = /* @__PURE__ */ Symbol("wippy:panel-id"), yt = /* @__PURE__ */ Symbol("wippy:layout-bus"), gt = /* @__PURE__ */ Symbol("wippy:host"), L = /* @__PURE__ */ Symbol("wippy:host-visibility");
+function Pt() {
+  const t = m(O);
   if (!t)
     throw new Error("useProps() must be called inside a WippyVueElement");
   return t;
 }
-function Lt() {
-  const t = b(N);
+function Rt() {
+  const t = m(A);
   if (!t)
     throw new Error("useEvents() must be called inside a WippyVueElement");
   return t;
 }
-function Vt() {
-  const t = b(H);
+function Ct() {
+  const t = m(L);
   if (!t)
     throw new Error("useHostVisibility() must be called inside a WippyVueElement");
   return t;
 }
-function Nt(t) {
-  const e = Vt();
+function It(t) {
+  const e = Ct();
   let s = !1, i = null, n = !1;
   function r() {
     if (i)
@@ -502,16 +502,16 @@ function Nt(t) {
     });
     return i = a, a;
   }
-  return P(() => (s = !0, r())), j(() => {
+  return x(() => (s = !0, r())), U(() => {
     s = !1, n = !1;
-  }), k(e, (o, a) => {
+  }), B(e, (o, a) => {
     if (s && a === !1 && o === !0)
       return r();
   }), e;
 }
-var $t = class extends pt {
+var At = class extends ct {
   constructor() {
-    super(...arguments), _(this, "_vueApp", null), _(this, "_propsRef", d({})), _(this, "_errorsRef", d([])), _(this, "_contentRef", d(null)), _(this, "_hostVisibilityRef", d(null)), _(this, "_bridgeAbort", null);
+    super(...arguments), f(this, "_vueApp", null), f(this, "_propsRef", _({})), f(this, "_errorsRef", _([])), f(this, "_contentRef", _(null)), f(this, "_hostVisibilityRef", _(null)), f(this, "_bridgeAbort", null);
   }
   /**
    * Override to provide Vue-specific configuration.
@@ -537,16 +537,16 @@ var $t = class extends pt {
     const c = (l) => {
       if (a.signal.aborted)
         return;
-      const p = _t(), h = D(l.rootComponent);
+      const p = pt(), h = $(l.rootComponent);
       this._vueApp = h;
-      const f = mt();
+      const d = dt();
       if (l.piniaPlugins)
         for (const v of l.piniaPlugins)
-          f.use(v);
-      if (h.use(f), l.plugins)
+          d.use(v);
+      if (h.use(d), l.plugins)
         for (const v of l.plugins)
           h.use(v);
-      h.provide($, this._propsRef), h.provide(yt, this._errorsRef), h.provide(N, this.emitEvent.bind(this)), h.provide(gt, this._contentRef), h.provide(H, this._hostVisibilityRef), h.provide(Ct, ft(this)), h.provide(wt, dt(this)), h.provide(Et, A(this)), l.providers && l.providers(h, this), h.mount(e), p && T(p);
+      h.provide(O, this._propsRef), h.provide(bt, this._errorsRef), h.provide(A, this.emitEvent.bind(this)), h.provide(mt, this._contentRef), h.provide(L, this._hostVisibilityRef), h.provide(vt, ht(this)), h.provide(yt, ut(this)), h.provide(gt, S(this)), l.providers && l.providers(h, this), h.mount(e), p && R(p);
     };
     if (o.rootComponent)
       c(o);
@@ -557,8 +557,8 @@ var $t = class extends pt {
       }).catch((p) => {
         if (a.signal.aborted)
           return;
-        const h = p instanceof Error ? p.message : String(p), f = document.createElement("wippy-error");
-        f.setAttribute("title", "Failed to load"), f.setAttribute("message", h), l.replaceWith(f), this.emitEvent("error", { message: h });
+        const h = p instanceof Error ? p.message : String(p), d = document.createElement("wippy-error");
+        d.setAttribute("title", "Failed to load"), d.setAttribute("message", h), l.replaceWith(d), this.emitEvent("error", { message: h });
       });
     } else
       throw new Error("WippyVueElement vueConfig must provide rootComponent or lazyConfig");
@@ -567,7 +567,7 @@ var $t = class extends pt {
     this._bridgeAbort?.abort(), this._bridgeAbort = null, this._vueApp && (this._vueApp.unmount(), this._vueApp = null);
   }
 };
-const St = ["disabled", "aria-checked", "aria-label"], Ht = /* @__PURE__ */ R({
+const Vt = ["disabled", "aria-checked", "aria-label"], Ot = /* @__PURE__ */ j({
   __name: "MmSwitch",
   props: {
     modelValue: { type: Boolean },
@@ -577,56 +577,24 @@ const St = ["disabled", "aria-checked", "aria-label"], Ht = /* @__PURE__ */ R({
   emits: ["update:modelValue"],
   setup(t, { emit: e }) {
     const s = e;
-    return (i, n) => (g(), C("button", {
+    return (i, n) => (D(), W("button", {
       type: "button",
-      class: W(["mm-switch", { on: t.modelValue }]),
+      class: z(["mm-switch", { on: t.modelValue }]),
       disabled: t.disabled,
       role: "switch",
       "aria-checked": t.modelValue,
       "aria-label": t.label,
       onClick: n[0] || (n[0] = (r) => s("update:modelValue", !t.modelValue))
     }, [...n[1] || (n[1] = [
-      z("span", { class: "mm-switch-knob" }, null, -1)
-    ])], 10, St));
-  }
-}), Pt = ["value", "capability"], Rt = {
-  key: 1,
-  class: "mm-notice error"
-}, xt = /* @__PURE__ */ R({
-  __name: "ModelPicker",
-  props: {
-    value: {},
-    capability: {}
-  },
-  emits: ["select"],
-  setup(t, { emit: e }) {
-    const s = e, i = d(!!customElements.get("wc-model-picker")), n = d("");
-    P(async () => {
-      if (!i.value)
-        try {
-          await X("wc-model-picker", { timeoutMs: 8e3 }), i.value = !0;
-        } catch (o) {
-          n.value = o instanceof Error ? o.message : String(o);
-        }
-    });
-    function r(o) {
-      const a = o instanceof CustomEvent ? o.detail : void 0;
-      typeof a == "string" && a && s("select", a);
-    }
-    return (o, a) => i.value ? (g(), C("wc-model-picker", {
-      key: 0,
-      value: t.value,
-      capability: t.capability,
-      onSelect: r
-    }, null, 40, Pt)) : n.value ? (g(), C("div", Rt, "The model picker could not load: " + M(n.value), 1)) : F("", !0);
+      F("span", { class: "mm-switch-knob" }, null, -1)
+    ])], 10, Vt));
   }
 });
 export {
-  $t as W,
-  xt as _,
-  Lt as a,
-  Ht as b,
-  Nt as c,
-  Tt as u
+  At as W,
+  Ot as _,
+  Rt as a,
+  It as b,
+  Pt as u
 };
-//# sourceMappingURL=ModelPicker.vue_vue_type_script_setup_true_lang-BXa7KiZU.js.map
+//# sourceMappingURL=MmSwitch.vue_vue_type_script_setup_true_lang-CAQfcCan.js.map

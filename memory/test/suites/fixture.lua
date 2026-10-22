@@ -27,10 +27,10 @@ function M.payload(phase: string, session_id: string, agent_id: string, extra: a
 end
 
 -- Context an agent step carries: trait context plus the agent_run pointer.
-function M.agent_context(memory_ids: { string }, session_id: string, agent_id: string, extra: any?): any
+function M.agent_context(memory_id: string, session_id: string, agent_id: string, extra: any?): any
     local host = { kind = "session", session_id = session_id }
     local context = {
-        memory_ids = memory_ids, agent_id = agent_id,
+        memory_id = memory_id, agent_id = agent_id,
         agent_run = { host = host, agent = { id = agent_id }, run_context = { contract = M.RUN_CONTEXT.contract, binding = M.RUN_CONTEXT.binding, host = host } },
     }
     for k, v in pairs(extra or {}) do context[k] = v end
@@ -131,6 +131,18 @@ end
 function M.memory(user_id: string, config: any?): string
     local id, err = M.try_memory(user_id, config)
     if err or not id then error("memory create failed: " .. tostring(err)) end
+    return id
+end
+
+-- A knowledge-base component without a memory store, standing for a document
+-- knowledge base an earlier release of the trait wrote digests into.
+function M.plain_component(user_id: string): string
+    local def = contract.get("kickside.component:component_service")
+    local svc = def:with_actor(security.new_actor(user_id, {})):with_scope(scope()):open()
+    local id = uuid.v4()
+    local result, err = svc:register({ component_id = id, impl_id = "kickside.memory:memory_kb",
+        meta = { title = "digests", class = "knowledge_base", kb_type = "document" } })
+    if err or not result.success then error("register failed: " .. tostring(err or result.error)) end
     return id
 end
 

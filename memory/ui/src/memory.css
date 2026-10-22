@@ -100,8 +100,14 @@
 .mm-input, .mm-textarea, .mm-select { width: 100%; box-sizing: border-box; border: 1px solid var(--mm-border); border-radius: 8px; padding: 7px 10px; background: var(--p-inputtext-background, var(--mm-bg)); color: inherit; font: inherit; }
 .mm-textarea { min-height: 72px; resize: vertical; }
 .mm-input:focus, .mm-textarea:focus, .mm-select:focus { outline: none; border-color: var(--mm-primary); box-shadow: var(--mm-ring); }
+.mm-select-sm { width: auto; height: 28px; padding: 0 8px; font-size: 12px; }
+.mm-more summary { cursor: pointer; color: var(--mm-muted); font-weight: 600; }
+.mm-more[open] summary { margin-bottom: 12px; }
 .mm-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 560px) { .mm-grid2 { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .mm-select-sm { width: auto; height: 28px; padding: 0 8px; font-size: 12px; }
+.mm-more summary { cursor: pointer; color: var(--mm-muted); font-weight: 600; }
+.mm-more[open] summary { margin-bottom: 12px; }
+.mm-grid2 { grid-template-columns: 1fr; } }
 .mm-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .mm-switch { position: relative; flex: none; width: 40px; height: 23px; padding: 0; border: 1px solid var(--mm-border-strong); border-radius: 999px; background: color-mix(in srgb, var(--p-text-color) 16%, transparent); cursor: pointer; }
 .mm-switch.on { background: var(--mm-primary); border-color: var(--mm-primary); }

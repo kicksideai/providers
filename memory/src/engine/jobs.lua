@@ -14,10 +14,7 @@ local component = require("component")
 local jobs = require("jobs")
 local execution_identity = require("execution_identity")
 
-local M = {
-    _runs = runs, _stores = stores, _items = items, _models = models, _writer = writer,
-    _component = component, _jobs = jobs, _identity = execution_identity,
-}
+local M = {}
 
 M.JOB = {
     derive = "kickside.memory.engine:derive_worker",
@@ -34,9 +31,9 @@ M.DERIVE_ATTEMPTS = 3
 M.REEMBED_PAGE = 64
 
 local function frozen_identity(): (any?, any?, error?)
-    local identity, err = M._identity.capture()
+    local identity, err = execution_identity.capture()
     if err or not identity then return nil, nil, types.internal("the requester's identity could not be frozen: " .. tostring(err)) end
-    local row, row_err = M._identity.to_row(identity)
+    local row, row_err = execution_identity.to_row(identity)
     if row_err or not row then return nil, nil, types.internal("the requester's identity is not storable: " .. tostring(row_err)) end
     return identity, row, nil
 end
@@ -53,14 +50,14 @@ local function enqueue(run: any, identity: any, run_type: string, extra: any): (
         immutable_payload = { component_id = run.component_id, run_id = run.id, run_type = run_type },
     }
     for k, v in pairs(extra or {}) do params[k] = v end
-    local queued, err = M._jobs.enqueue(params)
+    local queued, err = jobs.enqueue(params)
     if err or type(queued) ~= "table" or type(queued.id) ~= "string" then
         local reason = "the memory run could not be scheduled: " .. tostring(err or "the queue accepted no job")
-        local _, close_err = M._runs.finish(run.id, types.RUN_STATUS.FAILED, reason)
+        local _, close_err = runs.finish(run.id, types.RUN_STATUS.FAILED, reason)
         if close_err then reason = reason .. " (the run record also failed to close: " .. tostring(close_err) .. ")" end
         return nil, types.unavailable(reason)
     end
-    local _, attach_err = M._runs.attach_job(run.id, queued.id)
+    local _, attach_err = runs.attach_job(run.id, queued.id)
     if attach_err then return nil, attach_err end
     return queued, nil
 end
@@ -95,7 +92,7 @@ function M.capture(capture: Capture): (any?, error?)
         input = { span = capture.span, owner_id = (identity :: any).principal.id, source = types.ITEM_SOURCE.CAPTURE },
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }
-    local advanced, err = M._runs.capture(run, capture.from_event_id)
+    local advanced, err = runs.capture(run, capture.from_event_id)
     if err then return nil, err end
     if not (advanced :: any).advanced then return { scheduled = false }, nil end
     local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = M.DERIVE_ATTEMPTS })
@@ -115,7 +112,7 @@ function M.ingest(component_id: string, source_event_id: string, span: { any }):
         input = { span = span, owner_id = (identity :: any).principal.id, source = types.ITEM_SOURCE.CAPTURE },
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }
-    local created_run, created, err = M._runs.create(run)
+    local created_run, created, err = runs.create(run)
     if err then return nil, err end
     if not created then return { scheduled = false, run_id = (created_run :: any).id }, nil end
     local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = M.DERIVE_ATTEMPTS })
@@ -129,7 +126,7 @@ function M.arm_consolidation(component_id: string, interval_hours: number): (any
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, id_err end
     local run_id = "consolidate:" .. component_id
-    local run, created, err = M._runs.create({
+    local run, created, err = runs.create({
         id = run_id, component_id = component_id, run_type = types.RUN_TYPE.CONSOLIDATE,
         input = {}, actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     })
@@ -146,12 +143,12 @@ end
 
 -- Brings the consolidation slot forward to now.
 function M.wake_consolidation(component_id: string): (any?, error?)
-    local run, err = M._runs.get("consolidate:" .. component_id)
+    local run, err = runs.get("consolidate:" .. component_id)
     if err then return nil, err end
     if not (run :: any).job_id or (run :: any).job_id == "" then
         return nil, types.not_found("memory consolidation is not scheduled for " .. component_id)
     end
-    local _, wake_err = M._jobs.wake_job((run :: any).job_id, { control = true })
+    local _, wake_err = jobs.wake_job((run :: any).job_id, { control = true })
     if wake_err then return nil, types.unavailable("memory consolidation could not be woken: " .. tostring(wake_err)) end
     return { job_id = (run :: any).job_id, run_id = (run :: any).id, woken = true }, nil
 end
@@ -161,7 +158,7 @@ function M.schedule_reembed(component_id: string): (any?, error?)
     if id_err then return nil, id_err end
     local run_id, hash_err = run_id_for({ "reembed", component_id, types.now() })
     if hash_err then return nil, hash_err end
-    local run, _created, err = M._runs.create({
+    local run, _created, err = runs.create({
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.REEMBED, input = {},
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     })
@@ -175,7 +172,7 @@ end
 -- the queue retries it; any other failure is a deterministic job error.
 local function fail(run_id: string, err: any): any
     local message = tostring(err)
-    local _, close_err = M._runs.finish(run_id, types.RUN_STATUS.FAILED, message)
+    local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message)
     if close_err then message = message .. " (the run record also failed to close: " .. tostring(close_err) .. ")" end
     if type(err) == "userdata" and err:retryable() then
         error(errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = message }))
@@ -187,7 +184,7 @@ local function load_run(value: any, run_type: string): (any?, any?)
     local payload = type(value) == "table" and type(value.payload) == "table" and value.payload or {}
     local run_id = types.trim(payload.run_id)
     if run_id == "" then return nil, { ok = false, job_error = "memory job payload is missing run_id", failure_class = "deterministic" } end
-    local run, err = M._runs.get(run_id)
+    local run, err = runs.get(run_id)
     if err or not run then
         return nil, { ok = false, job_error = "the memory run could not be read: " .. tostring(err), failure_class = "deterministic" }
     end
@@ -202,11 +199,11 @@ end
 local function admit(value: any, run_type: string): any
     local run, refusal = load_run(value, run_type)
     if refusal then return refusal end
-    local identity, identity_err = M._identity.from_row((run :: any).actor_id, (run :: any).actor_context)
+    local identity, identity_err = execution_identity.from_row((run :: any).actor_id, (run :: any).actor_context)
     if identity_err or not identity then
         return fail((run :: any).id, "the requester's stored identity is invalid: " .. tostring(identity_err))
     end
-    local outcome, run_err = M._identity.run_as(identity, AUTHORIZED[run_type], value, { deferred_owner = M.JOB[run_type] })
+    local outcome, run_err = execution_identity.run_as(identity, AUTHORIZED[run_type], value, { deferred_owner = M.JOB[run_type] })
     if run_err then
         if type(run_err) == "userdata" and run_err:retryable() then error(run_err) end
         return fail((run :: any).id, run_err)
@@ -215,16 +212,16 @@ local function admit(value: any, run_type: string): any
 end
 
 local function claim(run: any, repeatable: boolean): any?
-    local claimed, err = M._runs.claim(run.id, repeatable)
+    local claimed, err = runs.claim(run.id, repeatable)
     if err then return fail(run.id, err) end
     if not claimed then return { ok = true, outcome = "declined", record = { status = "completed" } } end
-    local _, access_err = M._component.validate_access(run.component_id, M._component.ACCESS.WRITE)
+    local _, access_err = component.validate_access(run.component_id, component.ACCESS.WRITE)
     if access_err then return fail(run.id, "memory access denied: " .. tostring(access_err)) end
     return nil
 end
 
 local function settings(component_id: string): (any?, any?, error?)
-    local store, err = M._stores.get(component_id)
+    local store, err = stores.get(component_id)
     if err then return nil, nil, err end
     local cfg, cfg_err = config.effective((store :: any).config)
     if cfg_err then return nil, nil, cfg_err end
@@ -251,12 +248,12 @@ function M.derive_authorized(value: any): any
     end
     local candidates: any = {}
     if #span > 0 then
-        local extracted, extract_err = M._models.extract(cfg.extraction_model, span, cfg.extraction_instructions)
+        local extracted, extract_err = models.extract(cfg.extraction_model, span, cfg.extraction_instructions)
         if extract_err then return fail(run.id, extract_err) end
         candidates = extracted
     end
     local deadline = type(value) == "table" and type(value.job) == "table" and value.job.deadline or nil
-    local result, write_err = M._writer.remember(candidates, {
+    local result, write_err = writer.remember(candidates, {
         component_id = run.component_id,
         embedding_model = store.embedding_model,
         judge_model = cfg.judge_model,
@@ -274,7 +271,7 @@ function M.derive_authorized(value: any): any
     if write_err then return fail(run.id, write_err) end
     local stats = (result :: any).stats
     stats.candidates = #candidates
-    local _, close_err = M._runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
+    local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end
     return { ok = true, record = { status = "completed" }, stats = stats }
 end
@@ -291,7 +288,7 @@ function M.consolidate_authorized(value: any): any
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
     local next_at = types.after_seconds((tonumber(cfg.consolidation_interval_hours) or 24) * 3600)
-    local current, list_err = M._items.list(run.component_id, {
+    local current, list_err = items.list(run.component_id, {
         scope_family = types.SCOPE.OWNER, statuses = { types.STATUS.CURRENT }, limit = 500,
     })
     if list_err then return fail(run.id, list_err) end
@@ -309,9 +306,9 @@ function M.consolidate_authorized(value: any): any
     local deadline = type(value) == "table" and type(value.job) == "table" and value.job.deadline or nil
     for _, scope_id in ipairs(order) do
         local scope_items = by_scope[scope_id]
-        local reflected, reflect_err = M._models.reflect(cfg.extraction_model, scope_items)
+        local reflected, reflect_err = models.reflect(cfg.extraction_model, scope_items)
         if reflect_err then return fail(run.id, reflect_err) end
-        local result, write_err = M._writer.remember(reflected :: any, {
+        local result, write_err = writer.remember(reflected :: any, {
             component_id = run.component_id, embedding_model = store.embedding_model, judge_model = cfg.judge_model,
             scope_family = types.SCOPE.OWNER, scope_id = scope_id, source = types.ITEM_SOURCE.REFLECTION,
         }, "consolidate:" .. run.id .. ":" .. scope_id .. ":" .. tostring(run.started_at), deadline, nil)
@@ -321,11 +318,11 @@ function M.consolidate_authorized(value: any): any
             if stats[key] ~= nil then stats[key] = stats[key] + count end
         end
     end
-    local _, completed_err = M._writer.apply(run.component_id, {
+    local _, completed_err = writer.apply(run.component_id, {
         { type = types.EVENT.CONSOLIDATION_COMPLETED, body = { run_id = run.id, stats = stats } },
     }, "consolidated:" .. run.id .. ":" .. tostring(run.started_at), deadline)
     if completed_err then return fail(run.id, completed_err) end
-    local _, close_err = M._runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
+    local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end
     return { ok = true, record = { status = "completed" }, rearm = next_at, stats = stats }
 end
@@ -343,21 +340,21 @@ function M.reembed_authorized(value: any): any
     if settings_err then return fail(run.id, settings_err) end
     local after, embedded = "", 0
     while true do
-        local page, page_err = M._items.page_for_embedding(run.component_id, after, M.REEMBED_PAGE)
+        local page, page_err = items.page_for_embedding(run.component_id, after, M.REEMBED_PAGE)
         if page_err then return fail(run.id, page_err) end
         if #(page :: any) == 0 then break end
         local texts: { string } = {}
         for i, row in ipairs(page :: any) do texts[i] = row.content end
-        local vectors, embed_err = M._models.embed(store.embedding_model, texts)
+        local vectors, embed_err = models.embed(store.embedding_model, texts)
         if embed_err then return fail(run.id, embed_err) end
         for i, row in ipairs(page :: any) do
-            local _, vector_err = M._items.set_embedding(run.component_id, row.id, (vectors :: any)[i])
+            local _, vector_err = items.set_embedding(run.component_id, row.id, (vectors :: any)[i])
             if vector_err then return fail(run.id, vector_err) end
             embedded = embedded + 1
             after = row.id
         end
     end
-    local _, close_err = M._runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, { embedded = embedded })
+    local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, { embedded = embedded })
     if close_err then return fail(run.id, close_err) end
     return { ok = true, record = { status = "completed" }, stats = { embedded = embedded } }
 end

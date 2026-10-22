@@ -381,7 +381,7 @@ entries:
             type: string
             minLength: 1
             title: Extraction model
-            description: Model that reads captured conversation and extracts candidate memories.
+            description: Model that reads conversations and picks what to remember. Consolidation uses it too.
             role: picker
             web_component: wc-model-picker
           judge_model:
@@ -389,16 +389,18 @@ entries:
             type: string
             minLength: 1
             title: Reconcile model
-            description: Model that classifies a candidate against similar memories (add, update, merge, keep, conflict).
+            description: Model that decides whether a new memory is new, a duplicate, an update or a contradiction.
             role: picker
             web_component: wc-model-picker
           extraction_instructions:
+            group: advanced
             order: 3
             type: string
             title: Memory policy
             description: Extra instructions for what this memory keeps.
             format: textarea
           recall_max_items:
+            group: advanced
             order: 6
             type: integer
             minimum: 1
@@ -406,24 +408,28 @@ entries:
             title: Recall items
             description: Memories recalled per step.
           recall_max_length:
+            group: advanced
             order: 7
             type: integer
             minimum: 200
             maximum: 50000
             title: Recall budget (characters)
           soul_agent_max_chars:
+            group: advanced
             order: 8
             type: integer
             minimum: 0
             maximum: 20000
             title: Agent identity and rules budget (characters)
           soul_owner_max_chars:
+            group: advanced
             order: 9
             type: integer
             minimum: 0
             maximum: 20000
             title: User profile budget (characters)
           consolidation_interval_hours:
+            group: advanced
             order: 10
             type: number
             minimum: 1
@@ -434,6 +440,7 @@ entries:
             type: boolean
             title: Capture conversations
           capture_experience:
+            group: advanced
             order: 5
             type: boolean
             title: Capture tool outcomes
@@ -528,7 +535,6 @@ entries:
           "properties": {
             "fields": {"type": "array", "items": {"type": "string"}, "description": "Additional fields to return. Use [\"*\"] for the whole record."},
             "query": { "type": "string", "description": "What memory to search for" },
-            "kb_id": { "type": "string", "description": "Optional id of one attached memory. Omit to search every attached memory." },
             "limit": { "type": "integer", "description": "Maximum memories to return in this page", "minimum": 1, "maximum": 50 },
             "cursor": { "type": "string", "description": "next_cursor from a previous SearchMemory result with the same query" }
           },
@@ -570,8 +576,7 @@ entries:
             "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson"]},
             "key": {"type": "string", "description": "Short stable topic, e.g. home_city"},
             "value": {"type": "string", "description": "The value only, e.g. Berlin"},
-            "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"},
-            "memory_id": {"type": "string", "description": "Optional id of one attached memory; defaults to the agent's write memory"}
+            "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"}
           },
           "required": ["content"]
         }
@@ -648,77 +653,62 @@ entries:
       public: true
       title: Memory
       icon: tabler:brain
-      comment: Captures conversations into attached memory knowledge bases, renders the agent's identity and rules and the user's profile into the prompt, and gives the agent Remember, SearchMemory and ForgetMemory.
+      comment: Remembers conversations in one memory knowledge base, puts the agent's identity and rules and the user's profile into the prompt, and gives the agent Remember, SearchMemory and ForgetMemory.
       tags: [memory, checkpoint, knowledge]
       web_component: kickside-knowledge-memory
       context_schema:
         type: object
         properties:
-          memory_ids:
-            type: array
-            title: Memories
-            description: Memory knowledge bases this agent uses; the first is the one it writes to.
-            role: picker
-            web_component: wc-kb-picker
-            items: { type: string }
-          kb_ids:
-            type: array
-            title: Memories (earlier releases)
-            description: Read when memory_ids is empty.
-            role: picker
-            web_component: wc-kb-picker
-            items: { type: string }
-          write_kb_id:
+          memory_id:
             type: string
-            title: Write memory
-            description: Memory captured conversation is written to; defaults to the first memory.
+            title: Memory
+            description: The memory knowledge base this agent remembers into and recalls from.
             role: picker
             web_component: wc-kb-picker
-          read_enabled:
-            type: boolean
-            title: Search memory tool
-            role: value
           write_enabled:
             type: boolean
             title: Capture conversations
+            description: Off keeps the memory read-only for this agent.
+            role: value
+          read_enabled:
+            type: boolean
+            title: SearchMemory tool
+            description: Off makes SearchMemory answer that search is disabled.
             role: value
           recall_limit:
             type: integer
-            title: Search result limit
+            title: SearchMemory page size
             role: value
-          checkpoint_model:
+          kb_ids:
+            type: array
+            title: Knowledge bases (earlier releases)
+            description: When memory_id is empty, the first entry is the memory if it is a memory knowledge base.
+            items: { type: string }
+          write_kb_id:
             type: string
-            title: Checkpoint model
-            description: Model for the working summary when the agent has none.
-            role: value
-          checkpoint_max_tokens:
-            type: integer
-            title: Checkpoint max tokens
-            role: value
-          checkpoint_source_max_chars:
-            type: integer
-            title: Checkpoint source characters
-            role: value
+            title: Write knowledge base (earlier releases)
+            description: When memory_id is empty, this is the memory if it is a memory knowledge base.
           recall_max_chars:
             type: integer
-            title: Recall character budget (earlier releases)
-            description: Accepted from earlier releases; the memory's own recall budget applies.
-            role: value
+            description: Earlier releases; no effect. The memory's settings bound recall.
           recall_prompt:
             type: string
-            title: Recall prompt (earlier releases)
-            description: Accepted from earlier releases; has no effect.
-            role: value
+            description: Earlier releases; no effect.
+          checkpoint_model:
+            type: string
+            description: Earlier releases; no effect. Checkpoints use the agent's model.
           checkpoint_prompt:
             type: string
-            title: Checkpoint prompt (earlier releases)
-            description: Accepted from earlier releases; the memory policy in the memory's settings applies.
-            role: value
+            description: Earlier releases; no effect.
           checkpoint_temperature:
             type: number
-            title: Checkpoint temperature (earlier releases)
-            description: Accepted from earlier releases; has no effect.
-            role: value
+            description: Earlier releases; no effect.
+          checkpoint_max_tokens:
+            type: integer
+            description: Earlier releases; no effect.
+          checkpoint_source_max_chars:
+            type: integer
+            description: Earlier releases; no effect.
         additionalProperties: false
     prompt: |
       You have long-term memory. What you know about the user and your own

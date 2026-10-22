@@ -9,15 +9,15 @@ local stores = require("memory_stores")
 local models = require("memory_models")
 local writer = require("memory_writer")
 
-local M = { _items = items, _stores = stores, _models = models, _writer = writer }
+local M = {}
 
 -- Stores the vector of an item an operation adds, so it is searchable.
 local function embed(component_id: string, item_id: string, content: string): error?
-    local store, err = M._stores.get(component_id)
+    local store, err = stores.get(component_id)
     if err then return err end
-    local vectors, embed_err = M._models.embed((store :: any).embedding_model, { content })
+    local vectors, embed_err = models.embed((store :: any).embedding_model, { content })
     if embed_err then return embed_err end
-    local _, vector_err = M._items.set_embedding(component_id, item_id, (vectors :: any)[1])
+    local _, vector_err = items.set_embedding(component_id, item_id, (vectors :: any)[1])
     return vector_err
 end
 
@@ -27,7 +27,7 @@ local function actor_id(): string
 end
 
 local function load(component_id: string, item_id: string): (any?, error?)
-    local item, err = M._items.get(component_id, types.trim(item_id))
+    local item, err = items.get(component_id, types.trim(item_id))
     if err then return nil, err end
     if not item then return nil, types.not_found("memory item not found: " .. tostring(item_id)) end
     return item, nil
@@ -64,7 +64,7 @@ function M.create(component_id: string, fields: any): (any?, error?)
     if err then return nil, err end
     local vector_err = embed(component_id, id :: string, (event :: any).body.content)
     if vector_err then return nil, vector_err end
-    local _, append_err = M._writer.apply(component_id, { event }, "owner.create:" .. tostring(id))
+    local _, append_err = writer.apply(component_id, { event }, "owner.create:" .. tostring(id))
     if append_err then return nil, append_err end
     return { item_id = id }, nil
 end
@@ -87,14 +87,14 @@ function M.edit(component_id: string, item_id: string, fields: any): (any?, erro
         event,
         { type = types.EVENT.ITEM_SUPERSEDED, body = { item_id = item.id, by = id, invalid_at = (event :: any).body.valid_at } },
     }
-    local _, append_err = M._writer.apply(component_id, events, "owner.edit:" .. item.id .. ":" .. tostring(id))
+    local _, append_err = writer.apply(component_id, events, "owner.edit:" .. item.id .. ":" .. tostring(id))
     if append_err then return nil, append_err end
     return { item_id = id, superseded = item.id }, nil
 end
 
 -- Keeps `winner_id` current and supersedes every other item of the group.
 function M.resolve_conflict(component_id: string, group_id: string, winner_id: string): (any?, error?)
-    local members, err = M._items.list(component_id, { conflict_group = types.trim(group_id), statuses = { types.STATUS.CONFLICT }, limit = 100 })
+    local members, err = items.list(component_id, { conflict_group = types.trim(group_id), statuses = { types.STATUS.CONFLICT }, limit = 100 })
     if err then return nil, err end
     local winner = nil
     for _, member in ipairs(members :: any) do
@@ -111,7 +111,7 @@ function M.resolve_conflict(component_id: string, group_id: string, winner_id: s
             } }
         end
     end
-    local _, append_err = M._writer.apply(component_id, events, "owner.resolve:" .. group_id .. ":" .. winner_id)
+    local _, append_err = writer.apply(component_id, events, "owner.resolve:" .. group_id .. ":" .. winner_id)
     if append_err then return nil, append_err end
     return { winner = winner_id, superseded = #events - 1 }, nil
 end
@@ -121,7 +121,7 @@ function M.forget(component_id: string, item_id: string, reason: string?): (any?
     if err then return nil, err end
     if item.status == types.STATUS.FORGOTTEN then return { item_id = item.id, unchanged = true }, nil end
     local event = { type = types.EVENT.ITEM_FORGOTTEN, body = { item_id = item.id, actor = actor_id(), reason = types.trim(reason) } }
-    local _, append_err = M._writer.apply(component_id, { event }, "forget:" .. item.id .. ":" .. tostring(item.last_seq))
+    local _, append_err = writer.apply(component_id, { event }, "forget:" .. item.id .. ":" .. tostring(item.last_seq))
     if append_err then return nil, append_err end
     return { item_id = item.id }, nil
 end
@@ -131,7 +131,7 @@ function M.restore(component_id: string, item_id: string): (any?, error?)
     if err then return nil, err end
     if item.status ~= types.STATUS.FORGOTTEN then return nil, types.invalid("only a forgotten memory can be restored") end
     local event = { type = types.EVENT.ITEM_RESTORED, body = { item_id = item.id, actor = actor_id(), reason = "restored" } }
-    local _, append_err = M._writer.apply(component_id, { event }, "restore:" .. item.id .. ":" .. tostring(item.last_seq))
+    local _, append_err = writer.apply(component_id, { event }, "restore:" .. item.id .. ":" .. tostring(item.last_seq))
     if append_err then return nil, append_err end
     return { item_id = item.id }, nil
 end

@@ -39,10 +39,13 @@ const error = ref('')
 const busy = ref('')
 
 const KINDS: MemoryKind[] = ['identity', 'rule', 'profile_slot', 'preference', 'fact', 'skill', 'lesson']
-const STATUSES: MemoryStatus[] = ['current', 'conflict', 'superseded', 'forgotten']
+const VIEWS: { status: MemoryStatus; label: string }[] = [
+  { status: 'current', label: 'Current' }, { status: 'superseded', label: 'Earlier versions' }, { status: 'forgotten', label: 'Forgotten' },
+]
 const kindFilter = ref<MemoryKind | ''>('')
-const statusFilter = ref<MemoryStatus | ''>('current')
+const statusFilter = ref<MemoryStatus>('current')
 const scopeFilter = ref<'' | 'agent' | 'owner'>('')
+const adding = ref(false)
 
 const draft = ref({ kind: 'rule' as MemoryKind, scope_id: '', key: '', content: '' })
 const editing = ref('')
@@ -145,6 +148,7 @@ function create() {
       key: fields.key.trim() || fields.content.trim(), content: fields.content.trim(),
     })
     draft.value = { ...fields, key: '', content: '' }
+    adding.value = false
   })
 }
 function resolve(group: ConflictGroup, winner: MemoryItem) {
@@ -182,8 +186,6 @@ function when(value?: string | null): string {
         <div><div class="mm-stat-n">{{ counts?.superseded ?? 0 }}</div><div class="mm-stat-l">earlier versions</div></div></div>
       <div class="mm-stat"><span class="mm-stat-ico warn"><Icon icon="tabler:alert-triangle" /></span>
         <div><div class="mm-stat-n">{{ counts?.conflict_groups ?? 0 }}</div><div class="mm-stat-l">conflicts to resolve</div></div></div>
-      <div class="mm-stat"><span class="mm-stat-ico"><Icon icon="tabler:eye-off" /></span>
-        <div><div class="mm-stat-n">{{ counts?.forgotten ?? 0 }}</div><div class="mm-stat-l">forgotten</div></div></div>
     </div>
 
     <div class="mm-tabs" role="tablist">
@@ -197,13 +199,14 @@ function when(value?: string | null): string {
 
     <template v-if="tab === 'memories'">
       <div class="mm-filters">
-        <button class="mm-chip-btn" :class="{ on: !kindFilter }" @click="kindFilter = ''">All kinds</button>
-        <button v-for="kind in KINDS" :key="kind" class="mm-chip-btn" :class="{ on: kindFilter === kind }" @click="kindFilter = kind">{{ KIND_LABEL[kind] }}</button>
+        <button v-for="v in VIEWS" :key="v.status" class="mm-chip-btn" :class="{ on: statusFilter === v.status }" @click="statusFilter = v.status">{{ v.label }}</button>
         <span class="mm-sep" />
-        <button v-for="s in STATUSES" :key="s" class="mm-chip-btn" :class="{ on: statusFilter === s }" @click="statusFilter = statusFilter === s ? '' : s">{{ s }}</button>
-        <span class="mm-sep" />
-        <button class="mm-chip-btn" :class="{ on: scopeFilter === 'owner' }" @click="scopeFilter = scopeFilter === 'owner' ? '' : 'owner'">About users</button>
-        <button class="mm-chip-btn" :class="{ on: scopeFilter === 'agent' }" @click="scopeFilter = scopeFilter === 'agent' ? '' : 'agent'">Agent identity &amp; rules</button>
+        <select class="mm-select mm-select-sm" v-model="scopeFilter" name="scope_filter" aria-label="Whose memories">
+          <option value="">Everyone</option><option value="owner">About people</option><option value="agent">Agent identity &amp; rules</option>
+        </select>
+        <select class="mm-select mm-select-sm" v-model="kindFilter" name="kind_filter" aria-label="Kind">
+          <option value="">All kinds</option><option v-for="kind in KINDS" :key="kind" :value="kind">{{ KIND_LABEL[kind] }}</option>
+        </select>
       </div>
       <div class="mm-split">
         <div class="mm-card">
@@ -258,6 +261,12 @@ function when(value?: string | null): string {
             </div>
           </div>
         </div>
+        <div class="mm-card" v-else-if="!adding">
+          <div class="mm-card-b">
+            <span class="mm-hint">Select a memory to see its versions and where it was learned.</span>
+            <div class="mm-actions"><button class="mm-btn ghost" @click="adding = true"><Icon icon="tabler:plus" />Add identity or rule</button></div>
+          </div>
+        </div>
         <div class="mm-card" v-else>
           <div class="mm-card-h">Add identity or rule</div>
           <div class="mm-card-b">
@@ -273,7 +282,10 @@ function when(value?: string | null): string {
             </div>
             <label class="mm-field"><span class="mm-label">Topic</span><input class="mm-input" v-model="draft.key" name="draft_key" placeholder="e.g. tone" /></label>
             <label class="mm-field"><span class="mm-label">Text</span><textarea class="mm-textarea" v-model="draft.content" name="draft_content" placeholder="e.g. Answer in short bullet points."></textarea></label>
-            <div class="mm-actions"><button class="mm-btn primary" :disabled="!!busy || !draft.content.trim() || !draft.scope_id.trim()" @click="create"><Icon icon="tabler:plus" />Add</button></div>
+            <div class="mm-actions">
+              <button class="mm-btn primary" :disabled="!!busy || !draft.content.trim() || !draft.scope_id.trim()" @click="create"><Icon icon="tabler:plus" />Add</button>
+              <button class="mm-btn ghost" @click="adding = false">Cancel</button>
+            </div>
           </div>
         </div>
       </div>
@@ -313,7 +325,6 @@ function when(value?: string | null): string {
     <div v-else class="mm-card">
       <div class="mm-card-h">Memory settings</div>
       <div class="mm-card-b">
-        <span class="mm-hint">Embedding model: {{ status?.embedding_model }}</span>
         <ConfigFields v-if="status" :schema="status.config_schema" v-model="settings" />
         <div class="mm-actions">
           <button class="mm-btn primary" :disabled="!!busy" @click="saveSettings"><Icon icon="tabler:device-floppy" />Save settings</button>

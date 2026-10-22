@@ -49,6 +49,7 @@ export interface SchemaField {
   role?: string
   web_component?: string
   order?: number
+  group?: 'advanced'
 }
 
 export interface ConfigSchema { properties?: Record<string, SchemaField> }

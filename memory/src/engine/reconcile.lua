@@ -8,7 +8,7 @@ local types = require("types")
 local items = require("memory_items")
 local models = require("memory_models")
 
-local M = { _items = items, _models = models }
+local M = {}
 
 M.NEIGHBORS = 5
 
@@ -60,7 +60,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
 
     local texts: { string } = {}
     for i, candidate in ipairs(candidates) do texts[i] = candidate.content end
-    local embedded, embed_err = M._models.embed(opts.embedding_model, texts)
+    local embedded, embed_err = models.embed(opts.embedding_model, texts)
     if embed_err then return nil, embed_err end
 
     local scope_key = types.scope_key(opts.scope_family, opts.scope_id)
@@ -76,7 +76,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
             local key = id .. "|" .. ref.host_kind .. "|" .. ref.host_id .. "|" .. ref.event_id
             if not recorded[key] then
                 recorded[key] = true
-                local known, err = M._items.has_provenance(opts.component_id, id, ref)
+                local known, err = items.has_provenance(opts.component_id, id, ref)
                 if err then return err end
                 if not known then
                     events[#events + 1] = { type = types.EVENT.PROVENANCE_ADDED, body = {
@@ -90,7 +90,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
 
     local function item_state(id: string): (any?, error?)
         if overlay[id] then return overlay[id], nil end
-        return M._items.get(opts.component_id, id)
+        return items.get(opts.component_id, id)
     end
 
     for index, candidate in ipairs(candidates) do
@@ -128,7 +128,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
                     end
                 end
             end
-            local same_key, key_err = M._items.list(opts.component_id, {
+            local same_key, key_err = items.list(opts.component_id, {
                 kinds = { candidate.kind }, statuses = LIVE, scope_keys = { scope_key }, key = key, limit = M.NEIGHBORS,
             })
             if key_err then return nil, key_err end
@@ -138,7 +138,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
             end
             -- Nearest items of every kind in the scope: the same fact can arrive
             -- as a preference from one span and a profile slot from another.
-            local near, near_err = M._items.search(opts.component_id, vector, {
+            local near, near_err = items.search(opts.component_id, vector, {
                 statuses = LIVE, scope_keys = { scope_key },
                 query_text = candidate.content, limit = M.NEIGHBORS,
             })
@@ -147,7 +147,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
 
             local verdict: any = { action = types.ACTION.ADD, target_ids = {} }
             if #neighbors > 0 then
-                local judged, judge_err = M._models.judge(opts.judge_model, {
+                local judged, judge_err = models.judge(opts.judge_model, {
                     kind = candidate.kind, key = key, content = candidate.content, valid_at = valid_at,
                 }, neighbors, opts.source == types.ITEM_SOURCE.REFLECTION and REFLECTION_ACTIONS or types.ACTIONS)
                 if judge_err then return nil, judge_err end

@@ -14,7 +14,7 @@ local items = require("memory_items")
 local runs = require("memory_runs")
 local ops = require("memory_ops")
 
-local M = { _component = component }
+local M = {}
 
 local MAX_PAGE = 200
 
@@ -45,7 +45,7 @@ local function open(access: integer): (any?, any?, string?)
         reply(res, http.STATUS.BAD_REQUEST, { success = false, error = "memory id is required" })
         return nil, nil, nil
     end
-    local _, access_err = M._component.validate_access(id, access)
+    local _, access_err = component.validate_access(id, access)
     if access_err then fail(res, access_err); return nil, nil, nil end
     local _, store_err = stores.get(id)
     if store_err then fail(res, store_err); return nil, nil, nil end

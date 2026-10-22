@@ -1,4 +1,4 @@
--- Agent side of memory: capture of conversation spans into the attached
+-- Agent side of memory: capture of conversation spans into the agent's
 -- memory, the pinned soul rendered into the prompt, recall through the
 -- wippy.agent:memory provider, the working-summary checkpoint, and the
 -- remember / search / forget tools.
@@ -6,7 +6,6 @@
 local ctx = require("ctx")
 local contract = require("contract")
 local security = require("security")
-local json = require("json")
 local component = require("component")
 local types = require("types")
 local config = require("memory_config")
@@ -20,12 +19,8 @@ local ledger = require("memory_ledger")
 local ops = require("memory_ops")
 local bindings = require("memory_bindings")
 
-local M = {
-    _ctx = ctx, _contract = contract, _component = component, _stores = stores, _items = items, _runs = runs,
-    _jobs = jobs, _models = models, _writer = writer, _ledger = ledger, _ops = ops, _bindings = bindings,
-}
+local M = {}
 
-local QUERYABLE = "kickside.contract:queryable"
 local RUN_CONTEXT = "wippy.agent:run_context"
 local KB_REGISTRY = "kickside.knowledge:knowledge_bases"
 
@@ -45,7 +40,7 @@ local KIND_ORDER: { [string]: integer } = {
 -- Configuration ------------------------------------------------------------
 
 local function setting(payload: any, name: string): any
-    local value = M._ctx.get(name)
+    local value = ctx.get(name)
     if value ~= nil and value ~= "" then return value end
     if type(payload) == "table" and type(payload.context) == "table" then
         value = payload.context[name]
@@ -54,48 +49,30 @@ local function setting(payload: any, name: string): any
     return nil
 end
 
-local function id_list(value: any): { string }
-    local out: { string } = {}
-    if type(value) == "table" then
-        for _, id in ipairs(value) do
-            local trimmed = types.trim(id)
-            if trimmed ~= "" then out[#out + 1] = trimmed end
-        end
-    elseif types.trim(value) ~= "" then
-        out[1] = types.trim(value)
+-- The agent's memory: memory_id, or for contexts saved by earlier releases
+-- write_kb_id or the first kb_ids entry. A trait without a memory, or naming a
+-- knowledge base that is not a memory, is a configuration error.
+function M.memory(payload: any, access: integer): (string?, any?, error?)
+    local id = types.trim(setting(payload, "memory_id"))
+    if id == "" then id = types.trim(setting(payload, "write_kb_id")) end
+    if id == "" then
+        local legacy = setting(payload, "kb_ids")
+        if type(legacy) == "table" then id = types.trim(legacy[1]) end
     end
-    return out
-end
-
--- Attached memories: memory_ids, or the kb_ids / write_kb_id keys earlier
--- releases of this trait stored.
-function M.attached(payload: any): ({ string }, string?)
-    local ids = id_list(setting(payload, "memory_ids"))
-    if #ids == 0 then ids = id_list(setting(payload, "kb_ids")) end
-    local write_id = types.trim(setting(payload, "write_kb_id"))
-    if write_id == "" then write_id = ids[1] or "" end
-    if write_id ~= "" then
-        local listed = false
-        for _, id in ipairs(ids) do if id == write_id then listed = true end end
-        if not listed then table.insert(ids, 1, write_id) end
-    end
-    return ids, write_id ~= "" and write_id or nil
-end
-
--- The memory store of a knowledge base the caller can access, or nil when the
--- knowledge base is not a memory.
-local function memory_store(component_id: string, access: integer): (any?, error?)
-    local _, access_err = M._component.validate_access(component_id, access)
-    if access_err then return nil, access_err end
-    local store, err = M._stores.get(component_id)
+    if id == "" then return nil, nil, types.invalid("the Memory capability has no memory selected") end
+    local _, access_err = component.validate_access(id, access)
+    if access_err then return nil, nil, access_err end
+    local store, err = stores.get(id)
     if err then
-        if errors.is(err, errors.NOT_FOUND) then return nil, nil end
-        return nil, err
+        if errors.is(err, errors.NOT_FOUND) then
+            return nil, nil, types.invalid("knowledge base " .. id .. " is not a memory; select a Memory knowledge base")
+        end
+        return nil, nil, err
     end
     local cfg, cfg_err = config.effective((store :: any).config)
-    if cfg_err then return nil, cfg_err end
+    if cfg_err then return nil, nil, cfg_err end
     (store :: any).effective = cfg
-    return store, nil
+    return id, store, nil
 end
 
 local function host_ref(host: any): (string, string)
@@ -106,11 +83,6 @@ local function host_ref(host: any): (string, string)
             types.trim(host.run_id), tostring(host.iteration or 0) }, ":")
     end
     return types.trim(host.kind), types.trim(host.id)
-end
-
-local function agent_run(): any
-    local run = M._ctx.get("agent_run")
-    return type(run) == "table" and run or {}
 end
 
 local function actor_id(): string
@@ -124,7 +96,7 @@ local function open_run_context(ref: any): (any?, error?)
     if type(ref) ~= "table" or types.trim(ref.binding) == "" then
         return nil, types.invalid("run_context binding is required")
     end
-    local def, err = M._contract.get(types.trim(ref.contract) ~= "" and ref.contract or RUN_CONTEXT)
+    local def, err = contract.get(types.trim(ref.contract) ~= "" and ref.contract or RUN_CONTEXT)
     if err or not def then return nil, types.unavailable("run_context contract unavailable: " .. tostring(err)) end
     local inst, open_err = (def :: any):open(tostring(ref.binding))
     if open_err or not inst then return nil, types.unavailable("run_context binding unavailable: " .. tostring(open_err)) end
@@ -182,22 +154,19 @@ function M.gate(events: { any }, cfg: any): { any }
 end
 
 -- Captures the host's history since its cursor (through `to_event_id` when
--- given) into the write memory. Both capture paths go through here; the cursor
+-- given) into the memory. Both capture paths go through here; the cursor
 -- moves under compare-and-set, so a span is captured once.
 function M.capture(payload: any, to_event_id: string?): (any?, error?)
-    local _, write_id = M.attached(payload)
-    if not write_id then return { captured = false, reason = "no_memory" }, nil end
     if setting(payload, "write_enabled") == false then return { captured = false, reason = "capture_disabled" }, nil end
-    local store, store_err = memory_store(write_id :: string, M._component.ACCESS.WRITE)
+    local memory_id, store, store_err = M.memory(payload, component.ACCESS.WRITE)
     if store_err then return nil, store_err end
-    if not store then return { captured = false, reason = "not_a_memory", memory_id = write_id }, nil end
     local cfg = (store :: any).effective
     if cfg.capture_conversation == false and cfg.capture_experience ~= true then
         return { captured = false, reason = "capture_disabled" }, nil
     end
     local host_kind, host_id = host_ref(payload.host)
     if host_kind == "" or host_id == "" then return nil, types.invalid("lifecycle host is required for capture") end
-    local cursor, cursor_err = M._runs.cursor(write_id :: string, host_kind, host_id)
+    local cursor, cursor_err = runs.cursor(memory_id :: string, host_kind, host_id)
     if cursor_err then return nil, cursor_err end
     local from = cursor and types.trim((cursor :: any).last_event_id) or ""
     local selector: any
@@ -224,13 +193,13 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     if #events == 0 then return { captured = false, reason = "no_new_history" }, nil end
     local span = M.gate(events, cfg)
     if #span == 0 then return { captured = false, reason = "nothing_to_capture" }, nil end
-    local scheduled, schedule_err = M._jobs.capture({
-        component_id = write_id :: string, host_kind = host_kind, host_id = host_id,
+    local scheduled, schedule_err = jobs.capture({
+        component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
         agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
         to_event_id = tostring(events[#events].id), span = span,
     })
     if schedule_err then return nil, schedule_err end
-    return { captured = (scheduled :: any).scheduled, run_id = (scheduled :: any).run_id, memory_id = write_id }, nil
+    return { captured = (scheduled :: any).scheduled, run_id = (scheduled :: any).run_id, memory_id = memory_id }, nil
 end
 
 -- Soul ---------------------------------------------------------------------
@@ -261,69 +230,42 @@ function M.render(rows: { any }, heading: string, max_chars: integer): string
 end
 
 local function soul_rows(component_id: string, scope_key: string, kinds: { string }): (any?, error?)
-    return M._items.list(component_id, { kinds = kinds, statuses = { types.STATUS.CURRENT }, scope_keys = { scope_key }, limit = 200 })
+    return items.list(component_id, { kinds = kinds, statuses = { types.STATUS.CURRENT }, scope_keys = { scope_key }, limit = 200 })
 end
 
--- Agent-scoped soul of every attached memory, for the compiled system prompt.
+-- Agent-scoped soul for the compiled system prompt.
 function M.agent_soul(payload: any, agent_id: string): (string?, error?)
-    local ids = M.attached(payload)
-    local parts: { string } = {}
-    for _, id in ipairs(ids) do
-        local store, err = memory_store(id, M._component.ACCESS.READ)
-        if err then return nil, err end
-        if store then
-            local rows, rows_err = soul_rows(id, types.scope_key(types.SCOPE.AGENT, agent_id), M.AGENT_SOUL_KINDS)
-            if rows_err then return nil, rows_err end
-            local text = M.render(rows :: any, "## Agent memory", math.floor(tonumber((store :: any).effective.soul_agent_max_chars) or 2000))
-            if text ~= "" then parts[#parts + 1] = text end
-        end
-    end
-    return table.concat(parts, "\n\n"), nil
-end
-
-local function owner_slice(component_id: string, store: any, owner: string): (string?, error?)
-    local rows, err = soul_rows(component_id, types.scope_key(types.SCOPE.OWNER, owner), M.OWNER_SOUL_KINDS)
+    local id, store, err = M.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
-    return M.render(rows :: any, "## What you know about the user", math.floor(tonumber(store.effective.soul_owner_max_chars) or 2000)), nil
+    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), M.AGENT_SOUL_KINDS)
+    if rows_err then return nil, rows_err end
+    return M.render(rows :: any, "## Agent memory", (store :: any).effective.soul_agent_max_chars), nil
 end
 
--- Pins the owner slice of every attached memory for this host.
+-- Pins the owner slice for this host: the user's profile and preferences as
+-- of activation, rendered once.
 function M.pin(payload: any): (any?, error?)
-    local ids = M.attached(payload)
+    local id, store, err = M.memory(payload, component.ACCESS.READ)
+    if err then return nil, err end
     local host_kind, host_id = host_ref(payload.host)
-    if host_kind == "" or host_id == "" then return nil, types.invalid("lifecycle host is required to pin memory") end
-    local owner = actor_id()
-    local pinned = 0
-    for _, id in ipairs(ids) do
-        local store, err = memory_store(id, M._component.ACCESS.READ)
-        if err then return nil, err end
-        if store then
-            local head, head_err = M._ledger.head(id)
-            if head_err then return nil, head_err end
-            local text, text_err = owner_slice(id, store, owner)
-            if text_err then return nil, text_err end
-            local _, pin_err = M._runs.pin(id, host_kind, host_id, types.trim(payload.agent and payload.agent.id), head :: integer, text :: string)
-            if pin_err then return nil, pin_err end
-            pinned = pinned + 1
-        end
-    end
-    return { pinned = pinned }, nil
+    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, actor_id()), M.OWNER_SOUL_KINDS)
+    if rows_err then return nil, rows_err end
+    local text = M.render(rows :: any, "## What you know about the user", (store :: any).effective.soul_owner_max_chars)
+    local head, head_err = ledger.head(id :: string)
+    if head_err then return nil, head_err end
+    return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text)
 end
 
--- The pinned owner slices for the running host, byte-identical across steps.
+-- The owner slice pinned for the running host, byte-identical across steps.
 function M.owner_prompt(payload: any): (string?, error?)
-    local run = agent_run()
-    local host_kind, host_id = host_ref(run.host)
+    local run = ctx.get("agent_run")
+    local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
     if host_kind == "" or host_id == "" then return "", nil end
-    local ids = M.attached(payload)
-    local parts: { string } = {}
-    for _, id in ipairs(ids) do
-        local cursor, err = M._runs.cursor(id, host_kind, host_id)
-        if err then return nil, err end
-        local text = cursor and (cursor :: any).pinned_prompt
-        if type(text) == "string" and text ~= "" then parts[#parts + 1] = text end
-    end
-    return table.concat(parts, "\n\n"), nil
+    local id, _, err = M.memory(payload, component.ACCESS.READ)
+    if err then return nil, err end
+    local cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
+    if cursor_err then return nil, cursor_err end
+    return cursor and (cursor :: any).pinned_prompt or "", nil
 end
 
 -- Lifecycle ----------------------------------------------------------------
@@ -340,9 +282,9 @@ function M.apply(payload: any): (any?, error?)
     if invalid then return nil, invalid end
     local phase = payload.phase
     if phase == "activate" then
-        local pinned, err = M.pin(payload)
+        local _, err = M.pin(payload)
         if err then return nil, err end
-        return { messages = {}, metadata = { phase = phase, pinned = (pinned :: any).pinned } }, nil
+        return { messages = {}, metadata = { phase = phase, pinned = true } }, nil
     elseif phase == "before_step" then
         local captured, err = M.capture(payload, nil)
         if err then return nil, err end
@@ -357,9 +299,8 @@ function M.apply(payload: any): (any?, error?)
         local captured, err = M.capture(payload, nil)
         if err then return nil, err end
         local metadata: { [string]: any } = { phase = phase, capture = captured }
-        local _, write_id = M.attached(payload)
-        if write_id then
-            local _, wake_err = M._jobs.wake_consolidation(write_id :: string)
+        if (captured :: any).memory_id then
+            local _, wake_err = jobs.wake_consolidation((captured :: any).memory_id)
             if wake_err then metadata.consolidation_error = tostring(wake_err) end
         end
         return { messages = {}, metadata = metadata }, nil
@@ -375,7 +316,7 @@ function M.create(payload: any): (any?, error?)
     local inst, err = open_run_context(payload.run_context)
     if err then return nil, err end
     local selector = type(payload.selector) == "table" and payload.selector or { mode = "since_checkpoint" }
-    selector.max_chars = selector.max_chars or math.floor(tonumber(setting(payload, "checkpoint_source_max_chars")) or M.CHECKPOINT_SOURCE_MAX_CHARS)
+    selector.max_chars = selector.max_chars or M.CHECKPOINT_SOURCE_MAX_CHARS
     local prompt, prompt_err = (inst :: any):get_prompt({
         host = payload.run_context.host or payload.host,
         agent = payload.run_context.agent or payload.agent,
@@ -388,11 +329,10 @@ function M.create(payload: any): (any?, error?)
     if text ~= "" then
         local options = type(payload.options) == "table" and payload.options or {}
         local model = types.trim(payload.agent.model)
-        if model == "" then model = types.trim(setting(payload, "checkpoint_model")) end
         if model == "" then model = types.trim(options.model) end
         if model == "" then return nil, types.invalid("checkpoint requires the agent model") end
-        local max_tokens = tonumber(setting(payload, "checkpoint_max_tokens")) or tonumber(options.max_tokens) or M.CHECKPOINT_MAX_TOKENS
-        local generated, used, summary_err = M._models.working_summary(model, text, math.floor(max_tokens))
+        local max_tokens = tonumber(options.max_tokens) or M.CHECKPOINT_MAX_TOKENS
+        local generated, used, summary_err = models.working_summary(model, text, math.floor(max_tokens))
         if summary_err then return nil, summary_err end
         summary, tokens = generated :: string, used
     end
@@ -418,23 +358,20 @@ end
 
 function M.recall(input: any): (any?, error?)
     local args = type(input) == "table" and input or {}
-    local component_id = types.trim(M._ctx.get("component_id"))
-    if component_id == "" then return { memories = {} }, nil end
-    local store, store_err = memory_store(component_id, M._component.ACCESS.READ)
+    local component_id, store, store_err = M.memory({ context = { memory_id = ctx.get("component_id") } }, component.ACCESS.READ)
     if store_err then return nil, store_err end
-    if not store then return nil, types.invalid("knowledge base " .. component_id .. " is not a memory") end
     local query = recall_query(args)
     if query == "" then return { memories = {} }, nil end
     local cfg = (store :: any).effective
     local constraints = type(args.constraints) == "table" and args.constraints or {}
-    local max_items = math.floor(tonumber(constraints.max_items) or tonumber(cfg.recall_max_items) or 5)
-    local max_length = math.floor(tonumber(constraints.max_length) or tonumber(cfg.recall_max_length) or 4000)
+    local max_items = math.floor(tonumber(constraints.max_items) or cfg.recall_max_items)
+    local max_length = math.floor(tonumber(constraints.max_length) or cfg.recall_max_length)
     local exclude: { [string]: boolean } = {}
     for _, id in ipairs(type(args.previous_memories) == "table" and args.previous_memories or {}) do exclude[tostring(id)] = true end
-    local agent_id = types.trim(M._ctx.get("agent_id"))
-    local rows, err = M._bindings.search({
-        component_id = component_id, query = query, limit = max_items, kinds = M.RECALL_KINDS,
-        scopes = M._bindings.visible_scopes(agent_id), exclude = exclude,
+    local agent_id = types.trim(ctx.get("agent_id"))
+    local rows, err = bindings.search({
+        component_id = component_id :: string, query = query, limit = max_items, kinds = M.RECALL_KINDS,
+        scopes = bindings.visible_scopes(agent_id), exclude = exclude,
     })
     if err then return nil, err end
     local memories: { any } = {}
@@ -453,7 +390,7 @@ end
 
 -- Memory knowledge bases the caller can read, for the agent memory picker.
 function M.list_targets(_input: any): any
-    local def, def_err = M._contract.get(KB_REGISTRY)
+    local def, def_err = contract.get(KB_REGISTRY)
     if def_err or not def then return { success = false, error = "knowledge_bases contract unavailable: " .. tostring(def_err) } end
     local actor, scope = security.actor(), security.scope()
     if not actor or not scope then return { success = false, error = "security actor and scope are required" } end
@@ -477,7 +414,7 @@ end
 
 -- build_func_id: contributes the agent-scoped soul to the compiled prompt.
 function M.build(_prompt: any, context: any): (any?, error?)
-    local agent_id = types.trim(type(context) == "table" and context.agent_id or M._ctx.get("agent_id"))
+    local agent_id = types.trim(type(context) == "table" and context.agent_id or ctx.get("agent_id"))
     if agent_id == "" then return {}, nil end
     local text, err = M.agent_soul({ context = context }, agent_id)
     if err then return nil, err end
@@ -492,20 +429,6 @@ end
 
 -- Tools --------------------------------------------------------------------
 
-local function attached_memory(args: any, access: integer): (string?, any?, error?)
-    local ids, write_id = M.attached({})
-    local requested = types.trim(args.memory_id)
-    local target = requested ~= "" and requested or write_id
-    if not target then return nil, nil, types.invalid("no memory is attached to this agent") end
-    local listed = false
-    for _, id in ipairs(ids) do if id == target then listed = true end end
-    if not listed then return nil, nil, types.invalid("memory " .. target .. " is not attached to this agent") end
-    local store, err = memory_store(target :: string, access)
-    if err then return nil, nil, err end
-    if not store then return nil, nil, types.invalid("knowledge base " .. target .. " is not a memory") end
-    return target, store, nil
-end
-
 local function tool_error(err: any): any
     return { success = false, error = tostring(err) }
 end
@@ -519,7 +442,7 @@ function M.remember(args: any): (any?, error?)
     if not types.KIND_SET[kind] or kind == types.KIND.IDENTITY or kind == types.KIND.RULE then
         return tool_error("kind must be one of fact, preference, profile_slot, skill, lesson"), nil
     end
-    local memory_id, store, err = attached_memory(input, M._component.ACCESS.WRITE)
+    local memory_id, store, err = M.memory({}, component.ACCESS.WRITE)
     if err then return tool_error(err), nil end
     local owner = actor_id()
     if owner == "" then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "remember requires an actor" }) end
@@ -528,9 +451,9 @@ function M.remember(args: any): (any?, error?)
     local value = input.value ~= nil and input.value or content
     local idempotency, hash_err = types.sha256(table.concat({ "tool", owner, kind, types.normalize_key(key), types.value_text(value) }, "|"))
     if hash_err then return nil, hash_err end
-    local run = agent_run()
-    local host_kind, host_id = host_ref(run.host)
-    local result, write_err = M._writer.remember({
+    local run = ctx.get("agent_run")
+    local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
+    local result, write_err = writer.remember({
         { kind = kind, key = key, value = value, content = content, valid_at = input.valid_at, confidence = 1 },
     }, {
         component_id = memory_id :: string, embedding_model = (store :: any).embedding_model,
@@ -545,108 +468,60 @@ function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     local item_id = types.trim(input.item_id)
     if item_id == "" then return tool_error("item_id is required"), nil end
-    local ids = M.attached({})
-    local owner = actor_id()
-    local agent_id = types.trim(M._ctx.get("agent_id"))
-    for _, id in ipairs(ids) do
-        local store, err = memory_store(id, M._component.ACCESS.WRITE)
-        if err then return tool_error(err), nil end
-        if store then
-            local item, item_err = M._items.get(id, item_id)
-            if item_err then return nil, item_err end
-            if item then
-                local owned = ((item :: any).scope_family == types.SCOPE.OWNER and (item :: any).scope_id == owner)
-                    or ((item :: any).scope_family == types.SCOPE.AGENT and (item :: any).scope_id == agent_id)
-                if not owned then return tool_error("memory item is outside this conversation's scope"), nil end
-                local forgotten, forget_err = M._ops.forget(id, item_id, input.reason)
-                if forget_err then return nil, forget_err end
-                return { success = true, memory_id = id, item_id = (forgotten :: any).item_id }, nil
-            end
-        end
-    end
-    return tool_error("memory item not found in the attached memories"), nil
+    local memory_id, _, err = M.memory({}, component.ACCESS.WRITE)
+    if err then return tool_error(err), nil end
+    local item, item_err = items.get(memory_id :: string, item_id)
+    if item_err then return nil, item_err end
+    if not item then return tool_error("memory item not found"), nil end
+    local owned = ((item :: any).scope_family == types.SCOPE.OWNER and (item :: any).scope_id == actor_id())
+        or ((item :: any).scope_family == types.SCOPE.AGENT and (item :: any).scope_id == types.trim(ctx.get("agent_id")))
+    if not owned then return tool_error("memory item is outside this conversation's scope"), nil end
+    local forgotten, forget_err = ops.forget(memory_id :: string, item_id, input.reason)
+    if forget_err then return nil, forget_err end
+    return { success = true, memory_id = memory_id, item_id = (forgotten :: any).item_id }, nil
 end
 
-local function field_row(row: any, kb_id: string, fields: { string }): any
-    local out: { [string]: any } = {
-        id = row.id, kb_id = kb_id, title = row.title, score = row.score, node_type = row.node_type,
-        snippet = row.snippet, source = row.source, created_at = row.created_at, updated_at = row.updated_at,
-    }
-    for _, name in ipairs(fields) do
-        if name == "*" then
-            for k, v in pairs(row) do out[k] = v end
-        else
-            out[name] = row[name]
-        end
-    end
-    return out
-end
-
--- SearchMemory: ranked search across the attached memories. Memory knowledge
--- bases answer typed current items in the caller's scopes; any other attached
--- knowledge base answers through its queryable contract.
+-- SearchMemory: ranked current memories of the user and this agent.
 function M.search(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     if setting({}, "read_enabled") == false then
-        return { success = false, error = "memory search is disabled for this agent", count = 0, items = {} }, nil
+        return { success = false, error = "memory search is disabled for this agent" }, nil
     end
     local query = types.trim(input.query)
     if query == "" then return { success = false, error = "query is required" }, nil end
-    local ids = M.attached({})
-    local requested = types.trim(input.kb_id)
-    if requested ~= "" then
-        local listed = false
-        for _, id in ipairs(ids) do if id == requested then listed = true end end
-        if not listed then return { success = false, error = "knowledge base " .. requested .. " is not attached to this agent" }, nil end
-        ids = { requested }
-    end
-    if #ids == 0 then return { success = false, error = "no memory is attached to this agent" }, nil end
     local limit = math.floor(tonumber(input.limit) or tonumber(setting({}, "recall_limit")) or 5)
     if limit < 1 or limit > M.SEARCH_MAX then return { success = false, error = "limit must be between 1 and " .. M.SEARCH_MAX }, nil end
     local offset = math.floor(tonumber(input.cursor) or 0)
     if offset < 0 then return { success = false, error = "cursor is invalid" }, nil end
+    local memory_id, _, err = M.memory({}, component.ACCESS.READ)
+    if err then return { success = false, error = tostring(err) }, nil end
+    local rows, search_err = bindings.search({
+        component_id = memory_id :: string, query = query, limit = offset + limit + 1,
+        scopes = bindings.visible_scopes(ctx.get("agent_id")),
+    })
+    if search_err then return nil, search_err end
     local fields = type(input.fields) == "table" and input.fields or {}
-    local agent_id = types.trim(M._ctx.get("agent_id"))
-    local merged: { any } = {}
-    for _, id in ipairs(ids) do
-        local store, err = memory_store(id, M._component.ACCESS.READ)
-        if err then return nil, err end
-        if store then
-            local rows, search_err = M._bindings.search({
-                component_id = id, query = query, limit = offset + limit + 1, scopes = M._bindings.visible_scopes(agent_id),
-            })
-            if search_err then return nil, search_err end
-            for _, row in ipairs(rows :: any) do
-                merged[#merged + 1] = field_row({
-                    id = row.id, content = row.content, node_type = row.kind, score = row.similarity, source = row.source,
-                    created_at = row.recorded_at, kind = row.kind, key = row.key, valid_at = row.valid_at,
-                }, id, fields)
-            end
-        else
-            local reader, open_err = M._component.open(id, M._component.ACCESS.READ, QUERYABLE)
-            if open_err then return nil, open_err end
-            local result, query_err = (reader :: any):query({ query = query, limit = offset + limit + 1 })
-            if query_err then return nil, query_err end
-            for _, item in ipairs(type(result) == "table" and result.items or {}) do
-                local row: { [string]: any } = { id = item.id, content = item.content }
-                for k, v in pairs(type(item.meta) == "table" and item.meta or {}) do row[k] = v end
-                row.score = row.score or row.similarity
-                merged[#merged + 1] = field_row(row, id, fields)
+    local page: { any } = {}
+    for i = offset + 1, math.min(offset + limit, #(rows :: any)) do
+        local row = (rows :: any)[i]
+        local out: { [string]: any } = {
+            id = row.id, kb_id = memory_id, node_type = row.kind, score = row.similarity, source = row.source,
+            created_at = row.recorded_at, content = row.content,
+        }
+        for _, name in ipairs(fields) do
+            if name == "*" then
+                for k, v in pairs(row) do out[k] = v end
+            else
+                out[name] = row[name]
             end
         end
+        page[#page + 1] = out
     end
-    table.sort(merged, function(a, b)
-        local sa, sb = tonumber(a.score) or 0, tonumber(b.score) or 0
-        if sa ~= sb then return sa > sb end
-        return tostring(a.id) < tostring(b.id)
-    end)
-    local page: { any } = {}
-    for i = offset + 1, math.min(offset + limit, #merged) do page[#page + 1] = merged[i] end
     local result: { [string]: any } = {
         success = true, query = query, count = #page, items = page,
         note = "Memory is derived from prior conversations and may be incomplete or out of date.",
     }
-    if #merged > offset + limit then result.next_cursor = tostring(offset + limit) end
+    if #(rows :: any) > offset + limit then result.next_cursor = tostring(offset + limit) end
     return result, nil
 end
 

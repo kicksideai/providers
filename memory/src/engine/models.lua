@@ -8,7 +8,7 @@ local json = require("json")
 local types = require("types")
 local model_failure = require("model_failure")
 
-local M = { _llm = llm }
+local M = {}
 
 -- Span roles that state something: memories cite one of these messages.
 -- Assistant text is context only.
@@ -127,7 +127,7 @@ function M.extract(model: string, span: { any }, instructions: string?): (any?, 
     if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
-    local response, err = M._llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })
+    local response, err = llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })
     if err then return nil, wrap("memory extraction", err) end
     return read_candidates(response, "memory extraction")
 end
@@ -138,7 +138,7 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     for _, item in ipairs(items) do
         lines[#lines + 1] = string.format("- (%s/%s) %s", item.kind, item.key, item.content)
     end
-    local response, err = M._llm.structured_output(candidate_schema(nil), messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
+    local response, err = llm.structured_output(candidate_schema(nil), messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
     if err then return nil, wrap("memory reflection", err) end
     return read_candidates(response, "memory reflection")
 end
@@ -164,7 +164,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
             reason = { type = "string" },
         },
     }
-    local response, err = M._llm.structured_output(schema, messages(JUDGE_PROMPT, json.encode({
+    local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT, json.encode({
             new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at },
             existing_memories = listing,
         })), { model = model })
@@ -189,7 +189,7 @@ end
 
 function M.embed(model: string, texts: { string }): (any?, error?)
     if #texts == 0 then return {}, nil end
-    local response, err = M._llm.embed(texts, { model = model, dimensions = types.EMBEDDING_DIMENSIONS })
+    local response, err = llm.embed(texts, { model = model, dimensions = types.EMBEDDING_DIMENSIONS })
     if err then return nil, wrap("memory embedding", err) end
     local vectors = response and response.result
     if type(vectors) ~= "table" or #vectors ~= #texts then
@@ -205,7 +205,7 @@ function M.embed(model: string, texts: { string }): (any?, error?)
 end
 
 function M.working_summary(model: string, text: string, max_tokens: integer): (string?, any?, error?)
-    local response, err = M._llm.generate(messages(WORKING_SUMMARY_PROMPT, text), { model = model, max_tokens = max_tokens })
+    local response, err = llm.generate(messages(WORKING_SUMMARY_PROMPT, text), { model = model, max_tokens = max_tokens })
     if err then return nil, nil, wrap("working summary", err) end
     if not response or response.finish_reason ~= "stop" or type(response.result) ~= "string" or types.trim(response.result) == "" then
         return nil, nil, types.unavailable("working summary did not complete")

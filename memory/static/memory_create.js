@@ -1,6 +1,6 @@
-import { u as y, a as b, _ as C, W as E } from "./ModelPicker.vue_vue_type_script_setup_true_lang-BXa7KiZU.js";
-import { defineComponent as k, computed as c, ref as r, watch as V, openBlock as s, createElementBlock as m, createElementVNode as d, toDisplayString as w, createBlock as x, createCommentVNode as N, createVNode as S } from "vue";
-import { i as B, _ as M, s as j } from "./memory-NmMeXa-p.js";
+import { u as y, a as b, W as C } from "./MmSwitch.vue_vue_type_script_setup_true_lang-CAQfcCan.js";
+import { defineComponent as E, computed as c, ref as r, watch as k, openBlock as s, createElementBlock as m, createElementVNode as d, toDisplayString as V, createBlock as w, createCommentVNode as x, createVNode as N } from "vue";
+import { i as S, _ as B, a as M, s as j } from "./memory-DSw53YZr.js";
 import "@iconify/vue";
 import { define as U } from "@wippy-fe/proxy";
 const W = { class: "mm-pane" }, $ = { class: "mm-field" }, D = {
@@ -9,7 +9,7 @@ const W = { class: "mm-pane" }, $ = { class: "mm-field" }, D = {
 }, J = {
   key: 2,
   class: "mm-hint"
-}, K = /* @__PURE__ */ k({
+}, K = /* @__PURE__ */ E({
   __name: "MemoryCreate",
   setup(u) {
     const p = y(), f = b(), o = c(() => {
@@ -21,15 +21,15 @@ const W = { class: "mm-pane" }, $ = { class: "mm-field" }, D = {
           return {};
         }
       return e || {};
-    }), l = c(() => !!o.value.edit), _ = c(() => B(o.value.config?.config_schema) ? o.value.config?.config_schema : {}), t = r("class:embed"), n = r({});
-    V(o, (e) => {
+    }), l = c(() => !!o.value.edit), g = c(() => S(o.value.config?.config_schema) ? o.value.config?.config_schema : {}), t = r("class:embed"), n = r({});
+    k(o, (e) => {
       const { config_schema: i, ...v } = e.config || {};
       n.value = { ...v }, e.embedding_model && (t.value = e.embedding_model), a();
     }, { immediate: !0 });
     function a() {
       f("config-changed", { embedding_model: t.value, config: { ...n.value } });
     }
-    function g(e) {
+    function _(e) {
       t.value = e, a();
     }
     function h(e) {
@@ -38,16 +38,16 @@ const W = { class: "mm-pane" }, $ = { class: "mm-field" }, D = {
     return (e, i) => (s(), m("div", W, [
       d("div", $, [
         i[0] || (i[0] = d("span", { class: "mm-label" }, "Embedding model", -1)),
-        l.value ? (s(), m("span", D, w(t.value) + " — fixed when the memory was created.", 1)) : (s(), x(C, {
+        l.value ? (s(), m("span", D, V(t.value) + " — fixed when the memory was created.", 1)) : (s(), w(B, {
           key: 1,
           value: t.value,
           capability: "embed",
-          onSelect: g
+          onSelect: _
         }, null, 8, ["value"])),
-        l.value ? N("", !0) : (s(), m("span", J, "Vectors are 512-dimensional; the model cannot change later."))
+        l.value ? x("", !0) : (s(), m("span", J, "Vectors are 512-dimensional; the model cannot change later."))
       ]),
-      S(M, {
-        schema: _.value,
+      N(M, {
+        schema: g.value,
         "model-value": n.value,
         "onUpdate:modelValue": h
       }, null, 8, ["schema", "model-value"])
@@ -59,7 +59,7 @@ const W = { class: "mm-pane" }, $ = { class: "mm-field" }, D = {
     config: { type: "object", description: "Create context: { kb_type, id?, embedding_model?, config? (with config_schema), edit? }" }
   }
 };
-class P extends E {
+class P extends C {
   static get wippyConfig() {
     return { propsSchema: O, hostCssKeys: ["themeConfigUrl"], inlineCss: j };
   }

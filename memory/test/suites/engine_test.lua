@@ -259,7 +259,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.history.record(session, { { id = "h1", role = "user", content = "I moved to Oslo last month." } })
             local applied, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") },
-                fixture.agent_context({ id }, session, "agent-a"))
+                fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))
             test.is_true(applied.metadata.capture.captured)
             local runs = fixture.wait_runs(user, id, "derive", 1)
