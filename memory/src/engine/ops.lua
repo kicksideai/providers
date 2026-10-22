@@ -106,7 +106,9 @@ function M.resolve_conflict(component_id: string, group_id: string, winner_id: s
     }
     for _, member in ipairs(members :: any) do
         if member.id ~= winner_id then
-            events[#events + 1] = { type = types.EVENT.ITEM_SUPERSEDED, body = { item_id = member.id, by = winner_id, invalid_at = types.now() } }
+            events[#events + 1] = { type = types.EVENT.ITEM_SUPERSEDED, body = {
+                item_id = member.id, by = winner_id, invalid_at = types.now(), resolved_conflict = group_id,
+            } }
         end
     end
     local _, append_err = M._writer.apply(component_id, events, "owner.resolve:" .. group_id .. ":" .. winner_id)

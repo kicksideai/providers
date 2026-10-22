@@ -141,6 +141,37 @@ local function define_tests()
             test.eq(values.Acme.superseded_by, globex.item_ids[1])
         end)
 
+        test.it("keeps a conflict open when a contested memory is replaced", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local passport = fixture.remember(user, id, {
+                fixture.candidate("fact", "birth_date", "1990-03-03", "The user was born on 3 March 1990.", "m1"),
+            }, "o1")
+            fixture.verdict("CONFLICT", { passport.item_ids[1] })
+            local airline = fixture.remember(user, id, {
+                fixture.candidate("fact", "birth_date", "1990-03-05", "The user was born on 5 March 1990.", "m2"),
+            }, "o2")
+            fixture.settle(user, id)
+            local group = fixture.op(user, "get", { component_id = id, item_id = airline.item_ids[1] }).conflict_group
+            fixture.verdict("MERGE", { passport.item_ids[1] })
+            local restated = fixture.remember(user, id, {
+                fixture.candidate("fact", "passport_birth_date", "1990-03-03", "The user's passport gives 3 March 1990 as their birth date.", "m3"),
+            }, "o3")
+            fixture.settle(user, id)
+            local successor = fixture.op(user, "get", { component_id = id, item_id = restated.item_ids[1] })
+            test.eq(successor.status, "conflict")
+            test.eq(successor.conflict_group, group)
+            local open = fixture.items(user, id, { statuses = { "conflict" } })
+            test.eq(#open, 2)
+
+            local resolved, err = fixture.op(user, "resolve", { component_id = id, group_id = group, winner_id = successor.id })
+            test.is_nil(err, tostring(err))
+            test.eq(resolved.superseded, 1)
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = successor.id }).status, "current")
+            test.eq(#fixture.items(user, id, { statuses = { "conflict" } }), 0)
+        end)
+
         test.it("is idempotent under redelivery: the same memory and the same decision write once", function()
             local user = fixture.user()
             local id = fixture.memory(user)

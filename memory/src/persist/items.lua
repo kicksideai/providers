@@ -142,6 +142,23 @@ local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: 
     return add_provenance_tx(tx, component_id, item_id, body.provenance, recorded_at)
 end
 
+-- A contested memory replaced by another keeps its contest: the successor
+-- joins the predecessor's conflict group, unless the replacement is the
+-- resolution of that group.
+local function supersede_tx(tx: any, item_id: string, successor_id: string, seq: integer, invalid_at: string, resolution: boolean): error?
+    local before, read_err = get_tx(tx, item_id)
+    if read_err then return read_err end
+    local err = set_status_tx(tx, item_id, seq, {
+        status = types.STATUS.SUPERSEDED, superseded_by = successor_id, invalid_at = invalid_at,
+    })
+    if err then return err end
+    if resolution or not before or before.status ~= types.STATUS.CONFLICT or not before.conflict_group then return nil end
+    local successor, successor_err = get_tx(tx, successor_id)
+    if successor_err then return successor_err end
+    if not successor or successor.status ~= types.STATUS.CURRENT then return nil end
+    return set_status_tx(tx, successor_id, seq, { status = types.STATUS.CONFLICT, conflict_group = before.conflict_group })
+end
+
 local function apply_event(tx: any, sqlite: boolean, component_id: string, event: any): error?
     local seq = math.floor(tonumber(event.seq) or 0) :: integer
     local body = type(event.body) == "table" and event.body or {}
@@ -150,9 +167,8 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
     if kind == types.EVENT.ITEM_ADDED then
         return apply_added(tx, sqlite, component_id, seq, body, recorded_at)
     elseif kind == types.EVENT.ITEM_SUPERSEDED then
-        return set_status_tx(tx, types.trim(body.item_id), seq, {
-            status = types.STATUS.SUPERSEDED, superseded_by = body.by, invalid_at = body.invalid_at or recorded_at,
-        })
+        return supersede_tx(tx, types.trim(body.item_id), types.trim(body.by), seq, body.invalid_at or recorded_at,
+            types.trim(body.resolved_conflict) ~= "")
     elseif kind == types.EVENT.ITEM_MERGED then
         local into = types.trim(body.into)
         for _, item_id in ipairs(type(body.item_ids) == "table" and body.item_ids or {}) do
@@ -161,9 +177,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
                 "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance WHERE item_id = $2 " ..
                 "ON CONFLICT DO NOTHING", { into, item_id })
             if copy_err then return fail("memory provenance merge failed", copy_err) end
-            local err = set_status_tx(tx, item_id, seq, {
-                status = types.STATUS.SUPERSEDED, superseded_by = into, invalid_at = recorded_at,
-            })
+            local err = supersede_tx(tx, item_id, into, seq, recorded_at, false)
             if err then return err end
         end
         return nil

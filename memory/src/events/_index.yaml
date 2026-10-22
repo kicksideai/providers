@@ -78,7 +78,7 @@ entries:
   kind: registry.entry
   meta:
     type: kickside.core.threads.event
-    comment: An item stops being current because a newer item replaces it.
+    comment: An item stops being current because a newer item replaces it; resolved_conflict names the conflict group a person resolved.
   schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object
@@ -88,6 +88,8 @@ entries:
       by:
         type: string
       invalid_at:
+        type: string
+      resolved_conflict:
         type: string
     required:
     - item_id
