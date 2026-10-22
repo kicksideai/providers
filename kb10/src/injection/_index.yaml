@@ -64,6 +64,7 @@ entries:
         - kickside.knowledge.events:content.deleted
     source: file://content_extractor.lua
     method: run
+    modules: [hash]
     imports:
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
 

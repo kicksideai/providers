@@ -267,7 +267,7 @@ entries:
       suite: knowledge_injection
     source: file://content_extractor_test.lua
     method: run
-    modules: [funcs, crypto, sql]
+    modules: [funcs, crypto, sql, hash]
     imports:
       test: wippy.test:test
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo

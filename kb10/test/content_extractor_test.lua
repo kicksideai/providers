@@ -1,6 +1,7 @@
 local test = require("test")
 local funcs = require("funcs")
 local crypto = require("crypto")
+local hash = require("hash")
 local sql = require("sql")
 local artifact_content_repo = require("artifact_content_repo")
 local artifact_cleanup_repo = require("artifact_cleanup_repo")
@@ -42,7 +43,7 @@ local function define_tests()
                 test.is_nil(artifact_err)
                 local body = {kb_id="test-kb", content_type="text/plain",
                     source_ref={kind="upload", upload_id=upload_id, artifact_id=artifact.artifact_id}}
-                if omitted then body.content_omitted=true; body.content_bytes=#content
+                if omitted then body.content_omitted=true; body.content_bytes=#content; body.content_sha256=hash.sha256(content)
                 else body.content=content end
                 local result, call_err = call({id="test-event",seq=1,
                     type="kickside.knowledge.events:content.upserted",
@@ -52,6 +53,17 @@ local function define_tests()
                 test.eq(#result.documents, 1)
                 test.eq(result.documents[1].content, content)
                 test.eq(result.documents[1].source_ref.artifact_id, artifact.artifact_id)
+                if omitted then
+                    for _, corruption in ipairs({"length", "digest"}) do
+                        if corruption == "length" then body.content_bytes=#content+1
+                        else body.content_bytes=#content; body.content_sha256=string.rep("0",64) end
+                        local stale, stale_err = call({type="kickside.knowledge.events:content.upserted",
+                            external={external_id="upload:"..upload_id},body=body})
+                        test.is_nil(stale_err)
+                        test.eq(#stale.documents,0)
+                        test.eq(stale.retryable,true)
+                    end
+                end
             end)
         end
         test.it("retains inline events after their artifact is unavailable", function()
@@ -70,6 +82,7 @@ local function define_tests()
             test.is_nil(err)
             test.eq(#result.documents,0)
             test.contains(tostring(result.error), "artifact")
+            test.eq(result.retryable, true)
         end)
         test.it("rejects upserts without natural external identity", function()
             local result, err = call({
