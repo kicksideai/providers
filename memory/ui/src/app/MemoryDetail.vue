@@ -22,6 +22,7 @@ const editable = computed(() => (detail.value.kind === 'identity' || detail.valu
 
 async function load() {
   editing.value = ''
+  if (detail.value.id !== props.item.id) detail.value = props.item
   try {
     const { data } = await api.get(itemUrl.value)
     if (!isRecord(data)) return

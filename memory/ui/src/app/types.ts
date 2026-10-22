@@ -6,27 +6,20 @@ export type MemoryStatus = 'current' | 'superseded' | 'conflict' | 'forgotten'
 
 export interface MemoryItem {
   id: string
-  component_id: string
   kind: MemoryKind
   scope_family: 'agent' | 'owner'
   scope_id: string
-  scope_key: string
   key: string
   content: string
-  value: unknown
   status: MemoryStatus
   version: number
   valid_at: string
   invalid_at?: string | null
   recorded_at: string
-  superseded_by?: string | null
-  conflict_group?: string | null
-  confidence?: number | null
   source: 'capture' | 'tool' | 'reflection' | 'owner'
-  priority: number
 }
 
-export interface Provenance { host_kind: string; host_id: string; event_id: string; recorded_at: string }
+export interface Provenance { host_kind: string; host_id: string; event_id: string }
 
 export interface ConflictGroup { group_id: string; items: MemoryItem[] }
 
@@ -49,7 +42,6 @@ export interface SchemaField {
   minimum?: number
   maximum?: number
   format?: string
-  role?: string
   web_component?: string
   order?: number
   group?: 'advanced'
@@ -58,11 +50,10 @@ export interface SchemaField {
 export interface ConfigSchema { properties?: Record<string, SchemaField> }
 
 export interface MemoryStatusView {
-  memory_id: string
-  embedding_model: string
   config: Record<string, unknown>
+  defaults: Record<string, unknown>
   config_schema: ConfigSchema
-  counts: { current: number; superseded: number; conflict: number; forgotten: number; total: number; conflict_groups: number }
+  counts: { current: number }
   runs: MemoryRun[]
 }
 
@@ -70,7 +61,6 @@ export const KIND_LABEL: Record<MemoryKind, string> = {
   identity: 'Identity', rule: 'Rule', profile_slot: 'Profile', fact: 'Fact',
   preference: 'Preference', skill: 'Skill', lesson: 'Lesson',
 }
-
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -94,6 +84,16 @@ export interface MemoryContext {
 
 export interface MemoryEvents {
   'config-changed': { context: MemoryContext }
+}
+
+// Select options for memory kinds.
+export function kindOptions(kinds: MemoryKind[] = Object.keys(KIND_LABEL) as MemoryKind[]): { value: MemoryKind; label: string }[] {
+  return kinds.map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
+}
+
+// The object detail of a shared widget's CustomEvent.
+export function eventDetail(event: Event): Record<string, unknown> {
+  return event instanceof CustomEvent && isRecord(event.detail) ? event.detail : {}
 }
 
 // An element's `config` prop arrives as an object or as its JSON text.

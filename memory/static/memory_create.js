@@ -1,45 +1,49 @@
-import { defineComponent as h, computed as m, ref as d, watch as b, openBlock as n, createElementBlock as i, createElementVNode as r, toDisplayString as y, createBlock as k, createCommentVNode as E, createVNode as C } from "vue";
+import { defineComponent as b, computed as c, ref as d, watch as h, openBlock as t, createElementBlock as i, createElementVNode as r, toDisplayString as y, createBlock as k, createCommentVNode as E, createVNode as C } from "vue";
 import "@iconify/vue";
 import { define as V } from "@wippy-fe/proxy";
-import { u as w, a as B, p as M, i as N, m as j } from "./useWidget-DkS779Qs.js";
-import { _ as x, a as S } from "./ConfigFields.vue_vue_type_script_setup_true_lang-IIsRUPkM.js";
+import { u as w, a as B, p as M, i as N, m as j } from "./useWidget-J59kHsf7.js";
+import { _ as x, a as S } from "./ConfigFields.vue_vue_type_script_setup_true_lang-DFHNQZzX.js";
 const $ = { class: "mm-stack" }, D = { class: "mm-field" }, P = {
   key: 0,
   class: "mm-hint"
 }, R = {
   key: 2,
   class: "mm-hint"
-}, U = /* @__PURE__ */ h({
+}, U = /* @__PURE__ */ b({
   __name: "MemoryCreate",
   setup(z) {
-    const u = w(), f = B(), t = m(() => M(u.value.config)), l = m(() => !!t.value.edit), p = m(() => N(t.value.config?.config_schema) ? t.value.config?.config_schema : {}), o = d("class:embed"), a = d({});
-    b(t, (e) => {
-      const { config_schema: c, ...v } = e.config || {};
-      a.value = { ...v }, e.embedding_model && (o.value = e.embedding_model), s();
+    const u = w(), _ = B(), a = c(() => M(u.value.config)), l = c(() => !!a.value.edit), f = c(() => N(a.value.config?.config_schema) ? a.value.config?.config_schema : {}), o = d("class:embed"), n = d({});
+    h(a, (e) => {
+      const { config_schema: s, ...v } = e.config || {};
+      n.value = { ...v }, e.embedding_model && (o.value = e.embedding_model), m();
     }, { immediate: !0 });
-    function s() {
-      f("config-changed", { embedding_model: o.value, config: { ...a.value } });
+    function m() {
+      _("config-changed", { embedding_model: o.value, config: { ...n.value } });
     }
-    function _(e) {
-      o.value = e, s();
+    function p(e) {
+      o.value = e, m();
     }
     function g(e) {
-      a.value = e, s();
+      n.value = e, m();
     }
-    return (e, c) => (n(), i("div", $, [
+    return (e, s) => (t(), i("div", $, [
       r("div", D, [
-        c[0] || (c[0] = r("span", { class: "mm-label" }, "Embedding model", -1)),
-        l.value ? (n(), i("span", P, y(o.value) + " — fixed when the memory was created.", 1)) : (n(), k(x, {
+        s[0] || (s[0] = r("span", {
+          id: "embedding_label",
+          class: "mm-label"
+        }, "Embedding model", -1)),
+        l.value ? (t(), i("span", P, y(o.value) + " — fixed when the memory was created.", 1)) : (t(), k(x, {
           key: 1,
+          "labelled-by": "embedding_label",
           value: o.value,
           capability: "embed",
-          onSelect: _
+          onSelect: p
         }, null, 8, ["value"])),
-        l.value ? E("", !0) : (n(), i("span", R, "Vectors are 512-dimensional; the model cannot change later."))
+        l.value ? E("", !0) : (t(), i("span", R, "Vectors are 512-dimensional; the model cannot change later."))
       ]),
       C(S, {
-        schema: p.value,
-        "model-value": a.value,
+        schema: f.value,
+        "model-value": n.value,
         "onUpdate:modelValue": g
       }, null, 8, ["schema", "model-value"])
     ]));

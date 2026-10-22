@@ -114,6 +114,17 @@ local function define_tests()
             test.is_true(judge:find("I moved to Berlin last month.", 1, true) ~= nil, judge)
         end)
 
+        test.it("brings consolidation forward when the agent deactivates, even with nothing new to capture", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            local result, err = apply(user, "deactivate", id, session, "agent-a")
+            test.is_nil(err, tostring(err))
+            test.eq(result.metadata.capture.reason, "no_new_history")
+            local runs = fixture.wait_runs(user, id, "consolidate", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+        end)
+
         test.it("captures each persisted record once across after_persist and before_step", function()
             local user = fixture.user()
             local id = fixture.memory(user)

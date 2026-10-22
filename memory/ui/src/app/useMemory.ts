@@ -61,7 +61,7 @@ export function useMemory(kbId: Ref<string>) {
   onUnmounted(() => { if (unsubscribe) unsubscribe() })
   useHostVisibilityRefresh(refresh)
 
-  return { kbId, base, status, conflicts, error, busy, revision, refresh, act }
+  return { kbId, base, status, conflicts, error, busy, revision, act }
 }
 
 export type Memory = ReturnType<typeof useMemory>

@@ -22,9 +22,9 @@ const title = computed(() => props.field.title || props.name)
     <ToggleSwitch :model-value="value === true" :aria-label="title" @update:model-value="emit('update', $event)" />
   </div>
   <div v-else class="mm-field">
-    <label class="mm-label" :for="name">{{ title }}</label>
-    <ModelPicker v-if="field.web_component === 'wc-model-picker'" :value="String(value || '')" capability="generate"
-      @select="emit('update', $event)" />
+    <label :id="`${name}_label`" class="mm-label" :for="name">{{ title }}</label>
+    <ModelPicker v-if="field.web_component === 'wc-model-picker'" :labelled-by="`${name}_label`" :value="String(value || '')"
+      capability="generate" @select="emit('update', $event)" />
     <InputNumber v-else-if="field.type === 'integer' || field.type === 'number'" :input-id="name"
       :model-value="typeof value === 'number' ? value : null" :min="field.minimum" :max="field.maximum"
       :max-fraction-digits="field.type === 'integer' ? 0 : 6" @update:model-value="$event !== null && emit('update', $event)" />

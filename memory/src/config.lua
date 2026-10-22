@@ -17,7 +17,7 @@ local function descriptor(): (any?, error?)
     return (entry :: any).meta or {}, nil
 end
 
-local function defaults(): (any?, error?)
+function M.defaults(): (any?, error?)
     local meta, err = descriptor()
     if err then return nil, err end
     local out = {}
@@ -77,7 +77,7 @@ end
 
 -- Effective configuration: stored values over engine defaults.
 function M.effective(stored: any): (any?, error?)
-    local merged, err = defaults()
+    local merged, err = M.defaults()
     if err then return nil, err end
     for key, value in pairs(stored or {}) do (merged :: any)[key] = value end
     return merged, nil

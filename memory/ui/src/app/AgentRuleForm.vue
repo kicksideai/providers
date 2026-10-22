@@ -7,7 +7,7 @@ import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import SelectButton from 'primevue/selectbutton'
 import Textarea from 'primevue/textarea'
-import { KIND_LABEL, isRecord, type MemoryKind } from './types'
+import { eventDetail, kindOptions, type MemoryKind } from './types'
 import type { Memory } from './useMemory'
 import { useWidget } from './useWidget'
 
@@ -16,7 +16,7 @@ import { useWidget } from './useWidget'
 const props = defineProps<{ memory: Memory }>()
 const emit = defineEmits<{ (e: 'done'): void }>()
 
-const KINDS = (['identity', 'rule', 'skill', 'lesson'] as MemoryKind[]).map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
+const KINDS = kindOptions(['identity', 'rule', 'skill', 'lesson'])
 const kind = ref<MemoryKind>('rule')
 const agent = ref('')
 const topic = ref('')
@@ -24,8 +24,8 @@ const text = ref('')
 const picker = useWidget('wc-agent-picker')
 
 function onAgent(event: Event) {
-  const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : {}
-  agent.value = String((Array.isArray(detail.selected) ? detail.selected : [])[0] || '')
+  const selected = eventDetail(event).selected
+  agent.value = String((Array.isArray(selected) ? selected : [])[0] || '')
 }
 
 async function add() {
@@ -39,13 +39,13 @@ async function add() {
 
 <template>
   <div class="mm-panel">
-    <div class="mm-panel-h">Add identity or rule</div>
+    <div class="mm-panel-h">Add agent memory</div>
     <div class="mm-panel-b">
       <span class="mm-hint">Identity and rules are part of the agent's instructions in every conversation.</span>
-      <SelectButton v-model="kind" :options="KINDS" option-label="label" option-value="value" :allow-empty="false" size="small" />
+      <SelectButton v-model="kind" :options="KINDS" option-label="label" option-value="value" :allow-empty="false" size="small" aria-label="Kind" />
       <div class="mm-field">
-        <span class="mm-label">Agent</span>
-        <wc-agent-picker v-if="picker.ready.value" multi="false" placeholder="Pick the agent"
+        <span id="rule_agent" class="mm-label">Agent</span>
+        <wc-agent-picker v-if="picker.ready.value" aria-labelledby="rule_agent" multi="false" placeholder="Pick the agent"
           :selected="agent ? JSON.stringify([agent]) : '[]'" @change="onAgent"></wc-agent-picker>
         <Message v-else-if="picker.failed.value" severity="error" size="small">The agent picker could not load: {{ picker.failed.value }}</Message>
       </div>

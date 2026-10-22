@@ -19,8 +19,9 @@ wippy install
 Then:
 
 1. Create a memory: **Knowledge → + Knowledge Base**, type **Memory**.
-2. Attach it to an agent: mount the **Memory** trait and select the memory, or
-   pick the **Memory** provider and the memory as the agent's memory target.
+2. Attach it to an agent: mount the **Memory** trait and select the memory.
+   For recall each step, also pick the **Memory** provider with the memory as
+   the agent's memory target.
 3. Chat. Conversations are captured into the memory; the memory page shows
    what was learned, earlier versions, conflicts to resolve, and every capture
    and consolidation run.
@@ -45,17 +46,17 @@ effect.
   memory page; everything learned from a user's conversations belongs to that
   user and is recalled only for them.
 - Capture reads the conversation since the last captured message and schedules
-  a derive run. The extraction model proposes candidate memories; each is
-  matched against existing memories and, when ambiguous, the reconcile model
-  decides whether it is new, a duplicate, an update, the same memory phrased
-  better, or a contradiction, seeing what the person said. Extraction reuses the
-  kinds and keys the person's memories already use, and a profile slot holds one
-  value: a new value replaces or contests it. Updates keep the earlier version; the later event
-  time wins; contradictions wait in a conflict group for a person.
+  a derive run. The extraction model proposes candidate memories, reusing the
+  kinds and keys the person's memories already use; each is matched against
+  existing memories and, when ambiguous, the reconcile model decides, from what
+  the person said, whether it is new, a duplicate, an update, the same memory
+  phrased better, or a contradiction. A profile slot holds one value: a new
+  value replaces or contests it. Updates keep the earlier version; the later
+  event time wins; contradictions wait in a conflict group for a person.
 - The agent's identity and rules are part of its compiled instructions; the
   user's profile and preferences are pinned when the agent activates and stay
-  byte-identical across steps, so prompt caching holds. Other memories are
-  recalled each step.
+  byte-identical across steps, so prompt caching holds. With the Memory
+  provider, other relevant memories are recalled each step.
 - Failed runs keep their reason and are listed on the memory page.
 - Forget removes an item from recall and the prompt; deleting the knowledge
   base erases the memory and its ledger. Deleting a source conversation or
@@ -65,11 +66,11 @@ See [src/README.md](src/README.md) for the ledger, tables and contracts.
 
 ### Agent tools
 
-- [`SearchMemory`](src/_index.yaml): `query`, `kb_id`, `fields`, `limit`, `cursor`.
-- [`Remember`](src/_index.yaml): `content`, `kind`, `key`, `value`, `valid_at`, `memory_id`.
+- [`SearchMemory`](src/_index.yaml): `query`, `fields`, `limit`, `cursor`.
+- [`Remember`](src/_index.yaml): `content`, `kind`, `key`, `value`, `valid_at`.
 - [`ForgetMemory`](src/_index.yaml): `item_id`, `reason`.
 
-Tools write only to memories attached to the agent and only into the calling
+Tools write only to the memory attached to the agent and only into the calling
 user's own memories.
 
 ### Host requirements

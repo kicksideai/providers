@@ -9,8 +9,6 @@ import { isRecord, parseConfig, type ConfigSchema } from './types'
 // embedding model is fixed when the memory is created; every other setting is
 // rendered from the engine's config_schema and sent back as config.
 interface CreateContext {
-  id?: string
-  kb_type?: string
   embedding_model?: string
   config?: Record<string, unknown> & { config_schema?: ConfigSchema }
   edit?: boolean
@@ -52,9 +50,9 @@ function onValues(next: Record<string, unknown>) {
 <template>
   <div class="mm-stack">
     <div class="mm-field">
-      <span class="mm-label">Embedding model</span>
+      <span id="embedding_label" class="mm-label">Embedding model</span>
       <span v-if="isEdit" class="mm-hint">{{ embeddingModel }} — fixed when the memory was created.</span>
-      <ModelPicker v-else :value="embeddingModel" capability="embed" @select="onEmbedding" />
+      <ModelPicker v-else labelled-by="embedding_label" :value="embeddingModel" capability="embed" @select="onEmbedding" />
       <span v-if="!isEdit" class="mm-hint">Vectors are 512-dimensional; the model cannot change later.</span>
     </div>
     <ConfigFields :schema="schema" :model-value="values" @update:model-value="onValues" />

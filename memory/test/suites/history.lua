@@ -89,9 +89,4 @@ function M.get_context(args: any): (any, string?)
     return { context = {}, host = args and args.host, agent = args and args.agent }, nil
 end
 
-function M.record_call(args: any): (any, string?)
-    M.record(args.host_id, args.messages)
-    return true, nil
-end
-
 return M

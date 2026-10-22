@@ -1,7 +1,7 @@
 # KickSide Memory
 
 Memory is a knowledge-base engine (`kb_type: memory`). Each memory is a
-Knowledge Base component; agents attach one or more memories.
+Knowledge Base component; an agent attaches one memory.
 
 ## Storage
 
@@ -71,7 +71,8 @@ item; deleting the knowledge base purges the ledger and every row.
 
 - Memory provider `kickside.memory:memory_provider`: pick it with the agent's
   memory target to recall current `fact`, `skill` and `lesson` items in the
-  user's and agent's scopes each step, skipping ids already injected.
+  user's and agent's scopes each step, skipping ids already injected. Recall,
+  SearchMemory and the queryable contract share `engine/recall.lua`.
 - Trait `kickside.memory:knowledge_based_memory`, context `memory_id` (earlier
   agents: `write_kb_id`, else the first of `kb_ids`): captures conversation, contributes the agent's
   identity, rules, skills and lessons to the compiled prompt, renders the

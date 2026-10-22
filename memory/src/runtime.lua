@@ -82,7 +82,7 @@ local function host_ref(host: any): (string, string)
         return "dataflow", table.concat({ types.trim(host.dataflow_id), types.trim(host.node_id),
             types.trim(host.run_id), tostring(host.iteration or 0) }, ":")
     end
-    return types.trim(host.kind), types.trim(host.id)
+    return "", ""
 end
 
 -- Run context --------------------------------------------------------------
@@ -158,10 +158,11 @@ local function capture(payload: any, to_event_id: string?): (any?, error?)
     if setting(payload, "write_enabled") == false then return { captured = false, reason = "capture_disabled" }, nil end
     local memory_id, store, store_err = M.memory(payload, component.ACCESS.WRITE)
     if store_err then return nil, store_err end
-    local cfg = (store :: any).effective
-    if cfg.capture_conversation == false and cfg.capture_experience ~= true then
-        return { captured = false, reason = "capture_disabled" }, nil
+    local function skipped(reason: string): any
+        return { captured = false, reason = reason, memory_id = memory_id }
     end
+    local cfg = (store :: any).effective
+    if cfg.capture_conversation == false and cfg.capture_experience ~= true then return skipped("capture_disabled"), nil end
     local host_kind, host_id = host_ref(payload.host)
     if host_kind == "" or host_id == "" then return nil, types.invalid("lifecycle host is required for capture") end
     local cursor, cursor_err = runs.cursor(memory_id :: string, host_kind, host_id)
@@ -185,12 +186,12 @@ local function capture(payload: any, to_event_id: string?): (any?, error?)
             through[#through + 1] = event
             if tostring(event.id) == to_event_id then reached = true; break end
         end
-        if not reached then return { captured = false, reason = "already_captured" }, nil end
+        if not reached then return skipped("already_captured"), nil end
         events = through
     end
-    if #events == 0 then return { captured = false, reason = "no_new_history" }, nil end
+    if #events == 0 then return skipped("no_new_history"), nil end
     local span = gate(events, cfg)
-    if #span == 0 then return { captured = false, reason = "nothing_to_capture" }, nil end
+    if #span == 0 then return skipped("nothing_to_capture"), nil end
     local scheduled, schedule_err = jobs.capture({
         component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
         agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
@@ -204,7 +205,7 @@ end
 
 local function sort_soul(rows: { any })
     table.sort(rows, function(a, b)
-        local ak, bk = KIND_ORDER[a.kind] or 99, KIND_ORDER[b.kind] or 99
+        local ak, bk = KIND_ORDER[a.kind], KIND_ORDER[b.kind]
         if ak ~= bk then return ak < bk end
         if a.priority ~= b.priority then return a.priority > b.priority end
         if a.key ~= b.key then return a.key < b.key end
@@ -322,7 +323,7 @@ function M.create(payload: any): (any?, error?)
         format = "text",
     })
     if prompt_err then return nil, types.failed("checkpoint source failed", prompt_err) end
-    local text = types.trim(prompt and prompt.text)
+    local text = types.trim((prompt :: any).text)
     local summary, tokens = "No working conversation state.", nil
     if text ~= "" then
         local options = type(payload.options) == "table" and payload.options or {}
@@ -334,7 +335,7 @@ function M.create(payload: any): (any?, error?)
         if summary_err then return nil, summary_err end
         summary, tokens = generated :: string, used
     end
-    local range = prompt and prompt.range or {}
+    local range = (prompt :: any).range or {}
     local captured, capture_err = capture(payload, types.trim(range.to_id) ~= "" and range.to_id or nil)
     if capture_err then return nil, capture_err end
     return { summary = summary, tokens = tokens, metadata = { source = types.SOURCE, capture = captured } }, nil
@@ -444,7 +445,7 @@ function M.remember(args: any): (any?, error?)
     local memory_id, store, err = M.memory({}, component.ACCESS.WRITE)
     if err then return tool_error(err), nil end
     local owner = ops.actor_id()
-    if owner == "" then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "remember requires an actor" }) end
+    if owner == "" then return tool_error("remember requires a signed-in user"), nil end
     local key = types.trim(input.key)
     if key == "" then key = content end
     local value = input.value ~= nil and input.value or content
@@ -472,8 +473,10 @@ function M.forget(args: any): (any?, error?)
     local item, item_err = items.get(memory_id :: string, item_id)
     if item_err then return nil, item_err end
     if not item then return tool_error("memory item not found"), nil end
-    local owned = ((item :: any).scope_family == types.SCOPE.OWNER and (item :: any).scope_id == ops.actor_id())
-        or ((item :: any).scope_family == types.SCOPE.AGENT and (item :: any).scope_id == types.trim(ctx.get("agent_id")))
+    local owned = false
+    for _, scope in ipairs(recall.visible_scopes(ctx.get("agent_id"))) do
+        if scope == (item :: any).scope_key then owned = true end
+    end
     if not owned then return tool_error("memory item is outside this conversation's scope"), nil end
     local forgotten, forget_err = ops.forget(memory_id :: string, item_id, input.reason)
     if forget_err then return nil, forget_err end

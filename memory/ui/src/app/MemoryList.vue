@@ -8,14 +8,14 @@ import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
 import AgentRuleForm from './AgentRuleForm.vue'
 import MemoryDetail from './MemoryDetail.vue'
-import { KIND_LABEL, errorText, isRecord, type MemoryItem, type MemoryKind, type MemoryStatus } from './types'
+import { KIND_LABEL, errorText, isRecord, kindOptions, type MemoryItem, type MemoryKind, type MemoryStatus } from './types'
 import type { Memory } from './useMemory'
 
 // Memories of one status and kind, with the selected one's detail or the form
-// that adds an agent identity or rule beside the list.
+// that adds an agent's identity, rule, skill or lesson beside the list.
 const props = defineProps<{ memory: Memory }>()
 
-const KINDS = (Object.keys(KIND_LABEL) as MemoryKind[]).map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
+const KINDS = kindOptions()
 const VIEWS: { value: MemoryStatus; label: string }[] = [
   { value: 'current', label: 'Current' }, { value: 'superseded', label: 'Earlier versions' }, { value: 'forgotten', label: 'Forgotten' },
 ]
@@ -49,9 +49,9 @@ function open(item: MemoryItem) {
 
 <template>
   <div class="mm-filters">
-    <SelectButton v-model="status" :options="VIEWS" option-label="label" option-value="value" :allow-empty="false" size="small" />
+    <SelectButton v-model="status" :options="VIEWS" option-label="label" option-value="value" :allow-empty="false" size="small" aria-label="Status" />
     <Select v-model="kind" :options="KINDS" option-label="label" option-value="value" size="small" placeholder="All kinds" show-clear aria-label="Kind" />
-    <Button v-if="!adding" label="Add identity or rule" size="small" severity="secondary" outlined @click="adding = true; selected = null">
+    <Button v-if="!adding" label="Add agent memory" size="small" severity="secondary" outlined @click="adding = true; selected = null">
       <template #icon><Icon icon="tabler:plus" /></template>
     </Button>
   </div>

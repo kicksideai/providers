@@ -13,14 +13,14 @@ local history = require("history")
 
 local M = { script = script, history = history }
 
-M.RUN_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.suites:history_binding" }
+local RUN_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.suites:history_binding" }
 
 -- Lifecycle payload of a session host.
 function M.payload(phase: string, session_id: string, agent_id: string, extra: any?): any
     local host = { kind = "session", session_id = session_id }
     local payload = {
         phase = phase, host = host, agent = { id = agent_id, model = "test-fast" },
-        run_context = { contract = M.RUN_CONTEXT.contract, binding = M.RUN_CONTEXT.binding, host = host },
+        run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host },
     }
     for k, v in pairs(extra or {}) do payload[k] = v end
     return payload
@@ -31,7 +31,7 @@ function M.agent_context(memory_id: string, session_id: string, agent_id: string
     local host = { kind = "session", session_id = session_id }
     local context = {
         memory_id = memory_id, agent_id = agent_id,
-        agent_run = { host = host, agent = { id = agent_id }, run_context = { contract = M.RUN_CONTEXT.contract, binding = M.RUN_CONTEXT.binding, host = host } },
+        agent_run = { host = host, agent = { id = agent_id }, run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host } },
     }
     for k, v in pairs(extra or {}) do context[k] = v end
     return context
@@ -75,7 +75,7 @@ function M.db(): any
     return db
 end
 
-function M.ensure_user(user_id: string)
+local function ensure_user(user_id: string)
     local db = M.db()
     local sqlite = db:type() == sql.type.SQLITE
     local email = user_id:gsub("[^%w_%-]", "_") .. "@memory.test"
@@ -94,7 +94,7 @@ end
 
 function M.user(prefix: string?): string
     local id = (prefix or "memuser") .. "_" .. uuid.v7():gsub("%-", ""):sub(-12)
-    M.ensure_user(id)
+    ensure_user(id)
     return id
 end
 
@@ -157,7 +157,7 @@ function M.delete_memory(user_id: string, component_id: string): (any, any)
 end
 
 -- Reconcile options for owner-scoped writes of a user.
-function M.opts(component_id: string, user_id: string, extra: any?): any
+local function opts(component_id: string, user_id: string, extra: any?): any
     local opts = {
         component_id = component_id, embedding_model = "test-embed", judge_model = "test-fast",
         scope_family = "owner", scope_id = user_id, source = "capture", host_kind = "session", host_id = "s-test",
@@ -168,7 +168,7 @@ end
 
 -- Writes candidates through the reconcile path; a failed write fails the test.
 function M.remember(user_id: string, component_id: string, candidates: { any }, idempotency: string, extra: any?): (any, any)
-    local result, err = M.op(user_id, "remember", { candidates = candidates, opts = M.opts(component_id, user_id, extra), idempotency = idempotency })
+    local result, err = M.op(user_id, "remember", { candidates = candidates, opts = opts(component_id, user_id, extra), idempotency = idempotency })
     if err then error("remember failed: " .. tostring(err)) end
     return result, nil
 end

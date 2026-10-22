@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import Message from 'primevue/message'
 import ToggleSwitch from 'primevue/toggleswitch'
-import { isRecord, parseConfig, type MemoryEvents } from './types'
+import { eventDetail, parseConfig, type MemoryEvents } from './types'
 import { useWidget } from './useWidget'
 
 // Memory capability on an agent: which memory it uses and whether it records
@@ -36,8 +36,8 @@ function publish(): void {
 
 // wc-kb-picker selects several; the newest pick is the memory.
 function onPicked(event: Event): void {
-  const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : {}
-  const ids = Array.isArray(detail.kb_ids) ? detail.kb_ids : []
+  const picked = eventDetail(event).kb_ids
+  const ids = Array.isArray(picked) ? picked : []
   memoryId.value = String(ids[ids.length - 1] || '')
   publish()
 }
@@ -46,8 +46,8 @@ function onPicked(event: Event): void {
 <template>
   <div class="mm-stack">
     <div class="mm-field">
-      <span class="mm-label">Memory</span>
-      <wc-kb-picker v-if="picker.ready.value" :config="pickerConfig" @config-changed="onPicked"></wc-kb-picker>
+      <span id="trait_memory" class="mm-label">Memory</span>
+      <wc-kb-picker v-if="picker.ready.value" aria-labelledby="trait_memory" :config="pickerConfig" @config-changed="onPicked"></wc-kb-picker>
       <Message v-else-if="picker.failed.value" severity="error" size="small">The knowledge base picker could not load: {{ picker.failed.value }}</Message>
       <span class="mm-hint">Pick a Memory knowledge base. Models, limits and cadence are set on the memory itself.</span>
     </div>

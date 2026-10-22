@@ -1,5 +1,5 @@
 import { openBlock as l, createElementBlock as p, mergeProps as d, createElementVNode as m, renderSlot as b, createTextVNode as yt, toDisplayString as S, resolveComponent as T, resolveDirective as Tt, withDirectives as vt, createBlock as y, resolveDynamicComponent as A, withCtx as M, createCommentVNode as x, normalizeClass as V, createVNode as L, Transition as Mt, vShow as Vt, normalizeStyle as Lt, toHandlers as G, defineComponent as rt, unref as I, computed as q, Fragment as ct, renderList as pt } from "vue";
-import { h as R, B as D, H as Z, w as Q, e as it, f as B, R as xt, G as Ft, r as jt, N as Et, O as bt, b as Ot, s as Ut, c as Nt } from "./useWidget-DkS779Qs.js";
+import { j as R, B as D, O as Z, x as Q, f as it, g as B, R as xt, H as Ft, t as jt, P as Et, U as bt, b as Ot, s as Ut, c as Nt } from "./useWidget-J59kHsf7.js";
 var wt = {
   name: "MinusIcon",
   extends: R
@@ -3136,11 +3136,12 @@ function Pe(t, n, e, o, i, r) {
   }, r.attrs), null, 16, Be);
 }
 Dt.render = Pe;
-const Ae = ["value", "capability"], De = /* @__PURE__ */ rt({
+const Ae = ["aria-labelledby", "value", "capability"], De = /* @__PURE__ */ rt({
   __name: "ModelPicker",
   props: {
     value: {},
-    capability: {}
+    capability: {},
+    labelledBy: {}
   },
   emits: ["select"],
   setup(t, { emit: n }) {
@@ -3151,6 +3152,7 @@ const Ae = ["value", "capability"], De = /* @__PURE__ */ rt({
     }
     return (r, a) => I(o).ready.value ? (l(), p("wc-model-picker", {
       key: 0,
+      "aria-labelledby": t.labelledBy,
       value: t.value,
       capability: t.capability,
       onSelect: i
@@ -3174,7 +3176,7 @@ const Ae = ["value", "capability"], De = /* @__PURE__ */ rt({
 }, Le = {
   key: 1,
   class: "mm-field"
-}, Fe = ["for"], je = {
+}, Fe = ["id", "for"], je = {
   key: 4,
   class: "mm-hint"
 }, mt = /* @__PURE__ */ rt({
@@ -3199,15 +3201,17 @@ const Ae = ["value", "capability"], De = /* @__PURE__ */ rt({
       }, null, 8, ["model-value", "aria-label"])
     ])) : (l(), p("div", Le, [
       m("label", {
+        id: `${t.name}_label`,
         class: "mm-label",
         for: t.name
       }, S(i.value), 9, Fe),
       t.field.web_component === "wc-model-picker" ? (l(), y(De, {
         key: 0,
+        "labelled-by": `${t.name}_label`,
         value: String(t.value || ""),
         capability: "generate",
         onSelect: a[1] || (a[1] = (u) => o("update", u))
-      }, null, 8, ["value"])) : t.field.type === "integer" || t.field.type === "number" ? (l(), y(I(At), {
+      }, null, 8, ["labelled-by", "value"])) : t.field.type === "integer" || t.field.type === "number" ? (l(), y(I(At), {
         key: 1,
         "input-id": t.name,
         "model-value": typeof t.value == "number" ? t.value : null,
@@ -3281,4 +3285,4 @@ export {
   Dt as e,
   Ct as s
 };
-//# sourceMappingURL=ConfigFields.vue_vue_type_script_setup_true_lang-IIsRUPkM.js.map
+//# sourceMappingURL=ConfigFields.vue_vue_type_script_setup_true_lang-DFHNQZzX.js.map

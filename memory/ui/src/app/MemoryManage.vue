@@ -33,7 +33,7 @@ const failedRuns = computed(() => (memory.status.value?.runs || []).filter((run)
         <Tab value="activity">Activity <Tag v-if="failedRuns" class="kx-tag-sm" severity="danger" :value="`${failedRuns} failed`" /></Tab>
         <Tab value="settings">Settings</Tab>
       </TabList>
-      <Message v-if="memory.error.value" severity="error" class="mm-filters">{{ memory.error.value }}</Message>
+      <Message v-if="memory.error.value" severity="error" class="mm-error">{{ memory.error.value }}</Message>
       <TabPanels>
         <TabPanel value="memories"><MemoryList :memory="memory" /></TabPanel>
         <TabPanel value="conflicts"><ConflictList :memory="memory" /></TabPanel>

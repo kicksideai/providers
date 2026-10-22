@@ -379,7 +379,6 @@ entries:
             minLength: 1
             title: Extraction model
             description: Model that reads conversations and picks what to remember. Consolidation uses it too.
-            role: picker
             web_component: wc-model-picker
           judge_model:
             order: 2
@@ -387,7 +386,6 @@ entries:
             minLength: 1
             title: Reconcile model
             description: Model that decides whether a new memory is new, a duplicate, an update or a contradiction.
-            role: picker
             web_component: wc-model-picker
           extraction_instructions:
             group: advanced
@@ -449,7 +447,7 @@ entries:
       name: runtime
       comment: Agent memory runtime - capture, pinned soul, recall, checkpoint and memory tools.
     source: file://runtime.lua
-    modules: &runtime_modules [ctx, contract, security, json]
+    modules: &runtime_modules [ctx, contract, security]
     imports: &runtime_imports
       component: kickside.component:component
       types: kickside.memory:types
@@ -664,7 +662,7 @@ entries:
             web_component: wc-kb-picker
           write_enabled:
             type: boolean
-            title: Capture conversations
+            title: Remember conversations
             description: Off keeps the memory read-only for this agent.
             role: value
           read_enabled:

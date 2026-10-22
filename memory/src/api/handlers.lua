@@ -181,8 +181,8 @@ end
 function M.status()
     local res, _req, id, store = open(component.ACCESS.READ)
     if not res then return end
-    local effective, cfg_err = config.effective((store :: any).config)
-    if cfg_err then return fail(res, cfg_err) end
+    local defaults, defaults_err = config.defaults()
+    if defaults_err then return fail(res, defaults_err) end
     local schema, schema_err = config.schema()
     if schema_err then return fail(res, schema_err) end
     local counts, count_err = items.counts(id :: string)
@@ -197,8 +197,8 @@ function M.status()
         }
     end
     reply(res, http.STATUS.OK, {
-        success = true, memory_id = id, embedding_model = (store :: any).embedding_model,
-        config = effective, config_schema = schema, counts = counts, runs = view,
+        success = true, config = (store :: any).config, defaults = defaults, config_schema = schema,
+        counts = counts, runs = view,
     })
 end
 
