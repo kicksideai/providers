@@ -6,18 +6,16 @@ passes an open connection and a table spec.
 
 ## Table spec
 
-| Key | Meaning |
-|---|---|
-| `vectors` | Vector table: a `vec0` virtual table on SQLite, a table with a `vector(512)` column on PostgreSQL. |
-| `vector_key` | Column in `vectors` that references the row id. |
-| `vector_column` | Vector column, default `embedding`. |
-| `rows` | Row table that holds the searchable content. |
-| `row_key` | Row id column. |
-| `partition` | Column present on both tables that scopes every search (a `vec0` partition key on SQLite). |
-| `columns` | Row columns returned with each hit. |
-| `fts` / `fts_key` | SQLite `fts5` table and its row-id column. |
-| `tsvector` | PostgreSQL `tsvector` column on `rows`. |
-| `json_columns` | Row columns decoded from JSON text. |
+- `vectors`: Vector table: a `vec0` virtual table on SQLite, a table with a `vector(512)` column on PostgreSQL.
+- `vector_key`: Column in `vectors` that references the row id.
+- `vector_column`: Vector column, default `embedding`.
+- `rows`: Row table that holds the searchable content.
+- `row_key`: Row id column.
+- `partition`: Column present on both tables that scopes every search (a `vec0` partition key on SQLite).
+- `columns`: Row columns returned with each hit.
+- `fts` / `fts_key`: SQLite `fts5` table and its row-id column.
+- `tsvector`: PostgreSQL `tsvector` column on `rows`.
+- `json_columns`: Row columns decoded from JSON text.
 
 ## Functions
 
