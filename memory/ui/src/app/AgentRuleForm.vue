@@ -1,0 +1,61 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { Icon } from '@iconify/vue'
+import { api } from '@wippy-fe/proxy'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+import Message from 'primevue/message'
+import SelectButton from 'primevue/selectbutton'
+import Textarea from 'primevue/textarea'
+import { KIND_LABEL, isRecord, type MemoryKind } from './types'
+import type { Memory } from './useMemory'
+import { useWidget } from './useWidget'
+
+// Adds an identity, rule, skill or lesson for one agent; identity and rules are
+// part of that agent's instructions in every conversation.
+const props = defineProps<{ memory: Memory }>()
+const emit = defineEmits<{ (e: 'done'): void }>()
+
+const KINDS = (['identity', 'rule', 'skill', 'lesson'] as MemoryKind[]).map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
+const kind = ref<MemoryKind>('rule')
+const agent = ref('')
+const topic = ref('')
+const text = ref('')
+const picker = useWidget('wc-agent-picker')
+
+function onAgent(event: Event) {
+  const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : {}
+  agent.value = String((Array.isArray(detail.selected) ? detail.selected : [])[0] || '')
+}
+
+async function add() {
+  const content = text.value.trim()
+  const added = await props.memory.act(() => api.post(`${props.memory.base.value}/items`, {
+    kind: kind.value, scope_family: 'agent', scope_id: agent.value, key: topic.value.trim() || content, content,
+  }))
+  if (added) emit('done')
+}
+</script>
+
+<template>
+  <div class="mm-panel">
+    <div class="mm-panel-h">Add identity or rule</div>
+    <div class="mm-panel-b">
+      <span class="mm-hint">Identity and rules are part of the agent's instructions in every conversation.</span>
+      <SelectButton v-model="kind" :options="KINDS" option-label="label" option-value="value" :allow-empty="false" size="small" />
+      <div class="mm-field">
+        <span class="mm-label">Agent</span>
+        <wc-agent-picker v-if="picker.ready.value" multi="false" placeholder="Pick the agent"
+          :selected="agent ? JSON.stringify([agent]) : '[]'" @change="onAgent"></wc-agent-picker>
+        <Message v-else-if="picker.failed.value" severity="error" size="small">The agent picker could not load: {{ picker.failed.value }}</Message>
+      </div>
+      <div class="mm-field"><label class="mm-label" for="rule_topic">Topic</label><InputText id="rule_topic" v-model="topic" placeholder="e.g. tone" /></div>
+      <div class="mm-field"><label class="mm-label" for="rule_text">Text</label>
+        <Textarea id="rule_text" v-model="text" auto-resize placeholder="e.g. Answer in short bullet points." /></div>
+      <div class="mm-actions">
+        <Button label="Add" size="small" :disabled="memory.busy.value || !text.trim() || !agent" @click="add"><template #icon><Icon icon="tabler:plus" /></template></Button>
+        <Button label="Cancel" size="small" severity="secondary" text @click="emit('done')" />
+      </div>
+    </div>
+  </div>
+</template>

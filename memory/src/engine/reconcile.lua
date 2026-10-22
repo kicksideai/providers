@@ -20,7 +20,6 @@ type Candidate = {
     event_id: string?,
     valid_at: string?,
     confidence: number?,
-    priority: number?,
 }
 
 type Options = {
@@ -63,10 +62,6 @@ local function provenance_of(opts: Options, candidate: Candidate): { any }
     local event_id = types.trim(candidate.event_id)
     if event_id == "" or not opts.host_kind then return {} end
     return { { host_kind = opts.host_kind, host_id = opts.host_id or "", event_id = event_id } }
-end
-
-local function later_or_equal(a: string, b: string): boolean
-    return a >= b
 end
 
 -- Returns { events, vectors = { [item_id] = vector }, stats }.
@@ -198,13 +193,13 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
                     events[#events + 1] = { type = types.EVENT.ITEM_RESTORED, body = {
                         item_id = item_id, actor = opts.source, reason = "restated",
                     } }
-                    state.valid_at = later_or_equal(valid_at, existing.valid_at or "") and valid_at or existing.valid_at
+                    state.valid_at = valid_at >= (existing.valid_at or "") and valid_at or existing.valid_at
                     stats.restored = stats.restored + 1
                 else
                     events[#events + 1] = { type = types.EVENT.ITEM_ADDED, body = {
                         item_id = item_id, kind = candidate.kind, scope_family = opts.scope_family, scope_id = opts.scope_id,
                         key = key, value = value, content = candidate.content, valid_at = valid_at, source = opts.source,
-                        provenance = provenance, confidence = candidate.confidence, priority = candidate.priority or 0,
+                        provenance = provenance, confidence = candidate.confidence, priority = 0,
                     } }
                     vectors[item_id] = vector
                     stats.added = stats.added + 1
@@ -216,7 +211,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
                     for _, target in ipairs(targets) do
                         if (target.valid_at or "") > (newest.valid_at or "") then newest = target end
                     end
-                    if later_or_equal(state.valid_at, newest.valid_at or "") then
+                    if state.valid_at >= (newest.valid_at or "") then
                         for _, target in ipairs(targets) do
                             events[#events + 1] = { type = types.EVENT.ITEM_SUPERSEDED, body = {
                                 item_id = target.id, by = item_id, invalid_at = state.valid_at,

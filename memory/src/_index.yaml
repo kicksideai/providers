@@ -207,7 +207,6 @@ entries:
           - type: kickside.memory.events:item.forgotten
           - type: kickside.memory.events:item.restored
           - type: kickside.memory.events:provenance.added
-          - type: kickside.memory.events:provenance.removed
           - type: kickside.memory.events:capture.advanced
           - type: kickside.memory.events:consolidation.completed
           - type: kickside.knowledge.events:content.upserted
@@ -356,11 +355,9 @@ entries:
               - type: kickside.memory.events:item.forgotten
               - type: kickside.memory.events:item.restored
               - type: kickside.memory.events:provenance.added
-              - type: kickside.memory.events:provenance.removed
               - type: kickside.memory.events:capture.advanced
               - type: kickside.memory.events:consolidation.completed
               - type: kickside.knowledge.events:content.upserted
-              - type: kickside.knowledge.events:content.deleted
       default_config:
         extraction_model: class:fast
         judge_model: class:fast
@@ -465,7 +462,7 @@ entries:
       memory_writer: kickside.memory.engine:writer
       memory_ledger: kickside.memory.engine:ledger
       memory_ops: kickside.memory.engine:ops
-      memory_bindings: kickside.memory.engine:bindings
+      memory_recall: kickside.memory.engine:recall
 
   - name: runtime_lifecycle
     kind: function.lua

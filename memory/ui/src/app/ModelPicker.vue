@@ -1,24 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
 import Message from 'primevue/message'
-import { loadByTagName } from '@wippy-fe/proxy'
+import { useWidget } from './useWidget'
 
-// The shared model picker (wc-model-picker). A picker that cannot load is
-// reported, not replaced by a free-text field.
+// The shared model picker (wc-model-picker).
 defineProps<{ value: string; capability: 'embed' | 'generate' }>()
 const emit = defineEmits<{ (e: 'select', v: string): void }>()
-const ready = ref(!!customElements.get('wc-model-picker'))
-const failed = ref('')
-
-onMounted(async () => {
-  if (ready.value) return
-  try {
-    await loadByTagName('wc-model-picker', { timeoutMs: 8000 })
-    ready.value = true
-  } catch (err) {
-    failed.value = err instanceof Error ? err.message : String(err)
-  }
-})
+const picker = useWidget('wc-model-picker')
 
 function onSelect(event: Event) {
   const detail: unknown = event instanceof CustomEvent ? event.detail : undefined
@@ -27,6 +14,6 @@ function onSelect(event: Event) {
 </script>
 
 <template>
-  <wc-model-picker v-if="ready" :value="value" :capability="capability" @select="onSelect"></wc-model-picker>
-  <Message v-else-if="failed" severity="error" size="small">The model picker could not load: {{ failed }}</Message>
+  <wc-model-picker v-if="picker.ready.value" :value="value" :capability="capability" @select="onSelect"></wc-model-picker>
+  <Message v-else-if="picker.failed.value" severity="error" size="small">The model picker could not load: {{ picker.failed.value }}</Message>
 </template>

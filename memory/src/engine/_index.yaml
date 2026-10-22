@@ -60,6 +60,18 @@ entries:
       memory_models: kickside.memory.engine:models
       memory_writer: kickside.memory.engine:writer
 
+  - name: recall
+    kind: library.lua
+    meta:
+      comment: Scoped hybrid search of current memories for recall, SearchMemory and the queryable contract.
+    source: file://recall.lua
+    imports:
+      types: kickside.memory:types
+      memory_stores: kickside.memory.persist:stores
+      memory_items: kickside.memory.persist:items
+      memory_models: kickside.memory.engine:models
+      memory_ops: kickside.memory.engine:ops
+
   - name: jobs
     kind: library.lua
     meta:
@@ -82,13 +94,12 @@ entries:
     meta:
       comment: Store lifecycle, embeddable, queryable, deletable and maintainable implementations.
     source: file://bindings.lua
-    modules: [ctx, security]
+    modules: &binding_modules [ctx]
     imports: &binding_imports
       types: kickside.memory:types
       memory_config: kickside.memory:config
       memory_stores: kickside.memory.persist:stores
-      memory_items: kickside.memory.persist:items
-      memory_models: kickside.memory.engine:models
+      memory_recall: kickside.memory.engine:recall
       memory_runs: kickside.memory.persist:runs
       memory_jobs: kickside.memory.engine:jobs
       thread_ingest: kickside.knowledge.injection:thread_ingest
@@ -157,13 +168,13 @@ entries:
     imports: *jobs_imports
 
   # Contract methods.
-  - { name: create_store, kind: function.lua, meta: { comment: kb_store_lifecycle create_store }, source: file://bindings.lua, method: create_store, modules: [ctx, security], imports: *binding_imports }
-  - { name: get_store, kind: function.lua, meta: { comment: kb_store_lifecycle get_store }, source: file://bindings.lua, method: get_store, modules: [ctx, security], imports: *binding_imports }
-  - { name: update_config, kind: function.lua, meta: { comment: kb_store_lifecycle update_config }, source: file://bindings.lua, method: update_config, modules: [ctx, security], imports: *binding_imports }
-  - { name: delete_store, kind: function.lua, meta: { comment: kb_store_lifecycle delete_store }, source: file://bindings.lua, method: delete_store, modules: [ctx, security], imports: *binding_imports }
-  - { name: delete_func, kind: function.lua, meta: { comment: deletable delete }, source: file://bindings.lua, method: delete, modules: [ctx, security], imports: *binding_imports }
-  - { name: embed_func, kind: function.lua, meta: { comment: embeddable embed_content }, source: file://bindings.lua, method: embed_content, modules: [ctx, security], imports: *binding_imports }
-  - { name: query_func, kind: function.lua, meta: { comment: queryable query }, source: file://bindings.lua, method: query, modules: [ctx, security], imports: *binding_imports }
-  - { name: schedule_resummarize_func, kind: function.lua, meta: { comment: maintainable schedule_resummarize - brings consolidation forward }, source: file://bindings.lua, method: schedule_resummarize, modules: [ctx, security], imports: *binding_imports }
-  - { name: schedule_reembed_func, kind: function.lua, meta: { comment: maintainable schedule_reembed }, source: file://bindings.lua, method: schedule_reembed, modules: [ctx, security], imports: *binding_imports }
-  - { name: maintenance_status_func, kind: function.lua, meta: { comment: maintainable maintenance_status }, source: file://bindings.lua, method: maintenance_status, modules: [ctx, security], imports: *binding_imports }
+  - { name: create_store, kind: function.lua, meta: { comment: kb_store_lifecycle create_store }, source: file://bindings.lua, method: create_store, modules: *binding_modules, imports: *binding_imports }
+  - { name: get_store, kind: function.lua, meta: { comment: kb_store_lifecycle get_store }, source: file://bindings.lua, method: get_store, modules: *binding_modules, imports: *binding_imports }
+  - { name: update_config, kind: function.lua, meta: { comment: kb_store_lifecycle update_config }, source: file://bindings.lua, method: update_config, modules: *binding_modules, imports: *binding_imports }
+  - { name: delete_store, kind: function.lua, meta: { comment: kb_store_lifecycle delete_store }, source: file://bindings.lua, method: delete_store, modules: *binding_modules, imports: *binding_imports }
+  - { name: delete_func, kind: function.lua, meta: { comment: deletable delete }, source: file://bindings.lua, method: delete, modules: *binding_modules, imports: *binding_imports }
+  - { name: embed_func, kind: function.lua, meta: { comment: embeddable embed_content }, source: file://bindings.lua, method: embed_content, modules: *binding_modules, imports: *binding_imports }
+  - { name: query_func, kind: function.lua, meta: { comment: queryable query }, source: file://bindings.lua, method: query, modules: *binding_modules, imports: *binding_imports }
+  - { name: schedule_resummarize_func, kind: function.lua, meta: { comment: maintainable schedule_resummarize - brings consolidation forward }, source: file://bindings.lua, method: schedule_resummarize, modules: *binding_modules, imports: *binding_imports }
+  - { name: schedule_reembed_func, kind: function.lua, meta: { comment: maintainable schedule_reembed }, source: file://bindings.lua, method: schedule_reembed, modules: *binding_modules, imports: *binding_imports }
+  - { name: maintenance_status_func, kind: function.lua, meta: { comment: maintainable maintenance_status }, source: file://bindings.lua, method: maintenance_status, modules: *binding_modules, imports: *binding_imports }

@@ -71,6 +71,9 @@ local function messages(system: string, user: string): { any }
     }
 end
 
+-- Kinds a model may propose; identity and rules are set by people.
+local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PROFILE_SLOT, types.KIND.SKILL, types.KIND.LESSON }
+
 local function candidate_schema(event_ids: { string }?): any
     local event_id: any = { type = "string" }
     if event_ids then event_id = { type = "string", enum = event_ids } end
@@ -86,7 +89,7 @@ local function candidate_schema(event_ids: { string }?): any
                     additionalProperties = false,
                     required = { "kind", "key", "value", "content", "event_id", "valid_at", "confidence" },
                     properties = {
-                        kind = { type = "string", enum = { "fact", "preference", "profile_slot", "skill", "lesson" } },
+                        kind = { type = "string", enum = CANDIDATE_KINDS },
                         key = { type = "string" },
                         value = { type = "string" },
                         content = { type = "string" },
@@ -209,7 +212,6 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
 end
 
 function M.embed(model: string, texts: { string }): (any?, error?)
-    if #texts == 0 then return {}, nil end
     local response, err = llm.embed(texts, { model = model, dimensions = types.EMBEDDING_DIMENSIONS })
     if err then return nil, wrap("memory embedding", err) end
     local vectors = response and response.result

@@ -55,13 +55,6 @@ local function check_value(key: string, spec: any, value: any): error?
             return types.invalid("config." .. key .. " must be at most " .. tostring(spec.maximum))
         end
     end
-    if type(spec.enum) == "table" then
-        local allowed = false
-        for _, option in ipairs(spec.enum) do
-            if option == value then allowed = true end
-        end
-        if not allowed then return types.invalid("config." .. key .. " is not an allowed value") end
-    end
     return nil
 end
 
@@ -86,7 +79,7 @@ end
 function M.effective(stored: any): (any?, error?)
     local merged, err = defaults()
     if err then return nil, err end
-    for key, value in pairs(type(stored) == "table" and stored or {}) do (merged :: any)[key] = value end
+    for key, value in pairs(stored or {}) do (merged :: any)[key] = value end
     return merged, nil
 end
 

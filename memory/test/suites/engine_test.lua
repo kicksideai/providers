@@ -74,6 +74,31 @@ local function define_tests()
             test.eq(item.version, 1)
         end)
 
+        test.it("edits a memory as a new version and keeps a value that is not its text unless a new value is given", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local rule = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", content = "Answer briefly.",
+            } })
+            fixture.settle(user, id)
+            local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = rule.item_id, fields = { content = "Answer in bullet points." } })
+            test.is_nil(edit_err, tostring(edit_err))
+            test.eq(edited.superseded, rule.item_id)
+            local city = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "profile_slot", scope_family = "owner", key = "home_city", value = "Berlin", content = "The user lives in Berlin.",
+            } })
+            fixture.settle(user, id)
+            local _, content_only_err = fixture.op(user, "edit", { component_id = id, item_id = city.item_id, fields = { content = "The user lives in Berlin, Germany." } })
+            test.not_nil(content_only_err)
+            local moved, value_err = fixture.op(user, "edit", { component_id = id, item_id = city.item_id,
+                fields = { value = "Munich", content = "The user lives in Munich." } })
+            test.is_nil(value_err, tostring(value_err))
+            fixture.settle(user, id)
+            local current = fixture.op(user, "get", { component_id = id, item_id = moved.item_id })
+            test.eq(current.value, "Munich")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = edited.item_id }).value, "Answer in bullet points.")
+        end)
+
         test.it("supersedes by event time: the later statement is current, a late older one is history", function()
             local user = fixture.user()
             local id = fixture.memory(user)

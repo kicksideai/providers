@@ -186,28 +186,6 @@ entries:
     - host_kind
     - host_id
     - event_id
-- name: provenance.removed
-  kind: registry.entry
-  meta:
-    type: kickside.core.threads.event
-    comment: A host record no longer supports an item.
-  schema:
-    $schema: https://json-schema.org/draft/2020-12/schema
-    type: object
-    properties:
-      item_id:
-        type: string
-      host_kind:
-        type: string
-      host_id:
-        type: string
-      event_id:
-        type: string
-    required:
-    - item_id
-    - host_kind
-    - host_id
-    - event_id
 - name: capture.advanced
   kind: registry.entry
   meta:

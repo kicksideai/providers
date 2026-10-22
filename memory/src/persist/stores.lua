@@ -14,7 +14,6 @@ local M = {}
 local PURGE_PAGE = 200
 
 local function decode_row(row: any): any
-    row.config_snapshot = row.config
     row.config = types.decode_json(row.config) or {}
     return row
 end
@@ -29,7 +28,7 @@ function M.create(component_id: string, kb_type: string, embedding_model: string
         end
         local _, err = tx:execute(
             "INSERT INTO kickside_memory_stores (component_id, kb_type, embedding_model, config, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $5)",
-            { component_id, kb_type, embedding_model, json.encode(config or {}), now })
+            { component_id, kb_type, embedding_model, json.encode(config), now })
         if err then return nil, types.failed("memory store insert failed", err) end
         return { success = true, store_id = component_id }, nil
     end)
@@ -38,7 +37,7 @@ end
 function M.get(component_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(
-            "SELECT component_id, component_id AS id, kb_type, embedding_model, config, created_at, updated_at FROM kickside_memory_stores WHERE component_id = $1",
+            "SELECT component_id, kb_type, embedding_model, config, created_at, updated_at FROM kickside_memory_stores WHERE component_id = $1",
             { component_id })
         if err then return nil, types.failed("memory store read failed", err) end
         if not rows or #rows == 0 then return nil, types.not_found("memory store not found for component " .. component_id) end
@@ -50,7 +49,7 @@ function M.update_config(component_id: string, config: any): (any?, error?)
     return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
         local _, err = tx:execute(
             "UPDATE kickside_memory_stores SET config = $1, updated_at = $2 WHERE component_id = $3",
-            { json.encode(config or {}), types.now(), component_id })
+            { json.encode(config), types.now(), component_id })
         if err then return nil, types.failed("memory store config update failed", err) end
         return { success = true }, nil
     end)

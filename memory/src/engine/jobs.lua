@@ -21,9 +21,6 @@ local JOB = {
     consolidate = "kickside.memory.engine:consolidate_worker",
     reembed = "kickside.memory.engine:reembed_worker",
 }
-
--- Most keys an extraction is offered for reuse.
-local KEY_LIMIT = 200
 local AUTHORIZED = {
     derive = "kickside.memory.engine:derive_authorized",
     consolidate = "kickside.memory.engine:consolidate_authorized",
@@ -32,6 +29,8 @@ local AUTHORIZED = {
 
 local DERIVE_ATTEMPTS = 3
 local REEMBED_PAGE = 64
+-- Most keys an extraction is offered for reuse.
+local KEY_LIMIT = 200
 
 local function frozen_identity(): (any?, any?, error?)
     local identity, err = execution_identity.capture()
@@ -52,7 +51,7 @@ local function enqueue(run: any, identity: any, run_type: string, extra: any): (
         concurrency_key = "kickside.memory:" .. run.component_id,
         immutable_payload = { component_id = run.component_id, run_id = run.id, run_type = run_type },
     }
-    for k, v in pairs(extra or {}) do params[k] = v end
+    for k, v in pairs(extra) do params[k] = v end
     local queued, err = jobs.enqueue(params)
     if err or type(queued) ~= "table" or type(queued.id) ~= "string" then
         local reason = "the memory run could not be scheduled: " .. tostring(err or "the queue accepted no job")
@@ -65,8 +64,21 @@ local function enqueue(run: any, identity: any, run_type: string, extra: any): (
     return queued, nil
 end
 
-local function run_id_for(parts: { string }): (string?, error?)
-    return types.sha256(table.concat(parts, "|"))
+-- A derive run over a span, under the caller's frozen identity; its id is
+-- derived from the memory, host and event range so a span schedules once.
+local function new_derive_run(component_id: string, host_kind: string, host_id: string, agent_id: string?,
+    from_event_id: string, to_event_id: string, span: { any }): (any?, any?, error?)
+    local identity, row, id_err = frozen_identity()
+    if id_err then return nil, nil, id_err end
+    local run_id, hash_err = types.sha256(table.concat({ "derive", component_id, host_kind, host_id, from_event_id, to_event_id }, "|"))
+    if hash_err then return nil, nil, hash_err end
+    return {
+        id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
+        host_kind = host_kind, host_id = host_id, agent_id = agent_id,
+        from_event_id = from_event_id, to_event_id = to_event_id,
+        input = { span = span, owner_id = (identity :: any).principal.id },
+        actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
+    }, identity, nil
 end
 
 type Capture = {
@@ -83,44 +95,27 @@ type Capture = {
 -- Returns { scheduled, run_id } or { scheduled = false } when another capture of
 -- the same span already advanced the cursor.
 function M.capture(capture: Capture): (any?, error?)
-    local identity, row, id_err = frozen_identity()
-    if id_err then return nil, id_err end
-    local run_id, hash_err = run_id_for({ "derive", capture.component_id, capture.host_kind, capture.host_id,
-        capture.from_event_id, capture.to_event_id })
-    if hash_err then return nil, hash_err end
-    local run = {
-        id = run_id :: string, component_id = capture.component_id, run_type = types.RUN_TYPE.DERIVE,
-        host_kind = capture.host_kind, host_id = capture.host_id, agent_id = capture.agent_id,
-        from_event_id = capture.from_event_id, to_event_id = capture.to_event_id,
-        input = { span = capture.span, owner_id = (identity :: any).principal.id, source = types.ITEM_SOURCE.CAPTURE },
-        actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
-    }
-    local advanced, err = runs.capture(run, capture.from_event_id)
+    local run, identity, err = new_derive_run(capture.component_id, capture.host_kind, capture.host_id, capture.agent_id,
+        capture.from_event_id, capture.to_event_id, capture.span)
     if err then return nil, err end
+    local advanced, advance_err = runs.capture(run, capture.from_event_id)
+    if advance_err then return nil, advance_err end
     if not (advanced :: any).advanced then return { scheduled = false }, nil end
     local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS })
     if enqueue_err then return nil, enqueue_err end
-    return { scheduled = true, run_id = run.id }, nil
+    return { scheduled = true, run_id = (run :: any).id }, nil
 end
 
 -- Schedules a derive run over ingested content (no capture cursor).
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
-    local identity, row, id_err = frozen_identity()
-    if id_err then return nil, id_err end
-    local run_id, hash_err = run_id_for({ "derive", component_id, "content", source_event_id })
-    if hash_err then return nil, hash_err end
-    local run = {
-        id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
-        host_kind = "content", host_id = component_id, from_event_id = source_event_id, to_event_id = source_event_id,
-        input = { span = span, owner_id = (identity :: any).principal.id, source = types.ITEM_SOURCE.CAPTURE },
-        actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
-    }
-    local created_run, created, err = runs.create(run)
+    local run, identity, err = new_derive_run(component_id, "content", component_id, nil, source_event_id, source_event_id, span)
     if err then return nil, err end
+    local created_run, created, create_err = runs.create(run)
+    if create_err then return nil, create_err end
     if not created then return { scheduled = false, run_id = (created_run :: any).id }, nil end
     local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS })
     if enqueue_err then return nil, enqueue_err end
-    return { scheduled = true, run_id = run.id }, nil
+    return { scheduled = true, run_id = (run :: any).id }, nil
 end
 
 -- The consolidation slot of a memory: one stable run and job that re-arms on
@@ -159,7 +154,7 @@ end
 function M.schedule_reembed(component_id: string): (any?, error?)
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, id_err end
-    local run_id, hash_err = run_id_for({ "reembed", component_id, types.now() })
+    local run_id, hash_err = types.sha256("reembed|" .. component_id .. "|" .. types.now())
     if hash_err then return nil, hash_err end
     local run, _created, err = runs.create({
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.REEMBED, input = {},
@@ -171,13 +166,17 @@ function M.schedule_reembed(component_id: string): (any?, error?)
     return { run_id = run_id, job_id = (queued :: any).id }, nil
 end
 
+local function retryable(err: any): boolean
+    return type(err) == "userdata" and err:retryable()
+end
+
 -- Closes the run as failed and answers the job: a retryable error is raised so
 -- the queue retries it; any other failure is a deterministic job error.
 local function fail(run_id: string, err: any): any
     local message = tostring(err)
     local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message)
     if close_err then message = message .. " (the run record also failed to close: " .. tostring(close_err) .. ")" end
-    if type(err) == "userdata" and err:retryable() then
+    if retryable(err) then
         error(errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = message }))
     end
     return { ok = false, job_error = message, failure_class = "deterministic" }
@@ -188,7 +187,7 @@ local function load_run(value: any, run_type: string): (any?, any?)
     local run_id = types.trim(payload.run_id)
     if run_id == "" then return nil, { ok = false, job_error = "memory job payload is missing run_id", failure_class = "deterministic" } end
     local run, err = runs.get(run_id)
-    if err or not run then
+    if err then
         return nil, { ok = false, job_error = "the memory run could not be read: " .. tostring(err), failure_class = "deterministic" }
     end
     if (run :: any).component_id ~= types.trim(payload.component_id) or (run :: any).run_type ~= run_type then
@@ -208,16 +207,19 @@ local function admit(value: any, run_type: string): any
     end
     local outcome, run_err = execution_identity.run_as(identity, AUTHORIZED[run_type], value, { deferred_owner = JOB[run_type] })
     if run_err then
-        if type(run_err) == "userdata" and run_err:retryable() then error(run_err) end
+        if retryable(run_err) then error(run_err) end
         return fail((run :: any).id, run_err)
     end
     return outcome
 end
 
+-- Claims the run for this attempt and records the cycle it belongs to on
+-- `run.cycle`; answers the job outcome when the attempt does not proceed.
 local function claim(run: any, repeatable: boolean): any?
     local claimed, err = runs.claim(run.id, repeatable)
     if err then return fail(run.id, err) end
-    if not claimed then return { ok = true, outcome = "declined", record = { status = "completed" } } end
+    if not (claimed :: any).claimed then return { ok = true, outcome = "declined", record = { status = "completed" } } end
+    run.cycle = (claimed :: any).cycle
     local _, access_err = component.validate_access(run.component_id, component.ACCESS.WRITE)
     if access_err then return fail(run.id, "memory access denied: " .. tostring(access_err)) end
     return nil
@@ -242,8 +244,8 @@ function M.derive_authorized(value: any): any
     if declined then return declined end
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
-    local input = run.input or {}
-    local span = type(input.span) == "table" and input.span or {}
+    local input = run.input
+    local span = input.span
     local events: { [string]: any } = {}
     for _, message in ipairs(span) do
         events[message.id] = { at = types.utc(message.created_at), text = message.text }
@@ -256,14 +258,14 @@ function M.derive_authorized(value: any): any
         if extract_err then return fail(run.id, extract_err) end
         candidates = extracted
     end
-    local deadline = type(value) == "table" and type(value.job) == "table" and value.job.deadline or nil
+    local deadline = value.job.deadline
     local result, write_err = writer.remember(candidates, {
         component_id = run.component_id,
         embedding_model = store.embedding_model,
         judge_model = cfg.judge_model,
         scope_family = types.SCOPE.OWNER,
         scope_id = types.trim(input.owner_id),
-        source = input.source or types.ITEM_SOURCE.CAPTURE,
+        source = types.ITEM_SOURCE.CAPTURE,
         host_kind = run.host_kind,
         host_id = run.host_id,
         events = events,
@@ -291,7 +293,7 @@ function M.consolidate_authorized(value: any): any
     if declined then return declined end
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
-    local next_at = types.after_seconds((tonumber(cfg.consolidation_interval_hours) or 24) * 3600)
+    local next_at = types.after_seconds(cfg.consolidation_interval_hours * 3600)
     local current, list_err = items.list(run.component_id, {
         scope_family = types.SCOPE.OWNER, statuses = { types.STATUS.CURRENT }, limit = 500,
     })
@@ -307,7 +309,7 @@ function M.consolidate_authorized(value: any): any
     end
     table.sort(order)
     local stats = { scopes = 0, added = 0, superseded = 0, merged = 0, conflicted = 0, noop = 0 }
-    local deadline = type(value) == "table" and type(value.job) == "table" and value.job.deadline or nil
+    local deadline = value.job.deadline
     for _, scope_id in ipairs(order) do
         local scope_items = by_scope[scope_id]
         local reflected, reflect_err = models.reflect(cfg.extraction_model, scope_items)
@@ -315,7 +317,7 @@ function M.consolidate_authorized(value: any): any
         local result, write_err = writer.remember(reflected :: any, {
             component_id = run.component_id, embedding_model = store.embedding_model, judge_model = cfg.judge_model,
             scope_family = types.SCOPE.OWNER, scope_id = scope_id, source = types.ITEM_SOURCE.REFLECTION,
-        }, "consolidate:" .. run.id .. ":" .. scope_id .. ":" .. tostring(run.started_at), deadline, nil)
+        }, "consolidate:" .. run.id .. ":" .. scope_id .. ":" .. run.cycle, deadline, nil)
         if write_err then return fail(run.id, write_err) end
         stats.scopes = stats.scopes + 1
         for key, count in pairs((result :: any).stats) do
@@ -324,7 +326,7 @@ function M.consolidate_authorized(value: any): any
     end
     local _, completed_err = writer.apply(run.component_id, {
         { type = types.EVENT.CONSOLIDATION_COMPLETED, body = { run_id = run.id, stats = stats } },
-    }, "consolidated:" .. run.id .. ":" .. tostring(run.started_at), deadline)
+    }, "consolidated:" .. run.id .. ":" .. run.cycle, deadline)
     if completed_err then return fail(run.id, completed_err) end
     local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end

@@ -27,33 +27,31 @@ local function threads(): (any?, error?)
     return inst, nil
 end
 
--- Current ledger head (event count) of a memory.
-function M.head(component_id: string): (integer?, error?)
-    local inst, err = threads()
-    if err then return nil, err end
-    local thread, find_err = (inst :: any):find({ thread_id = component_id })
+local function head_of(inst: any, component_id: string): (integer?, error?)
+    local thread, find_err = inst:find({ thread_id = component_id })
     if find_err then return nil, find_err end
     if not thread then return nil, types.not_found("memory ledger not found: " .. component_id) end
     return math.floor(tonumber((thread :: any).event_count) or 0) :: integer, nil
 end
 
--- Waits until the read model has folded every event up to the head.
-local function catch_up(component_id: string, deadline: string?): error?
+-- Current ledger head (event count) of a memory.
+function M.head(component_id: string): (integer?, error?)
     local inst, err = threads()
-    if err then return err end
+    if err then return nil, err end
+    return head_of(inst, component_id)
+end
+
+-- Head after the read model caught up with it: the state a decision is made on.
+function M.settled_head(component_id: string, deadline: string?): (integer?, error?)
+    local inst, err = threads()
+    if err then return nil, err end
+    local head, head_err = head_of(inst, component_id)
+    if head_err then return nil, head_err end
     local _, wait_err = (inst :: any):catch_up_projection({
         thread_id = component_id,
         kind = types.THREAD_KIND,
         deadline = deadline or types.after_seconds(CATCH_UP_SECONDS),
     })
-    return wait_err
-end
-
--- Head after the read model caught up with it: the state a decision is made on.
-function M.settled_head(component_id: string, deadline: string?): (integer?, error?)
-    local head, err = M.head(component_id)
-    if err then return nil, err end
-    local wait_err = catch_up(component_id, deadline)
     if wait_err then return nil, wait_err end
     return head, nil
 end

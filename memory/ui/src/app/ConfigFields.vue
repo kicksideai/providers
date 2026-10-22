@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import Panel from 'primevue/panel'
 import ConfigField from './ConfigField.vue'
-import type { ConfigSchema, SchemaField } from './memoryTypes'
+import type { ConfigSchema, SchemaField } from './types'
 
 // The engine's config_schema as a form, everyday fields first and the
 // `group: advanced` ones folded under More settings. The schema is the single

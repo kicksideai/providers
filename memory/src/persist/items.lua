@@ -29,15 +29,14 @@ local SEARCH_SPEC = {
     fts = "kickside_memory_fts",
     fts_key = "item_id",
     tsvector = "search_vector",
-    json_columns = {},
 }
+
+local PROVENANCE_INSERT = "INSERT INTO kickside_memory_provenance (item_id, component_id, host_kind, host_id, event_id, recorded_at) "
 
 local SELECT = "SELECT id, " .. table.concat(COLUMNS, ", ") .. " FROM kickside_memory_items"
 
 local function decode(row: any): any
-    if type(row.value) == "string" then
-        row.value = types.decode_json(row.value)
-    end
+    row.value = types.decode_json(row.value)
     row.version = tonumber(row.version) or 0
     row.priority = tonumber(row.priority) or 0
     row.last_seq = tonumber(row.last_seq) or 0
@@ -51,8 +50,8 @@ local function decode_all(rows: any): { any }
     return out
 end
 
-local function get_tx(tx: any, item_id: string): (any?, error?)
-    local rows, err = tx:query(SELECT .. " WHERE id = $1", { item_id })
+local function get_tx(tx: any, component_id: string, item_id: string): (any?, error?)
+    local rows, err = tx:query(SELECT .. " WHERE component_id = $1 AND id = $2", { component_id, item_id })
     if err then return nil, types.failed("memory item read failed", err) end
     if not rows or #rows == 0 then return nil, nil end
     return decode(rows[1]), nil
@@ -73,8 +72,7 @@ local function add_provenance_tx(tx: any, component_id: string, item_id: string,
     for _, ref in ipairs(type(refs) == "table" and refs or {}) do
         if type(ref) == "table" and types.trim(ref.event_id) ~= "" then
             local _, err = tx:execute(
-                "INSERT INTO kickside_memory_provenance (item_id, component_id, host_kind, host_id, event_id, recorded_at) " ..
-                "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
+                PROVENANCE_INSERT .. "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
                 { item_id, component_id, types.trim(ref.host_kind), types.trim(ref.host_id), types.trim(ref.event_id), recorded_at })
             if err then return types.failed("memory provenance insert failed", err) end
         end
@@ -109,13 +107,13 @@ local function next_version_tx(tx: any, component_id: string, scope_key: string,
         { component_id, scope_key, kind, key })
     if err then return nil, types.failed("memory version read failed", err) end
     local current = rows and rows[1] and tonumber(rows[1].version) or 0
-    return (current or 0) + 1, nil
+    return current + 1, nil
 end
 
 local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: integer, body: any, recorded_at: string): error?
     local item_id = types.trim(body.item_id)
     if item_id == "" then return types.invalid("item.added requires item_id") end
-    local existing, read_err = get_tx(tx, item_id)
+    local existing, read_err = get_tx(tx, component_id, item_id)
     if read_err then return read_err end
     if existing then
         return add_provenance_tx(tx, component_id, item_id, body.provenance, recorded_at)
@@ -124,13 +122,12 @@ local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: 
     local key = types.normalize_key(body.key)
     local version, version_err = next_version_tx(tx, component_id, scope_key, body.kind, key)
     if version_err then return version_err end
-    local value = body.value
     local _, err = tx:execute(
         "INSERT INTO kickside_memory_items (id, component_id, kind, scope_family, scope_id, scope_key, key, content, value, status, " ..
         "version, valid_at, recorded_at, confidence, source, priority, last_seq) " ..
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
         { item_id, component_id, body.kind, body.scope_family, body.scope_id, scope_key, key, body.content,
-            value ~= nil and json.encode(value) or sql.NULL, types.STATUS.CURRENT, version, body.valid_at, recorded_at,
+            body.value ~= nil and json.encode(body.value) or sql.NULL, types.STATUS.CURRENT, version, body.valid_at, recorded_at,
             tonumber(body.confidence) or sql.NULL, body.source, tonumber(body.priority) or 0, seq })
     if err then return types.failed("memory item insert failed", err) end
     local fts_err = set_fts_tx(tx, sqlite, item_id, body.content)
@@ -141,15 +138,15 @@ end
 -- A contested memory replaced by another keeps its contest: the successor
 -- joins the predecessor's conflict group, unless the replacement is the
 -- resolution of that group.
-local function supersede_tx(tx: any, item_id: string, successor_id: string, seq: integer, invalid_at: string, resolution: boolean): error?
-    local before, read_err = get_tx(tx, item_id)
+local function supersede_tx(tx: any, component_id: string, item_id: string, successor_id: string, seq: integer, invalid_at: string, resolution: boolean): error?
+    local before, read_err = get_tx(tx, component_id, item_id)
     if read_err then return read_err end
     local err = set_status_tx(tx, item_id, seq, {
         status = types.STATUS.SUPERSEDED, superseded_by = successor_id, invalid_at = invalid_at,
     })
     if err then return err end
     if resolution or not before or before.status ~= types.STATUS.CONFLICT or not before.conflict_group then return nil end
-    local successor, successor_err = get_tx(tx, successor_id)
+    local successor, successor_err = get_tx(tx, component_id, successor_id)
     if successor_err then return successor_err end
     if not successor or successor.status ~= types.STATUS.CURRENT then return nil end
     return set_status_tx(tx, successor_id, seq, { status = types.STATUS.CONFLICT, conflict_group = before.conflict_group })
@@ -163,17 +160,16 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
     if kind == types.EVENT.ITEM_ADDED then
         return apply_added(tx, sqlite, component_id, seq, body, recorded_at)
     elseif kind == types.EVENT.ITEM_SUPERSEDED then
-        return supersede_tx(tx, types.trim(body.item_id), types.trim(body.by), seq, body.invalid_at or recorded_at,
+        return supersede_tx(tx, component_id, types.trim(body.item_id), types.trim(body.by), seq, body.invalid_at or recorded_at,
             types.trim(body.resolved_conflict) ~= "")
     elseif kind == types.EVENT.ITEM_MERGED then
         local into = types.trim(body.into)
         for _, item_id in ipairs(type(body.item_ids) == "table" and body.item_ids or {}) do
             local _, copy_err = tx:execute(
-                "INSERT INTO kickside_memory_provenance (item_id, component_id, host_kind, host_id, event_id, recorded_at) " ..
-                "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance WHERE item_id = $2 " ..
+                PROVENANCE_INSERT .. "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance WHERE item_id = $2 " ..
                 "ON CONFLICT DO NOTHING", { into, item_id })
             if copy_err then return types.failed("memory provenance merge failed", copy_err) end
-            local err = supersede_tx(tx, item_id, into, seq, recorded_at, false)
+            local err = supersede_tx(tx, component_id, item_id, into, seq, recorded_at, false)
             if err then return err end
         end
         return nil
@@ -191,12 +187,6 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         })
     elseif kind == types.EVENT.PROVENANCE_ADDED then
         return add_provenance_tx(tx, component_id, types.trim(body.item_id), { body }, recorded_at)
-    elseif kind == types.EVENT.PROVENANCE_REMOVED then
-        local _, err = tx:execute(
-            "DELETE FROM kickside_memory_provenance WHERE item_id = $1 AND host_kind = $2 AND host_id = $3 AND event_id = $4",
-            { types.trim(body.item_id), types.trim(body.host_kind), types.trim(body.host_id), types.trim(body.event_id) })
-        if err then return types.failed("memory provenance delete failed", err) end
-        return nil
     elseif kind == types.EVENT.CAPTURE_ADVANCED then
         -- Capture moves the live cursor synchronously and ahead of its derive
         -- run; the ledger fact only restores a cursor the read model lost.
@@ -225,10 +215,7 @@ end
 
 function M.get(component_id: string, item_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        local rows, err = conn:query(SELECT .. " WHERE component_id = $1 AND id = $2", { component_id, item_id })
-        if err then return nil, types.failed("memory item read failed", err) end
-        if not rows or #rows == 0 then return nil, nil end
-        return decode(rows[1]), nil
+        return get_tx(conn, component_id, item_id)
     end)
 end
 
@@ -360,7 +347,7 @@ function M.search(component_id: string, vector: { number }, filter: SearchFilter
     end)
 end
 
--- Items of the memory that have no vector yet or all items, for re-embedding.
+-- Every item of the memory, paged by id, for re-embedding.
 function M.page_for_embedding(component_id: string, after_id: string, limit: integer): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(

@@ -5,7 +5,7 @@ import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 import ModelPicker from './ModelPicker.vue'
-import type { SchemaField } from './memoryTypes'
+import type { SchemaField } from './types'
 
 // One engine setting, rendered from its config_schema field.
 const props = defineProps<{ name: string; field: SchemaField; value: unknown }>()

@@ -1,5 +1,5 @@
 -- Explicit typed operations on a memory by a person with WRITE access: add or
--- edit identity and rules, resolve a conflict group, forget and restore. Each
+-- edit items, resolve a conflict group, forget and restore. Each
 -- operation is a set of ledger events appended at the settled head.
 
 local security = require("security")
@@ -70,14 +70,23 @@ function M.create(component_id: string, fields: any): (any?, error?)
     return { item_id = id }, nil
 end
 
--- Replaces an item's content with a new version in the same scope and kind.
+-- Replaces an item with a new version in the same scope and kind. An item whose
+-- value is its text (identity, rules) takes the new text as its value; any
+-- other item needs the new value given.
 function M.edit(component_id: string, item_id: string, fields: any): (any?, error?)
     local item, err = load(component_id, item_id)
     if err then return nil, err end
+    local value = fields.value
+    if value == nil then
+        if item.value ~= item.content then
+            return nil, types.invalid("this memory's value differs from its text; give the new value to edit it")
+        end
+        value = fields.content
+    end
     local event, id, event_err = added_event(component_id, {
         kind = item.kind, scope_family = item.scope_family, scope_id = item.scope_id,
         key = fields.key ~= nil and fields.key or item.key,
-        value = fields.value, content = fields.content ~= nil and fields.content or item.content,
+        value = value, content = fields.content ~= nil and fields.content or item.content,
         priority = fields.priority ~= nil and fields.priority or item.priority,
     })
     if event_err then return nil, event_err end

@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import ConfigFields from './ConfigFields.vue'
 import ModelPicker from './ModelPicker.vue'
-import { isRecord, type ConfigSchema } from './memoryTypes'
+import { isRecord, parseConfig, type ConfigSchema } from './types'
 
 // The memory engine's pane of the knowledge base create/edit dialog. The
 // embedding model is fixed when the memory is created; every other setting is
@@ -15,19 +15,12 @@ interface CreateContext {
   config?: Record<string, unknown> & { config_schema?: ConfigSchema }
   edit?: boolean
 }
-interface P { config?: CreateContext | string | null }
 interface E { 'config-changed': { embedding_model: string; config: Record<string, unknown> } }
 
-const props = useProps<P>()
+const props = useProps<{ config?: unknown }>()
 const emit = useEvents<E>()
 
-const ctx = computed<CreateContext>(() => {
-  const raw = props.value.config
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw) as CreateContext } catch { return {} }
-  }
-  return raw || {}
-})
+const ctx = computed(() => parseConfig(props.value.config) as CreateContext)
 const isEdit = computed(() => !!ctx.value.edit)
 const schema = computed<ConfigSchema>(() => (isRecord(ctx.value.config?.config_schema) ? ctx.value.config?.config_schema : {}) as ConfigSchema)
 

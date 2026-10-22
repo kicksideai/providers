@@ -17,7 +17,7 @@ local models = require("memory_models")
 local writer = require("memory_writer")
 local ledger = require("memory_ledger")
 local ops = require("memory_ops")
-local bindings = require("memory_bindings")
+local recall = require("memory_recall")
 
 local M = {}
 
@@ -367,9 +367,9 @@ function M.recall(input: any): (any?, error?)
     local exclude: { [string]: boolean } = {}
     for _, id in ipairs(type(args.previous_memories) == "table" and args.previous_memories or {}) do exclude[tostring(id)] = true end
     local agent_id = types.trim(ctx.get("agent_id"))
-    local rows, err = bindings.search({
+    local rows, err = recall.search({
         component_id = component_id :: string, query = query, limit = max_items, kinds = RECALL_KINDS,
-        scopes = bindings.visible_scopes(agent_id), exclude = exclude,
+        scopes = recall.visible_scopes(agent_id), exclude = exclude,
     })
     if err then return nil, err end
     local memories: { any } = {}
@@ -494,9 +494,9 @@ function M.search(args: any): (any?, error?)
     if offset < 0 then return tool_error("cursor is invalid"), nil end
     local memory_id, _, err = M.memory({}, component.ACCESS.READ)
     if err then return tool_error(err), nil end
-    local rows, search_err = bindings.search({
+    local rows, search_err = recall.search({
         component_id = memory_id :: string, query = query, limit = offset + limit + 1,
-        scopes = bindings.visible_scopes(ctx.get("agent_id")),
+        scopes = recall.visible_scopes(ctx.get("agent_id")),
     })
     if search_err then return nil, search_err end
     local fields = type(input.fields) == "table" and input.fields or {}

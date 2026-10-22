@@ -1,3 +1,6 @@
+// Shapes of the memory HTTP API, the engine config schema and the Memory trait
+// context, with the small helpers the elements share.
+
 export type MemoryKind = 'identity' | 'rule' | 'profile_slot' | 'fact' | 'preference' | 'skill' | 'lesson'
 export type MemoryStatus = 'current' | 'superseded' | 'conflict' | 'forgotten'
 
@@ -5,7 +8,7 @@ export interface MemoryItem {
   id: string
   component_id: string
   kind: MemoryKind
-  scope_family: 'agent' | 'owner' | 'session' | 'group'
+  scope_family: 'agent' | 'owner'
   scope_id: string
   scope_key: string
   key: string
@@ -80,4 +83,23 @@ export function errorText(err: unknown): string {
     if (typeof err.message === 'string') return err.message
   }
   return String(err)
+}
+
+// Trait context the Memory capability stores on an agent.
+export interface MemoryContext {
+  memory_id: string
+  write_enabled: boolean
+  [key: string]: unknown
+}
+
+export interface MemoryEvents {
+  'config-changed': { context: MemoryContext }
+}
+
+// An element's `config` prop arrives as an object or as its JSON text.
+export function parseConfig(raw: unknown): Record<string, unknown> {
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw) } catch { return {} }
+  }
+  return isRecord(raw) ? raw : {}
 }

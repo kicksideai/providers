@@ -1,7 +1,8 @@
 -- The one write path for typed memory: settle the read model at the ledger
 -- head, reconcile the candidates against it, store vectors for new items, and
--- append the decision at that head. Capture, tools and reflection all write
--- through here; explicit owner operations append typed events directly.
+-- append the decision at that head. Capture, tools and reflection write
+-- through `remember`; owner operations and consolidation markers use `apply`,
+-- which appends decided events without reconciling.
 
 local types = require("types")
 local items = require("memory_items")

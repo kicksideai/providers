@@ -34,10 +34,11 @@ local OPS: { [string]: (any) -> (any, any) } = {
     list = function(a: any) return items.list(a.component_id, a.filter or {}) end,
     get = function(a: any) return items.get(a.component_id, a.item_id) end,
     cursor = function(a: any) return runs.cursor(a.component_id, a.host_kind, a.host_id) end,
+    claim = function(a: any) return runs.claim(a.run_id, a.repeatable) end,
+    finish = function(a: any) return runs.finish(a.run_id, a.status, a.error) end,
+    run = function(a: any) return runs.get(a.run_id) end,
     runs = function(a: any) return runs.list(a.component_id, a.run_type, a.limit or 50) end,
     query = function(a: any) return bindings.query(a.request) end,
-    derive = function(a: any) return jobs.derive_authorized(a.job), nil end,
-    consolidate = function(a: any) return jobs.consolidate_authorized(a.job), nil end,
     wake = function(a: any) return jobs.wake_consolidation(a.component_id) end,
 }
 

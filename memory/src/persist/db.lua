@@ -21,22 +21,23 @@ function M.db_id(): (string?, error?)
     return db_id, nil
 end
 
-function M.open(): (any?, boolean, error?)
+-- A pooled connection, whether it is SQLite, and the database id.
+function M.open(): (any?, boolean, string?, error?)
     local db_id, id_err = M.db_id()
-    if id_err then return nil, false, id_err end
+    if id_err then return nil, false, nil, id_err end
     local db, err = sql.get(db_id :: string)
-    if err or not db then return nil, false, types.failed("memory database is unavailable", err) end
+    if err or not db then return nil, false, nil, types.failed("memory database is unavailable", err) end
     local db_type, type_err = db:type()
     if type_err then
         db:release()
-        return nil, false, types.failed("memory database type is unavailable", type_err)
+        return nil, false, nil, types.failed("memory database type is unavailable", type_err)
     end
-    return db, db_type == sql.type.SQLITE, nil
+    return db, db_type == sql.type.SQLITE, db_id, nil
 end
 
 -- Runs fn(db, sqlite) on a pooled connection and releases it.
 function M.read(fn: (any, boolean) -> (any, error?)): (any, error?)
-    local db, sqlite, err = M.open()
+    local db, sqlite, _, err = M.open()
     if err then return nil, err end
     local result, fn_err = fn(db, sqlite)
     db:release()
@@ -47,7 +48,7 @@ end
 -- component existence fence runs first, so a write to a deleted or deleting
 -- memory commits nothing.
 function M.write(component_id: string?, fn: (any, boolean) -> (any, error?)): (any, error?)
-    local db, sqlite, err = M.open()
+    local db, sqlite, db_id, err = M.open()
     if err then return nil, err end
     local tx, tx_err = db:begin()
     if tx_err then
@@ -55,7 +56,6 @@ function M.write(component_id: string?, fn: (any, boolean) -> (any, error?)): (a
         return nil, types.failed("memory transaction could not begin", tx_err)
     end
     if component_id then
-        local db_id = M.db_id()
         local fence_err = component.fence(tx, component_id, db_id :: string)
         if fence_err then
             tx:rollback()

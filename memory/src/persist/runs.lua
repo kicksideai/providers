@@ -6,6 +6,7 @@ local sql = require("sql")
 local json = require("json")
 local db = require("memory_db")
 local types = require("types")
+local search_index = require("search_index")
 
 local M = {}
 
@@ -151,13 +152,25 @@ end
 -- execution exclusive, so a run left running or failed by an earlier attempt of
 -- the same job is claimable again. A succeeded run is claimable only when
 -- `repeatable` (a consolidation slot runs once per cadence).
-function M.claim(run_id: string, repeatable: boolean): (boolean?, error?)
+-- Claims a run for an attempt: { claimed, cycle }. `cycle` is the start of the
+-- run's current cycle, kept by a retry of a failed or interrupted attempt and
+-- renewed when a scheduled run or a finished repeatable run starts again, so
+-- an attempt's writes are keyed by the cycle they belong to.
+function M.claim(run_id: string, repeatable: boolean): (any?, error?)
     return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
-        local statuses = repeatable and "('scheduled', 'running', 'failed', 'succeeded')" or "('scheduled', 'running', 'failed')"
-        local result, err = tx:execute("UPDATE kickside_memory_runs SET status = 'running', started_at = $1, finished_at = NULL, last_error = NULL WHERE id = $2 AND status IN " .. statuses,
-            { types.now(), run_id })
+        local S = types.RUN_STATUS
+        local claimable = { S.SCHEDULED, S.RUNNING, S.FAILED }
+        if repeatable then claimable[#claimable + 1] = S.SUCCEEDED end
+        local params: { any } = { S.RUNNING, S.SCHEDULED, S.SUCCEEDED, types.now(), run_id }
+        for _, status in ipairs(claimable) do params[#params + 1] = status end
+        local result, err = tx:execute("UPDATE kickside_memory_runs SET status = $1, " ..
+            "started_at = CASE WHEN status IN ($2, $3) OR started_at IS NULL THEN $4 ELSE started_at END, " ..
+            "finished_at = NULL, last_error = NULL WHERE id = $5 AND status IN (" .. search_index.placeholders(#claimable, 6) .. ")", params)
         if err then return nil, types.failed("memory run claim failed", err) end
-        return (tonumber(result and (result :: any).rows_affected) or 0) >= 1, nil
+        if (tonumber(result and (result :: any).rows_affected) or 0) < 1 then return { claimed = false }, nil end
+        local rows, read_err = tx:query("SELECT started_at FROM kickside_memory_runs WHERE id = $1", { run_id })
+        if read_err then return nil, types.failed("memory run claim failed", read_err) end
+        return { claimed = true, cycle = tostring(rows[1].started_at) }, nil
     end)
 end
 

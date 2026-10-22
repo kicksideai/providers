@@ -13,7 +13,7 @@ append typed events at an expected head:
 - `item.merged`: `item_ids, into`
 - `item.conflicted`: `item_ids, group_id`
 - `item.forgotten` and `item.restored`: `item_id, actor, reason`
-- `provenance.added` and `provenance.removed`: `item_id, host_kind, host_id, event_id`
+- `provenance.added`: `item_id, host_kind, host_id, event_id`
 - `capture.advanced`: `host_kind, host_id, last_event_id`
 - `consolidation.completed`: `run_id, stats`
 

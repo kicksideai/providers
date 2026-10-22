@@ -25,8 +25,6 @@ M.KIND = {
 M.SCOPE = {
     AGENT = "agent",
     OWNER = "owner",
-    SESSION = "session",
-    GROUP = "group",
 }
 
 M.STATUS = {
@@ -51,13 +49,11 @@ M.EVENT = {
     ITEM_FORGOTTEN = "kickside.memory.events:item.forgotten",
     ITEM_RESTORED = "kickside.memory.events:item.restored",
     PROVENANCE_ADDED = "kickside.memory.events:provenance.added",
-    PROVENANCE_REMOVED = "kickside.memory.events:provenance.removed",
     CAPTURE_ADVANCED = "kickside.memory.events:capture.advanced",
     CONSOLIDATION_COMPLETED = "kickside.memory.events:consolidation.completed",
 }
 
 M.CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
-M.CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 
 M.RUN_TYPE = {
     DERIVE = "derive",
@@ -79,7 +75,7 @@ M.ACTION = {
     NOOP = "NOOP",
     CONFLICT = "CONFLICT",
 }
-M.ACTIONS = { "ADD", "SUPERSEDE", "MERGE", "NOOP", "CONFLICT" }
+M.ACTIONS = { M.ACTION.ADD, M.ACTION.SUPERSEDE, M.ACTION.MERGE, M.ACTION.NOOP, M.ACTION.CONFLICT }
 
 local function set_of(map: { [string]: string }): { [string]: boolean }
     local out: { [string]: boolean } = {}
@@ -124,7 +120,7 @@ function M.normalize_key(value: any): string
 end
 
 local function normalize_text(value: any): string
-    local text = M.trim(type(value) == "string" and value or "")
+    local text = M.trim(value)
     return (text:lower():gsub("%s+", " "))
 end
 

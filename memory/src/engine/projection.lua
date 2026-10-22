@@ -34,7 +34,7 @@ function M.run(input: any): (any?, error?)
                 })
                 if ingest_err then return nil, ingest_err end
             end
-        elseif event.type ~= types.CONTENT_DELETED then
+        else
             ledger_events[#ledger_events + 1] = event
         end
     end
