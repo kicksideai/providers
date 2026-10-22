@@ -31,7 +31,7 @@ local function embed(args: any): (any, any)
 end
 
 local function structured_output(args: any): (any, any)
-    script.record("structured_output", args.schema)
+    script.record("structured_output", args.schema, args.messages)
     local response, failure = script.take("structured_output")
     if failure then return nil, failure end
     return { success = true, result = { data = response }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }

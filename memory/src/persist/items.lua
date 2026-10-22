@@ -278,6 +278,17 @@ function M.list(component_id: string, filter: ListFilter): (any?, error?)
     end)
 end
 
+-- Distinct { kind, key } pairs of the live items of a scope, ordered.
+function M.keys(component_id: string, scope_key: string, limit: integer): (any?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local rows, err = conn:query(
+            "SELECT DISTINCT kind, key FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND status IN ($3, $4) ORDER BY kind, key LIMIT $5",
+            { component_id, scope_key, types.STATUS.CURRENT, types.STATUS.CONFLICT, limit })
+        if err then return nil, fail("memory key read failed", err) end
+        return rows or {}, nil
+    end)
+end
+
 function M.provenance(component_id: string, item_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(

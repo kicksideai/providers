@@ -16,7 +16,7 @@ function M.ensure()
     local conn = db()
     local _, err = conn:execute("CREATE TABLE IF NOT EXISTS app_llm_script (seq INTEGER NOT NULL, method TEXT NOT NULL, response TEXT, failure TEXT)")
     if not err then
-        _, err = conn:execute("CREATE TABLE IF NOT EXISTS app_llm_requests (seq INTEGER NOT NULL, method TEXT NOT NULL, schema TEXT)")
+        _, err = conn:execute("CREATE TABLE IF NOT EXISTS app_llm_requests (seq INTEGER NOT NULL, method TEXT NOT NULL, schema TEXT, messages TEXT)")
     end
     conn:release()
     if err then error(tostring(err)) end
@@ -57,14 +57,14 @@ function M.take(method: string): (any, string?)
     return json.decode(rows[1].response), nil
 end
 
--- Records the schema a structured_output call asked for.
-function M.record(method: string, schema: any)
+-- Records the schema and messages of a structured_output call.
+function M.record(method: string, schema: any, messages: any)
     M.ensure()
     local conn = db()
     local rows = conn:query("SELECT COUNT(*) AS n FROM app_llm_requests")
     local seq = (rows and rows[1] and tonumber(rows[1].n) or 0) + 1
-    conn:execute("INSERT INTO app_llm_requests (seq, method, schema) VALUES ($1, $2, $3)",
-        { seq, method, schema ~= nil and json.encode(schema) or sql.NULL })
+    conn:execute("INSERT INTO app_llm_requests (seq, method, schema, messages) VALUES ($1, $2, $3, $4)",
+        { seq, method, schema ~= nil and json.encode(schema) or sql.NULL, json.encode(messages or {}) })
     conn:release()
 end
 
@@ -76,6 +76,23 @@ function M.requests(method: string): { any }
     conn:release()
     local out = {}
     for _, row in ipairs(rows) do out[#out + 1] = json.decode(row.schema) end
+    return out
+end
+
+-- { system, user } texts of the recorded calls of a method, oldest first.
+function M.prompts(method: string): { any }
+    M.ensure()
+    local conn = db()
+    local rows = conn:query("SELECT messages FROM app_llm_requests WHERE method = $1 ORDER BY seq", { method }) or {}
+    conn:release()
+    local out = {}
+    for _, row in ipairs(rows) do
+        local texts = {}
+        for _, message in ipairs(json.decode(row.messages) or {}) do
+            texts[message.role] = message.content and message.content[1] and message.content[1].text or ""
+        end
+        out[#out + 1] = texts
+    end
     return out
 end
 

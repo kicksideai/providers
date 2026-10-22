@@ -9,6 +9,7 @@ local runs = require("memory_runs")
 local ledger = require("memory_ledger")
 local jobs = require("memory_jobs")
 local bindings = require("memory_bindings")
+local component = require("component")
 
 local OPS: { [string]: (any) -> (any, any) } = {
     create = function(a: any) return ops.create(a.component_id, a.fields) end,
@@ -19,6 +20,10 @@ local OPS: { [string]: (any) -> (any, any) } = {
     remember = function(a: any) return writer.remember(a.candidates, a.opts, a.idempotency) end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
     apply = function(a: any) return runtime.apply(a.payload) end,
+    resolve_memory = function(a: any)
+        local id, _, err = runtime.memory({ context = a.context }, component.ACCESS.READ)
+        return id, err
+    end,
     checkpoint = function(a: any) return runtime.create(a.payload) end,
     recall = function(a: any) return runtime.recall(a.input) end,
     build = function(a: any) return runtime.build(nil, a.context) end,

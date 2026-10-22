@@ -32,7 +32,8 @@ type Options = {
     source: string,
     host_kind: string?,
     host_id: string?,
-    event_times: { [string]: string }?,
+    -- Span messages candidates cite, by id: when it was said and its text.
+    events: { [string]: { at: string?, text: string? } }?,
 }
 
 local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
@@ -40,6 +41,23 @@ local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
 -- Reflection derives new memories from what people said; it never replaces,
 -- merges or contests their own statements.
 local REFLECTION_ACTIONS = { types.ACTION.ADD, types.ACTION.NOOP }
+
+-- A profile slot holds one value per person: a new value for a slot the
+-- neighborhood already holds can replace, merge with or contest it, never be
+-- added beside it.
+local function allowed_actions(base: { string }, kind: string, key: string, neighbors: { any }): { string }
+    if kind ~= types.KIND.PROFILE_SLOT then return base end
+    local held = false
+    for _, row in ipairs(neighbors) do
+        if row.kind == types.KIND.PROFILE_SLOT and row.key == key then held = true end
+    end
+    if not held then return base end
+    local out: { string } = {}
+    for _, action in ipairs(base) do
+        if action ~= types.ACTION.ADD then out[#out + 1] = action end
+    end
+    return out
+end
 
 local function provenance_of(opts: Options, candidate: Candidate): { any }
     local event_id = types.trim(candidate.event_id)
@@ -97,9 +115,8 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
         local key = types.normalize_key(candidate.key)
         local value = candidate.value
         if type(value) == "string" then value = types.trim(value) end
-        local valid_at = types.utc(candidate.valid_at)
-            or (opts.event_times and opts.event_times[types.trim(candidate.event_id)])
-            or now
+        local event = opts.events and opts.events[types.trim(candidate.event_id)] or {}
+        local valid_at = types.utc(candidate.valid_at) or event.at or now
         local id, id_err = types.item_id(opts.component_id, candidate.kind, opts.scope_family, opts.scope_id, key, value)
         if id_err then return nil, id_err end
         local item_id = id :: string
@@ -145,11 +162,15 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
             if near_err then return nil, near_err end
             for _, row in ipairs(near :: any) do admit(row) end
 
+            local actions = allowed_actions(opts.source == types.ITEM_SOURCE.REFLECTION and REFLECTION_ACTIONS or types.ACTIONS,
+                candidate.kind, key, neighbors)
             local verdict: any = { action = types.ACTION.ADD, target_ids = {} }
-            if #neighbors > 0 then
+            if #actions == 1 then
+                verdict = { action = actions[1], target_ids = {} }
+            elseif #neighbors > 0 then
                 local judged, judge_err = models.judge(opts.judge_model, {
-                    kind = candidate.kind, key = key, content = candidate.content, valid_at = valid_at,
-                }, neighbors, opts.source == types.ITEM_SOURCE.REFLECTION and REFLECTION_ACTIONS or types.ACTIONS)
+                    kind = candidate.kind, key = key, content = candidate.content, valid_at = valid_at, stated = event.text,
+                }, neighbors, actions)
                 if judge_err then return nil, judge_err end
                 verdict = judged
                 stats.judged = stats.judged + 1

@@ -38,11 +38,12 @@ local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of
 
 Choose exactly one action:
 - ADD: the new memory is about something none of the existing memories cover.
-- NOOP: an existing memory already says the same thing.
+- NOOP: an existing memory already says the same thing, even under another kind or key.
 - SUPERSEDE: the new memory updates or corrects existing memories about the same thing.
 - MERGE: the new memory and existing memories are the same memory phrased differently and the new one is the most complete.
 - CONFLICT: the new memory contradicts existing memories and the conversation does not say which is right.
 
+new_memory.stated, when present, is what the person said; it tells an update from a contradiction.
 target_ids lists the existing memory ids the action applies to (empty for ADD).
 Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
 
@@ -115,9 +116,25 @@ local function read_candidates(response: any, step: string): (any?, error?)
     return out, nil
 end
 
--- span: { { id, role, text, created_at } }. A span in which nobody states
--- anything yields no candidates without a model call.
-function M.extract(model: string, span: { any }, instructions: string?): (any?, error?)
+-- Lists the keys a person's memories already use, grouped by kind.
+local function key_listing(keys: { any }): string
+    local lines: { string } = {}
+    local kind, names = nil, {}
+    local function flush()
+        if kind then lines[#lines + 1] = "- " .. kind .. ": " .. table.concat(names, ", ") end
+    end
+    for _, row in ipairs(keys) do
+        if row.kind ~= kind then flush(); kind, names = row.kind, {} end
+        names[#names + 1] = row.key
+    end
+    flush()
+    return table.concat(lines, "\n")
+end
+
+-- span: { { id, role, text, created_at } }; keys: the { kind, key } pairs the
+-- person's memories use. A span in which nobody states anything yields no
+-- candidates without a model call.
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?): (any?, error?)
     local lines: { string } = {}
     local ids: { string } = {}
     for _, message in ipairs(span) do
@@ -126,6 +143,9 @@ function M.extract(model: string, span: { any }, instructions: string?): (any?, 
     end
     if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
+    if #keys > 0 then
+        system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. key_listing(keys)
+    end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local response, err = llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })
     if err then return nil, wrap("memory extraction", err) end
@@ -165,7 +185,8 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
         },
     }
     local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT, json.encode({
-            new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at },
+            new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at,
+                stated = candidate.stated },
             existing_memories = listing,
         })), { model = model })
     if err then return nil, wrap("memory reconcile judge", err) end

@@ -76,6 +76,43 @@ local function define_tests()
             test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "n2")
         end)
 
+        test.it("offers extraction the keys already in use for the person, so a restated attribute keeps its key", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "name", "Sam", "The user's name is Sam.", "k0"),
+                fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", "k0"),
+            }, "keys-seed")
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "k1", role = "user", content = "You can call me Sam, that's my preferred name." } })
+            fixture.extraction({})
+            apply(user, "before_step", id, session, "agent-a")
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            local prompt = fixture.script.prompts("structured_output")[1].system
+            test.is_true(prompt:find("- preference: diet", 1, true) ~= nil, prompt)
+            test.is_true(prompt:find("- profile_slot: name", 1, true) ~= nil, prompt)
+        end)
+
+        test.it("shows the reconcile judge what the person said, so an update is told from a contradiction", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "c0", "2026-09-01T10:00:00Z"),
+            }, "city-seed")
+            fixture.settle(user, id)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "c1", role = "user", content = "I moved to Berlin last month.", created_at = "2026-10-08T10:00:00Z" } })
+            fixture.extraction({ fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "c1") })
+            local paris = fixture.items(user, id)[1]
+            fixture.verdict("SUPERSEDE", { paris.id })
+            apply(user, "before_step", id, session, "agent-a")
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            local judge = fixture.script.prompts("structured_output")[2].user
+            test.is_true(judge:find("I moved to Berlin last month.", 1, true) ~= nil, judge)
+        end)
+
         test.it("captures each persisted record once across after_persist and before_step", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -239,6 +276,34 @@ local function define_tests()
             fixture.wait_runs(user, id, "derive", 1)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id), 1)
+        end)
+
+        test.it("resolves a saved agent whose Memory trait context has the shape of the published release", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local trait = "kickside.memory:knowledge_based_memory"
+            local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
+                name = "published shape", model = "test-fast", traits = { trait },
+                trait_contexts = { [trait] = {
+                    kb_ids = { memory }, write_kb_id = memory, read_enabled = true, write_enabled = true,
+                    recall_limit = 5, recall_max_chars = 4000, recall_prompt = "Relevant memory:",
+                    checkpoint_model = "test-fast", checkpoint_prompt = "Summarize.", checkpoint_temperature = 0.2,
+                    checkpoint_max_tokens = 800, checkpoint_source_max_chars = 20000,
+                } },
+            })
+            test.is_nil(create_err, tostring(create_err))
+            local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func",
+                { agent_id = "user_agent:" .. created.component_id })
+            test.is_nil(resolve_err, tostring(resolve_err))
+            test.not_nil(agent, "the resolver found no agent")
+            local context
+            for _, spec in ipairs(agent.traits or {}) do
+                if spec.id == trait then context = spec.context end
+            end
+            test.not_nil(context)
+            local id, err = fixture.op(user, "resolve_memory", { context = context })
+            test.is_nil(err, tostring(err))
+            test.eq(id, memory)
         end)
 
         test.it("resolves the memory from trait contexts of earlier releases and refuses anything else", function()

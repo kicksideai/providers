@@ -141,6 +141,36 @@ local function define_tests()
             test.eq(values.Acme.superseded_by, globex.item_ids[1])
         end)
 
+        test.it("keeps a profile slot single-valued: a new value replaces or contests the known one, never sits beside it", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local first = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "birth_date", "1990-03-03", "The user was born on 3 March 1990.", "b1"),
+            }, "slot-1")
+            fixture.verdict("CONFLICT", { first.item_ids[1] })
+            local second = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "birth_date", "1990-03-05", "The user was born on 5 March 1990.", "b2"),
+            }, "slot-2")
+            test.eq(second.stats.conflicted, 1)
+            local offered = fixture.script.requests("structured_output")[1].properties.action.enum
+            test.eq(table.concat(offered, ","), "SUPERSEDE,MERGE,NOOP,CONFLICT")
+
+            fixture.verdict("ADD", {})
+            local fact = fixture.remember(user, id, {
+                fixture.candidate("fact", "sibling", "Ana", "The user has a sister, Ana.", "b3"),
+            }, "slot-3")
+            test.eq(fact.stats.added, 1)
+            local fact_actions = fixture.script.requests("structured_output")[2].properties.action.enum
+            test.is_true(table.concat(fact_actions, ","):find("ADD", 1, true) ~= nil)
+
+            local reflected = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "birth_date", "1990", "The user was born in 1990."),
+            }, "slot-4", { source = "reflection" })
+            test.eq(reflected.stats.noop, 1)
+            test.eq(reflected.stats.added, 0)
+            test.eq(#fixture.script.requests("structured_output"), 2)
+        end)
+
         test.it("keeps a conflict open when a contested memory is replaced", function()
             local user = fixture.user()
             local id = fixture.memory(user)

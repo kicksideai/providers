@@ -21,6 +21,9 @@ M.JOB = {
     consolidate = "kickside.memory.engine:consolidate_worker",
     reembed = "kickside.memory.engine:reembed_worker",
 }
+
+-- Most keys an extraction is offered for reuse.
+local KEY_LIMIT = 200
 local AUTHORIZED = {
     derive = "kickside.memory.engine:derive_authorized",
     consolidate = "kickside.memory.engine:consolidate_authorized",
@@ -241,14 +244,15 @@ function M.derive_authorized(value: any): any
     if settings_err then return fail(run.id, settings_err) end
     local input = run.input or {}
     local span = type(input.span) == "table" and input.span or {}
-    local event_times: { [string]: string } = {}
+    local events: { [string]: any } = {}
     for _, message in ipairs(span) do
-        local at = types.utc(message.created_at)
-        if at then event_times[message.id] = at end
+        events[message.id] = { at = types.utc(message.created_at), text = message.text }
     end
     local candidates: any = {}
     if #span > 0 then
-        local extracted, extract_err = models.extract(cfg.extraction_model, span, cfg.extraction_instructions)
+        local keys, keys_err = items.keys(run.component_id, types.scope_key(types.SCOPE.OWNER, types.trim(input.owner_id)), KEY_LIMIT)
+        if keys_err then return fail(run.id, keys_err) end
+        local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions)
         if extract_err then return fail(run.id, extract_err) end
         candidates = extracted
     end
@@ -262,7 +266,7 @@ function M.derive_authorized(value: any): any
         source = input.source or types.ITEM_SOURCE.CAPTURE,
         host_kind = run.host_kind,
         host_id = run.host_id,
-        event_times = event_times,
+        events = events,
     }, "derive:" .. run.id, deadline, run.host_kind ~= "content" and {
         { type = types.EVENT.CAPTURE_ADVANCED, body = {
             host_kind = run.host_kind, host_id = run.host_id, agent_id = run.agent_id, last_event_id = run.to_event_id,

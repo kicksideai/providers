@@ -116,20 +116,20 @@ end
 
 -- Creates a memory knowledge base owned by the user through the knowledge
 -- control plane.
-function M.try_memory(user_id: string, config: any?): (string?, any)
+function M.try_memory(user_id: string, config: any?, embedding_model: string?): (string?, any)
     local def, err = contract.get("kickside.knowledge:knowledge_bases")
     if err then return nil, err end
     local inst, open_err = def:with_actor(security.new_actor(user_id, {})):with_scope(scope()):open()
     if open_err then return nil, open_err end
     local created, create_err = inst:create({
-        name = "memory " .. uuid.v7(), kb_type = "memory", embedding_model = "test-embed", config = config,
+        name = "memory " .. uuid.v7(), kb_type = "memory", embedding_model = embedding_model or "test-embed", config = config,
     })
     if create_err then return nil, create_err end
     return created.component_id, nil
 end
 
-function M.memory(user_id: string, config: any?): string
-    local id, err = M.try_memory(user_id, config)
+function M.memory(user_id: string, config: any?, embedding_model: string?): string
+    local id, err = M.try_memory(user_id, config, embedding_model)
     if err or not id then error("memory create failed: " .. tostring(err)) end
     return id
 end

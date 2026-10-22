@@ -30,8 +30,13 @@ traits:
   - kickside.memory:knowledge_based_memory
 trait_contexts:
   kickside.memory:knowledge_based_memory:
-    memory_ids: [<memory-knowledge-base-id>]
+    memory_id: <memory-knowledge-base-id>
 ```
+
+Agents saved with the earlier trait keep working: when `memory_id` is empty,
+`write_kb_id`, else the first of `kb_ids`, is the memory if it is a memory
+knowledge base; the earlier recall and checkpoint keys are accepted and have no
+effect.
 
 ## How it works
 
@@ -43,7 +48,9 @@ trait_contexts:
   a derive run. The extraction model proposes candidate memories; each is
   matched against existing memories and, when ambiguous, the reconcile model
   decides whether it is new, a duplicate, an update, the same memory phrased
-  better, or a contradiction. Updates keep the earlier version; the later event
+  better, or a contradiction, seeing what the person said. Extraction reuses the
+  kinds and keys the person's memories already use, and a profile slot holds one
+  value: a new value replaces or contests it. Updates keep the earlier version; the later event
   time wins; contradictions wait in a conflict group for a person.
 - The agent's identity and rules are part of its compiled instructions; the
   user's profile and preferences are pinned when the agent activates and stay
@@ -98,6 +105,19 @@ Create a dedicated PostgreSQL database before the profile run and drop it
 afterward; set `pg_host`, `pg_port`, `pg_database`, `pg_username` and
 `pg_password` in the harness configuration. Edit frontend source under `ui/`
 and run `make build`; commit the regenerated `static/` assets with the source.
+
+The suites include a capture and reconcile eval (`test/eval`): duplicates,
+corrections, contradictions, small talk and recalled-memory notes, each captured
+in two sessions on a fresh memory and scored as precision and recall per action.
+The suite run answers every model call with the ideal answer, which checks the
+pipeline; to score real models, override the target on a harness with model
+providers configured:
+
+```bash
+cd test && wippy test -o app.eval:target:meta.extraction_model=<model> \
+  -o app.eval:target:meta.judge_model=<model> -o app.eval:target:meta.embedding_model=<embedding-model> \
+  -o app.eval:target:meta.answers=live
+```
 
 ## Links
 

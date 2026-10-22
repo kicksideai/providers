@@ -72,13 +72,13 @@ item; deleting the knowledge base purges the ledger and every row.
 - Memory provider `kickside.memory:memory_provider`: pick it with the agent's
   memory target to recall current `fact`, `skill` and `lesson` items in the
   user's and agent's scopes each step, skipping ids already injected.
-- Trait `kickside.memory:knowledge_based_memory`, context `memory_ids` (the
-  first is written to): captures conversation, contributes the agent's
+- Trait `kickside.memory:knowledge_based_memory`, context `memory_id` (earlier
+  agents: `write_kb_id`, else the first of `kb_ids`): captures conversation, contributes the agent's
   identity, rules, skills and lessons to the compiled prompt, renders the
   user's profile and preferences pinned at activation into every step (byte
   identical until the next activation), and adds `SearchMemory`, `Remember`
-  and `ForgetMemory`. Tools write only to attached memories and the caller's
-  own scope.
+  and `ForgetMemory`. Tools write only to that memory and the caller's own
+  scope.
 
 ## HTTP
 

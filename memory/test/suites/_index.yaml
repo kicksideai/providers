@@ -24,6 +24,7 @@ entries:
       memory_ledger: kickside.memory.engine:ledger
       memory_jobs: kickside.memory.engine:jobs
       memory_bindings: kickside.memory.engine:bindings
+      component: kickside.component:component
 
   - name: history
     kind: library.lua

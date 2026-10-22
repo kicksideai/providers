@@ -7,7 +7,9 @@ import MmSwitch from './shared/MmSwitch.vue'
 
 // Memory capability on an agent: which memory it uses and whether it records
 // conversations there. Models, budgets and cadence belong to the memory itself.
-const LEGACY_KEYS = ['kb_ids', 'write_kb_id', 'memory_id', 'write_enabled']
+// Saving writes memory_id in place of the earlier kb_ids and write_kb_id and
+// carries over the other keys that still take effect.
+const CARRIED_KEYS = ['read_enabled', 'recall_limit']
 
 const props = useProps<ComponentProps>()
 const emit = useEvents<MemoryEvents>()
@@ -35,7 +37,7 @@ function apply(raw: ComponentProps['config']): void {
   const legacyIds = Array.isArray(context.kb_ids) ? context.kb_ids : []
   memoryId.value = String(context.memory_id || context.write_kb_id || legacyIds[0] || '')
   capture.value = context.write_enabled !== false
-  kept.value = Object.fromEntries(Object.entries(context).filter(([key]) => !LEGACY_KEYS.includes(key)))
+  kept.value = Object.fromEntries(Object.entries(context).filter(([key]) => CARRIED_KEYS.includes(key)))
 }
 
 function publish(): void {

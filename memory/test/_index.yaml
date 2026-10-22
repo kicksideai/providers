@@ -226,6 +226,24 @@ entries:
     value: app:api_public
   - name: wippy.views:env_storage
     value: app:env_storage
+- name: dep.kickside.agents
+  kind: ns.dependency
+  version: '*'
+  component: kickside/agents
+  parameters:
+  - name: kickside.agents:api_router
+    value: app:api
+  - name: kickside.agents:ui_server
+    value: app:gateway
+- name: dep.kickside.connection
+  kind: ns.dependency
+  version: '*'
+  component: kickside/connection
+  parameters:
+  - name: kickside.connection:api_router
+    value: app:api
+  - name: kickside.connection:ui_server
+    value: app:gateway
 - name: dep.kickside.models
   kind: ns.dependency
   version: '*'
