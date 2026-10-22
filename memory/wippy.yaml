@@ -41,3 +41,6 @@ exclude:
   - "tests/**"
   - "test-support/**"
   - "app.**:**"
+  - "build-inputs/**"
+  - "buildinputs:**"
+  - "ui/.wippy/**"

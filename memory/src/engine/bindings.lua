@@ -17,8 +17,8 @@ local component = require("component")
 local M = {}
 
 -- Store pages a single deletable call removes before reporting progress.
-M.DELETE_PAGES = 20
-M.QUERY_MAX = 100
+local DELETE_PAGES = 20
+local QUERY_MAX = 100
 
 local function args_of(value: any): any
     return type(value) == "table" and value or {}
@@ -90,7 +90,7 @@ function M.delete_store(value: any): (any?, error?)
     local component_id = types.trim(args_of(value).component_id)
     if component_id == "" then return nil, types.invalid("component_id is required") end
     while true do
-        local done, err = purge(component_id, M.DELETE_PAGES)
+        local done, err = purge(component_id, DELETE_PAGES)
         if err then return nil, err end
         if done then return { success = true }, nil end
     end
@@ -106,7 +106,7 @@ function M.delete(_value: any): (any?, error?)
     if id_err then return nil, id_err end
     local _, thread_err = thread_ingest.purge_thread(component_id :: string)
     if thread_err then return nil, thread_err end
-    local done, err = purge(component_id :: string, M.DELETE_PAGES)
+    local done, err = purge(component_id :: string, DELETE_PAGES)
     if err then return nil, err end
     if not done then
         return nil, errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = "memory cleanup continues",
@@ -158,7 +158,7 @@ function M.visible_scopes(agent_id: string?): { string }
     return scopes
 end
 
-function M.to_query_item(row: any): any
+local function to_query_item(row: any): any
     return {
         id = row.id,
         content = row.content,
@@ -214,7 +214,7 @@ function M.query(value: any): (any?, error?)
     local query = types.trim(req.query)
     if query == "" then return nil, types.invalid("query is required") end
     local limit = math.floor(tonumber(req.limit) or 10)
-    if limit < 1 or limit > M.QUERY_MAX then return nil, types.invalid("limit must be between 1 and " .. M.QUERY_MAX) end
+    if limit < 1 or limit > QUERY_MAX then return nil, types.invalid("limit must be between 1 and " .. QUERY_MAX) end
     local offset = math.floor(tonumber(req.offset) or 0)
     if offset < 0 then return nil, types.invalid("offset must not be negative") end
     local rows, err = M.search({
@@ -223,7 +223,7 @@ function M.query(value: any): (any?, error?)
     })
     if err then return nil, err end
     local page: { any } = {}
-    for i = offset + 1, math.min(offset + limit, #(rows :: any)) do page[#page + 1] = M.to_query_item((rows :: any)[i]) end
+    for i = offset + 1, math.min(offset + limit, #(rows :: any)) do page[#page + 1] = to_query_item((rows :: any)[i]) end
     local result: { [string]: any } = { success = true, items = page, count = #page }
     if #(rows :: any) > offset + limit then result.next_offset = offset + limit end
     return result, nil

@@ -1,19 +1,19 @@
-import { u as y, a as b, W as C } from "./MmSwitch.vue_vue_type_script_setup_true_lang-CAQfcCan.js";
-import { defineComponent as E, computed as c, ref as r, watch as k, openBlock as s, createElementBlock as m, createElementVNode as d, toDisplayString as V, createBlock as w, createCommentVNode as x, createVNode as N } from "vue";
-import { i as S, _ as B, a as M, s as j } from "./memory-DSw53YZr.js";
+import { defineComponent as h, computed as m, ref as r, watch as b, openBlock as a, createElementBlock as i, createElementVNode as d, toDisplayString as y, createBlock as k, createCommentVNode as E, createVNode as V } from "vue";
 import "@iconify/vue";
-import { define as U } from "@wippy-fe/proxy";
-const W = { class: "mm-pane" }, $ = { class: "mm-field" }, D = {
+import { define as w } from "@wippy-fe/proxy";
+import { u as C, a as N, m as B } from "./index-0-zpYODo.js";
+import { i as M, _ as S, a as j } from "./memoryTypes-B2QaFCPR.js";
+const x = { class: "mm-stack" }, $ = { class: "mm-field" }, D = {
   key: 0,
   class: "mm-hint"
 }, J = {
   key: 2,
   class: "mm-hint"
-}, K = /* @__PURE__ */ E({
+}, O = /* @__PURE__ */ h({
   __name: "MemoryCreate",
-  setup(u) {
-    const p = y(), f = b(), o = c(() => {
-      const e = p.value.config;
+  setup(R) {
+    const u = C(), f = N(), t = m(() => {
+      const e = u.value.config;
       if (typeof e == "string")
         try {
           return JSON.parse(e);
@@ -21,51 +21,43 @@ const W = { class: "mm-pane" }, $ = { class: "mm-field" }, D = {
           return {};
         }
       return e || {};
-    }), l = c(() => !!o.value.edit), g = c(() => S(o.value.config?.config_schema) ? o.value.config?.config_schema : {}), t = r("class:embed"), n = r({});
-    k(o, (e) => {
-      const { config_schema: i, ...v } = e.config || {};
-      n.value = { ...v }, e.embedding_model && (t.value = e.embedding_model), a();
+    }), l = m(() => !!t.value.edit), p = m(() => M(t.value.config?.config_schema) ? t.value.config?.config_schema : {}), o = r("class:embed"), n = r({});
+    b(t, (e) => {
+      const { config_schema: s, ...v } = e.config || {};
+      n.value = { ...v }, e.embedding_model && (o.value = e.embedding_model), c();
     }, { immediate: !0 });
-    function a() {
-      f("config-changed", { embedding_model: t.value, config: { ...n.value } });
+    function c() {
+      f("config-changed", { embedding_model: o.value, config: { ...n.value } });
     }
     function _(e) {
-      t.value = e, a();
+      o.value = e, c();
     }
-    function h(e) {
-      n.value = e, a();
+    function g(e) {
+      n.value = e, c();
     }
-    return (e, i) => (s(), m("div", W, [
+    return (e, s) => (a(), i("div", x, [
       d("div", $, [
-        i[0] || (i[0] = d("span", { class: "mm-label" }, "Embedding model", -1)),
-        l.value ? (s(), m("span", D, V(t.value) + " — fixed when the memory was created.", 1)) : (s(), w(B, {
+        s[0] || (s[0] = d("span", { class: "mm-label" }, "Embedding model", -1)),
+        l.value ? (a(), i("span", D, y(o.value) + " — fixed when the memory was created.", 1)) : (a(), k(S, {
           key: 1,
-          value: t.value,
+          value: o.value,
           capability: "embed",
           onSelect: _
         }, null, 8, ["value"])),
-        l.value ? x("", !0) : (s(), m("span", J, "Vectors are 512-dimensional; the model cannot change later."))
+        l.value ? E("", !0) : (a(), i("span", J, "Vectors are 512-dimensional; the model cannot change later."))
       ]),
-      N(M, {
-        schema: g.value,
+      V(j, {
+        schema: p.value,
         "model-value": n.value,
-        "onUpdate:modelValue": h
+        "onUpdate:modelValue": g
       }, null, 8, ["schema", "model-value"])
     ]));
   }
-}), O = {
+}), P = B(O, {
   type: "object",
   properties: {
     config: { type: "object", description: "Create context: { kb_type, id?, embedding_model?, config? (with config_schema), edit? }" }
   }
-};
-class P extends C {
-  static get wippyConfig() {
-    return { propsSchema: O, hostCssKeys: ["themeConfigUrl"], inlineCss: j };
-  }
-  static get vueConfig() {
-    return { rootComponent: K };
-  }
-}
-U(import.meta.url, P);
+});
+w(import.meta.url, P);
 //# sourceMappingURL=memory_create.js.map

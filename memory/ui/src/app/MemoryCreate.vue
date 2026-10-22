@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import ConfigFields from './ConfigFields.vue'
-import ModelPicker from './shared/ModelPicker.vue'
+import ModelPicker from './ModelPicker.vue'
 import { isRecord, type ConfigSchema } from './memoryTypes'
 
 // The memory engine's pane of the knowledge base create/edit dialog. The
@@ -57,7 +57,7 @@ function onValues(next: Record<string, unknown>) {
 </script>
 
 <template>
-  <div class="mm-pane">
+  <div class="mm-stack">
     <div class="mm-field">
       <span class="mm-label">Embedding model</span>
       <span v-if="isEdit" class="mm-hint">{{ embeddingModel }} — fixed when the memory was created.</span>

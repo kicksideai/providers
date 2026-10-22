@@ -3,7 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import { loadByTagName } from '@wippy-fe/proxy'
 import type { ComponentProps, MemoryEvents } from '../types.ts'
-import MmSwitch from './shared/MmSwitch.vue'
+import Message from 'primevue/message'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 // Memory capability on an agent: which memory it uses and whether it records
 // conversations there. Models, budgets and cadence belong to the memory itself.
@@ -65,16 +66,16 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="km">
-    <div class="field">
-      <span>Memory</span>
+  <div class="mm-stack">
+    <div class="mm-field">
+      <span class="mm-label">Memory</span>
       <wc-kb-picker v-if="pickerReady" :config="pickerConfig" @config-changed="onPicked"></wc-kb-picker>
-      <span v-else-if="pickerError" class="error">The knowledge base picker could not load: {{ pickerError }}</span>
-      <span class="hint">Pick a Memory knowledge base. Models, limits and cadence are set on the memory itself.</span>
+      <Message v-else-if="pickerError" severity="error" size="small">The knowledge base picker could not load: {{ pickerError }}</Message>
+      <span class="mm-hint">Pick a Memory knowledge base. Models, limits and cadence are set on the memory itself.</span>
     </div>
-    <div class="toggle">
-      <span>Remember conversations</span>
-      <MmSwitch label="Remember conversations" v-model="capture" @update:model-value="publish" />
+    <div class="mm-toggle">
+      <span class="mm-label">Remember conversations</span>
+      <ToggleSwitch v-model="capture" aria-label="Remember conversations" @update:model-value="publish" />
     </div>
   </div>
 </template>

@@ -11,10 +11,15 @@
     "package.json"
   ],
   "type": "module",
+  "workspaces": [
+    "./.wippy/npm/@*/*"
+  ],
   "dependencies": {
+    "@kickside/ui-kit": "*",
     "@wippy-fe/theme": "*",
     "@wippy-fe/webcomponent-core": "*",
-    "@wippy-fe/webcomponent-vue": "*"
+    "@wippy-fe/webcomponent-vue": "*",
+    "primevue": "4.5.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
@@ -23,6 +28,8 @@
     "@wippy-fe/proxy": "*",
     "@wippy-fe/vite-plugin": "*",
     "happy-dom": "^20.10.6",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5.0.0",
     "vite": "^6.0.0",
     "vitest": "^4.1.9",
@@ -41,7 +48,7 @@
       "properties": {
         "config": {
           "type": "object",
-          "description": "Trait context { memory_ids, write_enabled, read_enabled, recall_limit, checkpoint_model } and agent_options.checkpoint policy.",
+          "description": "Trait context { memory_id, write_enabled, read_enabled, recall_limit }; earlier kb_ids and write_kb_id are read when memory_id is empty.",
           "default": {}
         }
       }
@@ -51,7 +58,7 @@
       "properties": {
         "config-changed": {
           "type": "object",
-          "description": "Edited trait config: { context, agent_options.checkpoint }."
+          "description": "Edited trait context: { context }."
         }
       }
     },

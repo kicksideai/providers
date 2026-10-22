@@ -83,6 +83,7 @@ local function define_tests()
                 fixture.candidate("profile_slot", "name", "Sam", "The user's name is Sam.", "k0"),
                 fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", "k0"),
             }, "keys-seed")
+            fixture.settle(user, id)
             local session = "s-" .. user
             fixture.history.record(session, { { id = "k1", role = "user", content = "You can call me Sam, that's my preferred name." } })
             fixture.extraction({})

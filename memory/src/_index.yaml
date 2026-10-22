@@ -452,7 +452,7 @@ entries:
       name: runtime
       comment: Agent memory runtime - capture, pinned soul, recall, checkpoint and memory tools.
     source: file://runtime.lua
-    modules: [ctx, contract, security, json]
+    modules: &runtime_modules [ctx, contract, security, json]
     imports: &runtime_imports
       component: kickside.component:component
       types: kickside.memory:types
@@ -471,54 +471,54 @@ entries:
     kind: function.lua
     meta:
       comment: wippy.agent:lifecycle apply - pins the soul on activate, captures on before_step, after_persist and deactivate.
-    source: file://runtime_lifecycle.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: apply
 
   - name: runtime_checkpoint
     kind: function.lua
     meta:
       comment: wippy.agent:checkpoint create - working summary for the host and capture of the compacted range.
-    source: file://runtime_checkpoint.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: create
 
   - name: memory_provider_recall
     kind: function.lua
     meta:
       comment: wippy.agent:memory recall - scoped hybrid recall of current memories, skipping previously injected ids. Called by the agent runtime each step, not by the model.
-    source: file://memory_provider_recall.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: recall
 
   - name: list_memory_targets
     kind: function.lua
     meta:
       comment: Lists the memory knowledge bases the caller can read, for the agent memory picker.
-    source: file://memory_provider_recall.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: list_targets
 
   - name: memory_build
     kind: function.lua
     meta:
       comment: Trait build function - contributes the agent's identity, rules, skills and lessons to the compiled prompt.
-    source: file://memory_soul.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: build
 
   - name: memory_prompt
     kind: function.lua
     meta:
       comment: Trait prompt function - the owner profile and preferences pinned when the agent activated in this host.
-    source: file://memory_soul.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: prompt
 
   - name: memory_recall_tool
@@ -555,10 +555,10 @@ entries:
           },
           "required": ["success"]
         }
-    source: file://memory_recall_tool.lua
-    imports:
-      implementation: kickside.memory:runtime
-    method: recall
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: search
 
   - name: memory_remember_tool
     kind: function.lua
@@ -582,9 +582,9 @@ entries:
         }
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_ids": {"type": "array", "items": {"type": "string"}}, "outcome": {"type": "object"}}, "required": ["success"]}
-    source: file://memory_tools.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: remember
 
   - name: memory_forget_tool
@@ -599,9 +599,9 @@ entries:
         {"type": "object", "properties": {"item_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["item_id"]}
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_id": {"type": "string"}}, "required": ["success"]}
-    source: file://memory_tools.lua
-    imports:
-      implementation: kickside.memory:runtime
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
     method: forget
 
   - name: lifecycle_binding

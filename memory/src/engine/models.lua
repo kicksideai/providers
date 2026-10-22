@@ -12,7 +12,7 @@ local M = {}
 
 -- Span roles that state something: memories cite one of these messages.
 -- Assistant text is context only.
-M.STATEMENT_ROLES = { user = true, tool = true, document = true }
+local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
 local EXTRACTION_PROMPT = [[You extract durable memory about the user from a conversation span.
 
@@ -61,7 +61,7 @@ goals, decisions, open questions, constraints and the next step. Be compact and 
 -- reported as retryable unavailability so a bounded job retries them.
 local function wrap(step: string, err: any): error
     if type(err) == "userdata" then return model_failure.wrap(step, err) end
-    return types.unavailable(step .. " failed: " .. tostring(err))
+    return types.failed(step .. " failed", err)
 end
 
 local function messages(system: string, user: string): { any }
@@ -138,7 +138,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     local lines: { string } = {}
     local ids: { string } = {}
     for _, message in ipairs(span) do
-        if M.STATEMENT_ROLES[message.role] then ids[#ids + 1] = message.id end
+        if STATEMENT_ROLES[message.role] then ids[#ids + 1] = message.id end
         lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
     end
     if #ids == 0 then return {}, nil end

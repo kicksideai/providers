@@ -12,7 +12,7 @@ local M = {}
 local THREADS_CONTRACT = "kickside.core:threads"
 
 -- Seconds a writer waits for the read model to reach the ledger head.
-M.CATCH_UP_SECONDS = 60
+local CATCH_UP_SECONDS = 60
 
 local function threads(): (any?, error?)
     local actor = security.actor()
@@ -21,9 +21,9 @@ local function threads(): (any?, error?)
         return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "memory ledger requires a security actor and scope" })
     end
     local def, err = contract.get(THREADS_CONTRACT)
-    if err or not def then return nil, types.unavailable("threads contract unavailable: " .. tostring(err)) end
+    if err or not def then return nil, types.failed("threads contract unavailable", err) end
     local inst, open_err = (def :: any):with_actor(actor):with_scope(scope):open()
-    if open_err or not inst then return nil, types.unavailable("threads open failed: " .. tostring(open_err)) end
+    if open_err or not inst then return nil, types.failed("threads open failed", open_err) end
     return inst, nil
 end
 
@@ -38,13 +38,13 @@ function M.head(component_id: string): (integer?, error?)
 end
 
 -- Waits until the read model has folded every event up to the head.
-function M.catch_up(component_id: string, deadline: string?): error?
+local function catch_up(component_id: string, deadline: string?): error?
     local inst, err = threads()
     if err then return err end
     local _, wait_err = (inst :: any):catch_up_projection({
         thread_id = component_id,
         kind = types.THREAD_KIND,
-        deadline = deadline or types.after_seconds(M.CATCH_UP_SECONDS),
+        deadline = deadline or types.after_seconds(CATCH_UP_SECONDS),
     })
     return wait_err
 end
@@ -53,7 +53,7 @@ end
 function M.settled_head(component_id: string, deadline: string?): (integer?, error?)
     local head, err = M.head(component_id)
     if err then return nil, err end
-    local wait_err = M.catch_up(component_id, deadline)
+    local wait_err = catch_up(component_id, deadline)
     if wait_err then return nil, wait_err end
     return head, nil
 end

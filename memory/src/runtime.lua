@@ -25,13 +25,13 @@ local RUN_CONTEXT = "wippy.agent:run_context"
 local KB_REGISTRY = "kickside.knowledge:knowledge_bases"
 
 -- Messages read on the first capture of a host without a cursor.
-M.FIRST_CAPTURE_WINDOW = 20
-M.CHECKPOINT_SOURCE_MAX_CHARS = 12000
-M.CHECKPOINT_MAX_TOKENS = 1000
-M.SEARCH_MAX = 50
-M.RECALL_KINDS = { types.KIND.FACT, types.KIND.SKILL, types.KIND.LESSON }
-M.AGENT_SOUL_KINDS = { types.KIND.IDENTITY, types.KIND.RULE, types.KIND.SKILL, types.KIND.LESSON }
-M.OWNER_SOUL_KINDS = { types.KIND.PROFILE_SLOT, types.KIND.PREFERENCE }
+local FIRST_CAPTURE_WINDOW = 20
+local CHECKPOINT_SOURCE_MAX_CHARS = 12000
+local CHECKPOINT_MAX_TOKENS = 1000
+local SEARCH_MAX = 50
+local RECALL_KINDS = { types.KIND.FACT, types.KIND.SKILL, types.KIND.LESSON }
+local AGENT_SOUL_KINDS = { types.KIND.IDENTITY, types.KIND.RULE, types.KIND.SKILL, types.KIND.LESSON }
+local OWNER_SOUL_KINDS = { types.KIND.PROFILE_SLOT, types.KIND.PREFERENCE }
 
 local KIND_ORDER: { [string]: integer } = {
     identity = 1, rule = 2, profile_slot = 3, preference = 4, skill = 5, lesson = 6, fact = 7,
@@ -85,11 +85,6 @@ local function host_ref(host: any): (string, string)
     return types.trim(host.kind), types.trim(host.id)
 end
 
-local function actor_id(): string
-    local actor = security.actor()
-    return actor and actor:id() or ""
-end
-
 -- Run context --------------------------------------------------------------
 
 local function open_run_context(ref: any): (any?, error?)
@@ -97,9 +92,9 @@ local function open_run_context(ref: any): (any?, error?)
         return nil, types.invalid("run_context binding is required")
     end
     local def, err = contract.get(types.trim(ref.contract) ~= "" and ref.contract or RUN_CONTEXT)
-    if err or not def then return nil, types.unavailable("run_context contract unavailable: " .. tostring(err)) end
+    if err or not def then return nil, types.failed("run_context contract unavailable", err) end
     local inst, open_err = (def :: any):open(tostring(ref.binding))
-    if open_err or not inst then return nil, types.unavailable("run_context binding unavailable: " .. tostring(open_err)) end
+    if open_err or not inst then return nil, types.failed("run_context binding unavailable", open_err) end
     return inst, nil
 end
 
@@ -111,7 +106,7 @@ local function history(payload: any, selector: any): (any?, error?)
         agent = payload.run_context.agent or payload.agent,
         selector = selector,
     })
-    if history_err then return nil, types.unavailable("run_context history failed: " .. tostring(history_err)) end
+    if history_err then return nil, types.failed("run_context history failed", history_err) end
     if type(result) ~= "table" or type(result.events) ~= "table" then
         return nil, types.unavailable("run_context history returned no events")
     end
@@ -126,29 +121,32 @@ local function event_text(event: any): string
     return ""
 end
 
--- Capture gating: user and assistant text, and tool outcomes when experience
--- capture is on. Recalled-memory notes, developer and system messages and raw
--- tool output never enter a span.
-function M.gate(events: { any }, cfg: any): { any }
+-- The span entry of one history event: user and assistant text, and tool
+-- outcomes when experience capture is on. Recalled-memory notes, developer and
+-- system messages and raw tool output never enter a span.
+local function span_entry(event: any, cfg: any): any?
+    local metadata = type(event.metadata) == "table" and event.metadata or {}
+    if metadata.memory_ids ~= nil then return nil end
+    local role = event.role
+    if (role == "user" or role == "assistant") and cfg.capture_conversation ~= false then
+        local text = event_text(event)
+        if text == "" then return nil end
+        return { id = tostring(event.id), role = role, text = text, created_at = event.created_at }
+    end
+    if role == "function" and cfg.capture_experience == true then
+        local name = types.trim(metadata.function_name or metadata.name)
+        local status = types.trim(metadata.status)
+        if name == "" or status == "" then return nil end
+        return { id = tostring(event.id), role = "tool", text = "tool " .. name .. " " .. status, created_at = event.created_at }
+    end
+    return nil
+end
+
+local function gate(events: { any }, cfg: any): { any }
     local span: { any } = {}
     for _, event in ipairs(events) do
-        local metadata = type(event.metadata) == "table" and event.metadata or {}
-        local role = event.role
-        if metadata.memory_ids ~= nil then
-            -- recalled memory
-        elseif (role == "user" or role == "assistant") and cfg.capture_conversation ~= false then
-            local text = event_text(event)
-            if text ~= "" then
-                span[#span + 1] = { id = tostring(event.id), role = role, text = text, created_at = event.created_at }
-            end
-        elseif role == "function" and cfg.capture_experience == true then
-            local name = types.trim(metadata.function_name or metadata.name)
-            local status = types.trim(metadata.status)
-            if name ~= "" and status ~= "" then
-                span[#span + 1] = { id = tostring(event.id), role = "tool", text = "tool " .. name .. " " .. status,
-                    created_at = event.created_at }
-            end
-        end
+        local entry = span_entry(event, cfg)
+        if entry then span[#span + 1] = entry end
     end
     return span
 end
@@ -156,7 +154,7 @@ end
 -- Captures the host's history since its cursor (through `to_event_id` when
 -- given) into the memory. Both capture paths go through here; the cursor
 -- moves under compare-and-set, so a span is captured once.
-function M.capture(payload: any, to_event_id: string?): (any?, error?)
+local function capture(payload: any, to_event_id: string?): (any?, error?)
     if setting(payload, "write_enabled") == false then return { captured = false, reason = "capture_disabled" }, nil end
     local memory_id, store, store_err = M.memory(payload, component.ACCESS.WRITE)
     if store_err then return nil, store_err end
@@ -173,7 +171,7 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     if from ~= "" then
         selector = { mode = "since_id", from_id = from }
     else
-        selector = { mode = "window", last = M.FIRST_CAPTURE_WINDOW }
+        selector = { mode = "window", last = FIRST_CAPTURE_WINDOW }
     end
     local result, history_err = history(payload, selector)
     if history_err then return nil, history_err end
@@ -191,7 +189,7 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
         events = through
     end
     if #events == 0 then return { captured = false, reason = "no_new_history" }, nil end
-    local span = M.gate(events, cfg)
+    local span = gate(events, cfg)
     if #span == 0 then return { captured = false, reason = "nothing_to_capture" }, nil end
     local scheduled, schedule_err = jobs.capture({
         component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
@@ -215,7 +213,7 @@ local function sort_soul(rows: { any })
 end
 
 -- Deterministic bounded rendering: kind, priority, key order; whole lines only.
-function M.render(rows: { any }, heading: string, max_chars: integer): string
+local function render(rows: { any }, heading: string, max_chars: integer): string
     sort_soul(rows)
     local lines: { string } = {}
     local used = #heading
@@ -234,30 +232,30 @@ local function soul_rows(component_id: string, scope_key: string, kinds: { strin
 end
 
 -- Agent-scoped soul for the compiled system prompt.
-function M.agent_soul(payload: any, agent_id: string): (string?, error?)
+local function agent_soul(payload: any, agent_id: string): (string?, error?)
     local id, store, err = M.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
-    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), M.AGENT_SOUL_KINDS)
+    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), AGENT_SOUL_KINDS)
     if rows_err then return nil, rows_err end
-    return M.render(rows :: any, "## Agent memory", (store :: any).effective.soul_agent_max_chars), nil
+    return render(rows :: any, "## Agent memory", (store :: any).effective.soul_agent_max_chars), nil
 end
 
 -- Pins the owner slice for this host: the user's profile and preferences as
 -- of activation, rendered once.
-function M.pin(payload: any): (any?, error?)
+local function pin(payload: any): (any?, error?)
     local id, store, err = M.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
     local host_kind, host_id = host_ref(payload.host)
-    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, actor_id()), M.OWNER_SOUL_KINDS)
+    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, ops.actor_id()), OWNER_SOUL_KINDS)
     if rows_err then return nil, rows_err end
-    local text = M.render(rows :: any, "## What you know about the user", (store :: any).effective.soul_owner_max_chars)
+    local text = render(rows :: any, "## What you know about the user", (store :: any).effective.soul_owner_max_chars)
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
     return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text)
 end
 
 -- The owner slice pinned for the running host, byte-identical across steps.
-function M.owner_prompt(payload: any): (string?, error?)
+local function owner_prompt(payload: any): (string?, error?)
     local run = ctx.get("agent_run")
     local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
     if host_kind == "" or host_id == "" then return "", nil end
@@ -282,21 +280,21 @@ function M.apply(payload: any): (any?, error?)
     if invalid then return nil, invalid end
     local phase = payload.phase
     if phase == "activate" then
-        local _, err = M.pin(payload)
+        local _, err = pin(payload)
         if err then return nil, err end
         return { messages = {}, metadata = { phase = phase, pinned = true } }, nil
     elseif phase == "before_step" then
-        local captured, err = M.capture(payload, nil)
+        local captured, err = capture(payload, nil)
         if err then return nil, err end
         return { messages = {}, metadata = { phase = phase, capture = captured } }, nil
     elseif phase == "after_persist" then
         local event_id = types.trim(payload.refs and payload.refs.event_id)
         if event_id == "" then return nil, types.invalid("after_persist requires refs.event_id") end
-        local captured, err = M.capture(payload, event_id)
+        local captured, err = capture(payload, event_id)
         if err then return nil, err end
         return { messages = {}, metadata = { phase = phase, capture = captured } }, nil
     elseif phase == "deactivate" then
-        local captured, err = M.capture(payload, nil)
+        local captured, err = capture(payload, nil)
         if err then return nil, err end
         local metadata: { [string]: any } = { phase = phase, capture = captured }
         if (captured :: any).memory_id then
@@ -316,14 +314,14 @@ function M.create(payload: any): (any?, error?)
     local inst, err = open_run_context(payload.run_context)
     if err then return nil, err end
     local selector = type(payload.selector) == "table" and payload.selector or { mode = "since_checkpoint" }
-    selector.max_chars = selector.max_chars or M.CHECKPOINT_SOURCE_MAX_CHARS
+    selector.max_chars = selector.max_chars or CHECKPOINT_SOURCE_MAX_CHARS
     local prompt, prompt_err = (inst :: any):get_prompt({
         host = payload.run_context.host or payload.host,
         agent = payload.run_context.agent or payload.agent,
         selector = selector,
         format = "text",
     })
-    if prompt_err then return nil, types.unavailable("checkpoint source failed: " .. tostring(prompt_err)) end
+    if prompt_err then return nil, types.failed("checkpoint source failed", prompt_err) end
     local text = types.trim(prompt and prompt.text)
     local summary, tokens = "No working conversation state.", nil
     if text ~= "" then
@@ -331,13 +329,13 @@ function M.create(payload: any): (any?, error?)
         local model = types.trim(payload.agent.model)
         if model == "" then model = types.trim(options.model) end
         if model == "" then return nil, types.invalid("checkpoint requires the agent model") end
-        local max_tokens = tonumber(options.max_tokens) or M.CHECKPOINT_MAX_TOKENS
+        local max_tokens = tonumber(options.max_tokens) or CHECKPOINT_MAX_TOKENS
         local generated, used, summary_err = models.working_summary(model, text, math.floor(max_tokens))
         if summary_err then return nil, summary_err end
         summary, tokens = generated :: string, used
     end
     local range = prompt and prompt.range or {}
-    local captured, capture_err = M.capture(payload, types.trim(range.to_id) ~= "" and range.to_id or nil)
+    local captured, capture_err = capture(payload, types.trim(range.to_id) ~= "" and range.to_id or nil)
     if capture_err then return nil, capture_err end
     return { summary = summary, tokens = tokens, metadata = { source = types.SOURCE, capture = captured } }, nil
 end
@@ -370,7 +368,7 @@ function M.recall(input: any): (any?, error?)
     for _, id in ipairs(type(args.previous_memories) == "table" and args.previous_memories or {}) do exclude[tostring(id)] = true end
     local agent_id = types.trim(ctx.get("agent_id"))
     local rows, err = bindings.search({
-        component_id = component_id :: string, query = query, limit = max_items, kinds = M.RECALL_KINDS,
+        component_id = component_id :: string, query = query, limit = max_items, kinds = RECALL_KINDS,
         scopes = bindings.visible_scopes(agent_id), exclude = exclude,
     })
     if err then return nil, err end
@@ -416,7 +414,7 @@ end
 function M.build(_prompt: any, context: any): (any?, error?)
     local agent_id = types.trim(type(context) == "table" and context.agent_id or ctx.get("agent_id"))
     if agent_id == "" then return {}, nil end
-    local text, err = M.agent_soul({ context = context }, agent_id)
+    local text, err = agent_soul({ context = context }, agent_id)
     if err then return nil, err end
     if text == "" then return {}, nil end
     return { prompt = text }, nil
@@ -424,11 +422,12 @@ end
 
 -- prompt_func_id: the pinned owner slice.
 function M.prompt(): (string?, error?)
-    return M.owner_prompt({})
+    return owner_prompt({})
 end
 
 -- Tools --------------------------------------------------------------------
 
+-- A tool answer the model can act on: a refused or invalid call.
 local function tool_error(err: any): any
     return { success = false, error = tostring(err) }
 end
@@ -444,7 +443,7 @@ function M.remember(args: any): (any?, error?)
     end
     local memory_id, store, err = M.memory({}, component.ACCESS.WRITE)
     if err then return tool_error(err), nil end
-    local owner = actor_id()
+    local owner = ops.actor_id()
     if owner == "" then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "remember requires an actor" }) end
     local key = types.trim(input.key)
     if key == "" then key = content end
@@ -473,7 +472,7 @@ function M.forget(args: any): (any?, error?)
     local item, item_err = items.get(memory_id :: string, item_id)
     if item_err then return nil, item_err end
     if not item then return tool_error("memory item not found"), nil end
-    local owned = ((item :: any).scope_family == types.SCOPE.OWNER and (item :: any).scope_id == actor_id())
+    local owned = ((item :: any).scope_family == types.SCOPE.OWNER and (item :: any).scope_id == ops.actor_id())
         or ((item :: any).scope_family == types.SCOPE.AGENT and (item :: any).scope_id == types.trim(ctx.get("agent_id")))
     if not owned then return tool_error("memory item is outside this conversation's scope"), nil end
     local forgotten, forget_err = ops.forget(memory_id :: string, item_id, input.reason)
@@ -485,16 +484,16 @@ end
 function M.search(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     if setting({}, "read_enabled") == false then
-        return { success = false, error = "memory search is disabled for this agent" }, nil
+        return tool_error("memory search is disabled for this agent"), nil
     end
     local query = types.trim(input.query)
-    if query == "" then return { success = false, error = "query is required" }, nil end
+    if query == "" then return tool_error("query is required"), nil end
     local limit = math.floor(tonumber(input.limit) or tonumber(setting({}, "recall_limit")) or 5)
-    if limit < 1 or limit > M.SEARCH_MAX then return { success = false, error = "limit must be between 1 and " .. M.SEARCH_MAX }, nil end
+    if limit < 1 or limit > SEARCH_MAX then return tool_error("limit must be between 1 and " .. SEARCH_MAX), nil end
     local offset = math.floor(tonumber(input.cursor) or 0)
-    if offset < 0 then return { success = false, error = "cursor is invalid" }, nil end
+    if offset < 0 then return tool_error("cursor is invalid"), nil end
     local memory_id, _, err = M.memory({}, component.ACCESS.READ)
-    if err then return { success = false, error = tostring(err) }, nil end
+    if err then return tool_error(err), nil end
     local rows, search_err = bindings.search({
         component_id = memory_id :: string, query = query, limit = offset + limit + 1,
         scopes = bindings.visible_scopes(ctx.get("agent_id")),

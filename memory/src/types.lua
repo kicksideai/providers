@@ -21,10 +21,6 @@ M.KIND = {
     SKILL = "skill",
     LESSON = "lesson",
 }
-M.KINDS = { "identity", "rule", "profile_slot", "fact", "preference", "skill", "lesson" }
-
--- Kinds rendered into the always-on soul block, in render order.
-M.SOUL_KINDS = { "identity", "rule", "profile_slot", "preference" }
 
 M.SCOPE = {
     AGENT = "agent",
@@ -32,7 +28,6 @@ M.SCOPE = {
     SESSION = "session",
     GROUP = "group",
 }
-M.SCOPES = { "agent", "owner", "session", "group" }
 
 M.STATUS = {
     CURRENT = "current",
@@ -47,7 +42,6 @@ M.ITEM_SOURCE = {
     REFLECTION = "reflection",
     OWNER = "owner",
 }
-M.ITEM_SOURCES = { "capture", "tool", "reflection", "owner" }
 
 M.EVENT = {
     ITEM_ADDED = "kickside.memory.events:item.added",
@@ -87,15 +81,14 @@ M.ACTION = {
 }
 M.ACTIONS = { "ADD", "SUPERSEDE", "MERGE", "NOOP", "CONFLICT" }
 
-local function set_of(list: { string }): { [string]: boolean }
+local function set_of(map: { [string]: string }): { [string]: boolean }
     local out: { [string]: boolean } = {}
-    for _, value in ipairs(list) do out[value] = true end
+    for _, value in pairs(map) do out[value] = true end
     return out
 end
 
-M.KIND_SET = set_of(M.KINDS)
-M.SCOPE_SET = set_of(M.SCOPES)
-M.ITEM_SOURCE_SET = set_of(M.ITEM_SOURCES)
+M.KIND_SET = set_of(M.KIND)
+M.SCOPE_SET = set_of(M.SCOPE)
 
 function M.trim(value: any): string
     if type(value) ~= "string" then return "" end
@@ -130,7 +123,7 @@ function M.normalize_key(value: any): string
     return text
 end
 
-function M.normalize_text(value: any): string
+local function normalize_text(value: any): string
     local text = M.trim(type(value) == "string" and value or "")
     return (text:lower():gsub("%s+", " "))
 end
@@ -138,9 +131,9 @@ end
 -- Canonical text of an item value for content addressing.
 function M.value_text(value: any): string
     if value == nil then return "" end
-    if type(value) == "string" then return M.normalize_text(value) end
+    if type(value) == "string" then return normalize_text(value) end
     local encoded = json.encode(value)
-    return M.normalize_text(encoded or "")
+    return normalize_text(encoded or "")
 end
 
 function M.sha256(text: string): (string?, error?)
@@ -177,6 +170,11 @@ end
 
 function M.unavailable(message: string, details: any?): error
     return errors.new({ kind = errors.UNAVAILABLE, message = message, retryable = true, details = details })
+end
+
+-- A failed dependency call: what failed and the error it returned.
+function M.failed(message: string, err: any): error
+    return M.unavailable(message .. ": " .. tostring(err))
 end
 
 function M.internal(message: string, details: any?): error

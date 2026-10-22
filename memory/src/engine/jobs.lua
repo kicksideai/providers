@@ -16,7 +16,7 @@ local execution_identity = require("execution_identity")
 
 local M = {}
 
-M.JOB = {
+local JOB = {
     derive = "kickside.memory.engine:derive_worker",
     consolidate = "kickside.memory.engine:consolidate_worker",
     reembed = "kickside.memory.engine:reembed_worker",
@@ -30,8 +30,8 @@ local AUTHORIZED = {
     reembed = "kickside.memory.engine:reembed_authorized",
 }
 
-M.DERIVE_ATTEMPTS = 3
-M.REEMBED_PAGE = 64
+local DERIVE_ATTEMPTS = 3
+local REEMBED_PAGE = 64
 
 local function frozen_identity(): (any?, any?, error?)
     local identity, err = execution_identity.capture()
@@ -48,7 +48,7 @@ local function enqueue(run: any, identity: any, run_type: string, extra: any): (
         key = run.id,
         owner_locator = { kind = identity.principal.kind, id = identity.principal.id },
         thread_id = run.component_id,
-        job_type = M.JOB[run_type],
+        job_type = JOB[run_type],
         concurrency_key = "kickside.memory:" .. run.component_id,
         immutable_payload = { component_id = run.component_id, run_id = run.id, run_type = run_type },
     }
@@ -98,7 +98,7 @@ function M.capture(capture: Capture): (any?, error?)
     local advanced, err = runs.capture(run, capture.from_event_id)
     if err then return nil, err end
     if not (advanced :: any).advanced then return { scheduled = false }, nil end
-    local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = M.DERIVE_ATTEMPTS })
+    local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS })
     if enqueue_err then return nil, enqueue_err end
     return { scheduled = true, run_id = run.id }, nil
 end
@@ -118,7 +118,7 @@ function M.ingest(component_id: string, source_event_id: string, span: { any }):
     local created_run, created, err = runs.create(run)
     if err then return nil, err end
     if not created then return { scheduled = false, run_id = (created_run :: any).id }, nil end
-    local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = M.DERIVE_ATTEMPTS })
+    local _, enqueue_err = enqueue(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS })
     if enqueue_err then return nil, enqueue_err end
     return { scheduled = true, run_id = run.id }, nil
 end
@@ -152,7 +152,7 @@ function M.wake_consolidation(component_id: string): (any?, error?)
         return nil, types.not_found("memory consolidation is not scheduled for " .. component_id)
     end
     local _, wake_err = jobs.wake_job((run :: any).job_id, { control = true })
-    if wake_err then return nil, types.unavailable("memory consolidation could not be woken: " .. tostring(wake_err)) end
+    if wake_err then return nil, types.failed("memory consolidation could not be woken", wake_err) end
     return { job_id = (run :: any).job_id, run_id = (run :: any).id, woken = true }, nil
 end
 
@@ -206,7 +206,7 @@ local function admit(value: any, run_type: string): any
     if identity_err or not identity then
         return fail((run :: any).id, "the requester's stored identity is invalid: " .. tostring(identity_err))
     end
-    local outcome, run_err = execution_identity.run_as(identity, AUTHORIZED[run_type], value, { deferred_owner = M.JOB[run_type] })
+    local outcome, run_err = execution_identity.run_as(identity, AUTHORIZED[run_type], value, { deferred_owner = JOB[run_type] })
     if run_err then
         if type(run_err) == "userdata" and run_err:retryable() then error(run_err) end
         return fail((run :: any).id, run_err)
@@ -344,7 +344,7 @@ function M.reembed_authorized(value: any): any
     if settings_err then return fail(run.id, settings_err) end
     local after, embedded = "", 0
     while true do
-        local page, page_err = items.page_for_embedding(run.component_id, after, M.REEMBED_PAGE)
+        local page, page_err = items.page_for_embedding(run.component_id, after, REEMBED_PAGE)
         if page_err then return fail(run.id, page_err) end
         if #(page :: any) == 0 then break end
         local texts: { string } = {}

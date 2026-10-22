@@ -19,7 +19,7 @@ local COLUMNS = {
     "source", "priority", "last_seq",
 }
 
-M.SEARCH_SPEC = {
+local SEARCH_SPEC = {
     vectors = "kickside_memory_embeddings",
     vector_key = "item_id",
     rows = "kickside_memory_items",
@@ -51,13 +51,9 @@ local function decode_all(rows: any): { any }
     return out
 end
 
-local function fail(message: string, err: any): error
-    return types.unavailable(message .. ": " .. tostring(err))
-end
-
 local function get_tx(tx: any, item_id: string): (any?, error?)
     local rows, err = tx:query(SELECT .. " WHERE id = $1", { item_id })
-    if err then return nil, fail("memory item read failed", err) end
+    if err then return nil, types.failed("memory item read failed", err) end
     if not rows or #rows == 0 then return nil, nil end
     return decode(rows[1]), nil
 end
@@ -65,10 +61,10 @@ end
 local function set_fts_tx(tx: any, sqlite: boolean, item_id: string, content: string?): error?
     if not sqlite then return nil end
     local _, del_err = tx:execute("DELETE FROM kickside_memory_fts WHERE item_id = $1", { item_id })
-    if del_err then return fail("memory full-text delete failed", del_err) end
+    if del_err then return types.failed("memory full-text delete failed", del_err) end
     if content and content ~= "" then
         local _, ins_err = tx:execute("INSERT INTO kickside_memory_fts (item_id, content) VALUES ($1, $2)", { item_id, content })
-        if ins_err then return fail("memory full-text insert failed", ins_err) end
+        if ins_err then return types.failed("memory full-text insert failed", ins_err) end
     end
     return nil
 end
@@ -80,7 +76,7 @@ local function add_provenance_tx(tx: any, component_id: string, item_id: string,
                 "INSERT INTO kickside_memory_provenance (item_id, component_id, host_kind, host_id, event_id, recorded_at) " ..
                 "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
                 { item_id, component_id, types.trim(ref.host_kind), types.trim(ref.host_id), types.trim(ref.event_id), recorded_at })
-            if err then return fail("memory provenance insert failed", err) end
+            if err then return types.failed("memory provenance insert failed", err) end
         end
     end
     return nil
@@ -103,7 +99,7 @@ local function set_status_tx(tx: any, item_id: string, seq: integer, fields: { [
     params[#params + 1] = seq
     local _, err = tx:execute("UPDATE kickside_memory_items SET " .. table.concat(sets, ", ") ..
         " WHERE id = $" .. (#params - 1) .. " AND last_seq < $" .. #params, params)
-    if err then return fail("memory item update failed", err) end
+    if err then return types.failed("memory item update failed", err) end
     return nil
 end
 
@@ -111,7 +107,7 @@ local function next_version_tx(tx: any, component_id: string, scope_key: string,
     local rows, err = tx:query(
         "SELECT MAX(version) AS version FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND kind = $3 AND key = $4",
         { component_id, scope_key, kind, key })
-    if err then return nil, fail("memory version read failed", err) end
+    if err then return nil, types.failed("memory version read failed", err) end
     local current = rows and rows[1] and tonumber(rows[1].version) or 0
     return (current or 0) + 1, nil
 end
@@ -136,7 +132,7 @@ local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: 
         { item_id, component_id, body.kind, body.scope_family, body.scope_id, scope_key, key, body.content,
             value ~= nil and json.encode(value) or sql.NULL, types.STATUS.CURRENT, version, body.valid_at, recorded_at,
             tonumber(body.confidence) or sql.NULL, body.source, tonumber(body.priority) or 0, seq })
-    if err then return fail("memory item insert failed", err) end
+    if err then return types.failed("memory item insert failed", err) end
     local fts_err = set_fts_tx(tx, sqlite, item_id, body.content)
     if fts_err then return fts_err end
     return add_provenance_tx(tx, component_id, item_id, body.provenance, recorded_at)
@@ -176,7 +172,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
                 "INSERT INTO kickside_memory_provenance (item_id, component_id, host_kind, host_id, event_id, recorded_at) " ..
                 "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance WHERE item_id = $2 " ..
                 "ON CONFLICT DO NOTHING", { into, item_id })
-            if copy_err then return fail("memory provenance merge failed", copy_err) end
+            if copy_err then return types.failed("memory provenance merge failed", copy_err) end
             local err = supersede_tx(tx, item_id, into, seq, recorded_at, false)
             if err then return err end
         end
@@ -199,7 +195,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         local _, err = tx:execute(
             "DELETE FROM kickside_memory_provenance WHERE item_id = $1 AND host_kind = $2 AND host_id = $3 AND event_id = $4",
             { types.trim(body.item_id), types.trim(body.host_kind), types.trim(body.host_id), types.trim(body.event_id) })
-        if err then return fail("memory provenance delete failed", err) end
+        if err then return types.failed("memory provenance delete failed", err) end
         return nil
     elseif kind == types.EVENT.CAPTURE_ADVANCED then
         -- Capture moves the live cursor synchronously and ahead of its derive
@@ -208,7 +204,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
             "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) " ..
             "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (component_id, host_kind, host_id) DO NOTHING",
             { component_id, types.trim(body.host_kind), types.trim(body.host_id), types.trim(body.agent_id), types.trim(body.last_event_id), recorded_at })
-        if err then return fail("memory cursor fold failed", err) end
+        if err then return types.failed("memory cursor fold failed", err) end
         return nil
     end
     return nil
@@ -230,7 +226,7 @@ end
 function M.get(component_id: string, item_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(SELECT .. " WHERE component_id = $1 AND id = $2", { component_id, item_id })
-        if err then return nil, fail("memory item read failed", err) end
+        if err then return nil, types.failed("memory item read failed", err) end
         if not rows or #rows == 0 then return nil, nil end
         return decode(rows[1]), nil
     end)
@@ -273,7 +269,7 @@ function M.list(component_id: string, filter: ListFilter): (any?, error?)
         params[#params + 1] = filter.offset or 0
         local rows, err = conn:query(SELECT .. " WHERE " .. table.concat(where, " AND ") ..
             " ORDER BY kind, priority DESC, key, version DESC, id LIMIT $" .. (#params - 1) .. " OFFSET $" .. #params, params)
-        if err then return nil, fail("memory item list failed", err) end
+        if err then return nil, types.failed("memory item list failed", err) end
         return decode_all(rows), nil
     end)
 end
@@ -284,7 +280,7 @@ function M.keys(component_id: string, scope_key: string, limit: integer): (any?,
         local rows, err = conn:query(
             "SELECT DISTINCT kind, key FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND status IN ($3, $4) ORDER BY kind, key LIMIT $5",
             { component_id, scope_key, types.STATUS.CURRENT, types.STATUS.CONFLICT, limit })
-        if err then return nil, fail("memory key read failed", err) end
+        if err then return nil, types.failed("memory key read failed", err) end
         return rows or {}, nil
     end)
 end
@@ -294,7 +290,7 @@ function M.provenance(component_id: string, item_id: string): (any?, error?)
         local rows, err = conn:query(
             "SELECT host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance WHERE component_id = $1 AND item_id = $2 ORDER BY recorded_at, event_id",
             { component_id, item_id })
-        if err then return nil, fail("memory provenance read failed", err) end
+        if err then return nil, types.failed("memory provenance read failed", err) end
         return rows or {}, nil
     end)
 end
@@ -304,7 +300,7 @@ function M.has_provenance(component_id: string, item_id: string, ref: any): (boo
         local rows, err = conn:query(
             "SELECT 1 AS found FROM kickside_memory_provenance WHERE component_id = $1 AND item_id = $2 AND host_kind = $3 AND host_id = $4 AND event_id = $5",
             { component_id, item_id, ref.host_kind, ref.host_id, ref.event_id })
-        if err then return nil, fail("memory provenance read failed", err) end
+        if err then return nil, types.failed("memory provenance read failed", err) end
         return rows ~= nil and #rows > 0, nil
     end)
 end
@@ -313,7 +309,7 @@ function M.counts(component_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(
             "SELECT status, COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1 GROUP BY status", { component_id })
-        if err then return nil, fail("memory counts read failed", err) end
+        if err then return nil, types.failed("memory counts read failed", err) end
         local counts = { current = 0, superseded = 0, conflict = 0, forgotten = 0, total = 0 }
         for _, row in ipairs(rows or {}) do
             local n = tonumber(row.n) or 0
@@ -323,7 +319,7 @@ function M.counts(component_id: string): (any?, error?)
         local groups, group_err = conn:query(
             "SELECT COUNT(DISTINCT conflict_group) AS n FROM kickside_memory_items WHERE component_id = $1 AND status = $2",
             { component_id, types.STATUS.CONFLICT })
-        if group_err then return nil, fail("memory conflict count failed", group_err) end
+        if group_err then return nil, types.failed("memory conflict count failed", group_err) end
         counts.conflict_groups = groups and groups[1] and tonumber(groups[1].n) or 0
         return counts, nil
     end)
@@ -332,10 +328,10 @@ end
 function M.set_embedding(component_id: string, item_id: string, vector: { number }): (any?, error?)
     return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
         local _, del_err = tx:execute("DELETE FROM kickside_memory_embeddings WHERE item_id = $1", { item_id })
-        if del_err then return nil, fail("memory vector delete failed", del_err) end
+        if del_err then return nil, types.failed("memory vector delete failed", del_err) end
         local err = index.insert_rows_tx(tx, "kickside_memory_embeddings", { "item_id", "component_id", "embedding" },
             { { item_id, component_id, index.vector_literal(vector) } })
-        if err then return nil, fail("memory vector insert failed", err) end
+        if err then return nil, types.failed("memory vector insert failed", err) end
         return true, nil
     end)
 end
@@ -356,10 +352,10 @@ function M.search(component_id: string, vector: { number }, filter: SearchFilter
     if filter.statuses and #filter.statuses > 0 then filters[#filters + 1] = { column = "status", values = filter.statuses } end
     if filter.scope_keys and #filter.scope_keys > 0 then filters[#filters + 1] = { column = "scope_key", values = filter.scope_keys } end
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        local rows, err = index.search(conn, M.SEARCH_SPEC, vector, {
+        local rows, err = index.search(conn, SEARCH_SPEC, vector, {
             partition = component_id, limit = filter.limit or 10, filters = filters, query_text = filter.query_text,
         })
-        if err then return nil, fail("memory search failed", err) end
+        if err then return nil, types.failed("memory search failed", err) end
         return decode_all(rows), nil
     end)
 end
@@ -370,7 +366,7 @@ function M.page_for_embedding(component_id: string, after_id: string, limit: int
         local rows, err = conn:query(
             "SELECT id, content FROM kickside_memory_items WHERE component_id = $1 AND id > $2 ORDER BY id LIMIT $3",
             { component_id, after_id, limit })
-        if err then return nil, fail("memory embedding page read failed", err) end
+        if err then return nil, types.failed("memory embedding page read failed", err) end
         return rows or {}, nil
     end)
 end

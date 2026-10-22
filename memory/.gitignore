@@ -1,2 +1,4 @@
 /.wippy/
 /wippy.lock
+/build-inputs/.wippy/
+/ui/.wippy/

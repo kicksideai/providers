@@ -7,17 +7,17 @@ local types = require("types")
 
 local M = {}
 
-M.ENGINE_ID = "kickside.memory:engine_memory"
+local ENGINE_ID = "kickside.memory:engine_memory"
 
 local function descriptor(): (any?, error?)
-    local entry, err = registry.get(M.ENGINE_ID)
+    local entry, err = registry.get(ENGINE_ID)
     if err or type(entry) ~= "table" then
         return nil, types.internal("memory engine descriptor is unavailable: " .. tostring(err))
     end
     return (entry :: any).meta or {}, nil
 end
 
-function M.defaults(): (any?, error?)
+local function defaults(): (any?, error?)
     local meta, err = descriptor()
     if err then return nil, err end
     local out = {}
@@ -84,7 +84,7 @@ end
 
 -- Effective configuration: stored values over engine defaults.
 function M.effective(stored: any): (any?, error?)
-    local merged, err = M.defaults()
+    local merged, err = defaults()
     if err then return nil, err end
     for key, value in pairs(type(stored) == "table" and stored or {}) do (merged :: any)[key] = value end
     return merged, nil

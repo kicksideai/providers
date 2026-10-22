@@ -24,32 +24,35 @@ local function reply(res: any, status: any, payload: any)
     res:write_json(payload)
 end
 
-local function fail(res: any, err: any)
-    local status, classification = http_errors.classify(err)
-    local message = (type(err) == "userdata" and classification.kind ~= nil) and err:message() or tostring(err)
+local function refuse(res: any, status: any, message: string)
     reply(res, status, { success = false, error = message })
 end
 
--- Request preamble: HTTP context, actor, memory id, access, and that the
--- knowledge base is a memory.
-local function open(access: integer): (any?, any?, string?)
+local function fail(res: any, err: any)
+    local status, classification = http_errors.classify(err)
+    refuse(res, status, (type(err) == "userdata" and classification.kind ~= nil) and err:message() or tostring(err))
+end
+
+-- Request preamble: HTTP context, actor, memory id, access, and the memory's
+-- store, which also proves the knowledge base is a memory.
+local function open(access: integer): (any?, any?, string?, any?)
     local res = http.response()
     local req = http.request()
     if not res or not req then return nil, nil, nil end
     if not security.actor() then
-        reply(res, http.STATUS.UNAUTHORIZED, { success = false, error = "authentication required" })
+        refuse(res, http.STATUS.UNAUTHORIZED, "authentication required")
         return nil, nil, nil
     end
     local id = types.trim(req:param("id"))
     if id == "" then
-        reply(res, http.STATUS.BAD_REQUEST, { success = false, error = "memory id is required" })
+        refuse(res, http.STATUS.BAD_REQUEST, "memory id is required")
         return nil, nil, nil
     end
     local _, access_err = component.validate_access(id, access)
     if access_err then fail(res, access_err); return nil, nil, nil end
-    local _, store_err = stores.get(id)
+    local store, store_err = stores.get(id)
     if store_err then fail(res, store_err); return nil, nil, nil end
-    return res, req, id
+    return res, req, id, store
 end
 
 local function body_of(req: any): any
@@ -82,12 +85,11 @@ function M.list_items()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
     local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return reply(res, http.STATUS.BAD_REQUEST, { success = false, error = limit_err }) end
+    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
     local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return reply(res, http.STATUS.BAD_REQUEST, { success = false, error = offset_err }) end
+    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
     local rows, err = items.list(id :: string, {
-        kinds = list_param(req, "kind"), statuses = list_param(req, "status"),
-        scope_family = types.trim(req:query("scope_family")), limit = (limit :: integer) + 1, offset = offset,
+        kinds = list_param(req, "kind"), statuses = list_param(req, "status"), limit = (limit :: integer) + 1, offset = offset,
     })
     if err then return fail(res, err) end
     local page: { any } = {}
@@ -103,7 +105,7 @@ function M.get_item()
     local item_id = types.trim(req:param("item_id"))
     local item, err = items.get(id :: string, item_id)
     if err then return fail(res, err) end
-    if not item then return reply(res, http.STATUS.NOT_FOUND, { success = false, error = "memory item not found" }) end
+    if not item then return refuse(res, http.STATUS.NOT_FOUND, "memory item not found") end
     local provenance, prov_err = items.provenance(id :: string, item_id)
     if prov_err then return fail(res, prov_err) end
     local history, history_err = items.list(id :: string, {
@@ -117,7 +119,7 @@ local function write_op(fn: (string, any, any) -> (any?, error?))
     local res, req, id = open(component.ACCESS.WRITE)
     if not res then return end
     local body = body_of(req)
-    if not body then return reply(res, http.STATUS.BAD_REQUEST, { success = false, error = "body must be a JSON object" }) end
+    if not body then return refuse(res, http.STATUS.BAD_REQUEST, "body must be a JSON object") end
     local result, err = fn(id :: string, req, body)
     if err then return fail(res, err) end
     local out: { [string]: any } = { success = true }
@@ -177,10 +179,8 @@ function M.list_conflicts()
 end
 
 function M.status()
-    local res, _req, id = open(component.ACCESS.READ)
+    local res, _req, id, store = open(component.ACCESS.READ)
     if not res then return end
-    local store, store_err = stores.get(id :: string)
-    if store_err then return fail(res, store_err) end
     local effective, cfg_err = config.effective((store :: any).config)
     if cfg_err then return fail(res, cfg_err) end
     local schema, schema_err = config.schema()

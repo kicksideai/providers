@@ -1,26 +1,13 @@
-import { WippyVueElement, define } from '@wippy-fe/webcomponent-vue'
-import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import type { ComponentProps, MemoryEvents } from './types.ts'
+import { define } from '@wippy-fe/webcomponent-vue'
+import type { WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
+import { memoryElement } from './element.ts'
 import KnowledgeMemory from './app/knowledge-memory.vue'
-import stylesText from './styles.css?inline'
 import pkg from '../package.json'
 
-// The Knowledge Base Memory trait config component (kickside-knowledge-memory).
-// The trait config host passes the activation context + checkpoint policy as the
-// `config` prop and folds edits back through the `config-changed` event.
-class KicksideKnowledgeMemoryElement extends WippyVueElement<ComponentProps, MemoryEvents> {
-  static get wippyConfig(): WippyElementConfig<ComponentProps> {
-    return {
-      propsSchema: pkg.wippy.props as WippyPropsSchema,
-      hostCssKeys: ['themeConfigUrl'] as const,
-      inlineCss: stylesText,
-    }
-  }
-
-  static get vueConfig() {
-    return { rootComponent: KnowledgeMemory }
-  }
-}
+// kickside-knowledge-memory: the Memory trait's settings in the agent editor.
+// The editor passes the trait context as `config` and takes edits back through
+// `config-changed`.
+const KicksideKnowledgeMemoryElement = memoryElement(KnowledgeMemory, pkg.wippy.props as WippyPropsSchema)
 
 export async function webComponent() {
   return KicksideKnowledgeMemoryElement

@@ -68,10 +68,6 @@ export const KIND_LABEL: Record<MemoryKind, string> = {
   preference: 'Preference', skill: 'Skill', lesson: 'Lesson',
 }
 
-export const KIND_ICON: Record<MemoryKind, string> = {
-  identity: 'tabler:id-badge-2', rule: 'tabler:list-check', profile_slot: 'tabler:user', fact: 'tabler:bulb',
-  preference: 'tabler:heart', skill: 'tabler:tool', lesson: 'tabler:school',
-}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)

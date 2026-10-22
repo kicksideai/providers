@@ -10,7 +10,7 @@ local models = require("memory_models")
 
 local M = {}
 
-M.NEIGHBORS = 5
+local NEIGHBORS = 5
 
 type Candidate = {
     kind: string,
@@ -146,7 +146,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
                 end
             end
             local same_key, key_err = items.list(opts.component_id, {
-                kinds = { candidate.kind }, statuses = LIVE, scope_keys = { scope_key }, key = key, limit = M.NEIGHBORS,
+                kinds = { candidate.kind }, statuses = LIVE, scope_keys = { scope_key }, key = key, limit = NEIGHBORS,
             })
             if key_err then return nil, key_err end
             for _, row in ipairs(same_key :: any) do admit(row) end
@@ -157,7 +157,7 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
             -- as a preference from one span and a profile slot from another.
             local near, near_err = items.search(opts.component_id, vector, {
                 statuses = LIVE, scope_keys = { scope_key },
-                query_text = candidate.content, limit = M.NEIGHBORS,
+                query_text = candidate.content, limit = NEIGHBORS,
             })
             if near_err then return nil, near_err end
             for _, row in ipairs(near :: any) do admit(row) end

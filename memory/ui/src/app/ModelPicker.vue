@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import Message from 'primevue/message'
 import { loadByTagName } from '@wippy-fe/proxy'
 
 // The shared model picker (wc-model-picker). A picker that cannot load is
@@ -27,5 +28,5 @@ function onSelect(event: Event) {
 
 <template>
   <wc-model-picker v-if="ready" :value="value" :capability="capability" @select="onSelect"></wc-model-picker>
-  <div v-else-if="failed" class="mm-notice error">The model picker could not load: {{ failed }}</div>
+  <Message v-else-if="failed" severity="error" size="small">The model picker could not load: {{ failed }}</Message>
 </template>
