@@ -220,12 +220,12 @@ type DocOutcome = {
     resummarized: boolean,
     chunks_reenriched: integer,
     chunks_failed: integer,
+    error: string?,
 }
 
 -- Regenerate one document's summary and re-situate its chunks. Returns
--- (outcome, err): err is a store read that failed, which fails the whole run
--- rather than one document, while a document the model or a write could not
--- produce a summary for comes back with resummarized=false and is skipped. A
+-- (outcome, err): err is a store read that fails the whole run. A model or
+-- write failure stays with the document outcome so the run retains its counts. A
 -- document is never left with an empty summary over a good one, and a summary
 -- whose vector the store refused keeps its stored content.
 local function resummarize_document(ctx: RunCtx, doc: any): (DocOutcome, string?)
@@ -244,6 +244,7 @@ local function resummarize_document(ctx: RunCtx, doc: any): (DocOutcome, string?
             document_id = doc_id,
             error = tostring(summary_err or "summarizer returned no text"),
         })
+        outcome.error = tostring(summary_err or "summarizer returned no text")
         return outcome, nil
     end
 
@@ -258,12 +259,14 @@ local function resummarize_document(ctx: RunCtx, doc: any): (DocOutcome, string?
     local vector, eerr = ctx.embed_one(summary, ctx.embed_model, ctx.dims)
     if eerr or not vector then
         logger:warn("summary embed failed", { document_id = doc_id, error = tostring(eerr or "no vector") })
+        outcome.error = tostring(eerr or "summary embed returned no vector")
         return outcome, nil
     end
 
     local _, write_err = write_summary_node(ctx, doc, summary_node, summary :: string, vector)
     if write_err then
         logger:warn("summary write failed", { document_id = doc_id, error = write_err })
+        outcome.error = tostring(write_err)
         return outcome, nil
     end
     outcome.resummarized = true
@@ -418,6 +421,8 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
     end
     publish()
 
+    local document_failures = 0
+    local first_error: string? = nil
     local offset = 0
     while true do
         local docs, berr = browse(store_id, {
@@ -444,6 +449,11 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
             else
                 counts.documents_skipped = counts.documents_skipped + 1
             end
+            if outcome.error then
+                document_failures = document_failures + 1
+                first_error = first_error or outcome.error
+            end
+            if outcome.error or outcome.chunks_failed > 0 then counts.success = false end
             counts.chunks_reenriched = counts.chunks_reenriched + outcome.chunks_reenriched
             counts.chunks_failed = counts.chunks_failed + outcome.chunks_failed
             publish()
@@ -453,6 +463,11 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
         if count < PAGE then break end
     end
 
+    if not counts.success then
+        local message = tostring(document_failures) .. " document summaries and " .. tostring(counts.chunks_failed) .. " chunks failed"
+        if first_error then message = message .. ": " .. first_error end
+        return counts, message
+    end
     return counts, nil
 end
 
