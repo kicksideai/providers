@@ -10,6 +10,7 @@ local stores = require("memory_stores")
 local items = require("memory_items")
 local models = require("memory_models")
 local writer = require("memory_writer")
+local reconcile = require("memory_reconcile")
 local component = require("component")
 local jobs = require("jobs")
 local execution_identity = require("execution_identity")
@@ -70,7 +71,7 @@ local function new_derive_run(component_id: string, host_kind: string, host_id: 
     from_event_id: string, to_event_id: string, span: { any }): (any?, any?, error?)
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, nil, id_err end
-    local run_id, hash_err = types.sha256(table.concat({ "derive", component_id, host_kind, host_id, from_event_id, to_event_id }, "|"))
+    local run_id, hash_err = types.digest({ "derive", component_id, host_kind, host_id, from_event_id, to_event_id })
     if hash_err then return nil, nil, hash_err end
     return {
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
@@ -154,7 +155,7 @@ end
 function M.schedule_reembed(component_id: string): (any?, error?)
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, id_err end
-    local run_id, hash_err = types.sha256("reembed|" .. component_id .. "|" .. types.now())
+    local run_id, hash_err = types.digest({ "reembed", component_id, types.now() })
     if hash_err then return nil, hash_err end
     local run, _created, err = runs.create({
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.REEMBED, input = {},
@@ -259,21 +260,20 @@ function M.derive_authorized(value: any): any
         candidates = extracted
     end
     local deadline = value.job.deadline
-    local result, write_err = writer.remember(candidates, {
-        component_id = run.component_id,
-        embedding_model = store.embedding_model,
-        judge_model = cfg.judge_model,
-        scope_family = types.SCOPE.OWNER,
-        scope_id = types.trim(input.owner_id),
-        source = types.ITEM_SOURCE.CAPTURE,
-        host_kind = run.host_kind,
-        host_id = run.host_id,
-        events = events,
-    }, "derive:" .. run.id, deadline, run.host_kind ~= "content" and {
-        { type = types.EVENT.CAPTURE_ADVANCED, body = {
-            host_kind = run.host_kind, host_id = run.host_id, agent_id = run.agent_id, last_event_id = run.to_event_id,
-        } },
-    } or nil)
+    local result, write_err = writer.write(run.component_id, "derive:" .. run.id, {
+        source = types.ITEM_SOURCE.CAPTURE, deadline = deadline,
+        extra_events = run.host_kind ~= "content" and {
+            { type = types.EVENT.CAPTURE_ADVANCED, body = {
+                host_kind = run.host_kind, host_id = run.host_id, agent_id = run.agent_id, last_event_id = run.to_event_id,
+            } },
+        } or nil,
+    }, function(d: any): (any?, error?)
+        return nil, reconcile.decide(d, candidates, {
+            embedding_model = store.embedding_model, judge_model = cfg.judge_model,
+            scope_family = types.SCOPE.OWNER, scope_id = types.trim(input.owner_id),
+            host_kind = run.host_kind, host_id = run.host_id, events = events,
+        })
+    end)
     if write_err then return fail(run.id, write_err) end
     local stats = (result :: any).stats
     stats.candidates = #candidates
@@ -314,19 +314,24 @@ function M.consolidate_authorized(value: any): any
         local scope_items = by_scope[scope_id]
         local reflected, reflect_err = models.reflect(cfg.extraction_model, scope_items)
         if reflect_err then return fail(run.id, reflect_err) end
-        local result, write_err = writer.remember(reflected :: any, {
-            component_id = run.component_id, embedding_model = store.embedding_model, judge_model = cfg.judge_model,
-            scope_family = types.SCOPE.OWNER, scope_id = scope_id, source = types.ITEM_SOURCE.REFLECTION,
-        }, "consolidate:" .. run.id .. ":" .. scope_id .. ":" .. run.cycle, deadline, nil)
+        local result, write_err = writer.write(run.component_id, "consolidate:" .. run.id .. ":" .. scope_id .. ":" .. run.cycle, {
+            source = types.ITEM_SOURCE.REFLECTION, deadline = deadline,
+        }, function(d: any): (any?, error?)
+            return nil, reconcile.decide(d, reflected :: any, {
+                embedding_model = store.embedding_model, judge_model = cfg.judge_model,
+                scope_family = types.SCOPE.OWNER, scope_id = scope_id,
+            })
+        end)
         if write_err then return fail(run.id, write_err) end
         stats.scopes = stats.scopes + 1
         for key, count in pairs((result :: any).stats) do
             if stats[key] ~= nil then stats[key] = stats[key] + count end
         end
     end
-    local _, completed_err = writer.apply(run.component_id, {
-        { type = types.EVENT.CONSOLIDATION_COMPLETED, body = { run_id = run.id, stats = stats } },
-    }, "consolidated:" .. run.id .. ":" .. run.cycle, deadline)
+    local _, completed_err = writer.write(run.component_id, "consolidated:" .. run.id .. ":" .. run.cycle, {
+        source = types.ITEM_SOURCE.REFLECTION, deadline = deadline,
+        extra_events = { { type = types.EVENT.CONSOLIDATION_COMPLETED, body = { run_id = run.id, stats = stats } } },
+    }, function(_d: any): (any?, error?) return nil, nil end)
     if completed_err then return fail(run.id, completed_err) end
     local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end

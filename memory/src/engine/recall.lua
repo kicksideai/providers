@@ -6,7 +6,6 @@ local types = require("types")
 local stores = require("memory_stores")
 local items = require("memory_items")
 local models = require("memory_models")
-local ops = require("memory_ops")
 
 local M = {}
 
@@ -14,7 +13,7 @@ local M = {}
 -- caller runs as an agent, that agent's scope.
 function M.visible_scopes(agent_id: string?): { string }
     local scopes: { string } = {}
-    local actor_id = ops.actor_id()
+    local actor_id = types.actor_id()
     if actor_id ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.OWNER, actor_id) end
     local agent = types.trim(agent_id)
     if agent ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.AGENT, agent) end
@@ -28,9 +27,11 @@ type SearchRequest = {
     kinds: { string }?,
     scopes: { string },
     exclude: { [string]: boolean }?,
+    -- Defaults to current items; unresolved conflicts are searched on their own.
+    statuses: { string }?,
 }
 
--- Hybrid current-only search of one memory within the given scopes.
+-- Hybrid search of one memory within the given scopes.
 function M.search(req: SearchRequest): (any?, error?)
     if #req.scopes == 0 then return {}, nil end
     local store, store_err = stores.get(req.component_id)
@@ -41,7 +42,7 @@ function M.search(req: SearchRequest): (any?, error?)
     local excluded = 0
     for _ in pairs(exclude) do excluded = excluded + 1 end
     local rows, err = items.search(req.component_id, (vectors :: any)[1], {
-        kinds = req.kinds, statuses = { types.STATUS.CURRENT }, scope_keys = req.scopes,
+        kinds = req.kinds, statuses = req.statuses or { types.STATUS.CURRENT }, scope_keys = req.scopes,
         query_text = req.query, limit = req.limit + excluded,
     })
     if err then return nil, err end

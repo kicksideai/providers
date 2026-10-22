@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { api } from '@wippy-fe/proxy'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import { KIND_LABEL, errorText, isRecord, type MemoryItem, type Provenance } from './types'
@@ -17,11 +18,13 @@ const detail = ref<MemoryItem>(props.item)
 const versions = ref<MemoryItem[]>([])
 const provenance = ref<Provenance[]>([])
 const editing = ref('')
+const confirmingForget = ref(false)
 const itemUrl = computed(() => `${props.memory.base.value}/items/${encodeURIComponent(props.item.id)}`)
 const editable = computed(() => (detail.value.kind === 'identity' || detail.value.kind === 'rule') && detail.value.status === 'current')
 
 async function load() {
   editing.value = ''
+  confirmingForget.value = false
   if (detail.value.id !== props.item.id) detail.value = props.item
   try {
     const { data } = await api.get(itemUrl.value)
@@ -37,7 +40,10 @@ async function load() {
 watch([() => props.item.id, props.memory.revision], () => { void load() }, { immediate: true })
 
 function forget() {
-  void props.memory.act(() => api.post(`${itemUrl.value}/forget`, { reason: 'forgotten in the memory page' }))
+  void props.memory.act(() => api.post(`${itemUrl.value}/forget`, {}))
+}
+function archive() {
+  void props.memory.act(() => api.post(`${itemUrl.value}/archive`, {}))
 }
 function restore() {
   void props.memory.act(() => api.post(`${itemUrl.value}/restore`, {}))
@@ -72,9 +78,17 @@ function save() {
       </dl>
       <div class="mm-actions">
         <Button v-if="editable && !editing" label="Edit" size="small" severity="secondary" outlined @click="editing = detail.content"><template #icon><Icon icon="tabler:pencil" /></template></Button>
-        <Button v-if="detail.status !== 'forgotten'" label="Forget" size="small" severity="danger" outlined :disabled="memory.busy.value" @click="forget"><template #icon><Icon icon="tabler:eye-off" /></template></Button>
-        <Button v-else label="Restore" size="small" severity="secondary" outlined :disabled="memory.busy.value" @click="restore"><template #icon><Icon icon="tabler:restore" /></template></Button>
+        <Button v-if="detail.status === 'current' || detail.status === 'conflict'" label="Archive" size="small" severity="secondary" outlined :disabled="memory.busy.value" @click="archive"><template #icon><Icon icon="tabler:archive" /></template></Button>
+        <Button v-if="detail.status === 'archived'" label="Restore" size="small" severity="secondary" outlined :disabled="memory.busy.value" @click="restore"><template #icon><Icon icon="tabler:restore" /></template></Button>
+        <Button v-if="detail.status !== 'forgotten' && !confirmingForget" label="Forget" size="small" severity="danger" outlined :disabled="memory.busy.value" @click="confirmingForget = true"><template #icon><Icon icon="tabler:trash" /></template></Button>
       </div>
+      <Message v-if="confirmingForget" severity="warn" size="small">
+        Forget erases this memory, every earlier version of it and the conversation lines it was learned from. It cannot be undone.
+        <div class="mm-actions mm-confirm">
+          <Button label="Forget for good" size="small" severity="danger" :disabled="memory.busy.value" @click="forget" />
+          <Button label="Cancel" size="small" severity="secondary" text @click="confirmingForget = false" />
+        </div>
+      </Message>
       <p class="mm-h">Versions</p>
       <div v-for="version in versions" :key="version.id" class="mm-version" :class="{ past: version.status !== 'current' }">
         <Tag class="kx-tag-sm" :severity="severity(version.status)" :value="`v${version.version}`" /><span>{{ version.content }}</span>

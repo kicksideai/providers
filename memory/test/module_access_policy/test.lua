@@ -8,6 +8,7 @@ local ENDPOINTS = {
     "kickside.memory.api:create_item.endpoint",
     "kickside.memory.api:edit_item.endpoint",
     "kickside.memory.api:forget_item.endpoint",
+    "kickside.memory.api:archive_item.endpoint",
     "kickside.memory.api:restore_item.endpoint",
     "kickside.memory.api:list_conflicts.endpoint",
     "kickside.memory.api:resolve_conflict.endpoint",

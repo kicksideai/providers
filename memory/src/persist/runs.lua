@@ -103,13 +103,15 @@ end
 
 -- Pins the owner slice a host renders into every step's prompt, with the ledger
 -- head it was rendered at. The slice stays byte-identical until the next pin.
-function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string): (any?, error?)
+-- Pins the rendered owner slice and the ids of the items it holds, so
+-- forgetting one of them invalidates the pin.
+function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, item_ids: { string }): (any?, error?)
     return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
         local _, err = tx:execute(
-            "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, pinned_head, pinned_prompt, updated_at) " ..
-            "VALUES ($1, $2, $3, $4, '', $5, $6, $7) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
-            "pinned_prompt = excluded.pinned_prompt, agent_id = excluded.agent_id, updated_at = excluded.updated_at",
-            { component_id, host_kind, host_id, agent_id, head, prompt, types.now() })
+            "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at) " ..
+            "VALUES ($1, $2, $3, $4, '', $5, $6, $7, $8) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
+            "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, updated_at = excluded.updated_at",
+            { component_id, host_kind, host_id, agent_id, head, prompt, json.encode(item_ids), types.now() })
         if err then return nil, types.failed("memory pin failed", err) end
         return true, nil
     end)

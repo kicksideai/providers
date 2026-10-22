@@ -2,7 +2,7 @@
 // context, with the small helpers the elements share.
 
 export type MemoryKind = 'identity' | 'rule' | 'profile_slot' | 'fact' | 'preference' | 'skill' | 'lesson'
-export type MemoryStatus = 'current' | 'superseded' | 'conflict' | 'forgotten'
+export type MemoryStatus = 'current' | 'superseded' | 'conflict' | 'archived' | 'forgotten'
 
 export interface MemoryItem {
   id: string

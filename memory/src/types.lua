@@ -2,8 +2,9 @@
 -- event types, run types, and the small value helpers every layer uses.
 
 local time = require("time")
-local hash = require("hash")
 local json = require("json")
+local canonical_json = require("canonical_json")
+local security = require("security")
 
 local M = {}
 
@@ -27,10 +28,20 @@ M.SCOPE = {
     OWNER = "owner",
 }
 
+-- How many current values a key holds in one scope. Kind is a presentation
+-- label; cardinality and the canonical key decide uniqueness.
+M.CARDINALITY = {
+    SINGLE = "single",
+    MULTI = "multi",
+}
+
+-- archived is reversible; forgotten is an erase: the item keeps its place in
+-- the history but no text, value, vector or provenance.
 M.STATUS = {
     CURRENT = "current",
     SUPERSEDED = "superseded",
     CONFLICT = "conflict",
+    ARCHIVED = "archived",
     FORGOTTEN = "forgotten",
 }
 
@@ -46,8 +57,10 @@ M.EVENT = {
     ITEM_SUPERSEDED = "kickside.memory.events:item.superseded",
     ITEM_MERGED = "kickside.memory.events:item.merged",
     ITEM_CONFLICTED = "kickside.memory.events:item.conflicted",
-    ITEM_FORGOTTEN = "kickside.memory.events:item.forgotten",
+    ITEM_REVISED = "kickside.memory.events:item.revised",
+    ITEM_ARCHIVED = "kickside.memory.events:item.archived",
     ITEM_RESTORED = "kickside.memory.events:item.restored",
+    ITEM_FORGOTTEN = "kickside.memory.events:item.forgotten",
     PROVENANCE_ADDED = "kickside.memory.events:provenance.added",
     CAPTURE_ADVANCED = "kickside.memory.events:capture.advanced",
     CONSOLIDATION_COMPLETED = "kickside.memory.events:consolidation.completed",
@@ -85,6 +98,7 @@ end
 
 M.KIND_SET = set_of(M.KIND)
 M.SCOPE_SET = set_of(M.SCOPE)
+M.CARDINALITY_SET = set_of(M.CARDINALITY)
 
 function M.trim(value: any): string
     if type(value) ~= "string" then return "" end
@@ -119,33 +133,43 @@ function M.normalize_key(value: any): string
     return text
 end
 
-local function normalize_text(value: any): string
-    local text = M.trim(value)
-    return (text:lower():gsub("%s+", " "))
-end
-
--- Canonical text of an item value for content addressing.
-function M.value_text(value: any): string
-    if value == nil then return "" end
-    if type(value) == "string" then return normalize_text(value) end
-    local encoded = json.encode(value)
-    return normalize_text(encoded or "")
-end
-
-function M.sha256(text: string): (string?, error?)
-    local digest, err = hash.sha256(text)
-    if err then return nil, errors.wrap(err, "sha256 failed") end
-    return digest, nil
+-- The calling actor's id, or "" without one.
+function M.actor_id(): string
+    local actor = security.actor()
+    return actor and actor:id() or ""
 end
 
 function M.scope_key(scope_family: string, scope_id: string): string
     return scope_family .. ":" .. scope_id
 end
 
--- Content-derived item id: identical typed content in one memory always maps to
--- one id, so replayed or redelivered work is idempotent.
-function M.item_id(component_id: string, kind: string, scope_family: string, scope_id: string, key: string, value: any): (string?, error?)
-    return M.sha256(table.concat({ component_id, kind, scope_family, scope_id, M.normalize_key(key), M.value_text(value) }, "|"))
+-- A value as a tagged tuple, so an absent value hashes apart from every
+-- present one.
+local function typed(value: any): { any }
+    if value == nil then return { "none" } end
+    return { "value", value }
+end
+
+-- Canonical hash of a typed tuple: value types and object keys are kept, so
+-- true, "true", 1 and "1" are four different claims.
+function M.digest(parts: any): (string?, error?)
+    local digest, err = canonical_json.hash(parts)
+    if err then return nil, err end
+    return digest, nil
+end
+
+-- A claim: one typed value of a key in a scope. The same claim made again is
+-- the same claim, whenever and however it is phrased; a text value compares
+-- without case or spacing differences.
+function M.claim_id(component_id: string, scope_key: string, key: string, value: any): (string?, error?)
+    if type(value) == "string" then value = (M.trim(value):lower():gsub("%s+", " ")) end
+    return M.digest({ "claim", component_id, scope_key, key, typed(value) })
+end
+
+-- Hash of an item's text and value, kept with the structure so erasure can
+-- find every stored copy without the ledger holding the text.
+function M.content_hash(component_id: string, content: string, value: any): (string?, error?)
+    return M.digest({ "content", component_id, content, typed(value) })
 end
 
 function M.decode_json(value: any): any
@@ -168,9 +192,13 @@ function M.unavailable(message: string, details: any?): error
     return errors.new({ kind = errors.UNAVAILABLE, message = message, retryable = true, details = details })
 end
 
--- A failed dependency call: what failed and the error it returned.
+-- A failed dependency call: what failed, with the dependency's own kind and
+-- retry flag. An error without a kind is internal and not retried.
 function M.failed(message: string, err: any): error
-    return M.unavailable(message .. ": " .. tostring(err))
+    if type(err) == "userdata" then
+        return errors.new({ kind = err:kind(), retryable = err:retryable() == true, message = message .. ": " .. err:message(), details = err:details() })
+    end
+    return errors.new({ kind = errors.INTERNAL, retryable = false, message = message .. ": " .. tostring(err) })
 end
 
 function M.internal(message: string, details: any?): error

@@ -18,6 +18,7 @@ local writer = require("memory_writer")
 local ledger = require("memory_ledger")
 local ops = require("memory_ops")
 local recall = require("memory_recall")
+local reconcile = require("memory_reconcile")
 
 local M = {}
 
@@ -214,18 +215,22 @@ local function sort_soul(rows: { any })
 end
 
 -- Deterministic bounded rendering: kind, priority, key order; whole lines only.
-local function render(rows: { any }, heading: string, max_chars: integer): string
+-- Renders whole lines in kind, priority and key order within `max_chars`, and
+-- returns the ids of the items it rendered.
+local function render(rows: { any }, heading: string, max_chars: integer): (string, { string })
     sort_soul(rows)
     local lines: { string } = {}
+    local ids: { string } = {}
     local used = #heading
     for _, row in ipairs(rows) do
         local line = "- [" .. row.kind .. "] " .. row.content
         if used + #line + 1 > max_chars then break end
         lines[#lines + 1] = line
+        ids[#ids + 1] = row.id
         used = used + #line + 1
     end
-    if #lines == 0 then return "" end
-    return heading .. "\n" .. table.concat(lines, "\n")
+    if #lines == 0 then return "", ids end
+    return heading .. "\n" .. table.concat(lines, "\n"), ids
 end
 
 local function soul_rows(component_id: string, scope_key: string, kinds: { string }): (any?, error?)
@@ -238,7 +243,8 @@ local function agent_soul(payload: any, agent_id: string): (string?, error?)
     if err then return nil, err end
     local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), AGENT_SOUL_KINDS)
     if rows_err then return nil, rows_err end
-    return render(rows :: any, "## Agent memory", (store :: any).effective.soul_agent_max_chars), nil
+    local text = render(rows :: any, "## Agent memory", (store :: any).effective.soul_agent_max_chars)
+    return text, nil
 end
 
 -- Pins the owner slice for this host: the user's profile and preferences as
@@ -247,15 +253,16 @@ local function pin(payload: any): (any?, error?)
     local id, store, err = M.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
     local host_kind, host_id = host_ref(payload.host)
-    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, ops.actor_id()), OWNER_SOUL_KINDS)
+    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, types.actor_id()), OWNER_SOUL_KINDS)
     if rows_err then return nil, rows_err end
-    local text = render(rows :: any, "## What you know about the user", (store :: any).effective.soul_owner_max_chars)
+    local text, pinned = render(rows :: any, "## What you know about the user", (store :: any).effective.soul_owner_max_chars)
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
-    return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text)
+    return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text, pinned)
 end
 
--- The owner slice pinned for the running host, byte-identical across steps.
+-- The owner slice pinned for the running host, byte-identical across steps
+-- until one of its items is forgotten, which renders it again.
 local function owner_prompt(payload: any): (string?, error?)
     local run = ctx.get("agent_run")
     local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
@@ -264,6 +271,12 @@ local function owner_prompt(payload: any): (string?, error?)
     if err then return nil, err end
     local cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
     if cursor_err then return nil, cursor_err end
+    if cursor and (cursor :: any).pinned_prompt == nil then
+        local _, pin_err = pin({ context = payload.context, host = run.host, agent = run.agent or {} })
+        if pin_err then return nil, pin_err end
+        cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
+        if cursor_err then return nil, cursor_err end
+    end
     return cursor and (cursor :: any).pinned_prompt or "", nil
 end
 
@@ -433,6 +446,15 @@ local function tool_error(err: any): any
     return { success = false, error = tostring(err) }
 end
 
+-- Remember and ForgetMemory write; a trait context with write_enabled off
+-- keeps the memory read-only for this agent.
+local function writable(): (string?, any?, any?)
+    if setting({}, "write_enabled") == false then return nil, nil, tool_error("this agent's memory is read-only") end
+    local memory_id, store, err = M.memory({}, component.ACCESS.WRITE)
+    if err then return nil, nil, tool_error(err) end
+    return memory_id, store, nil
+end
+
 function M.remember(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     local content = types.trim(input.content)
@@ -442,43 +464,51 @@ function M.remember(args: any): (any?, error?)
     if not types.KIND_SET[kind] or kind == types.KIND.IDENTITY or kind == types.KIND.RULE then
         return tool_error("kind must be one of fact, preference, profile_slot, skill, lesson"), nil
     end
-    local memory_id, store, err = M.memory({}, component.ACCESS.WRITE)
-    if err then return tool_error(err), nil end
-    local owner = ops.actor_id()
+    local cardinality = types.trim(input.cardinality)
+    if cardinality ~= "" and not types.CARDINALITY_SET[cardinality] then return tool_error("cardinality must be single or multi"), nil end
+    local memory_id, store, refusal = writable()
+    if refusal then return refusal, nil end
+    local owner = types.actor_id()
     if owner == "" then return tool_error("remember requires a signed-in user"), nil end
     local key = types.trim(input.key)
     if key == "" then key = content end
     local value = input.value ~= nil and input.value or content
-    local idempotency, hash_err = types.sha256(table.concat({ "tool", owner, kind, types.normalize_key(key), types.value_text(value) }, "|"))
+    local idempotency, hash_err = types.digest({ "tool.remember", owner, types.normalize_key(key), value, content })
     if hash_err then return nil, hash_err end
     local run = ctx.get("agent_run")
     local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
-    local result, write_err = writer.remember({
-        { kind = kind, key = key, value = value, content = content, valid_at = input.valid_at, confidence = 1 },
-    }, {
-        component_id = memory_id :: string, embedding_model = (store :: any).embedding_model,
-        judge_model = (store :: any).effective.judge_model, scope_family = types.SCOPE.OWNER, scope_id = owner,
-        source = types.ITEM_SOURCE.TOOL, host_kind = host_kind ~= "" and host_kind or nil, host_id = host_id,
-    }, "tool:" .. tostring(idempotency))
+    local written, write_err = writer.write(memory_id :: string, idempotency :: string, {
+        source = types.ITEM_SOURCE.TOOL, actor = owner, keyed_by_head = true,
+    }, function(d: any): (any?, error?)
+        local err = reconcile.decide(d, {
+            { kind = kind, key = key, cardinality = cardinality ~= "" and cardinality or nil, value = value, content = content,
+                valid_at = input.valid_at, confidence = 1 },
+        }, {
+            embedding_model = (store :: any).embedding_model, judge_model = (store :: any).effective.judge_model,
+            scope_family = types.SCOPE.OWNER, scope_id = owner, explicit = true,
+            host_kind = host_kind ~= "" and host_kind or nil, host_id = host_id,
+        })
+        return nil, err
+    end)
     if write_err then return nil, write_err end
-    return { success = true, memory_id = memory_id, item_ids = (result :: any).item_ids, outcome = (result :: any).stats }, nil
+    return { success = true, memory_id = memory_id, item_ids = (written :: any).item_ids, outcome = (written :: any).stats }, nil
 end
 
+-- ForgetMemory erases one of the caller's own memories. The agent's identity,
+-- rules, skills and lessons are edited by people on the memory page only.
 function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     local item_id = types.trim(input.item_id)
     if item_id == "" then return tool_error("item_id is required"), nil end
-    local memory_id, _, err = M.memory({}, component.ACCESS.WRITE)
-    if err then return tool_error(err), nil end
+    local memory_id, _, refusal = writable()
+    if refusal then return refusal, nil end
     local item, item_err = items.get(memory_id :: string, item_id)
     if item_err then return nil, item_err end
     if not item then return tool_error("memory item not found"), nil end
-    local owned = false
-    for _, scope in ipairs(recall.visible_scopes(ctx.get("agent_id"))) do
-        if scope == (item :: any).scope_key then owned = true end
+    if (item :: any).scope_key ~= types.scope_key(types.SCOPE.OWNER, types.actor_id()) then
+        return tool_error("only your own memories can be forgotten here"), nil
     end
-    if not owned then return tool_error("memory item is outside this conversation's scope"), nil end
-    local forgotten, forget_err = ops.forget(memory_id :: string, item_id, input.reason)
+    local forgotten, forget_err = ops.forget(memory_id :: string, item_id)
     if forget_err then return nil, forget_err end
     return { success = true, memory_id = memory_id, item_id = (forgotten :: any).item_id }, nil
 end
@@ -519,9 +549,26 @@ function M.search(args: any): (any?, error?)
         end
         page[#page + 1] = out
     end
+    local contested, contested_err = recall.search({
+        component_id = memory_id :: string, query = query, limit = limit,
+        scopes = recall.visible_scopes(ctx.get("agent_id")), statuses = { types.STATUS.CONFLICT },
+    })
+    if contested_err then return nil, contested_err end
+    local groups: { [string]: any } = {}
+    local alternatives: { any } = {}
+    for _, row in ipairs(contested :: any) do
+        local group = groups[row.conflict_group]
+        if not group then
+            group = { group_id = row.conflict_group, status = "unresolved", options = {} }
+            groups[row.conflict_group] = group
+            alternatives[#alternatives + 1] = group
+        end
+        group.options[#group.options + 1] = { id = row.id, content = row.content, valid_at = row.valid_at }
+    end
     local result: { [string]: any } = {
-        success = true, query = query, count = #page, items = page,
-        note = "Memory is derived from prior conversations and may be incomplete or out of date.",
+        success = true, query = query, count = #page, items = page, alternatives = alternatives,
+        note = "Memory is derived from prior conversations and may be incomplete or out of date. Alternatives are " ..
+            "unresolved: the person has said contradicting things; ask before relying on either.",
     }
     if #(rows :: any) > offset + limit then result.next_cursor = tostring(offset + limit) end
     return result, nil

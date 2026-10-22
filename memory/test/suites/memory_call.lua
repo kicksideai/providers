@@ -3,6 +3,7 @@
 
 local ops = require("memory_ops")
 local writer = require("memory_writer")
+local reconcile = require("memory_reconcile")
 local runtime = require("runtime")
 local items = require("memory_items")
 local runs = require("memory_runs")
@@ -12,15 +13,22 @@ local bindings = require("memory_bindings")
 local component = require("component")
 local contract = require("contract")
 local security = require("security")
+local sql = require("sql")
+local types = require("types")
 local agent_compiler = require("agent_compiler")
 
 local OPS: { [string]: (any) -> (any, any) } = {
     create = function(a: any) return ops.create(a.component_id, a.fields) end,
     edit = function(a: any) return ops.edit(a.component_id, a.item_id, a.fields) end,
-    forget = function(a: any) return ops.forget(a.component_id, a.item_id, a.reason) end,
+    forget = function(a: any) return ops.forget(a.component_id, a.item_id) end,
+    archive = function(a: any) return ops.archive(a.component_id, a.item_id) end,
     restore = function(a: any) return ops.restore(a.component_id, a.item_id) end,
     resolve = function(a: any) return ops.resolve_conflict(a.component_id, a.group_id, a.winner_id) end,
-    remember = function(a: any) return writer.remember(a.candidates, a.opts, a.idempotency) end,
+    remember = function(a: any)
+        return writer.write(a.opts.component_id, a.idempotency, { source = a.opts.source }, function(d: any): (any?, error?)
+            return nil, reconcile.decide(d, a.candidates, a.opts)
+        end)
+    end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
     apply = function(a: any) return runtime.apply(a.payload) end,
     store = function(a: any): (any, any)
@@ -44,6 +52,40 @@ local OPS: { [string]: (any) -> (any, any) } = {
     tool_forget = function(a: any) return runtime.forget(a.input) end,
     list = function(a: any) return items.list(a.component_id, a.filter or {}) end,
     get = function(a: any) return items.get(a.component_id, a.item_id) end,
+    provenance = function(a: any) return items.provenance(a.component_id, a.item_id) end,
+    ledger = function(a: any): (any, any)
+        local def, def_err = contract.get("kickside.core:threads")
+        if def_err then return nil, def_err end
+        local threads, open_err = def:with_actor(security.actor()):with_scope(security.scope()):open()
+        if open_err then return nil, open_err end
+        local page, err = threads:list_events({ thread_id = a.component_id, limit = 1000, ascending = true })
+        if err then return nil, err end
+        local bodies = {}
+        for _, event in ipairs(page.events or {}) do bodies[#bodies + 1] = { type = event.type, body = event.body } end
+        return bodies, nil
+    end,
+    stored_text = function(a: any): (any, any)
+        local db, db_err = sql.get("app:db")
+        if db_err then return nil, db_err end
+        local out = {}
+        for _, statement in ipairs({
+            "SELECT content, value AS extra FROM kickside_memory_items WHERE component_id = $1",
+            "SELECT content, value AS extra FROM kickside_memory_payloads WHERE component_id = $1",
+            "SELECT input AS content, '' AS extra FROM kickside_memory_runs WHERE component_id = $1",
+        }) do
+            local rows, err = db:query(statement, { a.component_id })
+            if err then db:release(); return nil, err end
+            for _, row in ipairs(rows or {}) do out[#out + 1] = tostring(row.content) .. " " .. tostring(row.extra) end
+        end
+        db:release()
+        return out, nil
+    end,
+    classify = function(a: any): (any, any)
+        local cause: any = "plain failure"
+        if a.typed then cause = errors.new({ kind = errors.INVALID, message = "bad input" }) end
+        local err = types.failed("dependency failed", cause)
+        return { kind = err:kind(), retryable = err:retryable(), invalid = errors.INVALID, internal = errors.INTERNAL }, nil
+    end,
     cursor = function(a: any) return runs.cursor(a.component_id, a.host_kind, a.host_id) end,
     claim = function(a: any) return runs.claim(a.run_id, a.repeatable) end,
     finish = function(a: any) return runs.finish(a.run_id, a.status, a.error) end,

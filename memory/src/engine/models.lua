@@ -1,7 +1,8 @@
 -- Model calls of the memory engine: candidate extraction from a captured span,
 -- the closed-set reconcile judge, reflection over stored items, vectors, and
 -- the working summary a checkpoint hands back to its host. Every failure is a
--- typed error; malformed model output is never read as "nothing to remember".
+-- typed error that keeps the provider's kind and retry flag; malformed model
+-- output is never read as "nothing to remember".
 
 local llm = require("llm")
 local json = require("json")
@@ -36,6 +37,8 @@ Each item has:
   (profile_slot = a stable single-valued attribute such as name, home city, employer, role,
   diet, timezone)
 - key: a short stable topic, e.g. "home_city", "preferred_language", "employer"
+- cardinality: "single" when the person holds one value at a time (name, home city, diet,
+  employer, birth date), "multi" when several hold together (allergies, children, pets)
 - value: the value only, e.g. "Berlin"
 - content: one self-contained sentence in the third person about the user
 - event_id: the id of the user, tool or document message that states it
@@ -70,20 +73,12 @@ Never restate, rephrase or summarise one memory ("as the user is vegan, plan veg
 never repeat a profile attribute, and never guess beyond what the memories say. Most
 memory sets support no lesson; return {"items": []} then.
 
-Each lesson has kind "lesson", key (a short stable topic), value (the guidance in a few
-words), content (one sentence of guidance), based_on (the numbers of the memories it draws
+Each lesson has kind "lesson", key (a short stable topic), cardinality "multi", value (the
+guidance in a few words), content (one sentence of guidance), based_on (the numbers of the memories it draws
 on, at least two), event_id "", valid_at "", confidence.]]
 
 local WORKING_SUMMARY_PROMPT = [[Summarize the conversation so far as working state for continuing it:
 goals, decisions, open questions, constraints and the next step. Be compact and factual.]]
-
--- Typed model errors keep their kind and retry flag; the llm library also
--- answers some failures as plain strings, which carry no classification and are
--- reported as retryable unavailability so a bounded job retries them.
-local function wrap(step: string, err: any): error
-    if type(err) == "userdata" then return model_failure.wrap(step, err) end
-    return types.failed(step .. " failed", err)
-end
 
 local function messages(system: string, user: string): { any }
     return {
@@ -108,10 +103,11 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
                 items = {
                     type = "object",
                     additionalProperties = false,
-                    required = { "kind", "key", "value", "content", "event_id", "valid_at", "confidence" },
+                    required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
                     properties = {
                         kind = { type = "string", enum = kinds or CANDIDATE_KINDS },
                         key = { type = "string" },
+                        cardinality = { type = "string", enum = { types.CARDINALITY.SINGLE, types.CARDINALITY.MULTI } },
                         value = { type = "string" },
                         content = { type = "string" },
                         event_id = event_id,
@@ -132,7 +128,7 @@ local function read_candidates(response: any, step: string): (any?, error?)
     local out: { any } = {}
     for index, item in ipairs(data.items) do
         if type(item) ~= "table" or not types.KIND_SET[item.kind] or types.trim(item.key) == ""
-            or types.trim(item.content) == "" then
+            or types.trim(item.content) == "" or not types.CARDINALITY_SET[item.cardinality] then
             return nil, types.unavailable(step .. " returned a malformed item at " .. tostring(index))
         end
         out[#out + 1] = item
@@ -149,7 +145,7 @@ local function key_listing(keys: { any }): string
     end
     for _, row in ipairs(keys) do
         if row.kind ~= kind then flush(); kind, names = row.kind, {} end
-        names[#names + 1] = row.key
+        names[#names + 1] = row.key .. " (" .. tostring(row.cardinality) .. ")"
     end
     flush()
     return table.concat(lines, "\n")
@@ -177,7 +173,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local response, err = llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })
-    if err then return nil, wrap("memory extraction", err) end
+    if err then return nil, model_failure.wrap("memory extraction", err) end
     return read_candidates(response, "memory extraction")
 end
 
@@ -199,7 +195,7 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES }
     item_schema.required[#item_schema.required + 1] = "based_on"
     local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
-    if err then return nil, wrap("memory reflection", err) end
+    if err then return nil, model_failure.wrap("memory reflection", err) end
     local candidates, read_err = read_candidates(response, "memory reflection")
     if read_err then return nil, read_err end
     local grounded: { any } = {}
@@ -241,7 +237,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
                 stated = candidate.stated },
             existing_memories = listing,
         })), { model = model })
-    if err then return nil, wrap("memory reconcile judge", err) end
+    if err then return nil, model_failure.wrap("memory reconcile judge", err) end
     local data = response and response.result
     if type(data) ~= "table" or type(data.action) ~= "string" or type(data.target_ids) ~= "table" then
         return nil, types.unavailable("memory reconcile judge returned malformed output")
@@ -262,7 +258,7 @@ end
 
 function M.embed(model: string, texts: { string }): (any?, error?)
     local response, err = llm.embed(texts, { model = model, dimensions = types.EMBEDDING_DIMENSIONS })
-    if err then return nil, wrap("memory embedding", err) end
+    if err then return nil, model_failure.wrap("memory embedding", err) end
     local vectors = response and response.result
     if type(vectors) ~= "table" or #vectors ~= #texts then
         return nil, types.unavailable("memory embedding returned " .. tostring(type(vectors) == "table" and #vectors or 0) ..
@@ -278,7 +274,7 @@ end
 
 function M.working_summary(model: string, text: string, max_tokens: integer): (string?, any?, error?)
     local response, err = llm.generate(messages(WORKING_SUMMARY_PROMPT, text), { model = model, max_tokens = max_tokens })
-    if err then return nil, nil, wrap("working summary", err) end
+    if err then return nil, nil, model_failure.wrap("working summary", err) end
     if not response or response.finish_reason ~= "stop" or type(response.result) ~= "string" or types.trim(response.result) == "" then
         return nil, nil, types.unavailable("working summary did not complete")
     end

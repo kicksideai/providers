@@ -1,46 +1,56 @@
--- The one write path for typed memory: settle the read model at the ledger
--- head, reconcile the candidates against it, store vectors for new items, and
--- append the decision at that head. Capture, tools and reflection write
--- through `remember`; owner operations and consolidation markers use `apply`,
--- which appends decided events without reconciling.
+-- The one write path for typed memory. Every writer (capture, tools,
+-- reflection, owner operations) settles the read model at the ledger head,
+-- decides on that state through a decision (engine/decision), stages the new
+-- payloads and vectors, and appends the decision's structure-only events at
+-- that head. A refused append leaves nothing staged behind.
 
-local types = require("types")
 local items = require("memory_items")
 local ledger = require("memory_ledger")
-local reconcile = require("memory_reconcile")
+local decision = require("memory_decision")
 
 local M = {}
 
--- Returns { stats, inserted, item_ids }. `extra_events` are appended after the
--- decision in the same atomic write (a capture records how far it reached).
-function M.remember(candidates: { any }, opts: any, idempotency: string, deadline: string?, extra_events: { any }?): (any?, error?)
-    local head, head_err = ledger.settled_head(opts.component_id, deadline)
-    if head_err then return nil, head_err end
-    local decision, decide_err = reconcile.decide(candidates, opts)
-    if decide_err then return nil, decide_err end
-    for item_id, vector in pairs((decision :: any).vectors) do
-        local _, vector_err = items.set_embedding(opts.component_id, item_id, vector)
-        if vector_err then return nil, vector_err end
-    end
-    local events: { any } = {}
-    for _, event in ipairs((decision :: any).events) do events[#events + 1] = event end
-    for _, event in ipairs(extra_events or {}) do events[#events + 1] = event end
-    local appended, append_err = ledger.append(opts.component_id, events, head :: integer, idempotency)
-    if append_err then return nil, append_err end
-    local ids: { string } = {}
-    for _, event in ipairs(events) do
-        local body = event.body
-        if event.type == types.EVENT.ITEM_ADDED or event.type == types.EVENT.ITEM_RESTORED then ids[#ids + 1] = body.item_id end
-    end
-    return { stats = (decision :: any).stats, inserted = appended and (appended :: any).inserted or 0, item_ids = ids }, nil
-end
+type WriteOptions = {
+    source: string,
+    actor: string?,
+    deadline: string?,
+    -- Appended after the decision in the same atomic write.
+    extra_events: { any }?,
+    -- Part of the idempotency key, for writes whose meaning depends on the
+    -- state they act on (an explicit Remember repeated after a forget).
+    keyed_by_head: boolean?,
+}
 
--- Appends explicit typed events (owner edits, forget, restore, conflict
--- resolution) at the settled head.
-function M.apply(component_id: string, events: { any }, idempotency: string, deadline: string?): (any?, error?)
-    local head, head_err = ledger.settled_head(component_id, deadline)
+-- Runs `decide(d)` on the settled state and lands its changes. Returns
+-- { result, stats, item_ids, inserted }.
+function M.write(component_id: string, idempotency: string, opts: WriteOptions, decide: (any) -> (any?, error?)): (any?, error?)
+    local head, head_err = ledger.settled_head(component_id, opts.deadline)
     if head_err then return nil, head_err end
-    return ledger.append(component_id, events, head :: integer, idempotency)
+    local key = idempotency
+    if opts.keyed_by_head then key = idempotency .. "@" .. tostring(head) end
+    local d = decision.new(component_id, key, opts.source, opts.actor)
+    local result, decide_err = decide(d)
+    if decide_err then return nil, decide_err end
+    local check_err = d:check()
+    if check_err then return nil, check_err end
+    local events: { any } = {}
+    for _, event in ipairs(d.events) do events[#events + 1] = event end
+    for _, event in ipairs(opts.extra_events or {}) do events[#events + 1] = event end
+    local inserted = 0
+    if #events > 0 then
+        local _, stage_err = items.stage(component_id, d.staged)
+        if stage_err then return nil, stage_err end
+        local appended, append_err = ledger.append(component_id, events, head :: integer, key)
+        if append_err then
+            local payload_ids: { string } = {}
+            for _, staged in ipairs(d.staged) do payload_ids[#payload_ids + 1] = staged.payload_id end
+            local _, unstage_err = items.unstage(component_id, payload_ids)
+            if unstage_err then return nil, unstage_err end
+            return nil, append_err
+        end
+        inserted = appended and (appended :: any).inserted or 0
+    end
+    return { result = result, stats = d.stats, item_ids = d.added, inserted = inserted }, nil
 end
 
 return M

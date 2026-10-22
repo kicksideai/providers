@@ -13,7 +13,8 @@
 local function u(id: string, text: string): any return { id = id, role = "user", content = text } end
 local function a(id: string, text: string): any return { id = id, role = "assistant", content = text } end
 local function c(kind: string, key: string, value: string, content: string, event_id: string): any
-    return { kind = kind, key = key, value = value, content = content, event_id = event_id, valid_at = "", confidence = 0.9 }
+    local cardinality = (kind == "profile_slot" or kind == "preference") and "single" or "multi"
+    return { kind = kind, key = key, cardinality = cardinality, value = value, content = content, event_id = event_id, valid_at = "", confidence = 0.9 }
 end
 
 local function lesson(candidate: any, based_on: { integer }): any

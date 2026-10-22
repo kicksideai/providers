@@ -96,7 +96,7 @@ entries:
   - name: forget_item
     kind: function.lua
     meta:
-      comment: Forgets an item so it leaves recall and the prompt (WRITE).
+      comment: Forgets an item - erases its text, value, vector, provenance and the captured spans that stated it (WRITE).
     source: file://handlers.lua
     method: forget_item
     modules: [http, json, security]
@@ -106,15 +106,33 @@ entries:
     kind: http.endpoint
     meta:
       router: ""
-      comment: Forgets an item so it leaves recall and the prompt (WRITE).
+      comment: Forgets an item - erases its text, value, vector, provenance and the captured spans that stated it (WRITE).
     method: POST
     func: forget_item
     path: /memory/{id}/items/{item_id}/forget
 
+  - name: archive_item
+    kind: function.lua
+    meta:
+      comment: Archives an item so it leaves recall and the prompt until restored (WRITE).
+    source: file://handlers.lua
+    method: archive_item
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: archive_item.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Archives an item so it leaves recall and the prompt until restored (WRITE).
+    method: POST
+    func: archive_item
+    path: /memory/{id}/items/{item_id}/archive
+
   - name: restore_item
     kind: function.lua
     meta:
-      comment: Restores a forgotten item (WRITE).
+      comment: Restores an archived item (WRITE).
     source: file://handlers.lua
     method: restore_item
     modules: [http, json, security]
@@ -124,7 +142,7 @@ entries:
     kind: http.endpoint
     meta:
       router: ""
-      comment: Restores a forgotten item (WRITE).
+      comment: Restores an archived item (WRITE).
     method: POST
     func: restore_item
     path: /memory/{id}/items/{item_id}/restore

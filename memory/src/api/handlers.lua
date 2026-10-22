@@ -140,8 +140,14 @@ function M.edit_item()
 end
 
 function M.forget_item()
-    write_op(function(id: string, req: any, body: any): (any?, error?)
-        return ops.forget(id, types.trim(req:param("item_id")), body.reason)
+    write_op(function(id: string, req: any, _body: any): (any?, error?)
+        return ops.forget(id, types.trim(req:param("item_id")))
+    end)
+end
+
+function M.archive_item()
+    write_op(function(id: string, req: any, _body: any): (any?, error?)
+        return ops.archive(id, types.trim(req:param("item_id")))
     end)
 end
 
@@ -157,25 +163,28 @@ function M.resolve_conflict()
     end)
 end
 
+-- Conflict groups, a page of whole groups at a time.
 function M.list_conflicts()
-    local res, _req, id = open(component.ACCESS.READ)
+    local res, req, id = open(component.ACCESS.READ)
     if not res then return end
-    local rows, err = items.list(id :: string, { statuses = { types.STATUS.CONFLICT }, limit = MAX_PAGE })
+    local limit, limit_err = int_param(req, "limit", 20, 1, MAX_PAGE)
+    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
+    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
+    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local page, err = items.conflict_groups(id :: string, offset :: integer, limit :: integer)
     if err then return fail(res, err) end
-    local groups: { [string]: any } = {}
-    local order: { string } = {}
-    for _, row in ipairs(rows :: any) do
-        local group = tostring(row.conflict_group or "")
-        if not groups[group] then
-            groups[group] = { group_id = group, items = {} }
-            order[#order + 1] = group
-        end
-        table.insert(groups[group].items, row)
-    end
-    table.sort(order)
+    local members, members_err = items.group_members(id :: string, (page :: any).groups)
+    if members_err then return fail(res, members_err) end
+    local by_group: { [string]: any } = {}
     local out: { any } = {}
-    for _, group in ipairs(order) do out[#out + 1] = groups[group] end
-    reply(res, http.STATUS.OK, { success = true, groups = out, count = #out })
+    for _, group_id in ipairs((page :: any).groups) do
+        by_group[group_id] = { group_id = group_id, items = {} }
+        out[#out + 1] = by_group[group_id]
+    end
+    for _, row in ipairs(members :: any) do table.insert(by_group[row.conflict_group].items, row) end
+    local result: { [string]: any } = { success = true, groups = out, count = #out }
+    if (page :: any).more then result.next_offset = (offset :: integer) + (limit :: integer) end
+    reply(res, http.STATUS.OK, result)
 end
 
 function M.status()

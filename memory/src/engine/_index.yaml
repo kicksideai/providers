@@ -36,23 +36,30 @@ entries:
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
 
-  - name: writer
+  - name: decision
     kind: library.lua
     meta:
-      comment: The single typed write path - settle, reconcile, store vectors, append at the head.
-    source: file://writer.lua
+      comment: One decision on a memory - the item transitions and state rules every writer shares.
+    source: file://decision.lua
     imports:
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
+
+  - name: writer
+    kind: library.lua
+    meta:
+      comment: The single typed write path - settle, decide, stage payloads, append structure at the head.
+    source: file://writer.lua
+    imports:
+      memory_items: kickside.memory.persist:items
       memory_ledger: kickside.memory.engine:ledger
-      memory_reconcile: kickside.memory.engine:reconcile
+      memory_decision: kickside.memory.engine:decision
 
   - name: ops
     kind: library.lua
     meta:
-      comment: Explicit owner operations - create, edit, resolve conflict, forget, restore.
+      comment: Explicit owner operations - create, edit, resolve conflict, archive, restore, forget.
     source: file://ops.lua
-    modules: [security]
     imports:
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
@@ -70,7 +77,6 @@ entries:
       memory_stores: kickside.memory.persist:stores
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
-      memory_ops: kickside.memory.engine:ops
 
   - name: jobs
     kind: library.lua
@@ -85,6 +91,7 @@ entries:
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
       memory_writer: kickside.memory.engine:writer
+      memory_reconcile: kickside.memory.engine:reconcile
       component: kickside.component:component
       jobs: kickside.core.jobs:jobs
       execution_identity: kickside.execution:execution_identity

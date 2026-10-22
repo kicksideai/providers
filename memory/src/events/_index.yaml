@@ -6,12 +6,17 @@ entries:
   kind: registry.entry
   meta:
     type: kickside.core.threads.event
-    comment: A typed memory item enters the memory.
+    comment: A typed memory item enters the memory. The event carries structure only; the text and value are the payload staged under item_id.
   schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object
+    additionalProperties: false
     properties:
       item_id:
+        type: string
+      claim_id:
+        type: string
+      content_hash:
         type: string
       kind:
         type: string
@@ -23,19 +28,19 @@ entries:
         - preference
         - skill
         - lesson
+      key:
+        type: string
+      cardinality:
+        type: string
+        enum:
+        - single
+        - multi
       scope_family:
         type: string
         enum:
         - agent
         - owner
-        - session
-        - group
       scope_id:
-        type: string
-      key:
-        type: string
-      value: {}
-      content:
         type: string
       valid_at:
         type: string
@@ -67,13 +72,36 @@ entries:
         type: integer
     required:
     - item_id
+    - claim_id
+    - content_hash
     - kind
+    - key
+    - cardinality
     - scope_family
     - scope_id
-    - key
-    - content
     - valid_at
     - source
+- name: item.revised
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item's presentation (text, priority) changes; its claim does not. The new text is the payload staged under payload_id.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      payload_id:
+        type: string
+      content_hash:
+        type: string
+      priority:
+        type: integer
+    required:
+    - item_id
+    - payload_id
+    - content_hash
 - name: item.superseded
   kind: registry.entry
   meta:
@@ -130,11 +158,11 @@ entries:
     required:
     - item_ids
     - group_id
-- name: item.forgotten
+- name: item.archived
   kind: registry.entry
   meta:
     type: kickside.core.threads.event
-    comment: A person or agent tool forgets an item; it leaves recall and the soul.
+    comment: A person archives an item; it leaves recall and the prompt until restored.
   schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object
@@ -142,8 +170,6 @@ entries:
       item_id:
         type: string
       actor:
-        type: string
-      reason:
         type: string
     required:
     - item_id
@@ -151,7 +177,7 @@ entries:
   kind: registry.entry
   meta:
     type: kickside.core.threads.event
-    comment: A forgotten, superseded or conflicting item is current again.
+    comment: An archived item, or the kept member of a resolved conflict, is current again.
   schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object
@@ -160,7 +186,20 @@ entries:
         type: string
       actor:
         type: string
-      reason:
+    required:
+    - item_id
+- name: item.forgotten
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item is erased - its text, value, vector, provenance and the captured spans that stated it. It cannot be restored.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      actor:
         type: string
     required:
     - item_id

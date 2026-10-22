@@ -15,10 +15,11 @@ entries:
     meta: { comment: Runs a named memory operation in the caller's frame. }
     source: file://memory_call.lua
     method: call
-    modules: [contract, security]
+    modules: [contract, security, sql]
     imports:
       memory_ops: kickside.memory.engine:ops
       memory_writer: kickside.memory.engine:writer
+      memory_reconcile: kickside.memory.engine:reconcile
       runtime: kickside.memory:runtime
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
@@ -26,6 +27,7 @@ entries:
       memory_jobs: kickside.memory.engine:jobs
       memory_bindings: kickside.memory.engine:bindings
       component: kickside.component:component
+      types: kickside.memory:types
       agent_compiler: wippy.agent.compiler:compiler
 
   - name: history
@@ -96,6 +98,19 @@ entries:
     source: file://consolidation_test.lua
     method: run
     modules: [time]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: state_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_state
+      timeout: 300s
+    source: file://state_test.lua
+    method: run
+    modules: [json]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture

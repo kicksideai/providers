@@ -1,8 +1,8 @@
 import { defineComponent as b, computed as c, ref as d, watch as h, openBlock as t, createElementBlock as i, createElementVNode as r, toDisplayString as y, createBlock as k, createCommentVNode as E, createVNode as C } from "vue";
 import "@iconify/vue";
 import { define as V } from "@wippy-fe/proxy";
-import { u as w, a as B, p as M, i as N, m as j } from "./useWidget-J59kHsf7.js";
-import { _ as x, a as S } from "./ConfigFields.vue_vue_type_script_setup_true_lang-DFHNQZzX.js";
+import { u as w, a as B, p as M, i as N, m as j } from "./useWidget-Oapw5JdO.js";
+import { _ as x, a as S } from "./ConfigFields.vue_vue_type_script_setup_true_lang-B4quf9ar.js";
 const $ = { class: "mm-stack" }, D = { class: "mm-field" }, P = {
   key: 0,
   class: "mm-hint"

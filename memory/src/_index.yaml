@@ -96,6 +96,7 @@ entries:
       - { entry: kickside.memory.api:create_item.endpoint, path: .meta.router }
       - { entry: kickside.memory.api:edit_item.endpoint, path: .meta.router }
       - { entry: kickside.memory.api:forget_item.endpoint, path: .meta.router }
+      - { entry: kickside.memory.api:archive_item.endpoint, path: .meta.router }
       - { entry: kickside.memory.api:restore_item.endpoint, path: .meta.router }
       - { entry: kickside.memory.api:list_conflicts.endpoint, path: .meta.router }
       - { entry: kickside.memory.api:resolve_conflict.endpoint, path: .meta.router }
@@ -123,7 +124,9 @@ entries:
     meta:
       comment: Memory vocabulary - kinds, scopes, statuses, ledger events, run types and value helpers.
     source: file://types.lua
-    modules: [time, hash, json]
+    modules: [time, json, security]
+    imports:
+      canonical_json: kickside.contract:canonical_json
 
   - name: config
     kind: library.lua
@@ -204,6 +207,8 @@ entries:
           - type: kickside.memory.events:item.superseded
           - type: kickside.memory.events:item.merged
           - type: kickside.memory.events:item.conflicted
+          - type: kickside.memory.events:item.revised
+          - type: kickside.memory.events:item.archived
           - type: kickside.memory.events:item.forgotten
           - type: kickside.memory.events:item.restored
           - type: kickside.memory.events:provenance.added
@@ -299,6 +304,8 @@ entries:
               - type: kickside.memory.events:item.superseded
               - type: kickside.memory.events:item.merged
               - type: kickside.memory.events:item.conflicted
+              - type: kickside.memory.events:item.revised
+              - type: kickside.memory.events:item.archived
               - type: kickside.memory.events:item.forgotten
               - type: kickside.memory.events:item.restored
               - type: kickside.memory.events:provenance.added
@@ -408,6 +415,7 @@ entries:
       memory_ledger: kickside.memory.engine:ledger
       memory_ops: kickside.memory.engine:ops
       memory_recall: kickside.memory.engine:recall
+      memory_reconcile: kickside.memory.engine:reconcile
 
   - name: runtime_lifecycle
     kind: function.lua
@@ -518,6 +526,7 @@ entries:
             "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson"]},
             "key": {"type": "string", "description": "Short stable topic, e.g. home_city"},
             "value": {"type": "string", "description": "The value only, e.g. Berlin"},
+            "cardinality": {"type": "string", "enum": ["single", "multi"], "description": "single when the user holds one value of this key at a time (home city, diet); multi when several hold together (allergies). A key the memory already knows keeps its cardinality."},
             "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"}
           },
           "required": ["content"]
@@ -536,9 +545,9 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Forget Memory
       llm_alias: ForgetMemory
-      llm_description: "Forget a memory by its id (from SearchMemory) when the user asks to forget it or it is wrong. It stops being recalled; the memory's owner can restore it."
+      llm_description: "Forget one of the user's memories by its id (from SearchMemory) when the user asks you to forget it. It is erased for good, with every earlier version of it."
       input_schema: |
-        {"type": "object", "properties": {"item_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["item_id"]}
+        {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_id": {"type": "string"}}, "required": ["success"]}
     source: file://runtime.lua

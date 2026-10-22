@@ -17,7 +17,7 @@ const props = defineProps<{ memory: Memory }>()
 
 const KINDS = kindOptions()
 const VIEWS: { value: MemoryStatus; label: string }[] = [
-  { value: 'current', label: 'Current' }, { value: 'superseded', label: 'Earlier versions' }, { value: 'forgotten', label: 'Forgotten' },
+  { value: 'current', label: 'Current' }, { value: 'superseded', label: 'Earlier versions' }, { value: 'archived', label: 'Archived' },
 ]
 const status = ref<MemoryStatus>('current')
 const kind = ref<MemoryKind | null>(null)

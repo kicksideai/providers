@@ -5,29 +5,48 @@ Knowledge Base component; an agent attaches one memory.
 
 ## Storage
 
-The knowledge base thread (`thread_id == component_id`) is the ledger. Writers
-append typed events at an expected head:
+The knowledge base thread (`thread_id == component_id`) is the ledger. It holds
+structure only, never memory text: writers append typed events at an expected
+head.
 
-- `kickside.memory.events:item.added`: `item_id, kind, scope_family, scope_id, key, value, content, valid_at, source, provenance[]`
-- `item.superseded`: `item_id, by, invalid_at`
+- `kickside.memory.events:item.added`: `item_id, claim_id, content_hash, kind, key, cardinality, scope_family, scope_id, valid_at, source, provenance[]`
+- `item.revised`: `item_id, payload_id, content_hash, priority` (new text or priority, same claim)
+- `item.superseded`: `item_id, by, invalid_at, resolved_conflict?`
 - `item.merged`: `item_ids, into`
-- `item.conflicted`: `item_ids, group_id`
-- `item.forgotten` and `item.restored`: `item_id, actor, reason`
+- `item.conflicted`: `item_ids, group_id` (always a complete group)
+- `item.archived` and `item.restored`: `item_id, actor`
+- `item.forgotten`: `item_id, actor`
 - `provenance.added`: `item_id, host_kind, host_id, event_id`
 - `capture.advanced`: `host_kind, host_id, last_event_id`
 - `consolidation.completed`: `run_id, stats`
 
-The ledger projection folds events into `kickside_memory_items`,
-`kickside_memory_provenance`, the full-text index and cursors; the tables are
-rebuildable from the ledger, which is retained for the lifetime of the memory.
-Item ids are content-derived (`sha256(component | kind | scope | key | value)`),
-so replayed work is idempotent. Vectors (512 dimensions, the knowledge base's
-embedding model) live in `kickside_memory_embeddings`.
+Memory text and typed values live in `kickside_memory_payloads`, staged under
+the item id before the event that adds the item is appended; vectors (512
+dimensions, the knowledge base's embedding model) live beside them in
+`kickside_memory_embeddings`. The ledger projection folds events into
+`kickside_memory_items` (with a searchable copy of each payload),
+`kickside_memory_provenance`, the full-text index and cursors. Rebuilding the
+projection from the ledger restores structure; text comes back from the
+payloads.
+
+A claim is one typed value of a canonical key in a scope
+(`claim_id = canonical_json hash(component, scope, key, value)`; values keep
+their JSON type, text compares without case or spacing). An item is one
+occurrence of a claim: the same claim stated again later is a new item with its
+own `valid_at`. Every key has a cardinality: a `single` key holds at most one
+current value per scope, whatever kind labels its items; `multi` keys hold
+several. Versions are numbered per scope and key.
+
+Forget erases: the item's text, value, vector, full-text row and provenance,
+every other version of its claim, the captured spans that stated it, and every
+pinned prompt that included it. The ledger events stay, carrying no text.
+Archive is the reversible alternative: an archived item leaves recall and the
+prompt until restored.
 
 Kinds: `identity, rule, profile_slot, fact, preference, skill, lesson`.
 Scopes: `agent:<agent id>` (identity and rules, edited by people with write
 access) and `owner:<user id>` (everything captured from a user's
-conversations). Status: `current, superseded, conflict, forgotten`.
+conversations). Status: `current, superseded, conflict, archived, forgotten`.
 
 ## Engine contracts
 
@@ -45,16 +64,26 @@ and update.
 
 ## Write path
 
+Every writer (capture, the Remember tool, reflection, owner operations) settles
+the read model at the ledger head, decides on that state through one decision
+(`engine/decision.lua`) that applies the same state rules, stages new payloads
+and vectors, and appends the decision's events at that head. A moved head is a
+retryable failure: the writer decides again on the newer state, and nothing it
+staged stays behind.
+
 1. Capture (trait `before_step`, `after_persist`, `deactivate`, checkpoint)
    moves the host cursor under compare-and-set and records a derive run that
    holds the captured span and the user's frozen identity.
-2. The derive job extracts candidates with the extraction model, then
-   reconciles each: exact id, then same-key and nearest items of the same scope
-   and kind, then the reconcile model chooses `ADD | SUPERSEDE | MERGE | NOOP |
-   CONFLICT` over the neighbors' ids. On supersession the later `valid_at`
-   wins. Conflicts keep both items in a conflict group.
-3. The decision is appended at the head the read model was settled at; a
-   moved head is a retryable failure and the job decides again.
+2. The derive job extracts candidates with the extraction model and reconciles
+   each: a claim already current is seen again; a forgotten claim is not
+   learned again; a single-valued key holding another value relates to that
+   value only (the reconcile model chooses `SUPERSEDE | MERGE | NOOP |
+   CONFLICT`; an explicit Remember replaces it); otherwise the nearest live
+   items of the scope reach the reconcile model, which chooses `ADD | SUPERSEDE
+   | MERGE | NOOP | CONFLICT` over their ids. On supersession the later
+   `valid_at` wins. Conflicts keep every contested item in one group.
+3. Owner operations use the same decision with owner authority: no judge, the
+   same rules.
 
 Failures close the run as `failed` with the reason (the memory's status and
 manage view list runs). Content ingested through the knowledge control plane is
@@ -62,8 +91,10 @@ derived the same way; deleting the source keeps the memory.
 
 Consolidation is a slot job per memory that re-arms every
 `consolidation_interval_hours`; `deactivate` and the control plane's
-resummarize bring it forward. `ForgetMemory` and the manage view forget an
-item; deleting the knowledge base purges the ledger and every row.
+resummarize bring it forward. The manage view archives, restores and forgets
+items; `ForgetMemory` forgets the caller's own memories (never the agent's
+identity, rules, skills or lessons). Deleting the knowledge base purges the
+ledger and every row.
 
 ## Agents
 

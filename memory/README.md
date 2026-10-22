@@ -58,20 +58,24 @@ effect.
   byte-identical across steps, so prompt caching holds. With the Memory
   provider, other relevant memories are recalled each step.
 - Failed runs keep their reason and are listed on the memory page.
-- Forget removes an item from recall and the prompt; deleting the knowledge
+- Forget erases an item: its text, every earlier version of it, and the
+  conversation lines it was learned from; it cannot be undone. Archive hides an
+  item from recall and the prompt until it is restored. Deleting the knowledge
   base erases the memory and its ledger. Deleting a source conversation or
   document keeps what was learned from it.
+- The ledger never holds memory text; see src/README.md.
 
 See [src/README.md](src/README.md) for the ledger, tables and contracts.
 
 ### Agent tools
 
 - [`SearchMemory`](src/_index.yaml): `query`, `fields`, `limit`, `cursor`.
-- [`Remember`](src/_index.yaml): `content`, `kind`, `key`, `value`, `valid_at`.
-- [`ForgetMemory`](src/_index.yaml): `item_id`, `reason`.
+- [`Remember`](src/_index.yaml): `content`, `kind`, `key`, `value`, `cardinality`, `valid_at`.
+- [`ForgetMemory`](src/_index.yaml): `item_id` (the caller's own memories only).
 
 Tools write only to the memory attached to the agent and only into the calling
-user's own memories.
+user's own memories, and refuse to write when the trait's `write_enabled` is
+off. `SearchMemory` returns unresolved conflicts separately as `alternatives`.
 
 ### Host requirements
 
