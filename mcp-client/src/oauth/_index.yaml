@@ -12,9 +12,7 @@ entries:
   - name: config
     kind: library.lua
     source: file://config.lua
-    modules: [contract]
-    imports:
-      oauth_read_repo: kickside.oauth.persist:oauth_read_repo
+    modules: [contract, security]
 
   - name: connector
     kind: contract.binding
