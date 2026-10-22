@@ -10,8 +10,8 @@ import {
 // all three KB kinds. Four sources funnel into one progress model:
 //   - file upload (multiple at once): upload-token -> POST /uploads (per file),
 //     processed by the uploads module, then auto-queued into the KB by the
-//     upload-token callback. Progress streams over the uploads component event
-//     topic returned by POST /uploads, so a file is done when its upload is processed.
+//     upload-token callback. Progress streams over the owner upload:<uuid>
+//     notification topic, so a file is done when its upload is processed.
 //   - existing uploads ("My uploads"): POST /ingest-upload by upload id.
 //   - URL and pasted text: POST a KB content event.
 // Completion = the content is in the KB and queued for embedding; embedding runs
@@ -19,7 +19,7 @@ import {
 // Uploads page) to let the host list pick up materialized documents.
 //
 // Realtime uses the documented web-component proxy event API. Upload completion
-// uses the uploads component event stream. KB background failures surface through
+// uses the owner per-upload notifications. KB background failures surface through
 // canonical component public meta on `component.<kb_id>`.
 
 export type IngestStatus = 'uploading' | 'processing' | 'done' | 'error'
@@ -115,7 +115,7 @@ export function useIngest(kbId: () => string, onDone: () => void) {
       isRecord(root.detail) ? root.detail : null,
     ].filter(Boolean) as Record<string, unknown>[]
     for (const item of candidates) {
-      if (item.event === 'kickside.uploads.events:upload.status.changed') return item
+      if (typeof item.uuid === 'string' && typeof item.status === 'string') return item
     }
     return {}
   }
@@ -135,27 +135,20 @@ export function useIngest(kbId: () => string, onDone: () => void) {
     }
   }
 
-  function handleUpload(msg: unknown) {
+  function handleUpload(uuid: string, msg: unknown) {
     const data = uploadStatusPayload(msg)
-    const uuid = String(data.upload_id || data.uuid || '')
-    if (!uuid) return
+    if (data.uuid !== uuid) return
     applyUploadStatus(uuid, data.status, data.error)
   }
 
-  function subscribeUploadTopic(topic: string, uuid: string) {
-    const key = topic || `upload:${uuid}`
-    if (!key || uploadSubs.has(key)) return
+  function subscribeUploadTopic(uuid: string) {
+    const topic = `upload:${uuid}`
+    if (uploadSubs.has(topic)) return
     const off = on('@message', (msg: unknown) => {
-      const t = messageTopic(msg)
-      if (topic && t && t !== topic) return
-      handleUpload(msg)
+      if (messageTopic(msg) !== topic) return
+      handleUpload(uuid, msg)
     })
-    if (typeof off === 'function') uploadSubs.set(key, off)
-  }
-
-  function uploadEventTopic(componentId: unknown): string {
-    const id = String(componentId || '')
-    return id ? `component.${id}.events` : ''
+    if (typeof off === 'function') uploadSubs.set(topic, off)
   }
 
   async function refreshUploadStatus(uuid: string) {
@@ -227,7 +220,7 @@ export function useIngest(kbId: () => string, onDone: () => void) {
       if (res?.success && res.uuid) {
         const uuid = String(res.uuid)
         patch(key, { uuid, externalId: `upload:${uuid}`, status: 'processing' })
-        subscribeUploadTopic(uploadEventTopic(res.component_id), uuid)
+        subscribeUploadTopic(uuid)
         scheduleUploadStatusRefresh(uuid)
       } else {
         patch(key, { status: 'error', error: res?.error || 'Upload failed' })
