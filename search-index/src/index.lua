@@ -149,11 +149,17 @@ end
 -- and row filters apply, so a filtered pgvector search could come back short
 -- or empty while eligible rows exist. Iterative scan keeps walking the graph,
 -- in exact distance order, until the filters admit `limit` rows (pgvector 0.8 or
--- later); it is set for this read only.
+-- later); it is set for this read only. Earlier versions retain their existing
+-- scan behavior; assigning this setting there fails because hnsw is reserved.
 local function filtered_hnsw_query(db: any, query: string, params: { any }): (any, any?)
     local tx, begin_err = db:begin()
     if begin_err then return nil, begin_err end
-    local _, set_err = tx:execute("SET LOCAL hnsw.iterative_scan = strict_order")
+    -- One statement on both versions: no extra per-search round trip for
+    -- capability discovery, no persistent cache to invalidate after upgrades.
+    local _, set_err = tx:query([[SELECT pg_catalog.set_config('hnsw.iterative_scan', 'strict_order', true)
+        FROM pg_catalog.pg_extension WHERE extname = 'vector'
+            AND (pg_catalog.split_part(extversion, '.', 1)::integer,
+                 pg_catalog.split_part(extversion, '.', 2)::integer) >= (0, 8)]])
     if set_err then
         tx:rollback()
         return nil, set_err

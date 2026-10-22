@@ -1120,6 +1120,26 @@ jobs:
             cd "$source_root"
             version=$(jq -er --arg path search-index '.[$path] // "0.1.0"' .release-please-manifest.json)
             wippy publish --config search-index --version "$version" --dry-run --create --module-visibility public --module-type library
+        - module: search-index
+          engine: postgres-0.7
+          postgres_image: pgvector/pgvector:0.7.4-pg16
+          commands: |
+            set -euo pipefail
+            source_root="$PWD"
+            export TMPDIR="$source_root/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C search-index lockrefresh
+            cd search-index/test
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_search_index"
+            createdb "$database"
+            trap 'dropdb "$database"' EXIT
+            wippy lint --ns kickside.search_index --ns app --profile postgres --set "vars.pg_database=$database" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=$database" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
+            awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
+            cd "$source_root"
+            version=$(jq -er --arg path search-index '.[$path] // "0.1.0"' .release-please-manifest.json)
+            wippy publish --config search-index --version "$version" --dry-run --create --module-visibility public --module-type library
         - module: linear
           engine: sqlite
           commands: |
@@ -1262,7 +1282,7 @@ jobs:
             wippy publish --config box --version "$version" --dry-run --create --module-visibility public --module-type plugin
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: ${{ matrix.postgres_image || 'pgvector/pgvector:pg17' }}
         env:
           POSTGRES_USER: kickside
           POSTGRES_PASSWORD: kickside

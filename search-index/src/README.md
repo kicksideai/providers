@@ -31,7 +31,9 @@ passes an open connection and a table spec.
 `db` is a pooled connection, not a transaction: on PostgreSQL a dense search
 runs in its own read transaction with `hnsw.iterative_scan = strict_order`, so
 an HNSW index keeps scanning until the partition and filters admit `limit`
-rows. This needs pgvector 0.8 or later.
+rows on pgvector 0.8 or later. Earlier versions retain their existing index
+scan behavior without receiving an unsupported setting. The setting is local
+to the read transaction and does not change the caller's session defaults.
 
 Each hit carries `id` and `similarity`; fused hits also carry
 `vector_similarity`, `vector_rank`, `lexical_rank` and `hybrid_score`.
