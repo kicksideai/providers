@@ -1,4 +1,4 @@
-import { defineComponent as w, computed as y, openBlock as a, createElementBlock as m, Fragment as u, renderList as _, createElementVNode as s, toDisplayString as n, createCommentVNode as c, createVNode as b } from "vue";
+import { defineComponent as w, computed as y, openBlock as a, createElementBlock as m, Fragment as u, renderList as _, createElementVNode as l, toDisplayString as n, createCommentVNode as c, createVNode as b } from "vue";
 import { b as k, _ as V } from "./ModelPicker.vue_vue_type_script_setup_true_lang-BXa7KiZU.js";
 const z = { class: "mm-pane" }, I = {
   key: 0,
@@ -32,39 +32,39 @@ const z = { class: "mm-pane" }, I = {
   },
   emits: ["update:modelValue"],
   setup(e, { emit: i }) {
-    const x = e, h = i, f = y(() => Object.entries(x.schema.properties || {}));
-    function p(l, d) {
-      h("update:modelValue", { ...x.modelValue, [l]: d });
+    const x = e, h = i, f = y(() => Object.entries(x.schema.properties || {}).sort((s, p) => (s[1].order ?? 1e3) - (p[1].order ?? 1e3)));
+    function d(s, p) {
+      h("update:modelValue", { ...x.modelValue, [s]: p });
     }
-    function v(l, d, t) {
+    function v(s, p, t) {
       const r = t.target.value;
       if (r === "") return;
       const o = Number(r);
-      Number.isFinite(o) && p(l, d.type === "integer" ? Math.round(o) : o);
+      Number.isFinite(o) && d(s, p.type === "integer" ? Math.round(o) : o);
     }
-    return (l, d) => (a(), m("div", z, [
+    return (s, p) => (a(), m("div", z, [
       (a(!0), m(u, null, _(f.value, ([t, r]) => (a(), m(u, { key: t }, [
         r.type === "boolean" ? (a(), m("div", I, [
-          s("div", N, [
-            s("span", S, n(r.title || t), 1),
+          l("div", N, [
+            l("span", S, n(r.title || t), 1),
             r.description ? (a(), m("span", j, n(r.description), 1)) : c("", !0)
           ]),
           b(k, {
             label: r.title || t,
             "model-value": e.modelValue[t] === !0,
-            "onUpdate:modelValue": (o) => p(t, o)
+            "onUpdate:modelValue": (o) => d(t, o)
           }, null, 8, ["label", "model-value", "onUpdate:modelValue"])
         ])) : r.web_component === "wc-model-picker" ? (a(), m("div", C, [
-          s("span", F, n(r.title || t), 1),
+          l("span", F, n(r.title || t), 1),
           b(V, {
             value: String(e.modelValue[t] || ""),
             capability: "generate",
-            onSelect: (o) => p(t, o)
+            onSelect: (o) => d(t, o)
           }, null, 8, ["value", "onSelect"]),
           r.description ? (a(), m("span", L, n(r.description), 1)) : c("", !0)
         ])) : r.type === "integer" || r.type === "number" ? (a(), m("label", A, [
-          s("span", B, n(r.title || t), 1),
-          s("input", {
+          l("span", B, n(r.title || t), 1),
+          l("input", {
             class: "mm-input",
             type: "number",
             name: t,
@@ -76,19 +76,19 @@ const z = { class: "mm-pane" }, I = {
           }, null, 40, D),
           r.description ? (a(), m("span", E, n(r.description), 1)) : c("", !0)
         ])) : (a(), m("label", K, [
-          s("span", O, n(r.title || t), 1),
+          l("span", O, n(r.title || t), 1),
           r.format === "textarea" ? (a(), m("textarea", {
             key: 0,
             class: "mm-textarea",
             name: t,
             value: String(e.modelValue[t] ?? ""),
-            onInput: (o) => p(t, o.target.value)
+            onInput: (o) => d(t, o.target.value)
           }, null, 40, P)) : (a(), m("input", {
             key: 1,
             class: "mm-input",
             name: t,
             value: String(e.modelValue[t] ?? ""),
-            onInput: (o) => p(t, o.target.value)
+            onInput: (o) => d(t, o.target.value)
           }, null, 40, R)),
           r.description ? (a(), m("span", T, n(r.description), 1)) : c("", !0)
         ]))
@@ -132,4 +132,4 @@ export {
   g as i,
   H as s
 };
-//# sourceMappingURL=memory-CDlIk0ZK.js.map
+//# sourceMappingURL=memory-B1z0wrmu.js.map

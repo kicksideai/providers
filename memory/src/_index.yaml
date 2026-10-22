@@ -377,6 +377,7 @@ entries:
         additionalProperties: false
         properties:
           extraction_model:
+            order: 1
             type: string
             minLength: 1
             title: Extraction model
@@ -384,6 +385,7 @@ entries:
             role: picker
             web_component: wc-model-picker
           judge_model:
+            order: 2
             type: string
             minLength: 1
             title: Reconcile model
@@ -391,40 +393,48 @@ entries:
             role: picker
             web_component: wc-model-picker
           extraction_instructions:
+            order: 3
             type: string
             title: Memory policy
             description: Extra instructions for what this memory keeps.
             format: textarea
           recall_max_items:
+            order: 6
             type: integer
             minimum: 1
             maximum: 50
             title: Recall items
             description: Memories recalled per step.
           recall_max_length:
+            order: 7
             type: integer
             minimum: 200
             maximum: 50000
             title: Recall budget (characters)
           soul_agent_max_chars:
+            order: 8
             type: integer
             minimum: 0
             maximum: 20000
             title: Agent identity and rules budget (characters)
           soul_owner_max_chars:
+            order: 9
             type: integer
             minimum: 0
             maximum: 20000
             title: User profile budget (characters)
           consolidation_interval_hours:
+            order: 10
             type: number
             minimum: 1
             maximum: 720
             title: Consolidation every (hours)
           capture_conversation:
+            order: 4
             type: boolean
             title: Capture conversations
           capture_experience:
+            order: 5
             type: boolean
             title: Capture tool outcomes
 
@@ -716,10 +726,10 @@ entries:
       added as notes. Memory comes from earlier conversations and can be out of
       date: prefer what the user says now.
 
-      Use SearchMemory to look something up, Remember to keep a durable fact or
-      preference the user states, and ForgetMemory when the user asks you to
-      forget something. Conversations are also captured into memory
-      automatically; you do not need to Remember everything the user says.
+      Conversations are captured into memory automatically. Use SearchMemory to
+      look something up, Remember only when the user explicitly asks you to
+      remember something, and ForgetMemory when the user asks you to forget
+      something.
     tools:
       - kickside.memory:memory_recall_tool
       - kickside.memory:memory_remember_tool

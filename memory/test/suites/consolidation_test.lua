@@ -9,14 +9,17 @@ local function define_tests()
         test.it("runs on demand through the slot, writes reflections, and re-arms on the configured cadence", function()
             local user = fixture.user()
             local id = fixture.memory(user, { consolidation_interval_hours = 6 })
-            fixture.remember(user, id, {
+            local _, seed_err = fixture.remember(user, id, {
                 fixture.candidate("fact", "job", "nurse", "The user works night shifts as a nurse.", "m1"),
                 fixture.candidate("fact", "sleep", "day", "The user sleeps during the day.", "m2"),
             }, "k1")
+            test.is_nil(seed_err, tostring(seed_err))
             fixture.settle(user, id)
+            test.eq(fixture.script.pending("structured_output"), 0)
             fixture.script.respond("structured_output", { items = {
                 fixture.candidate("lesson", "contact_time", "evening", "Reach the user in the evening; they sleep during the day.", ""),
             } })
+            fixture.verdict("ADD", {})
             local woken, err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(err, tostring(err))
             test.is_true(woken.woken)

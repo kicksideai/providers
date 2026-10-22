@@ -1,6 +1,6 @@
 -- Candidate-then-judge reconciliation. Each candidate memory is matched by its
--- content-derived id first, then against same-key and nearest items in the same
--- scope and kind. Only an ambiguous neighborhood reaches the model, which
+-- content-derived id first, then against same-key items of its kind and the
+-- nearest items of its scope. Only an ambiguous neighborhood reaches the model, which
 -- classifies the relationship over stable ids from a closed action set. Which
 -- value wins a supersession is decided here by event time.
 
@@ -132,8 +132,10 @@ function M.decide(candidates: { Candidate }, opts: Options): (any?, error?)
             for _, row in pairs(overlay) do
                 if row.scope_key == scope_key and row.kind == candidate.kind and row.key == key then admit(row) end
             end
+            -- Nearest items of every kind in the scope: the same fact can arrive
+            -- as a preference from one span and a profile slot from another.
             local near, near_err = M._items.search(opts.component_id, vector, {
-                kinds = { candidate.kind }, statuses = LIVE, scope_keys = { scope_key },
+                statuses = LIVE, scope_keys = { scope_key },
                 query_text = candidate.content, limit = M.NEIGHBORS,
             })
             if near_err then return nil, near_err end

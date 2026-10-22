@@ -154,8 +154,11 @@ function M.opts(component_id: string, user_id: string, extra: any?): any
     return opts
 end
 
+-- Writes candidates through the reconcile path; a failed write fails the test.
 function M.remember(user_id: string, component_id: string, candidates: { any }, idempotency: string, extra: any?): (any, any)
-    return M.op(user_id, "remember", { candidates = candidates, opts = M.opts(component_id, user_id, extra), idempotency = idempotency })
+    local result, err = M.op(user_id, "remember", { candidates = candidates, opts = M.opts(component_id, user_id, extra), idempotency = idempotency })
+    if err then error("remember failed: " .. tostring(err)) end
+    return result, nil
 end
 
 function M.items(user_id: string, component_id: string, filter: any?): { any }

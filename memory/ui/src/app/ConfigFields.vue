@@ -9,7 +9,8 @@ import type { ConfigSchema, SchemaField } from './memoryTypes'
 const props = defineProps<{ schema: ConfigSchema; modelValue: Record<string, unknown> }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: Record<string, unknown>): void }>()
 
-const fields = computed(() => Object.entries(props.schema.properties || {}) as [string, SchemaField][])
+const fields = computed(() => (Object.entries(props.schema.properties || {}) as [string, SchemaField][])
+  .sort((a, b) => (a[1].order ?? 1000) - (b[1].order ?? 1000)))
 
 function set(key: string, value: unknown) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })

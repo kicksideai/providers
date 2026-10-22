@@ -48,6 +48,7 @@ export interface SchemaField {
   format?: string
   role?: string
   web_component?: string
+  order?: number
 }
 
 export interface ConfigSchema { properties?: Record<string, SchemaField> }
