@@ -56,7 +56,7 @@ jobs:
         hub-url: https://hub.wippy.ai
     - name: Materialize Wippy frontend build inputs
       run: make ui-kit
-    - uses: kicksideai/.github/actions/legal-check@7620746703dc917ace07ad129334333bd47bb4ed
+    - uses: kicksideai/.github/actions/legal-check@c4ac1451e35773714b882a75d5fdfa64c1d316c8
       with:
         base: ${{ github.event.pull_request.base.sha }}
   modules:
