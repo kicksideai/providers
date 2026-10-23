@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.2...mcp-client-v0.2.3) (2026-10-23)
+
+
+### Bug Fixes
+
+* **mcp-client:** use OAuth ownership boundary and bound catalog walks ([#21](https://github.com/kicksideai/providers/issues/21)) ([ef75ffc](https://github.com/kicksideai/providers/commit/ef75ffc752952e53f9a6400db724591486965b07))
+
 ## [0.2.2](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.1...mcp-client-v0.2.2) (2026-10-20)
 
 

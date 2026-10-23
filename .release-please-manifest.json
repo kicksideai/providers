@@ -11,7 +11,7 @@
   "hubspot": "0.1.42",
   "kb10": "0.2.7",
   "llm-ocr": "0.1.14",
-  "mcp-client": "0.2.2",
+  "mcp-client": "0.2.3",
   "memory": "0.1.13",
   "phantombuster": "0.1.26",
   "simplefin": "0.1.14",
@@ -29,5 +29,5 @@
   "airtable": "0.1.0",
   "dropbox": "0.1.1",
   "box": "0.1.1",
-  "search-index": "0.1.0"
+  "search-index": "0.1.1"
 }
