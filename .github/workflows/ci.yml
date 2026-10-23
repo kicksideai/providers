@@ -8,14 +8,26 @@ name: CI
     branches:
     - main
   workflow_call:
+    inputs:
+      kickside_ref:
+        description: KickSide commit or ref for companion integration tests
+        type: string
+        required: false
+        default: main
     secrets:
       SOURCE_READ_TOKEN:
         required: false
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      kickside_ref:
+        description: KickSide commit or ref for companion integration tests
+        type: string
+        required: false
+        default: main
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.kickside_ref || 'main' }}
   cancel-in-progress: true
 env:
   WIPPY_REGISTRY: https://hub.wippy.ai
@@ -1324,10 +1336,13 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: kicksideai/kickside
-        ref: main
+        ref: ${{ inputs.kickside_ref || 'main' }}
         path: kickside
         token: ${{ secrets.SOURCE_READ_TOKEN || github.token }}
         persist-credentials: false
+    - name: Record KickSide integration revision
+      run: git rev-parse HEAD
+      working-directory: kickside
     - name: Build, lint and Lua module tests
       run: ${{ matrix.commands }}
     defaults:
