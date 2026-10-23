@@ -4,146 +4,43 @@ namespace: kickside.memory
 entries:
   - name: definition
     kind: ns.definition
-    readme: file://README.md
     meta:
       title: KickSide Memory
-      comment: Memory knowledge bases (kb_type memory) holding typed, versioned memory items on a ledger thread, and the agent trait and memory provider that capture conversations into them, render the pinned soul, and recall from them.
+      comment: Agent memory capabilities. Owns lifecycle/checkpoint policy; storage is delegated to provider contracts such as knowledge-base queryable/embeddable.
 
   - name: dep.wippy.agent
-    version: '>=0.5.7'
     kind: ns.dependency
     component: wippy/agent
-    meta:
-      comment: Lifecycle, checkpoint, memory and run_context contracts; the after_persist lifecycle phase.
+    version: '*'
 
   - name: dep.wippy.llm
-    version: '*'
     kind: ns.dependency
     component: wippy/llm
-
-  - name: dep.wippy.migration
     version: '*'
-    kind: ns.dependency
-    component: wippy/migration
 
   - name: dep.kickside.component
-    version: '*'
     kind: ns.dependency
     component: kickside/component
-    meta:
-      comment: Memory knowledge bases are components; access, public meta and the write fence go through the component service.
+    version: '*'
 
   - name: dep.kickside.contract
-    version: '*'
     kind: ns.dependency
     component: kickside/contract
-    meta:
-      comment: Implements embeddable, queryable and deletable; shared error helpers.
-
-  - name: dep.kickside.core
     version: '*'
-    kind: ns.dependency
-    component: kickside/core
-    meta:
-      comment: The memory ledger is the knowledge base's thread; the ledger projection folds it.
 
-  - name: dep.kickside.jobs
-    version: '*'
-    kind: ns.dependency
-    component: kickside/jobs
-    meta:
-      comment: Derive, consolidation and re-embed runs execute as jobs.
-
-  - name: dep.kickside.execution
-    version: '*'
-    kind: ns.dependency
-    component: kickside/execution
-    meta:
-      comment: Deferred runs hold and re-admit the requester's execution identity.
-
-  - name: dep.kickside.knowledge
-    version: '*'
-    kind: ns.dependency
-    component: kickside/knowledge
-    meta:
-      comment: Memory is a knowledge-base engine of the knowledge control plane.
-
-  - name: dep.kickside.search_index
-    version: '>=0.1.1'
-    kind: ns.dependency
-    component: kickside/search-index
-    meta:
-      comment: Hybrid retrieval and group-aware conflict paging over the memory item tables (release search-index before Memory).
-
-  # Host requirements.
   - name: ui_server
     kind: ns.requirement
     meta:
-      comment: HTTP server the memory web components are served from.
-      description: HTTP server the memory web components are served from.
+      comment: HTTP server the memory capability config component is served from.
+      description: HTTP server the memory capability config component is served from.
     targets:
       - entry: kickside.memory:ui_static
         path: .meta.server
 
-  - name: api_router
-    kind: ns.requirement
-    meta:
-      comment: Authenticated HTTP router for the memory API.
-      description: Authenticated HTTP router for the memory API.
-    targets:
-      - { entry: kickside.memory.api:list_memories.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:list_topics.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:list_items.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:get_item.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:create_item.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:edit_item.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:forget_item.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:archive_item.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:restore_item.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:list_conflicts.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:resolve_conflict.endpoint, path: .meta.router }
-      - { entry: kickside.memory.api:status.endpoint, path: .meta.router }
-
-  - name: target_db
-    kind: ns.requirement
-    meta:
-      comment: SQL database resource backing the kickside_memory_* tables; the component database.
-      description: SQL database resource backing the kickside_memory_* tables; the component database.
-    targets:
-      - entry: kickside.memory.migrations:01_memory_schema
-        path: .meta.target_db
-      - entry: kickside.memory:db_config
-        path: .meta.db_id
-
-  - name: db_config
-    kind: registry.entry
-    meta:
-      comment: Holds the configured memory database id (rewritten by target_db).
-      db_id: ""
-
-  - name: types
-    kind: library.lua
-    meta:
-      comment: Memory vocabulary - kinds, scopes, statuses, ledger events, run types and value helpers.
-    source: file://types.lua
-    modules: [time, json, security]
-    imports:
-      canonical_json: kickside.contract:canonical_json
-
-  - name: config
-    kind: library.lua
-    meta:
-      comment: Engine configuration - defaults and schema from the engine descriptor, server-side validation.
-    source: file://config.lua
-    modules: [registry]
-    imports:
-      types: kickside.memory:types
-
-  # Web components.
   - name: ui_fs
     kind: fs.directory
     meta:
-      comment: Built KickSide memory web components.
+      comment: Built/plain KickSide memory web components.
     directory: ./static
 
   - name: ui_static
@@ -167,236 +64,6 @@ entries:
       announced: true
       auto_register: false
 
-  - name: memory_view
-    kind: registry.entry
-    meta:
-      type: view.component
-      name: memory_view
-      title: Memory
-      comment: Memory knowledge base page - memories, conflicts, activity and settings.
-      tag_name: kickside-memory-kb
-      base_path: kickside-memory
-      entry_point: memory_kb.js
-      announced: true
-      auto_register: true
-
-  - name: memory_create_view
-    kind: registry.entry
-    meta:
-      type: view.component
-      name: memory_create_view
-      title: Memory Settings
-      comment: The memory engine's pane of the knowledge base create and edit dialog.
-      tag_name: kickside-memory-create
-      base_path: kickside-memory
-      entry_point: memory_create.js
-      announced: true
-      auto_register: true
-
-  # Knowledge-base engine. The component impl binding carries the store
-  # contracts; the descriptor declares the ledger thread, its projection,
-  # configuration and the manage view.
-  - name: memory_kb
-    kind: contract.binding
-    meta:
-      title: Memory
-      comment: Memory knowledge base - typed memory items on a ledger thread with hybrid recall.
-      icon: tabler:brain
-      class: [knowledge]
-      events:
-        output:
-          - type: kickside.memory.events:item.added
-          - type: kickside.memory.events:item.superseded
-          - type: kickside.memory.events:item.merged
-          - type: kickside.memory.events:item.conflicted
-          - type: kickside.memory.events:item.revised
-          - type: kickside.memory.events:item.archived
-          - type: kickside.memory.events:item.forgotten
-          - type: kickside.memory.events:item.restored
-          - type: kickside.memory.events:provenance.added
-          - type: kickside.memory.events:capture.advanced
-          - type: kickside.memory.events:consolidation.completed
-          - type: kickside.knowledge.events:content.upserted
-          - type: kickside.knowledge.events:content.deleted
-      component:
-        create: { view: kickside.knowledge:kb_create_view }
-        manage: { view: kickside.knowledge:knowledge_view, deep_link: true }
-    contracts:
-      - contract: kickside.contract:component
-        methods:
-          get_status: kickside.core.threads:thread_status
-      - contract: kickside.contract:embeddable
-        context_required: [component_id]
-        methods:
-          embed_content: kickside.memory.engine:embed_func
-          embed_reference: kickside.knowledge.binding:embed_reference_func
-      - contract: kickside.contract:queryable
-        context_required: [component_id]
-        methods:
-          query: kickside.memory.engine:query_func
-      - contract: kickside.contract:deletable
-        context_required: [component_id]
-        methods:
-          delete: kickside.memory.engine:delete_func
-
-  - name: store_lifecycle
-    kind: contract.binding
-    meta:
-      title: Memory Store Lifecycle
-      comment: Memory engine implementation of kickside.knowledge:kb_store_lifecycle, named by the engine descriptor's store_binding.
-    contracts:
-      - contract: kickside.knowledge:kb_store_lifecycle
-        methods:
-          create_store: kickside.memory.engine:create_store
-          get_store: kickside.memory.engine:get_store
-          update_config: kickside.memory.engine:update_config
-          delete_store: kickside.memory.engine:delete_store
-
-  - name: maintainable
-    kind: contract.binding
-    meta:
-      comment: Memory maintenance - bring consolidation forward, re-embed every item, read the latest runs.
-    contracts:
-      - contract: kickside.knowledge:maintainable
-        context_required: [component_id]
-        methods:
-          schedule_resummarize: kickside.memory.engine:schedule_resummarize_func
-          schedule_reembed: kickside.memory.engine:schedule_reembed_func
-          maintenance_status: kickside.memory.engine:maintenance_status_func
-
-  - name: engine_memory
-    kind: registry.entry
-    meta:
-      type: kickside.kb_engine
-      kb_type: memory
-      title: Memory
-      label: Memory
-      comment: Typed long-term memory for agents - facts, preferences, profile, identity and rules, versioned with provenance.
-      icon: tabler:brain
-      impl_id: kickside.memory:memory_kb
-      embed_binding: kickside.memory:memory_kb
-      query_binding: kickside.memory:memory_kb
-      maintenance_binding: kickside.memory:maintainable
-      store_contract: kickside.knowledge:kb_store_lifecycle
-      store_binding: kickside.memory:store_lifecycle
-      is_graph: false
-      thread:
-        class: kickside.knowledge.injection
-      # The ledger is the source of truth and the read model is rebuilt from it,
-      # so its events are kept for the lifetime of the memory.
-      retention:
-        event_days: 36500
-      ui:
-        badge: { label: Memory, icon: tabler:brain, tone: info }
-        stats:
-          - { path: item_count, singular: memory, plural: memories, icon: tabler:brain }
-          - { path: conflict_count, singular: conflict, plural: conflicts, icon: tabler:alert-triangle, min: 1 }
-      component:
-        create: { view: kickside.memory:memory_create_view }
-        manage: { view: kickside.memory:memory_view }
-      projections:
-        - kind: kickside.memory.ledger
-          projection_key: ledger
-          cursor_key: ledger
-          worker_ref: "func://kickside.memory.engine:ledger_projection"
-          input_mode: prefetch_events
-          events:
-            input:
-              - type: kickside.memory.events:item.added
-              - type: kickside.memory.events:item.superseded
-              - type: kickside.memory.events:item.merged
-              - type: kickside.memory.events:item.conflicted
-              - type: kickside.memory.events:item.revised
-              - type: kickside.memory.events:item.archived
-              - type: kickside.memory.events:item.forgotten
-              - type: kickside.memory.events:item.restored
-              - type: kickside.memory.events:provenance.added
-              - type: kickside.memory.events:capture.advanced
-              - type: kickside.memory.events:consolidation.completed
-              - type: kickside.knowledge.events:content.upserted
-      default_config:
-        extraction_model: class:fast
-        judge_model: class:fast
-        extraction_instructions: ""
-        recall_max_items: 5
-        recall_max_length: 4000
-        soul_agent_max_chars: 2000
-        soul_owner_max_chars: 2000
-        consolidation_interval_hours: 24
-        capture_conversation: true
-        capture_experience: false
-      config_schema:
-        type: object
-        additionalProperties: false
-        properties:
-          extraction_model:
-            order: 1
-            type: string
-            minLength: 1
-            title: Extraction model
-            description: Model that reads conversations and picks what to remember. Consolidation uses it too.
-            web_component: wc-model-picker
-          judge_model:
-            order: 2
-            type: string
-            minLength: 1
-            title: Reconcile model
-            description: Model that decides whether a new memory is new, a duplicate, an update or a contradiction.
-            web_component: wc-model-picker
-          extraction_instructions:
-            group: advanced
-            order: 3
-            type: string
-            title: Memory policy
-            description: Extra instructions for what this memory keeps.
-            format: textarea
-          recall_max_items:
-            group: advanced
-            order: 6
-            type: integer
-            minimum: 1
-            maximum: 50
-            title: Recall items
-            description: Memories recalled per step.
-          recall_max_length:
-            group: advanced
-            order: 7
-            type: integer
-            minimum: 200
-            maximum: 50000
-            title: Recall budget (characters)
-          soul_agent_max_chars:
-            group: advanced
-            order: 8
-            type: integer
-            minimum: 0
-            maximum: 20000
-            title: Agent identity and rules budget (characters)
-          soul_owner_max_chars:
-            group: advanced
-            order: 9
-            type: integer
-            minimum: 0
-            maximum: 20000
-            title: User profile budget (characters)
-          consolidation_interval_hours:
-            group: advanced
-            order: 10
-            type: number
-            minimum: 1
-            maximum: 720
-            title: Consolidation every (hours)
-          capture_conversation:
-            order: 4
-            type: boolean
-            title: Capture conversations
-          capture_experience:
-            group: advanced
-            order: 5
-            type: boolean
-            title: Capture tool outcomes
-
-  # Agent side. The runtime library keeps its published id.
   - name: runtime
     kind: library.lua
     meta:

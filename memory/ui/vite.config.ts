@@ -18,15 +18,11 @@ export default defineConfig({
     outDir: resolve(__dirname, '../static'),
     emptyOutDir: true,
     lib: {
-      // Three elements ship from this package: the Memory trait settings
-      // (index.js), the memory engine's create pane (memory_create.js)
-      // and the memory knowledge base page (memory_kb.js). Entry keys are the
-      // served filenames the registry entry points name.
+      // One element ships from this package: the Knowledge Base Memory capability
+      // config surface. The entry key is the served filename (the registry
+      // entry_point), so it stays knowledge_memory.js.
       entry: {
-        index: resolve(__dirname, 'src/index.ts'),
-        knowledge_memory: resolve(__dirname, 'src/knowledge_memory.ts'),
-        memory_create: resolve(__dirname, 'src/create.ts'),
-        memory_kb: resolve(__dirname, 'src/manage.ts'),
+        knowledge_memory: resolve(__dirname, 'src/index.ts'),
       },
       name: 'KicksideKnowledgeMemory',
       formats: ['es'],
@@ -34,10 +30,7 @@ export default defineConfig({
     rollupOptions: {
       preserveEntrySignatures: false,
       input: {
-        index: resolve(__dirname, 'src/index.ts'),
-        knowledge_memory: resolve(__dirname, 'src/knowledge_memory.ts'),
-        memory_create: resolve(__dirname, 'src/create.ts'),
-        memory_kb: resolve(__dirname, 'src/manage.ts'),
+        knowledge_memory: resolve(__dirname, 'src/index.ts'),
       },
       external: ['vue', '@iconify/vue', '@wippy-fe/proxy'],
       output: {

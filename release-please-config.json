@@ -136,6 +136,11 @@
       "component": "search-index",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0"
+    },
+    "memory-kb": {
+      "component": "memory-kb",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0"
     }
   }
 }
