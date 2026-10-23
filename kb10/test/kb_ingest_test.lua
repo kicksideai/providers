@@ -725,7 +725,7 @@ local function define_tests()
                 })
                 test.is_nil(err)
                 test.is_true(result.success, "upload complete: " .. tostring(result.error))
-                test.eq(external_id, result.external_id)
+                test.eq(result.external_id, external_id, "callback result: " .. json.encode(result))
                 test.eq("source-v1", result.external_version)
 
                 local event = event_for_external(result.thread_id, external_id, "kickside.knowledge.events:content.upserted")
