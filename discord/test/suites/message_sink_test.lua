@@ -47,6 +47,34 @@ end
 
 local function define_tests()
     test.describe("Discord message sink upsert", function()
+        test.it("retries an ambiguous first post with the same enforced nonce", function()
+            local fake: any = new_fake()
+            local ambiguous = errors.new({ kind = errors.UNAVAILABLE, message = "Discord transport timed out" })
+            local deliver = fake.send_channel_message_once
+            function fake.send_channel_message_once(conn: any, channel_id: string, payload: any): (any?, error?)
+                if #fake.sent == 0 then
+                    fake.sent[1] = { channel_id = channel_id, payload = payload }
+                    return nil, ambiguous
+                end
+                return deliver(conn, channel_id, payload)
+            end
+            local req = base_req({})
+            local failed, failed_err = sink.write(req, { transport = fake })
+            test.is_nil(failed)
+            test.eq(failed_err, ambiguous)
+            local retried = write(fake, req)
+            test.is_true(retried.success)
+            test.eq(retried.dest_ref.message_id, "900")
+            local other = write(fake, base_req({ idempotency_key = "discord:message:src:2" }))
+            test.is_true(other.success)
+            test.eq(#fake.sent, 3)
+            test.eq(#fake.sent[1].payload.nonce, 25)
+            test.is_true(fake.sent[1].payload.enforce_nonce)
+            test.eq(fake.sent[2].payload.nonce, fake.sent[1].payload.nonce)
+            test.is_true(fake.sent[2].payload.enforce_nonce)
+            test.is_true(fake.sent[3].payload.nonce ~= fake.sent[1].payload.nonce)
+        end)
+
         test.it("requires delivery keys before connecting", function()
             local fake = new_fake()
             local res = write(fake, base_req({ identity_key = false }))
@@ -64,6 +92,8 @@ local function define_tests()
             test.eq(#fake.sent, 1)
             test.eq(fake.sent[1].channel_id, CHANNEL)
             test.eq(fake.sent[1].payload.content, "hello")
+            test.eq(#fake.sent[1].payload.nonce, 25)
+            test.is_true(fake.sent[1].payload.enforce_nonce)
             test.eq(fake.connect_ids[1], "conn1", "the write connects through the configured connection")
         end)
 

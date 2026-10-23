@@ -1,5 +1,6 @@
 local base = require("base")
 local broker = require("broker")
+local catalog = require("catalog")
 local M = {}
 
 function M.get_status(args: any): (any?, error?) return base.get_status(args) end
@@ -7,13 +8,13 @@ function M.get_status(args: any): (any?, error?) return base.get_status(args) en
 function M.test_connection(_args: any): (any?, error?)
     local component_id, err = base.component_id()
     if not component_id then return nil, err end
-    local count, cursor = 0, nil
-    repeat
-        local page, list_err = broker.request(component_id, "list_tools", {cursor = cursor})
-        if list_err then return nil, list_err end
+    local count = 0
+    local list_err = catalog.each_page(function(cursor: string?): (any?, error?)
+        return broker.request(component_id, "list_tools", {cursor = cursor})
+    end, function(page)
         count = count + #page.tools
-        cursor = page.next_cursor
-    until not cursor
+    end)
+    if list_err then return nil, list_err end
     return {success = true, details = {tool_count = count}}
 end
 

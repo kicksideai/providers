@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.7](https://github.com/kicksideai/providers/compare/kb10-v0.2.6...kb10-v0.2.7) (2026-10-23)
+
+
+### Bug Fixes
+
+* **kb10:** align engine query configuration declarations ([1025025](https://github.com/kicksideai/providers/commit/1025025106d5938a3beedfee20854a5e49a9d99c))
+* **kb10:** consume owner upload status notifications ([48cc24f](https://github.com/kicksideai/providers/commit/48cc24f525b37ed23d6349cf8da7e62bea7ad59f))
+* **kb10:** read omitted content from its artifact ([#20](https://github.com/kicksideai/providers/issues/20)) ([2947dc9](https://github.com/kicksideai/providers/commit/2947dc9a881d2e0b6a88cb6eeaf6ee5f7b7f2097))
+* **kb10:** report failed resummarization work ([8963413](https://github.com/kicksideai/providers/commit/896341365be353d44baeb3dfbecaa4d874eaec97))
+* **kb10:** return errors for missing deletion identities ([f3ab687](https://github.com/kicksideai/providers/commit/f3ab6873d7e396a315e587c0b5be60c51fc8846d))
+
 ## 0.2.6 (2026-10-17)
 
 - Refresh packaged module descriptions and documentation.

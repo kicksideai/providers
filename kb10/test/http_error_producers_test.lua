@@ -12,6 +12,16 @@ return test.run_cases(function()
             local _, err = kb_nodes.get_node("kb", "")
             test.is_true(errors.is(err, errors.INVALID))
         end)
+        test.it("refuses missing deletion identities instead of reporting no matches", function()
+            for _, request in ipairs({ { external_id = "document" }, { store_id = "store" },
+                    { store_id = "store", external_id = "" }, { store_id = "", external_id = "document" } }) do
+                local removed, err = writer.delete_documents_by_external_id(request.store_id, "source", request.external_id)
+                test.eq(removed, 0)
+                test.not_nil(err)
+                test.is_true(errors.is(err, errors.INVALID))
+                test.is_false(err:retryable())
+            end
+        end)
         test.it("retains typed refusals through transaction rollback", function()
             local component_id = uuid.v7()
             local store_id, create_err = writer.create_store(component_id, "model", {}, {})

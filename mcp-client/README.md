@@ -94,16 +94,25 @@ The new OAuth entries live in `kickside.mcp_client.oauth`: `provider`,
 The public client metadata handler belongs to `kickside.mcp_client.oauth.api`.
 Existing published MCP contract and tool IDs retain their namespaces.
 
+MCP reads private provider options through the actor-validated
+`kickside.oauth.runtime:connection` contract and tokens through the existing OAuth
+connection contract. OAuth owns persistence, encryption and refresh; MCP does not
+import its repository. This requires `kickside/oauth >=0.1.40`.
+
+Complete catalog discovery rejects repeated cursor tokens, including longer
+cycles, and has a five-minute deadline. There is no fixed tool-count or page-size
+cap. Single-page listing keeps the remote provider's native pagination.
+
 ### Verification
 
 `make test-backend` includes a real local HTTP authorization server, PKCE code
 exchange, the shared callback and encrypted persistence, MCP tool discovery and
-calls, expiry, 401 refresh, reconnect, and revoked grants. `npm --prefix ui test`
+calls, expiry, 401 refresh, reconnect, and revoked grants. `make test-ui`
 checks popup origin, source, state, denial,
 blocked popups, and cancellation.
 
-For the Chromium consent test, build `ui`, run `make test-prepare`, start
-`wippy run` from `test/`, and run `node test/oauth-browser.e2e.mjs` with the
+For the Chromium consent test, run `make build test-prepare`, start
+`wippy run` from `test/`, and run `make test-browser` with the
 Playwright 1.59.1 browser installed (or in its matching Playwright container).
 The test drives the built editor and real callback through a demo consent popup.
 

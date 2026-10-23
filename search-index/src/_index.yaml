@@ -1,0 +1,20 @@
+version: "1.0"
+namespace: kickside.search_index
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Search Index
+      comment: Hybrid vector and full-text search primitives over tables owned by the calling module.
+
+  - name: index
+    kind: library.lua
+    meta:
+      name: index
+      comment: Dense (vec0 / pgvector), lexical (fts5 / tsvector) and fused search over a caller table spec, plus vector literal, placeholder and batched insert helpers.
+    source: file://index.lua
+    modules:
+      - sql
+      - json

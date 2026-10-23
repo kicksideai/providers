@@ -63,7 +63,16 @@ local function define_tests()
             test.is_true(included)
             local component = assert(registry.get("kickside.kb10.security:kb10_endpoint_access"))
             test.is_true(component.meta.private)
-            test.eq(component.data.groups[1], "app:user")
+            -- Reusable packs may already contain the declared default group;
+            -- the host binding must still be appended without unrelated grants.
+            local found_host, seen = false, {}
+            for _, group in ipairs(component.data.groups) do
+                test.is_nil(seen[group], group)
+                seen[group] = true
+                test.is_true(group == "app:user" or group == requirement.data.default, group)
+                if group == "app:user" then found_host = true end
+            end
+            test.is_true(found_host, "host user scope was not bound")
         end)
         test.it("admits owned member endpoints and rejects other modules", function()
             local policy, err = security.policy("kickside.kb10.security:kb10_endpoint_access")

@@ -8,7 +8,9 @@ local time = require("time")
 local oauth = require("oauth")
 local repo = require("oauth_read_repo")
 local token_repo = require("oauth_token_repo")
+local process = require("process")
 local BASE = "http://127.0.0.1:19129"
+local CONNECTION_NAME = "MCP OAuth integration " .. tostring(time.now():unix_nano())
 
 local function query(statement, params)
     local db, err = sql.get("app:db")
@@ -34,17 +36,19 @@ local function request(method, url, body)
 end
 local function authorize(existing)
     local started = request("POST", BASE .. "/test-oauth/mcp_remote/init", {
-        name = "MCP OAuth integration", scopes = {}, component_id = existing,
+        name = CONNECTION_NAME, scopes = {}, component_id = existing,
         provider_options = {endpoint_url = BASE .. "/fixture/mcp"},
     })
     test.is_true(started.success, started.error)
+    local pending, pending_err = process.registry.lookup("kickside.oauth.service:connection_negotiator:" .. started.state_token, process.registry.CONSISTENT)
+    test.is_nil(pending_err,tostring(pending_err)); test.not_nil(pending,"successful init must have a ready callback session")
     test.contains(started.authorization_url, "code_challenge_method=S256")
     test.contains(started.authorization_url, "resource=http%3A%2F%2F127.0.0.1%3A19129%2Ffixture%2Fmcp")
     local consent = request("GET", started.authorization_url)
     local result = request("POST", BASE .. "/api/public/oauth/callback", consent)
     test.is_true(result.success, result.error)
     test.is_nil(result.access_token)
-    local rows = query("SELECT component_id FROM kickside_oauth_connections WHERE connection_name=$1", {"MCP OAuth integration"})
+    local rows = query("SELECT component_id FROM kickside_oauth_connections WHERE connection_name=$1", {CONNECTION_NAME})
     test.eq(#rows, 1)
     return rows[1].component_id
 end

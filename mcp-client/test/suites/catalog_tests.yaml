@@ -1,0 +1,18 @@
+version: '1.0'
+namespace: app.suites
+entries:
+- name: catalog_walk_test
+  kind: function.lua
+  source: file://catalog_walk_test.lua
+  method: run
+  meta: {type: test, suite: mcp_catalog, timeout: 30s}
+  modules: [json, time, registry]
+  imports:
+    test: wippy.test:test
+    client: kickside.mcp_client:http_client
+    connection: kickside.mcp_client:connection_implementation
+    base: kickside.connection:base_connection
+    broker: kickside.mcp_client:broker
+    builder: kickside.mcp_client:build_tools
+    component: kickside.component:component
+    catalog: kickside.mcp_client.catalog:walk

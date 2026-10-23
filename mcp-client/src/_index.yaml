@@ -33,7 +33,7 @@ entries:
   - name: dep.kickside.oauth
     kind: ns.dependency
     component: kickside/oauth
-    version: "*"
+    version: ">=0.1.40"
 
   - name: public_router
     kind: ns.requirement
@@ -230,6 +230,7 @@ entries:
     imports:
       base: kickside.connection:base_connection
       broker: kickside.mcp_client:broker
+      catalog: kickside.mcp_client.catalog:walk
 
   - name: get_status
     kind: function.lua
@@ -324,6 +325,7 @@ entries:
     imports:
       component: kickside.component:component
       surface: kickside.mcp_client:surface
+      catalog: kickside.mcp_client.catalog:walk
 
   - name: invoke_tool
     kind: function.lua

@@ -203,6 +203,15 @@ function M.send_reply(args: any): SimpleResult
     if #content > types.MESSAGE_MAX_LENGTH then
         return { success = false, error = "Discord message exceeds " .. tostring(types.MESSAGE_MAX_LENGTH) .. " characters" }
     end
+    -- A keyed send carries the key's nonce, so a retried delivery returns the
+    -- message Discord already created for it instead of posting again.
+    local idempotency_key = trim(args.idempotency_key)
+    if idempotency_key ~= "" then
+        local nonce, nonce_err = types.message_nonce(idempotency_key)
+        if nonce_err then return { success = false, error = nonce_err } end
+        payload.nonce = nonce
+        payload.enforce_nonce = true
+    end
 
     if args.outbound == true and args.reply_proof == nil then
         return transport.send_outbound({ channel_id = channel_id, payload = payload }) :: SimpleResult
