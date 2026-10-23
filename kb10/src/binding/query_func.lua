@@ -16,6 +16,12 @@ local MAX_SUMMARIES = 20
 local CONTENT_PREVIEW_LENGTH = 800
 local RANKING_PREVIEW_LENGTH = 400
 local MIN_CHUNKS_PER_DOC = 1
+-- A document strategy is only a query refinement. Returning a verbose
+-- explanation for every summary made the structured response unbounded and
+-- could exhaust the interactive output reservation before its JSON closed.
+-- Keep one compact decision for every candidate so the bound never reduces
+-- retrieval coverage.
+local MAX_STRATEGY_QUERY_LENGTH = 64
 
 local function parse_limit(value: any): (integer?, string?)
     if value == nil then return DEFAULT_LIMIT, nil end
@@ -48,15 +54,17 @@ YOUR JOB:
 1. These are high-level document summaries, NOT the full content
 2. After this step, we will search for specific chunks/sections within relevant documents
 3. The detailed implementation content is in the chunks, not these summaries
-4. Mark "relevant" = true if this document COULD contain information that helps answer the query
-5. If relevant=true, create a targeted search query to find the right chunks within that document
+4. For EVERY document, set "relevant" to true if it COULD contain information that helps answer the query
+5. When relevant=true, create a targeted search query to find the right chunks within that document
+6. When relevant=false, use an empty search_query
 
 DECISION CRITERIA:
-- Be INCLUSIVE - if there's any reasonable chance this document contains helpful information, mark it relevant
+- Be INCLUSIVE - if there's any reasonable chance this document contains helpful information, set relevant=true
 - Remember: the specific details you need are likely in the document chunks, not this high-level summary
 - Focus on topic/domain match, not whether the summary directly answers the question
+- Do not explain your decisions. Each search_query must be at most 64 characters.
 
-%sFor each document, decide relevance and create search strategy:]]
+%sReturn one compact decision for every document now:]]
 
 local RERANKING_PROMPT = [[Original user query: "%s"
 
@@ -73,15 +81,15 @@ local function document_analysis_schema(document_ids)
         properties = {
             documents = {
                 type = "array",
+                maxItems = MAX_SUMMARIES,
                 items = {
                     type = "object",
                     properties = {
                         document_id = { type = "string", enum = document_ids },
                         relevant = { type = "boolean" },
-                        search_query = { type = "string" },
-                        reasoning = { type = "string" }
+                        search_query = { type = "string", maxLength = MAX_STRATEGY_QUERY_LENGTH }
                     },
-                    required = { "document_id", "relevant", "search_query", "reasoning" },
+                    required = { "document_id", "relevant", "search_query" },
                     additionalProperties = false
                 }
             }
@@ -189,8 +197,7 @@ local function generate_document_strategies(user_query, summary_results, analysi
             end
             if item.relevant and item.search_query and item.search_query ~= "" then
                 strategies[item.document_id] = {
-                    search_query = item.search_query,
-                    reasoning = item.reasoning
+                    search_query = item.search_query
                 }
             end
         end

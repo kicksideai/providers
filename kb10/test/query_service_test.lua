@@ -102,10 +102,18 @@ local function define_tests()
                     for _ in ipairs(texts) do vectors[#vectors + 1] = { 1, 0 } end
                     return { result = vectors }, nil
                 end,
-                structured_output = function(schema: any): (any, any)
+                structured_output = function(schema: any, prompt: string): (any, any)
                     local enum = schema.properties.documents.items.properties.document_id.enum
                     test.eq(#enum, #ids)
                     for index, id in ipairs(ids) do test.eq(enum[index], id) end
+                    local documents = schema.properties.documents
+                    local item = documents.items
+                    test.eq(documents.maxItems, 20)
+                    test.eq(item.properties.relevant.type, "boolean")
+                    test.is_nil(item.properties.reasoning)
+                    test.eq(item.properties.search_query.maxLength, 64)
+                    test.is_true(string.find(prompt, "For EVERY document", 1, true) ~= nil)
+                    test.is_true(string.find(prompt, "Do not explain your decisions", 1, true) ~= nil)
                     return { result = { documents = {
                         { document_id = ids[1], relevant = true, search_query = "first" },
                         { document_id = ids[2], relevant = true, search_query = "second" },
@@ -132,6 +140,49 @@ local function define_tests()
             test.is_true(result.success)
             test.is_true(scoped[ids[1]])
             test.is_true(scoped[ids[2]])
+        end)
+
+        test.it("keeps every summary candidate eligible for a compact analysis decision", function()
+            local previous_ctx, previous_llm, previous_store = query_service._ctx, query_service._llm, query_service._store
+            local ids, summaries, scoped = {}, {}, {}
+            for index = 1, 20 do
+                local id = "document-" .. tostring(index)
+                ids[index] = id
+                summaries[index] = { id = "summary-" .. tostring(index), parent_id = id,
+                    node_type = "summary", content = "summary " .. tostring(index), similarity = 1 - index / 100 }
+            end
+            query_service._ctx = { get = function(): any return "kb" end }
+            query_service._llm = {
+                embed = function(texts: any): (any, any)
+                    local vectors = {}
+                    for _ in ipairs(texts) do vectors[#vectors + 1] = { 1, 0 } end
+                    return { result = vectors }, nil
+                end,
+                structured_output = function(schema: any): (any, any)
+                    test.eq(schema.properties.documents.maxItems, 20)
+                    local decisions = {}
+                    for _, id in ipairs(ids) do
+                        decisions[#decisions + 1] = { document_id = id, relevant = true, search_query = "find " .. id }
+                    end
+                    return { result = { documents = decisions } }, nil
+                end,
+            }
+            query_service._store = {
+                get_store = function(): (any, any) return { id = "store", config = { analysis_model = "analysis" } }, nil end,
+                vector_search = function(_, _, options: any): (any, any)
+                    if options.parent_id then
+                        scoped[options.parent_id] = true
+                        return {}, nil
+                    end
+                    if options.node_types[1] == "summary" and #options.node_types == 1 then return summaries, nil end
+                    return { { id = "original", parent_id = ids[1], node_type = "chunk", content = "evidence", similarity = 1 } }, nil
+                end,
+            }
+            local ok, result = pcall(query_service.handle, { query = "question", limit = 10 })
+            query_service._ctx, query_service._llm, query_service._store = previous_ctx, previous_llm, previous_store
+            if not ok then error(result) end
+            test.is_true(result.success)
+            for _, id in ipairs(ids) do test.is_true(scoped[id], "scoped search: " .. id) end
         end)
 
         test.it("rejects invented analysis identities before issuing a scoped database query", function()
