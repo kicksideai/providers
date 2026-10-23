@@ -64,6 +64,9 @@ entries:
         - kickside.knowledge.events:content.deleted
     source: file://content_extractor.lua
     method: run
+    modules: [hash]
+    imports:
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
 
   # Deterministic, source-agnostic projection worker. Discovers extractors at
   # runtime via the registry (meta.type=projection.extractor) and materializes the

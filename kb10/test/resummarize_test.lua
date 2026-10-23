@@ -181,7 +181,8 @@ local function define_tests()
                 summarizer = failing_summarizer,
                 embedder = fixtures.fake_embedder,
             })
-            test.is_nil(err, "resummarize: " .. tostring(err))
+            test.not_nil(err, "failed work returns its error")
+            test.is_false((result :: any).success, "failed work is not successful")
             test.eq(1, (result :: any).scanned)
             test.eq(0, (result :: any).resummarized)
             test.eq(0, (result :: any).chunks_reenriched)
@@ -271,7 +272,8 @@ local function define_tests()
                 enricher = failing_enricher,
                 embedder = fixtures.fake_embedder,
             })
-            test.is_nil(err, "resummarize: " .. tostring(err))
+            test.not_nil(err, "failed work returns its error")
+            test.is_false((result :: any).success, "failed work is not successful")
             test.eq(1, (result :: any).resummarized)
             test.eq(0, (result :: any).chunks_reenriched)
             -- The document itself was resummarized, so it is not skipped; the
@@ -303,7 +305,8 @@ local function define_tests()
                 summarizer = stub_summarizer,
                 embedder = narrow_embedder,
             })
-            test.is_nil(err, "resummarize: " .. tostring(err))
+            test.not_nil(err, "failed work returns its error")
+            test.is_false((result :: any).success, "failed work is not successful")
             test.eq(1, (result :: any).scanned)
             test.eq(0, (result :: any).resummarized, "a summary that could not be indexed is not a rewrite")
             test.eq(1, (result :: any).documents_skipped)
@@ -328,7 +331,8 @@ local function define_tests()
                 enricher = stub_enricher,
                 embedder = narrow_chunk_embedder,
             })
-            test.is_nil(err, "resummarize: " .. tostring(err))
+            test.not_nil(err, "failed work returns its error")
+            test.is_false((result :: any).success, "failed work is not successful")
             test.eq(1, (result :: any).resummarized, "the summary itself was written")
             test.eq(0, (result :: any).chunks_reenriched)
             test.eq(1, (result :: any).chunks_failed)
@@ -501,7 +505,8 @@ local function define_tests()
                 end,
                 embedder = fixtures.fake_embedder,
             })
-            test.is_nil(err, "resummarize: " .. tostring(err))
+            test.not_nil(err, "failed work returns its error")
+            test.is_false((result :: any).success)
             test.eq(1, calls)
             test.eq(0, (result :: any).chunks_reenriched)
             test.eq(1, (result :: any).chunks_failed)
@@ -573,7 +578,8 @@ local function define_tests()
             -- The summary write already landed, and the one chunk the model was
             -- asked about is accounted for as failed; the rest were never
             -- attempted and keep their stored context.
-            test.is_nil(err, "resummarize: " .. tostring(err))
+            test.not_nil(err, "failed work returns its error")
+            test.is_false((result :: any).success)
             test.eq(1, batch_calls)
             test.eq(1, (result :: any).resummarized)
             test.eq(0, (result :: any).chunks_reenriched)

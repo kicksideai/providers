@@ -53,6 +53,7 @@ local SETTINGS_CONTRACT = "kickside.settings:settings"
 local SETTINGS_NS = "kickside.llm_ocr"
 local RASTERIZE_NS = "kickside.uploads.rasterize"
 local DEFAULT_MODEL = "class:fast"
+local MAX_ERROR_DETAIL_BYTES = 2000
 -- Pages are transcribed in small batches so a cancel/terminate is honored between
 -- batches and each batch's text is checkpointed as it completes -- a later failure
 -- or termination keeps the pages already transcribed.
@@ -258,6 +259,7 @@ local function run(params: any, deps: any): any
     local should_continue = build_should_continue(deps, params)
 
     local page_errors: { string } = {}
+    local persist_failed = false
     local function transcribe_page(item: any): any
         local page = item.page
         local bytes, read_err = artifact_content_repo.read_artifact_content(upload_id, page.artifact_id)
@@ -308,6 +310,7 @@ local function run(params: any, deps: any): any
             if not ok then
                 log:warn("ocr: failed to persist transcription checkpoint", { upload_id = upload_id, error = tostring(perr) })
                 page_errors[#page_errors + 1] = "Transcript checkpoint: " .. tostring(perr)
+                persist_failed = true
                 break
             end
             persisted = true
@@ -316,15 +319,24 @@ local function run(params: any, deps: any): any
         start = last + 1
     end
 
+    -- Public metadata carries only a stable code; provider text stays in the log and
+    -- in the private _ocr_error_detail field.
+    local error_code: any = false
+    local error_detail: any = false
+    if #page_errors > 0 then
+        error_code = persist_failed and "persist_failed" or "transcription_failed"
+        error_detail = table.concat(page_errors, "\n"):sub(1, MAX_ERROR_DETAIL_BYTES)
+    end
+
     if not persisted or #sections == 0 then
         if #pages > 0 then
-            return { success = true, metadata = { ocr_error = #page_errors > 0 and table.concat(page_errors, "\n") or "no_text_detected" } }
+            return { success = true, metadata = { ocr_error = error_code or "no_text_detected", _ocr_error_detail = error_detail } }
         end
         return { success = true }
     end
 
     log:info("ocr transcribed document", { upload_id = upload_id, pages = #sections, total_pages = #pages, model = model })
-    return { success = true, metadata = { ocr_pages = #sections, ocr_total_pages = #pages, ocr_error = #page_errors > 0 and table.concat(page_errors, "\n") or false } }
+    return { success = true, metadata = { ocr_pages = #sections, ocr_total_pages = #pages, ocr_error = error_code, _ocr_error_detail = error_detail } }
 end
 
 local function process(params: any): any

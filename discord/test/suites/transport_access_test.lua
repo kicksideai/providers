@@ -13,7 +13,7 @@ local DB = "app:db"
 local function sends(): { any }
     local db = sql.get(DB)
     assert(db, "test database unavailable")
-    local rows, read_err = db:query("SELECT token, channel_id, content FROM discord_reply_transport_audit")
+    local rows, read_err = db:query("SELECT token, channel_id, content, nonce, enforce_nonce FROM discord_reply_transport_audit")
     db:release()
     test.is_nil(read_err)
     return rows or {}
@@ -49,7 +49,7 @@ local function define_tests()
                 { uuid.v4(), tostring(actor:id()), COMPONENT, COMPONENT })
             test.is_nil(grant_err)
             local _, audit_err = db:execute([[CREATE TABLE IF NOT EXISTS discord_reply_transport_audit
-                (token TEXT NOT NULL, channel_id TEXT NOT NULL, content TEXT NOT NULL)]])
+                (token TEXT NOT NULL, channel_id TEXT NOT NULL, content TEXT NOT NULL, nonce TEXT, enforce_nonce TEXT)]])
             test.is_nil(audit_err)
             db:release()
         end)
@@ -82,6 +82,33 @@ local function define_tests()
             test.eq(#delivered, 1)
             test.eq(delivered[1].token, "test_token_fake")
             test.eq(delivered[1].channel_id, "room1")
+        end)
+
+        test.it("sends a keyed outbound post with the key's enforced nonce", function()
+            local posts = {
+                { content = "first attempt", key = "delivery-1" },
+                { content = "retried attempt", key = "delivery-1" },
+                { content = "other delivery", key = "delivery-2" },
+                { content = "unkeyed" },
+            }
+            for _, post in ipairs(posts) do
+                local result, call_err = probe():run({ kind = "outbound", channel_id = "room1",
+                    payload = { content = post.content }, idempotency_key = post.key })
+                test.is_nil(call_err)
+                test.is_true(result.success, tostring(result.error))
+            end
+            local by_content = {}
+            for _, row in ipairs(sends()) do by_content[row.content] = row end
+            local first, retried = by_content["first attempt"], by_content["retried attempt"]
+            local other, unkeyed = by_content["other delivery"], by_content["unkeyed"]
+            test.eq(#first.nonce, 25)
+            test.eq(first.enforce_nonce, "true")
+            test.eq(retried.nonce, first.nonce)
+            test.eq(retried.enforce_nonce, "true")
+            test.not_nil(other.nonce)
+            test.is_true(other.nonce ~= first.nonce)
+            test.is_nil(unkeyed.nonce)
+            test.is_nil(unkeyed.enforce_nonce)
         end)
 
         test.it("refuses an outbound post after WRITE is revoked", function()

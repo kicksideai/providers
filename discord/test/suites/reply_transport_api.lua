@@ -7,8 +7,9 @@ function M.send_channel_message(conn, channel_id, payload)
     state.sent = { connection = conn, channel_id = channel_id, payload = payload }
     local db = sql.get("app:db")
     if db then
-        db:execute("INSERT INTO discord_reply_transport_audit (token, channel_id, content) VALUES ($1, $2, $3)",
-            { conn.bot_token, channel_id, payload.content })
+        db:execute([[INSERT INTO discord_reply_transport_audit (token, channel_id, content, nonce, enforce_nonce)
+            VALUES ($1, $2, $3, $4, $5)]], { conn.bot_token, channel_id, payload.content, payload.nonce or sql.NULL,
+            payload.enforce_nonce == true and "true" or sql.NULL })
         local receipt_failure_turn_id = type(payload.content) == "string"
             and payload.content:match("^break%-receipt:(.+)$") or nil
         if receipt_failure_turn_id then

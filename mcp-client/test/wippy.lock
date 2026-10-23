@@ -33,8 +33,8 @@ modules:
       version: 0.3.18
       hash: c7e71b358539b450b49b55e725f60f2dac8218e1c596cf3a473ce71e36b10a9b
     - name: wippy/migration
-      version: 0.3.23
-      hash: 1666a62a870fa2692e560eda7cb7438fba027931d1fb88a2c5c713d660a10412
+      version: 0.3.24
+      hash: 9ce9cbcde0e149762ef69c84710f5072da814e72d4e5eb93c7211ed51941b13b
     - name: wippy/security
       version: 0.4.3
       hash: f636859979e88b23647a78fb9aa8a553799de18750b0fb5fb085cbe21542c86c

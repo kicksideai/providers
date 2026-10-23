@@ -6,5 +6,6 @@ return { run = function(args: any): any
         content = args.payload and args.payload.content,
         outbound = args.kind == "outbound",
         reply_proof = args.reply_proof,
+        idempotency_key = args.idempotency_key,
     })
 end }
