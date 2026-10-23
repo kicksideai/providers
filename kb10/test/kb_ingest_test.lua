@@ -644,6 +644,18 @@ local function define_tests()
                 test.eq(found,true,"the materialized document retains the complete stored artifact")
                 local _, cleanup_err = artifact_cleanup_repo.delete_for_upload(upload_id)
                 test.is_nil(cleanup_err)
+                local retry,retry_err=source_worker.run_with_deps({thread_id=test_kb_id,
+                    projection={id=result.projection_id},events={event},range={from_seq=event.seq,to_seq=event.seq},
+                    worker_config={target_kb_ids={test_kb_id}}},worker_fixtures.worker_deps({
+                        embedder=worker_fixtures.fake_embedder,
+                        summarizer=function() return "unused",nil end,
+                        enricher=function() return "",nil end,
+                    }))
+                test.is_nil(retry_err)
+                test.eq(retry.patch.last_status,"retrying")
+                test.eq(retry.patch.last_failed_batch.attempts,1)
+                test.contains(retry.patch.last_error,"artifact")
+                test.eq(retry.metrics.documents_inserted,0)
                 local _, delete_err = db:execute("DELETE FROM kickside_uploads WHERE uuid=$1",{upload_id})
                 test.is_nil(delete_err)
                 db:release()
