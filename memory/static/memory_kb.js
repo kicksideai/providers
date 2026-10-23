@@ -1,8 +1,9 @@
 import { mergeProps as b, resolveDirective as Ve, withDirectives as ce, openBlock as l, createBlock as z, resolveDynamicComponent as se, withCtx as C, renderSlot as $, normalizeClass as J, createElementBlock as f, createElementVNode as p, createCommentVNode as O, Fragment as V, vShow as Lt, toDisplayString as S, computed as U, ref as P, watch as Ce, onUnmounted as Tt, defineComponent as ae, createVNode as g, unref as c, renderList as W, resolveComponent as j, createTextVNode as R, Transition as zt, normalizeProps as At, createSlots as nt, withModifiers as xt } from "vue";
 import { Icon as K } from "@iconify/vue";
 import { on as Bt, api as N, define as Pt } from "@wippy-fe/proxy";
-import { A as Vt, d as Ft, B as _, R as $e, f as te, g as X, k as de, h as Z, Q as ze, z as pe, j as fe, l as ie, T as le, C as Mt, K as Ae, v as it, V as Ye, n as Kt, i as ge, o as xe, q as Ge, r as Be, t as Et, w as Dt, x as ue, F as Rt, M as Je, y as _t, Y as Ht, I as jt, D as Nt, S as Ut, L as Wt, E as Gt, $ as qt, J as Zt, G as Y, H as ot, N as rt, b as Yt, s as Pe, e as Jt, u as Qt, p as Xt, m as en } from "./useWidget-Oapw5JdO.js";
-import { s as M, b as st, c as at, d as tn, e as lt, a as nn } from "./ConfigFields.vue_vue_type_script_setup_true_lang-B4quf9ar.js";
+import { A as Vt, b as Ft, B as _, R as $e, c as te, f as X, k as de, d as Z, Q as ze, z as pe, g as fe, h as ie, T as le, C as Mt, K as Ae, v as it, V as Ye, i as ge, j as xe, l as Ge, n as Be, o as Kt, q as Et, r as ue, F as Dt, M as Je, t as Rt, Y as _t, I as Ht, D as jt, S as Nt, L as Ut, w as Wt, $ as Gt, J as qt, x as Y, y as ot, E as rt, u as Zt, s as Pe, e as Yt, p as Jt, m as Qt } from "./useWidget-DS0_L3EF.js";
+import { b as Xt, u as en } from "./index-CyCydJaQ.js";
+import { s as M, b as st, c as at, d as tn, e as lt, a as nn } from "./ConfigFields.vue_vue_type_script_setup_true_lang-CiCV5rcW.js";
 function on() {
   let e = [], t = (s, a, u = 999) => {
     let d = r(s, a, u), h = d.value + (d.key === s ? 0 : u) + 1;
@@ -1100,7 +1101,7 @@ function ri(e) {
     h = typeof I == "function" ? I : null, w !== void 0 && u();
   }, { immediate: !0 }), Tt(() => {
     h && h();
-  }), Kt(u), { kbId: e, base: t, status: n, conflicts: o, error: r, busy: i, revision: s, act: d };
+  }), Xt(u), { kbId: e, base: t, status: n, conflicts: o, error: r, busy: i, revision: s, act: d };
 }
 const si = { current: "success", conflict: "warn", failed: "danger" };
 function Re(e) {
@@ -2877,7 +2878,7 @@ var kt = {
         t.preventDefault();
         return;
       }
-      if (qt())
+      if (Gt())
         switch (t.code) {
           case "Backspace":
             this.onBackspaceKey(t, this.editable);
@@ -2934,7 +2935,7 @@ var kt = {
         case "ShiftRight":
           break;
         default:
-          !o && Zt(t.key) && (!this.overlayVisible && this.show(), !this.editable && this.searchOptions(t, t.key), this.filter && this.$nextTick(function() {
+          !o && qt(t.key) && (!this.overlayVisible && this.show(), !this.editable && this.searchOptions(t, t.key), this.filter && this.$nextTick(function() {
             n.$refs.filterInput && Z(n.$refs.filterInput.$el);
           }));
           break;
@@ -2954,11 +2955,11 @@ var kt = {
       this.updateModel(t, null), this.resetFilterOnClear && (this.filterValue = null);
     },
     onFirstHiddenFocus: function(t) {
-      var n = t.relatedTarget === this.$refs.focusInput ? Gt(this.overlay, ':not([data-p-hidden-focusable="true"])') : this.$refs.focusInput;
+      var n = t.relatedTarget === this.$refs.focusInput ? Wt(this.overlay, ':not([data-p-hidden-focusable="true"])') : this.$refs.focusInput;
       Z(n);
     },
     onLastHiddenFocus: function(t) {
-      var n = t.relatedTarget === this.$refs.focusInput ? Wt(this.overlay, ':not([data-p-hidden-focusable="true"])') : this.$refs.focusInput;
+      var n = t.relatedTarget === this.$refs.focusInput ? Ut(this.overlay, ':not([data-p-hidden-focusable="true"])') : this.$refs.focusInput;
       Z(n);
     },
     onOptionSelect: function(t, n) {
@@ -3099,7 +3100,7 @@ var kt = {
     },
     onOverlayEnter: function(t) {
       var n = this;
-      Me.set("overlay", t, this.$primevue.config.zIndex.overlay), Ut(t, {
+      Me.set("overlay", t, this.$primevue.config.zIndex.overlay), Nt(t, {
         position: "absolute",
         top: "0"
       }), this.alignOverlay(), this.scrollInView(), this.$attrSelector && t.setAttribute(this.$attrSelector, ""), setTimeout(function() {
@@ -3119,7 +3120,7 @@ var kt = {
       Me.clear(t);
     },
     alignOverlay: function() {
-      this.appendTo === "self" ? jt(this.overlay, this.$el) : this.overlay && (this.overlay.style.minWidth = it(this.$el) + "px", Nt(this.overlay, this.$el));
+      this.appendTo === "self" ? Ht(this.overlay, this.$el) : this.overlay && (this.overlay.style.minWidth = it(this.$el) + "px", jt(this.overlay, this.$el));
     },
     bindOutsideClickListener: function() {
       var t = this;
@@ -3143,7 +3144,7 @@ var kt = {
     bindResizeListener: function() {
       var t = this;
       this.resizeListener || (this.resizeListener = function() {
-        t.overlayVisible && !Ht() && t.hide();
+        t.overlayVisible && !_t() && t.hide();
       }, window.addEventListener("resize", this.resizeListener));
     },
     unbindResizeListener: function() {
@@ -3177,7 +3178,7 @@ var kt = {
       this.matchMediaOrientationListener && (this.queryOrientation.removeEventListener("change", this.matchMediaOrientationListener), this.queryOrientation = null, this.matchMediaOrientationListener = null);
     },
     hasFocusableElements: function() {
-      return _t(this.overlay, ':not([data-p-hidden-focusable="true"])').length > 0;
+      return Rt(this.overlay, ':not([data-p-hidden-focusable="true"])').length > 0;
     },
     isOptionExactMatched: function(t) {
       var n;
@@ -3296,7 +3297,7 @@ var kt = {
     visibleOptions: function() {
       var t = this, n = this.optionGroupLabel ? this.flatOptions(this.options) : this.options || [];
       if (this.filterValue) {
-        var o = Rt.filter(n, this.searchFields, this.filterValue, this.filterMatchMode, this.filterLocale);
+        var o = Dt.filter(n, this.searchFields, this.filterValue, this.filterMatchMode, this.filterLocale);
         if (this.optionGroupLabel) {
           var r = this.options || [], i = [];
           return r.forEach(function(s) {
@@ -3394,10 +3395,10 @@ var kt = {
   components: {
     InputText: at,
     VirtualScroller: It,
-    Portal: Dt,
+    Portal: Et,
     InputIcon: yt,
     IconField: gt,
-    TimesIcon: Et,
+    TimesIcon: Kt,
     ChevronDownIcon: vt,
     SpinnerIcon: st,
     SearchIcon: mt,
@@ -4366,12 +4367,12 @@ const jo = { class: "mm-panel" }, No = { class: "mm-panel-b" }, Uo = { class: "m
   },
   emits: ["done"],
   setup(e, { emit: t }) {
-    const n = e, o = t, r = rt(["identity", "rule", "skill", "lesson"]), i = P("rule"), s = P(""), a = P(Ke("rule")), u = P(""), d = Yt("wc-agent-picker"), h = U(() => Ct(i.value)), m = U(() => _o(a.value)), w = U(() => Ho(m.value) ? "" : "Use a short topic key that starts with a letter and contains only lowercase letters, numbers, and underscores.");
+    const n = e, o = t, r = rt(["identity", "rule", "skill", "lesson"]), i = P("rule"), s = P(""), a = P(Ke("rule")), u = P(""), d = Zt("wc-agent-picker"), h = U(() => Ct(i.value)), m = U(() => _o(a.value)), w = U(() => Ho(m.value) ? "" : "Use a short topic key that starts with a letter and contains only lowercase letters, numbers, and underscores.");
     Ce(i, (A, v) => {
       a.value === Ke(v) && (a.value = Ke(A));
     });
     function I(A) {
-      const v = Jt(A).selected;
+      const v = Yt(A).selected;
       s.value = String((Array.isArray(v) ? v : [])[0] || "");
     }
     async function k() {
@@ -4915,7 +4916,7 @@ const wr = { class: "mm-panel" }, Ir = { class: "mm-panel-b" }, kr = { class: "m
 }), Fr = { class: "mm-page" }, Mr = /* @__PURE__ */ ae({
   __name: "MemoryManage",
   setup(e) {
-    const t = Qt(), n = ri(U(() => String(Xt(t.value.config).kb_id || ""))), o = P("memories"), r = U(() => (n.status.value?.runs || []).filter((i) => i.status === "failed").length);
+    const t = en(), n = ri(U(() => String(Jt(t.value.config).kb_id || ""))), o = P("memories"), r = U(() => (n.status.value?.runs || []).filter((i) => i.status === "failed").length);
     return (i, s) => (l(), f("div", Fr, [
       g(c(ft), {
         value: o.value,
@@ -5015,7 +5016,7 @@ const wr = { class: "mm-panel" }, Ir = { class: "mm-panel-b" }, kr = { class: "m
       }, 8, ["value"])
     ]));
   }
-}), Kr = en(Mr, {
+}), Kr = Qt(Mr, {
   type: "object",
   properties: {
     config: { type: "object", description: "Memory page context: { kb_id: string, route?: string }" }

@@ -2,6 +2,7 @@ local test = require("test")
 local json = require("json")
 local search = require("search")
 local available = require("available")
+local dispatcher = require("dispatcher")
 
 local PROVIDER_TYPE = "kickside.webscout:search_provider"
 local SETTINGS_NS = "kickside.webscout.providers.tavily"
@@ -73,7 +74,7 @@ local function define_tests()
             test.contains(tostring(entry.data.readme), "api_key")
             local dependency, dep_err = registry.get("kickside.webscout.providers.tavily:dep.kickside.webscout")
             test.is_nil(dep_err)
-            test.eq(dependency.data.version, "*")
+            test.eq(dependency.data.version, ">=0.1.32")
         end)
 
         test.it("declares the descriptor the WebScout protocol reads", function()
@@ -97,6 +98,32 @@ local function define_tests()
             test.eq(d.max_results, 20)
             -- Installing this module must not move the selection by itself.
             test.is_nil(d.default)
+        end)
+
+        test.it("receives the initial offset through the core dispatcher", function()
+            local registry = require("registry")
+            local descriptor, descriptor_err = registry.get(SETTINGS_NS .. ":provider")
+            test.is_nil(descriptor_err)
+            local seen: any = {}
+            local result, err = dispatcher.handle({ query = ARGS.query, num = ARGS.num }, {
+                config = { get = function() return "tavily" end },
+                providers = { selected = function() return descriptor.data end },
+                call = function(id, args)
+                    if id == descriptor.data.available_func then
+                        return available.available(args, config_of("token", {}))
+                    end
+                    test.eq(id, descriptor.data.search_func)
+                    test.eq(args.offset, 0)
+                    return search.search(args, {
+                        config = config_of("token", {}),
+                        client = responder(200, BODY, seen),
+                    })
+                end,
+            })
+            test.is_nil(err)
+            test.not_nil(seen.url)
+            test.eq(result.count, 4)
+            test.eq(result.results[1].link, "https://repo.example/awesome-workflow-engines")
         end)
 
         test.it("reads its key from its own settings namespace", function()

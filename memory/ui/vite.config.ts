@@ -24,6 +24,7 @@ export default defineConfig({
       // served filenames the registry entry points name.
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
+        knowledge_memory: resolve(__dirname, 'src/knowledge_memory.ts'),
         memory_create: resolve(__dirname, 'src/create.ts'),
         memory_kb: resolve(__dirname, 'src/manage.ts'),
       },
@@ -34,6 +35,7 @@ export default defineConfig({
       preserveEntrySignatures: false,
       input: {
         index: resolve(__dirname, 'src/index.ts'),
+        knowledge_memory: resolve(__dirname, 'src/knowledge_memory.ts'),
         memory_create: resolve(__dirname, 'src/create.ts'),
         memory_kb: resolve(__dirname, 'src/manage.ts'),
       },

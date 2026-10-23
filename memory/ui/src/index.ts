@@ -4,7 +4,7 @@ import { memoryElement } from './element.ts'
 import KnowledgeMemory from './app/knowledge-memory.vue'
 import pkg from '../package.json'
 
-// kickside-knowledge-memory: the Memory trait's settings in the agent editor.
+// kickside-memory-agent: explicit typed Memory settings in the agent editor.
 // The editor passes the trait context as `config` and takes edits back through
 // `config-changed`.
 const KicksideKnowledgeMemoryElement = memoryElement(KnowledgeMemory, pkg.wippy.props as WippyPropsSchema)

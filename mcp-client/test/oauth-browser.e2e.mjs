@@ -52,7 +52,7 @@ const server = createServer(async (req, res) => {
 await new Promise(resolve => server.listen(19132, '127.0.0.1', resolve))
 let browser
 try {
-  browser = await chromium.launch({headless: true, args: ['--no-sandbox']})
+  browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE || undefined, args: ['--no-sandbox']})
   const context = await browser.newContext({viewport: {width: 1000, height: 1000}})
   const page = await context.newPage()
   const errors = []

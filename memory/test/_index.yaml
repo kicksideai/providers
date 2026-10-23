@@ -260,3 +260,16 @@ entries:
     value: app:gateway
   - name: kickside.models:process_host
     value: app:processes
+
+- name: legacy_runtime_test
+  kind: function.lua
+  meta:
+    type: test
+    suite: memory_legacy
+  source: file://legacy_runtime_test.lua
+  method: run
+  modules: [sql]
+  imports:
+    test: wippy.test:test
+    runtime: kickside.memory:runtime
+    prompt: wippy.llm:prompt

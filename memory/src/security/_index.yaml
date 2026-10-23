@@ -20,6 +20,7 @@ entries:
   policy:
     resources:
     - kickside.memory:*
+    - kickside.memory.agent:*
     - kickside.memory.security:*
     actions:
     - registry.get
@@ -41,6 +42,7 @@ entries:
   policy:
     resources:
     - kickside.memory:*
+    - kickside.memory.agent:*
     - kickside.memory.security:*
     - kickside.memory.engine:*
     - kickside.memory.persist:*

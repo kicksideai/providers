@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "specification": "wippy-component-1.0",
   "title": "KickSide Memory",
-  "description": "Memory trait settings, memory create pane and memory knowledge base page for kickside/memory.",
+  "description": "Typed Memory agent settings, Memory knowledge-base creation/management, and compatible document-backed Memory settings.",
   "browser": "dist/index.js",
   "files": [
     "dist/",
@@ -41,14 +41,14 @@
     "vue": "^3.5.0"
   },
   "wippy": {
-    "tagName": "kickside-knowledge-memory",
+    "tagName": "kickside-memory-agent",
     "type": "component",
     "props": {
       "type": "object",
       "properties": {
         "config": {
           "type": "object",
-          "description": "Trait context { memory_id, write_enabled, read_enabled, recall_limit }; earlier kb_ids and write_kb_id are read when memory_id is empty.",
+          "description": "Typed Memory trait context { memory_id, write_enabled, read_enabled, recall_limit }. Select memory_id explicitly; document-backed agents retain their original separate settings.",
           "default": {}
         }
       }

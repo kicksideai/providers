@@ -150,11 +150,17 @@ end
 -- and row filters apply, so a filtered pgvector search could come back short
 -- or empty while eligible rows exist. Iterative scan keeps walking the graph,
 -- in exact distance order, until the filters admit `limit` rows (pgvector 0.8 or
--- later); it is set for this read only.
+-- later); it is set for this read only. Earlier versions retain their existing
+-- scan behavior; assigning this setting there fails because hnsw is reserved.
 local function filtered_hnsw_query(db: any, query: string, params: { any }): (any, any?)
     local tx, begin_err = db:begin()
     if begin_err then return nil, begin_err end
-    local _, set_err = tx:execute("SET LOCAL hnsw.iterative_scan = strict_order")
+    -- One statement on both versions: no extra per-search round trip for
+    -- capability discovery, no persistent cache to invalidate after upgrades.
+    local _, set_err = tx:query([[SELECT pg_catalog.set_config('hnsw.iterative_scan', 'strict_order', true)
+        FROM pg_catalog.pg_extension WHERE extname = 'vector'
+            AND (pg_catalog.split_part(extversion, '.', 1)::integer,
+                 pg_catalog.split_part(extversion, '.', 2)::integer) >= (0, 8)]])
     if set_err then
         tx:rollback()
         return nil, set_err
@@ -169,9 +175,18 @@ local function filtered_hnsw_query(db: any, query: string, params: { any }): (an
     return rows, nil
 end
 
+-- Every public retrieval path validates a grouping column before SQL assembly.
+local function group_error(spec: Spec, opts: SearchOptions): error?
+    if opts.group_by == nil then return nil end
+    for _, column in ipairs(spec.columns) do if column == opts.group_by then return nil end end
+    return errors.new({kind = errors.INVALID, message = "search group must be a row column"})
+end
+
 -- Nearest rows by vector distance. Each row carries `similarity` in [0, 1]:
 -- exp(-distance) for vec0 L2, 1 - cosine_distance/2 for pgvector.
 function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts: SearchOptions): (any, any?)
+    local invalid_group = group_error(spec, opts)
+    if invalid_group then return nil, invalid_group end
     local limit = opts.limit or 10
     local sqlite, type_err = index.is_sqlite(db)
     if type_err then return nil, type_err end
@@ -255,6 +270,8 @@ end
 -- Rows matching the query text, best first (bm25 on SQLite, ts_rank on
 -- PostgreSQL). Returns rows, error, and whether the query was anchored.
 function index.lexical_search(db: any, spec: Spec, query_text: string, opts: SearchOptions): (any, any?, boolean)
+    local invalid_group = group_error(spec, opts)
+    if invalid_group then return nil, invalid_group, false end
     local sqlite, type_err = index.is_sqlite(db)
     if type_err then return nil, type_err, false end
     local match, anchored = index.lexical_query(query_text, sqlite :: boolean)
@@ -333,11 +350,6 @@ end
 -- query text, lexical and dense candidates (max(50, 4 * limit) each) are fused;
 -- when nothing matches lexically the dense ranking is returned unchanged.
 function index.search(db: any, spec: Spec, query_vector: { number }, opts: SearchOptions): (any, any?)
-    if opts.group_by then
-        local known = false
-        for _, column in ipairs(spec.columns) do if column == opts.group_by then known = true end end
-        if not known then return nil, errors.new({ kind = errors.INVALID, message = "search group must be a row column" }) end
-    end
     if not opts.query_text or opts.query_text == "" then
         return index.dense_search(db, spec, query_vector, opts)
     end

@@ -107,12 +107,11 @@ ledger and every row.
 
 ## Agents
 
-- Memory provider `kickside.memory:memory_provider`: pick it with the agent's
+- Memory provider `kickside.memory.agent:memory_provider`: pick it with the agent's
   memory target to recall current `fact`, `skill` and `lesson` items in the
   user's and agent's scopes each step, skipping ids already injected. Recall,
   SearchMemory and the queryable contract share `engine/recall.lua`.
-- Trait `kickside.memory:knowledge_based_memory`, context `memory_id` (earlier
-  agents: `write_kb_id`, else the first of `kb_ids`): captures conversation, contributes the agent's
+- Trait `kickside.memory.agent:memory`, context `memory_id`: captures conversation, contributes the agent's
   identity, rules, skills and lessons to the compiled prompt, renders the
   user's profile and preferences pinned at activation into every step (byte
   identical until the next activation), and adds `SearchMemory`, `Remember`
@@ -125,3 +124,19 @@ ledger and every row.
 `/items/{item_id}/restore`, `/conflicts`, `/conflicts/{group_id}/resolve`,
 `/status` on the host's authenticated router; component access decides each
 call.
+
+## Compatibility with document-backed agents
+
+The published `kickside.memory:knowledge_based_memory` trait and its runtime,
+lifecycle, checkpoint, SearchMemory and settings IDs keep their document-backed
+behavior. Existing `kb_ids`, `write_kb_id`, recall prompts/budgets and checkpoint
+model/prompt/temperature/budget settings remain effective. Multiple read KBs are
+not collapsed into a typed store, and editing the old settings does not rewrite
+them into `memory_id`.
+
+The typed engine is an explicit capability: choose
+`kickside.memory.agent:memory` and configure `memory_id`. Its provider, tools,
+runtime and settings live under `kickside.memory.agent`. It requires Agent
+0.5.7 or newer for the selected `after_persist` lifecycle contract. It does not
+automatically migrate or replace a saved document-backed trait. Both kinds of
+agent may coexist in the same installation.

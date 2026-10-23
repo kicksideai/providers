@@ -20,7 +20,7 @@ entries:
       memory_ops: kickside.memory.engine:ops
       memory_writer: kickside.memory.engine:writer
       memory_reconcile: kickside.memory.engine:reconcile
-      runtime: kickside.memory:runtime
+      runtime: kickside.memory.agent:runtime
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
       memory_ledger: kickside.memory.engine:ledger
@@ -174,3 +174,17 @@ entries:
     source: file://measured_db.lua
     imports:
       memory_db: kickside.memory.persist:db
+
+  - name: legacy_document
+    kind: contract.binding
+    meta: {comment: Document-backed queryable KB fixture; no typed Memory store exists.}
+    contracts:
+      - contract: kickside.contract:queryable
+        context_required: [component_id]
+        methods:
+          query: app.suites:legacy_document_query
+  - name: legacy_document_query
+    kind: function.lua
+    source: file://legacy_document.lua
+    method: query
+    modules: [ctx]

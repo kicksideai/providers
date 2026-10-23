@@ -3,13 +3,13 @@ directories:
     src: .
 modules:
     - name: kickside/agents
-      version: 0.2.3
-      hash: 002ea5cf2f3a9238bc64a242525d5f5b1f354c3af8faec51dd8a9025f43466a6
+      version: 0.2.4
+      hash: 8c3ede14e1f502051a433ab918c603e1c9ca5aa3aaa9b5abae00000bc5d1d589
     - name: kickside/component
       version: 0.0.0
     - name: kickside/connection
-      version: 0.4.0
-      hash: 9a9d911f61730ae70f989c65466e33df59d737fd0629f3ff9607ec8018f0ddf5
+      version: 0.5.0
+      hash: 169cb8259da3da1e50d01ea8b2022b17af0b9adc5e847fe444141f5b5005315f
     - name: kickside/contract
       version: 0.0.0
     - name: kickside/core
@@ -19,7 +19,7 @@ modules:
     - name: kickside/execution
       version: 0.0.0
     - name: kickside/jobs
-      version: 0.0.0
+      version: 0.1.61
     - name: kickside/knowledge
       version: 0.0.0
     - name: kickside/memory
@@ -53,8 +53,8 @@ modules:
       version: 0.5.11
       hash: 9d82161f52d88f00e1112c25e8930c874bd2bcaf8d43b132df883838e48b66a4
     - name: wippy/migration
-      version: 0.3.25
-      hash: ba9cc3761c8b85bd0d629b833ea3daffda88fe69bc5ec04de66890564eaf3313
+      version: 0.3.26
+      hash: cf4848ad3f8ba8d31d944b2f3a7274bc2b7cf2888dd80f0db63b2c71a85f89c1
     - name: wippy/relay
       version: 0.3.17
       hash: 3bc0461104725386eb3cb7ebaf7c3edc5896c134a4cc7d69f136609a21a5a2ac

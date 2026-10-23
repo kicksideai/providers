@@ -1,0 +1,7 @@
+version: '1.0'
+namespace: kickside.mcp_client.catalog
+entries:
+- name: walk
+  kind: library.lua
+  source: file://walk.lua
+  modules: [time]

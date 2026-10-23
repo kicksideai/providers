@@ -295,17 +295,53 @@ local function define_tests()
             test.eq(#fixture.items(user, id), 1)
         end)
 
-        test.it("resolves a saved agent whose Memory trait context has the shape of the published release", function()
+        test.it("preserves a saved document-backed agent and recalls both old KBs through the public runtime", function()
+            local user = fixture.user()
+            local first, second = fixture.plain_component(user), fixture.plain_component(user)
+            local trait = "kickside.memory:knowledge_based_memory"
+            local saved = {kb_ids = {first, second}, write_kb_id = second, read_enabled = true,
+                write_enabled = false, recall_limit = 5, recall_max_chars = 4000,
+                recall_prompt = "Saved recall guidance", checkpoint_model = "test-fast",
+                checkpoint_prompt = "Saved checkpoint guidance", checkpoint_temperature = 0.1,
+                checkpoint_max_tokens = 321, checkpoint_source_max_chars = 20000}
+            local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
+                name = "saved document memory", model = "test-fast", traits = {trait}, trait_contexts = {[trait] = saved}})
+            test.is_nil(create_err, tostring(create_err))
+            local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func", {
+                agent_id = "user_agent:" .. created.component_id})
+            test.is_nil(resolve_err, tostring(resolve_err))
+            local context
+            for _, spec in ipairs(agent.traits or {}) do if spec.id == trait then context = spec.context end end
+            test.not_nil(context)
+            test.eq(json.encode(context), json.encode(saved))
+            local found, search_err = fixture.call_as(user, "kickside.memory:memory_recall_tool", {
+                query = "saved knowledge", limit = 5}, context)
+            test.is_nil(search_err, tostring(search_err))
+            test.is_true(found.success)
+            test.eq(found.count, 2)
+            local sources = {}
+            for _, item in ipairs(found.items) do sources[item.kb_id] = true end
+            test.is_true(sources[first])
+            test.is_true(sources[second])
+            local payload = fixture.payload("activate", "legacy-session", "legacy-agent", {recall_query = "saved knowledge"})
+            local activated, activate_err = fixture.call_as(user, "kickside.memory:runtime_lifecycle", payload, context)
+            test.is_nil(activate_err, tostring(activate_err))
+            test.eq(activated.metadata.kb_count, 2)
+            test.is_true(activated.messages[1].content:find("Saved recall guidance", 1, true) ~= nil)
+            local db = fixture.db()
+            local rows = db:query("SELECT component_id FROM kickside_memory_stores WHERE component_id IN ($1,$2)", {first, second})
+            db:release()
+            test.eq(#rows, 0, "legacy execution must not create or require typed Memory stores")
+        end)
+
+        test.it("resolves an agent explicitly selecting the typed Memory trait", function()
             local user = fixture.user()
             local memory = fixture.memory(user)
-            local trait = "kickside.memory:knowledge_based_memory"
+            local trait = "kickside.memory.agent:memory"
             local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
                 name = "published shape", model = "test-fast", traits = { trait },
                 trait_contexts = { [trait] = {
-                    kb_ids = { memory }, write_kb_id = memory, read_enabled = true, write_enabled = true,
-                    recall_limit = 5, recall_max_chars = 4000, recall_prompt = "Relevant memory:",
-                    checkpoint_model = "test-fast", checkpoint_prompt = "Summarize.", checkpoint_temperature = 0.2,
-                    checkpoint_max_tokens = 800, checkpoint_source_max_chars = 20000,
+                    memory_id = memory, read_enabled = true, write_enabled = true, recall_limit = 5,
                 } },
             })
             test.is_nil(create_err, tostring(create_err))
@@ -369,16 +405,16 @@ local function define_tests()
             local memory = fixture.memory(user)
             local compiled, err = fixture.op(user, "compile", { spec = {
                 id = "agent-compiled", name = "compiled", prompt = "You plan trips.", model = "test-fast",
-                traits = { { id = "kickside.memory:knowledge_based_memory", context = { memory_id = memory } } },
+                traits = { { id = "kickside.memory.agent:memory", context = { memory_id = memory } } },
             } })
             test.is_nil(err, tostring(err))
             local text = json.encode(compiled)
-            test.is_true(text:find("kickside.memory:lifecycle_binding", 1, true) ~= nil, text)
+            test.is_true(text:find("kickside.memory.agent:lifecycle_binding", 1, true) ~= nil, text)
             test.is_true(text:find("after_persist", 1, true) ~= nil, text)
-            test.is_true(text:find("kickside.memory:checkpoint_binding", 1, true) ~= nil, text)
+            test.is_true(text:find("kickside.memory.agent:checkpoint_binding", 1, true) ~= nil, text)
         end)
 
-        test.it("resolves the memory from trait contexts of earlier releases and refuses anything else", function()
+        test.it("requires an explicit typed Memory selection without reinterpreting legacy KB settings", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local document = fixture.plain_component(user)
@@ -387,12 +423,12 @@ local function define_tests()
             local function search(context: any): any
                 return fixture.op(user, "tool_search", { input = { query = "cat" } }, context)
             end
-            test.eq(search({ write_kb_id = id }).count, 1)
-            test.eq(search({ kb_ids = { id, document } }).count, 1)
+            test.is_false(search({ write_kb_id = id }).success)
+            test.is_false(search({ kb_ids = { id, document } }).success)
             test.eq(search({ memory_id = id, kb_ids = { document } }).count, 1)
             local legacy_document = search({ kb_ids = { document, id } })
             test.eq(legacy_document.success, false)
-            test.is_true(legacy_document.error:find("is not a memory", 1, true) ~= nil, legacy_document.error)
+            test.is_true(legacy_document.error:find("no memory selected", 1, true) ~= nil, legacy_document.error)
             local unset = search({})
             test.eq(unset.success, false)
             test.is_true(unset.error:find("no memory selected", 1, true) ~= nil, unset.error)

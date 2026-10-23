@@ -9,8 +9,8 @@ import { useWidget } from './useWidget'
 // Memory capability on an agent: which memory it uses and whether it records
 // conversations there. Models, budgets and cadence belong to the memory itself.
 // The editor mounts the trait context as `config`. Saving writes memory_id in
-// place of the earlier kb_ids and write_kb_id and carries over the other keys
-// that still take effect.
+// the explicit typed Memory trait; existing document-backed agents use their
+// original settings component and retain their configuration.
 const CARRIED_KEYS = ['read_enabled', 'recall_limit']
 
 const props = useProps<{ config?: unknown }>()
@@ -24,8 +24,7 @@ const pickerConfig = computed(() => JSON.stringify({ kb_ids: memoryId.value ? [m
 
 watch(() => props.value.config, (raw) => {
   const context = parseConfig(raw)
-  const earlier = Array.isArray(context.kb_ids) ? context.kb_ids : []
-  memoryId.value = String(context.memory_id || context.write_kb_id || earlier[0] || '')
+  memoryId.value = String(context.memory_id || '')
   capture.value = context.write_enabled !== false
   kept.value = Object.fromEntries(Object.entries(context).filter(([key]) => CARRIED_KEYS.includes(key)))
 }, { immediate: true, deep: true })

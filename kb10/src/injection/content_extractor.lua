@@ -1,4 +1,6 @@
 local M = {}
+local artifact_content_repo = require("artifact_content_repo")
+local hash = require("hash")
 
 local EVENT_CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 local EVENT_CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
@@ -83,6 +85,23 @@ function M.run(input)
     end
 
     local content = body.content
+    if content == nil and body.content_omitted == true then
+        local ref = source_ref or {}
+        local read_err
+        content, read_err = artifact_content_repo.read_artifact_content(ref.upload_id, ref.artifact_id)
+        if read_err then
+            return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err), retryable = true }
+        end
+        if type(content) ~= "string" or #content ~= body.content_bytes then
+            return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
+        end
+        if body.content_sha256 ~= nil then
+            local digest, digest_err = hash.sha256(content)
+            if digest_err or digest ~= body.content_sha256 then
+                return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
+            end
+        end
+    end
     if type(content) ~= "string" or trim(content) == "" then
         return { documents = {}, deletes = {}, error = "content event missing content" }
     end

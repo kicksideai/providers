@@ -1,6 +1,14 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 # Third-Party Notices
 
+## Productivity and storage API ports
+
+- Notion: makenotion/notion-sdk-js (`0ffdbba3004b27438ca72df769412268e4fdede1`), MIT; attribution and modifications in [`notion/UPSTREAM.md`](notion/UPSTREAM.md).
+- Linear: linear/linear (`67791e535db585eedc5c7b7805f43d4e8af5d2b9`), MIT; attribution and modifications in [`linear/UPSTREAM.md`](linear/UPSTREAM.md).
+- Airtable: Airtable/airtable.js (`55cc755fa4f54e20927579a954c161ac2fe81135`), MIT; attribution and modifications in [`airtable/UPSTREAM.md`](airtable/UPSTREAM.md).
+- Dropbox: dropbox/dropbox-sdk-js (`f48aa0db51951913bb65d3691b87174f1bd212d3`), MIT; attribution and modifications in [`dropbox/UPSTREAM.md`](dropbox/UPSTREAM.md).
+- Box: box/box-openapi (`a4f3e23d5bd01d9f4398bc1a764d410df3e607a7`), Apache-2.0; attribution and modifications in [`box/UPSTREAM.md`](box/UPSTREAM.md).
+
 <!-- BEGIN GENERATED DEPENDENCY NOTICES -->
 
 ## Locked npm and Cargo dependencies
@@ -2464,11 +2472,3 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
-
-## Productivity and storage API ports
-
-- Notion: makenotion/notion-sdk-js (`0ffdbba3004b27438ca72df769412268e4fdede1`), MIT; attribution and modifications in [`notion/UPSTREAM.md`](notion/UPSTREAM.md).
-- Linear: linear/linear (`67791e535db585eedc5c7b7805f43d4e8af5d2b9`), MIT; attribution and modifications in [`linear/UPSTREAM.md`](linear/UPSTREAM.md).
-- Airtable: Airtable/airtable.js (`55cc755fa4f54e20927579a954c161ac2fe81135`), MIT; attribution and modifications in [`airtable/UPSTREAM.md`](airtable/UPSTREAM.md).
-- Dropbox: dropbox/dropbox-sdk-js (`f48aa0db51951913bb65d3691b87174f1bd212d3`), MIT; attribution and modifications in [`dropbox/UPSTREAM.md`](dropbox/UPSTREAM.md).
-- Box: box/box-openapi (`a4f3e23d5bd01d9f4398bc1a764d410df3e607a7`), Apache-2.0; attribution and modifications in [`box/UPSTREAM.md`](box/UPSTREAM.md).

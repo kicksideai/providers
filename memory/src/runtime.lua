@@ -1,587 +1,726 @@
--- Agent side of memory: capture of conversation spans into the agent's
--- memory, the pinned soul rendered into the prompt, recall through the
--- wippy.agent:memory provider, the working-summary checkpoint, and the
--- remember / search / forget tools.
-
 local ctx = require("ctx")
 local contract = require("contract")
-local security = require("security")
 local component = require("component")
-local types = require("types")
-local config = require("memory_config")
-local stores = require("memory_stores")
-local items = require("memory_items")
-local runs = require("memory_runs")
-local jobs = require("memory_jobs")
-local models = require("memory_models")
-local writer = require("memory_writer")
-local ledger = require("memory_ledger")
-local ops = require("memory_ops")
-local recall = require("memory_recall")
-local reconcile = require("memory_reconcile")
+local llm = require("llm")
+local prompt = require("prompt")
 
 local M = {}
 
-local RUN_CONTEXT = "wippy.agent:run_context"
-local KB_REGISTRY = "kickside.knowledge:knowledge_bases"
+local QUERYABLE_CONTRACT = "kickside.contract:queryable"
+local EMBEDDABLE_CONTRACT = "kickside.contract:embeddable"
+local SOURCE = "kickside.memory"
+local NO_DURABLE_MEMORY = "NO_DURABLE_MEMORY"
 
--- Messages read on the first capture of a host without a cursor.
-local FIRST_CAPTURE_WINDOW = 20
-local CHECKPOINT_SOURCE_MAX_CHARS = 12000
-local CHECKPOINT_MAX_TOKENS = 1000
-local SEARCH_MAX = 50
-local RECALL_KINDS = { types.KIND.FACT, types.KIND.SKILL, types.KIND.LESSON }
-local AGENT_SOUL_KINDS = { types.KIND.IDENTITY, types.KIND.RULE, types.KIND.SKILL, types.KIND.LESSON }
-local OWNER_SOUL_KINDS = { types.KIND.PROFILE_SLOT, types.KIND.PREFERENCE }
+local DEFAULT_RECALL_PROMPT = "Long-term memory from prior conversations. It may be incomplete or inaccurate; use it as advisory context and decide what is relevant."
+local DEFAULT_CHECKPOINT_PROMPT = "Store relevant details for future conversations. Preserve stable user preferences, decisions, project facts, open tasks, constraints, and the next useful action. Exclude filler, transient chatter, assistant narration, tool progress text, and literal answers. Return a compact memory digest, not a response to the user."
 
-local KIND_ORDER: { [string]: integer } = {
-    identity = 1, rule = 2, profile_slot = 3, preference = 4, skill = 5, lesson = 6, fact = 7,
+local DEFAULTS = {
+    read_enabled = true,
+    write_enabled = true,
+    recall_limit = 5,
+    recall_max_chars = 4000,
+    recall_prompt = DEFAULT_RECALL_PROMPT,
+    checkpoint_model = "class:fast",
+    checkpoint_prompt = DEFAULT_CHECKPOINT_PROMPT,
+    checkpoint_temperature = 0.2,
+    checkpoint_max_tokens = 1000,
+    checkpoint_source_max_chars = 12000,
 }
 
--- Configuration ------------------------------------------------------------
 
-local function setting(payload: any, name: string): any
-    local value = ctx.get(name)
+local deps = {
+    ctx = ctx,
+    contract = contract,
+    component = component,
+    llm = llm,
+    prompt = prompt,
+}
+
+local function shallow_copy(input)
+    local out = {}
+    if type(input) == "table" then
+        for k, v in pairs(input) do out[k] = v end
+    end
+    return out
+end
+
+function M._set_deps(test_deps)
+    deps = {
+        ctx = test_deps.ctx or ctx,
+        contract = test_deps.contract or contract,
+        component = test_deps.component or component,
+        llm = test_deps.llm or llm,
+        prompt = test_deps.prompt or prompt,
+    }
+end
+
+function M._reset_deps()
+    deps = {
+        ctx = ctx,
+        contract = contract,
+        component = component,
+        llm = llm,
+        prompt = prompt,
+    }
+end
+
+local function trim(value)
+    if type(value) ~= "string" then return "" end
+    return (value:gsub("^%s*(.-)%s*$", "%1"))
+end
+
+local function truncate(value, max_chars)
+    if type(value) ~= "string" then return "" end
+    local limit = math.floor(tonumber(max_chars) or 0) :: integer
+    if limit <= 0 then return "", #value > 0 end
+    if #value <= limit then return value, false end
+    local index = 1
+    local last = 0
+    while index <= #value do
+        local first = value:byte(index) or 0
+        local width = first < 0x80 and 1
+            or (first < 0xE0 and 2 or (first < 0xF0 and 3 or 4))
+        if index + width - 1 > #value then width = 1 end
+        if index + width - 1 > limit then break end
+        last = index + width - 1
+        index = last + 1
+    end
+    return value:sub(1, last), true
+end
+
+local function is_no_durable_memory(value)
+    local text = trim(value)
+    if text == "" then return true end
+    local folded = text:lower():gsub("%s+", " ")
+    return text == NO_DURABLE_MEMORY
+        or folded == "no new durable memory."
+        or folded == "no new durable memory"
+        or folded == "no durable memory."
+        or folded == "no durable memory"
+end
+
+local function looks_like_assistant_answer(value)
+    local text = trim(value)
+    if text == "" then return false end
+    local folded = text:lower()
+    local starts = {
+        "^yes[,%.%s]",
+        "^no[,%.%s]",
+        "^i%s",
+        "^i['’]ve%s",
+        "^i%s+found%s",
+        "^i%s+apologize%s",
+        "^here%s+is%s",
+        "^here['’]s%s",
+    }
+    for _, pattern in ipairs(starts) do
+        if folded:find(pattern) then return true end
+    end
+    return folded:find("would you like me", 1, true) ~= nil
+        or folded:find("do you want me", 1, true) ~= nil
+        or folded:find("one quick question", 1, true) ~= nil
+end
+
+local function normalize_memory_digest(value: any): (string?, string?)
+    local text = trim(tostring(value or ""))
+    if is_no_durable_memory(text) then
+        return nil, "no_durable_memory"
+    end
+    if looks_like_assistant_answer(text) then
+        return nil, "assistant_answer"
+    end
+    if text:find("^##%s+Memory Digest") then
+        return text, nil
+    end
+    return table.concat({ "## Memory Digest", "", text }, "\n"), nil
+end
+
+local function safe_id(value)
+    local text = tostring(value or "")
+    text = text:gsub("[^%w._:-]", "_")
+    if text == "" then return "unknown" end
+    return text
+end
+
+local function context_get(name)
+    local value = deps.ctx.get(name)
+    if value ~= nil then return value end
+    return nil
+end
+
+local function config_raw(payload, name)
+    local value = context_get(name)
     if value ~= nil and value ~= "" then return value end
+    if type(payload) == "table" then
+        value = payload[name]
+        if value ~= nil and value ~= "" then return value end
+    end
     if type(payload) == "table" and type(payload.context) == "table" then
         value = payload.context[name]
+        if value ~= nil and value ~= "" then return value end
+    end
+    if type(payload) == "table" and type(payload.options) == "table" then
+        value = payload.options[name]
         if value ~= nil and value ~= "" then return value end
     end
     return nil
 end
 
--- The agent's memory: memory_id, or for contexts saved by earlier releases
--- write_kb_id or the first kb_ids entry. A trait without a memory, or naming a
--- knowledge base that is not a memory, is a configuration error.
-function M.memory(payload: any, access: integer): (string?, any?, error?)
-    local id = types.trim(setting(payload, "memory_id"))
-    if id == "" then id = types.trim(setting(payload, "write_kb_id")) end
-    if id == "" then
-        local legacy = setting(payload, "kb_ids")
-        if type(legacy) == "table" then id = types.trim(legacy[1]) end
-    end
-    if id == "" then return nil, nil, types.invalid("the Memory capability has no memory selected") end
-    local _, access_err = component.validate_access(id, access)
-    if access_err then return nil, nil, access_err end
-    local store, err = stores.get(id)
-    if err then
-        if errors.is(err, errors.NOT_FOUND) then
-            return nil, nil, types.invalid("knowledge base " .. id .. " is not a memory; select a Memory knowledge base")
-        end
-        return nil, nil, err
-    end
-    local cfg, cfg_err = config.effective((store :: any).config)
-    if cfg_err then return nil, nil, cfg_err end
-    (store :: any).effective = cfg
-    return id, store, nil
+local function config_value(payload, name, fallback)
+    local value = config_raw(payload, name)
+    if value ~= nil and value ~= "" then return value end
+    return fallback
 end
 
-local function host_ref(host: any): (string, string)
-    if type(host) ~= "table" then return "", "" end
-    if host.kind == "session" then return "session", types.trim(host.session_id) end
+local function bool_config(payload, name, fallback)
+    local value = config_raw(payload, name)
+    if type(value) == "boolean" then return value end
+    if type(value) == "string" then
+        if value == "true" then return true end
+        if value == "false" then return false end
+    end
+    return fallback
+end
+
+local function number_config(payload, name, fallback)
+    local value = tonumber(config_raw(payload, name))
+    if value and value > 0 then return value end
+    return fallback
+end
+
+local function kb_ids(payload): { string }
+    local raw = config_raw(payload, "kb_ids")
+    if type(raw) == "table" then
+        local out: { string } = {}
+        for _, id in ipairs(raw) do
+            id = trim(id)
+            if id ~= "" then out[#out + 1] = id end
+        end
+        return out
+    end
+    local single = trim(config_value(payload, "kb_id", ""))
+    if single ~= "" then return { single } end
+    return {}
+end
+
+local function write_kb_id(payload)
+    local explicit = trim(config_value(payload, "write_kb_id", ""))
+    if explicit ~= "" then return explicit end
+    local ids = kb_ids(payload)
+    return ids[1]
+end
+
+local function host_key(host)
+    if type(host) ~= "table" then return "host:unknown" end
+    if host.kind == "session" then
+        return "session:" .. safe_id(host.session_id)
+    end
     if host.kind == "dataflow" then
-        return "dataflow", table.concat({ types.trim(host.dataflow_id), types.trim(host.node_id),
-            types.trim(host.run_id), tostring(host.iteration or 0) }, ":")
+        return table.concat({
+            "dataflow",
+            safe_id(host.dataflow_id),
+            safe_id(host.node_id),
+            safe_id(host.run_id),
+            safe_id(host.iteration or 0),
+        }, ":")
     end
-    return "", ""
+    return safe_id(host.kind) .. ":" .. safe_id(host.id)
 end
 
--- Run context --------------------------------------------------------------
-
-local function open_run_context(ref: any): (any?, error?)
-    if type(ref) ~= "table" or types.trim(ref.binding) == "" then
-        return nil, types.invalid("run_context binding is required")
+local function validate_common(payload)
+    if type(payload) ~= "table" then
+        return nil, "payload must be an object"
     end
-    local def, err = contract.get(types.trim(ref.contract) ~= "" and ref.contract or RUN_CONTEXT)
-    if err or not def then return nil, types.failed("run_context contract unavailable", err) end
-    local inst, open_err = (def :: any):open(tostring(ref.binding))
-    if open_err or not inst then return nil, types.failed("run_context binding unavailable", open_err) end
-    return inst, nil
-end
-
-local function history(payload: any, selector: any): (any?, error?)
-    local inst, err = open_run_context(payload.run_context)
-    if err then return nil, err end
-    local result, history_err = (inst :: any):get_history({
-        host = payload.run_context.host or payload.host,
-        agent = payload.run_context.agent or payload.agent,
-        selector = selector,
-    })
-    if history_err then return nil, types.failed("run_context history failed", history_err) end
-    if type(result) ~= "table" or type(result.events) ~= "table" then
-        return nil, types.unavailable("run_context history returned no events")
+    if type(payload.host) ~= "table" or trim(payload.host.kind) == "" then
+        return nil, "host.kind is required"
     end
-    return result, nil
-end
-
-local function event_text(event: any): string
-    local content = event.content
-    if type(content) == "string" then return types.trim(content) end
-    if type(event.raw_content) == "string" then return types.trim(event.raw_content) end
-    if type(content) == "table" and type(content.text) == "string" then return types.trim(content.text) end
-    return ""
-end
-
--- The span entry of one history event: user and assistant text, and tool
--- outcomes when experience capture is on. Recalled-memory notes, developer and
--- system messages and raw tool output never enter a span.
-local function span_entry(event: any, cfg: any): any?
-    local metadata = type(event.metadata) == "table" and event.metadata or {}
-    if metadata.memory_ids ~= nil then return nil end
-    local role = event.role
-    if (role == "user" or role == "assistant") and cfg.capture_conversation ~= false then
-        local text = event_text(event)
-        if text == "" then return nil end
-        return { id = tostring(event.id), role = role, text = text, created_at = event.created_at }
+    if type(payload.agent) ~= "table" then
+        payload.agent = {}
     end
-    if role == "function" and cfg.capture_experience == true then
-        local name = types.trim(metadata.function_name or metadata.name)
-        local status = types.trim(metadata.status)
-        if name == "" or status == "" then return nil end
-        return { id = tostring(event.id), role = "tool", text = "tool " .. name .. " " .. status, created_at = event.created_at }
+    if type(payload.run_context) ~= "table" then
+        return nil, "run_context is required"
     end
-    return nil
-end
-
-local function gate(events: { any }, cfg: any): { any }
-    local span: { any } = {}
-    for _, event in ipairs(events) do
-        local entry = span_entry(event, cfg)
-        if entry then span[#span + 1] = entry end
+    if trim(payload.run_context.contract) == "" or trim(payload.run_context.binding) == "" then
+        return nil, "run_context contract and binding are required"
     end
-    return span
+    return payload, nil
 end
 
--- Captures the host's history since its cursor (through `to_event_id` when
--- given) into the memory. Both capture paths go through here; the cursor
--- moves under compare-and-set, so a span is captured once.
-local function capture(payload: any, to_event_id: string?): (any?, error?)
-    if setting(payload, "write_enabled") == false then return { captured = false, reason = "capture_disabled" }, nil end
-    local memory_id, store, store_err = M.memory(payload, component.ACCESS.WRITE)
-    if store_err then return nil, store_err end
-    local function skipped(reason: string): any
-        return { captured = false, reason = reason, memory_id = memory_id }
-    end
-    local cfg = (store :: any).effective
-    if cfg.capture_conversation == false and cfg.capture_experience ~= true then return skipped("capture_disabled"), nil end
-    local host_kind, host_id = host_ref(payload.host)
-    if host_kind == "" or host_id == "" then return nil, types.invalid("lifecycle host is required for capture") end
-    local cursor, cursor_err = runs.cursor(memory_id :: string, host_kind, host_id)
-    if cursor_err then return nil, cursor_err end
-    local from = cursor and types.trim((cursor :: any).last_event_id) or ""
-    local selector: any
-    if from ~= "" then
-        selector = { mode = "since_id", from_id = from }
-    else
-        selector = { mode = "window", last = FIRST_CAPTURE_WINDOW }
-    end
-    local result, history_err = history(payload, selector)
-    if history_err then return nil, history_err end
-    local events = (result :: any).events
-    if to_event_id then
-        -- A persisted record outside the history after the cursor was
-        -- already captured by an earlier pass.
-        local through: { any } = {}
-        local reached = false
-        for _, event in ipairs(events) do
-            through[#through + 1] = event
-            if tostring(event.id) == to_event_id then reached = true; break end
-        end
-        if not reached then return skipped("already_captured"), nil end
-        events = through
-    end
-    if #events == 0 then return skipped("no_new_history"), nil end
-    local span = gate(events, cfg)
-    if #span == 0 then return skipped("nothing_to_capture"), nil end
-    local scheduled, schedule_err = jobs.capture({
-        component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
-        agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
-        to_event_id = tostring(events[#events].id), span = span,
-    })
-    if schedule_err then return nil, schedule_err end
-    return { captured = (scheduled :: any).scheduled, run_id = (scheduled :: any).run_id, memory_id = memory_id }, nil
+local function open_run_context(ref)
+    local contract_def, get_err = deps.contract.get(tostring(ref.contract))
+    if get_err then return nil, get_err end
+    if not contract_def then return nil, "run_context contract not found" end
+    local instance, open_err = contract_def:open(tostring(ref.binding))
+    if open_err then return nil, open_err end
+    if not instance then return nil, "run_context binding not found" end
+    return instance, nil
 end
 
--- Soul ---------------------------------------------------------------------
-
-local function sort_soul(rows: { any })
-    table.sort(rows, function(a, b)
-        local ak, bk = KIND_ORDER[a.kind], KIND_ORDER[b.kind]
-        if ak ~= bk then return ak < bk end
-        if a.priority ~= b.priority then return a.priority > b.priority end
-        if a.key ~= b.key then return a.key < b.key end
-        return a.id < b.id
-    end)
-end
-
--- Deterministic bounded rendering: kind, priority, key order; whole lines only.
--- Renders whole lines in kind, priority and key order within `max_chars`, and
--- returns the item snapshots it rendered.
-local function render(rows: { any }, heading: string, max_chars: integer): (string, { any })
-    sort_soul(rows)
-    local lines: { string } = {}
-    local selected: { any } = {}
-    local used = #heading
-    for _, row in ipairs(rows) do
-        local line = "- [" .. row.kind .. "] " .. row.content
-        if used + #line + 1 > max_chars then break end
-        lines[#lines + 1] = line
-        selected[#selected + 1] = { id = row.id, version = row.version, content_hash = row.content_hash }
-        used = used + #line + 1
-    end
-    if #lines == 0 then return "", selected end
-    return heading .. "\n" .. table.concat(lines, "\n"), selected
-end
-
-local function soul_rows(component_id: string, scope_key: string, kinds: { string }): (any?, error?)
-    return items.list(component_id, { kinds = kinds, statuses = { types.STATUS.CURRENT }, scope_keys = { scope_key }, limit = 200 })
-end
-
--- Agent-scoped soul for the compiled system prompt.
-local function agent_soul(payload: any, agent_id: string): (string?, error?)
-    local id, store, err = M.memory(payload, component.ACCESS.READ)
-    if err then return nil, err end
-    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), AGENT_SOUL_KINDS)
-    if rows_err then return nil, rows_err end
-    local text = render(rows :: any, "## Agent memory", (store :: any).effective.soul_agent_max_chars)
-    return text, nil
-end
-
--- Pins the owner slice for this host: the user's profile and preferences as
--- of activation, rendered once.
-local function pin(payload: any): (any?, error?)
-    local id, store, err = M.memory(payload, component.ACCESS.READ)
-    if err then return nil, err end
-    local host_kind, host_id = host_ref(payload.host)
-    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, types.actor_id()), OWNER_SOUL_KINDS)
-    if rows_err then return nil, rows_err end
-    local text, pinned = render(rows :: any, "## What you know about the user", (store :: any).effective.soul_owner_max_chars)
-    local head, head_err = ledger.head(id :: string)
-    if head_err then return nil, head_err end
-    return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text, pinned)
-end
-
--- The owner slice pinned for the running host, byte-identical across steps
--- until one of its items is forgotten, which renders it again.
-local function owner_prompt(payload: any): (string?, error?)
-    local run = ctx.get("agent_run")
-    local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
-    if host_kind == "" or host_id == "" then return "", nil end
-    local id, _, err = M.memory(payload, component.ACCESS.READ)
-    if err then return nil, err end
-    local cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
-    if cursor_err then return nil, cursor_err end
-    if cursor and (cursor :: any).pinned_prompt == nil then
-        local _, pin_err = pin({ context = payload.context, host = run.host, agent = run.agent or {} })
-        if pin_err then return nil, pin_err end
-        cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
-        if cursor_err then return nil, cursor_err end
-    end
-    return cursor and (cursor :: any).pinned_prompt or "", nil
-end
-
--- Lifecycle ----------------------------------------------------------------
-
-local function validate(payload: any): error?
-    if type(payload) ~= "table" then return types.invalid("payload must be an object") end
-    if type(payload.host) ~= "table" or types.trim(payload.host.kind) == "" then return types.invalid("host.kind is required") end
-    if type(payload.agent) ~= "table" then payload.agent = {} end
-    return nil
-end
-
-function M.apply(payload: any): (any?, error?)
-    local invalid = validate(payload)
-    if invalid then return nil, invalid end
-    local phase = payload.phase
-    if phase == "activate" then
-        local _, err = pin(payload)
-        if err then return nil, err end
-        return { messages = {}, metadata = { phase = phase, pinned = true } }, nil
-    elseif phase == "before_step" then
-        local captured, err = capture(payload, nil)
-        if err then return nil, err end
-        return { messages = {}, metadata = { phase = phase, capture = captured } }, nil
-    elseif phase == "after_persist" then
-        local event_id = types.trim(payload.refs and payload.refs.event_id)
-        if event_id == "" then return nil, types.invalid("after_persist requires refs.event_id") end
-        local captured, err = capture(payload, event_id)
-        if err then return nil, err end
-        return { messages = {}, metadata = { phase = phase, capture = captured } }, nil
-    elseif phase == "deactivate" then
-        local captured, err = capture(payload, nil)
-        if err then return nil, err end
-        local metadata: { [string]: any } = { phase = phase, capture = captured }
-        if (captured :: any).memory_id then
-            local _, wake_err = jobs.wake_consolidation((captured :: any).memory_id)
-            if wake_err then metadata.consolidation_error = tostring(wake_err) end
-        end
-        return { messages = {}, metadata = metadata }, nil
-    end
-    return { messages = {}, metadata = { phase = phase, ignored = true } }, nil
-end
-
--- Checkpoint: the working summary the host compacts with, plus a capture of
--- the compacted range into memory.
-function M.create(payload: any): (any?, error?)
-    local invalid = validate(payload)
-    if invalid then return nil, invalid end
-    local inst, err = open_run_context(payload.run_context)
-    if err then return nil, err end
-    local selector = type(payload.selector) == "table" and payload.selector or { mode = "since_checkpoint" }
-    selector.max_chars = selector.max_chars or CHECKPOINT_SOURCE_MAX_CHARS
-    local prompt, prompt_err = (inst :: any):get_prompt({
+local function read_prompt(payload, selector)
+    local inst, inst_err = open_run_context(payload.run_context)
+    if not inst then return nil, inst_err end
+    return inst:get_prompt({
         host = payload.run_context.host or payload.host,
         agent = payload.run_context.agent or payload.agent,
         selector = selector,
         format = "text",
+        include_files = true,
+        include_contexts = true,
     })
-    if prompt_err then return nil, types.failed("checkpoint source failed", prompt_err) end
-    local text = types.trim((prompt :: any).text)
-    local summary, tokens = "No working conversation state.", nil
-    if text ~= "" then
-        local options = type(payload.options) == "table" and payload.options or {}
-        local model = types.trim(payload.agent.model)
-        if model == "" then model = types.trim(options.model) end
-        if model == "" then return nil, types.invalid("checkpoint requires the agent model") end
-        local max_tokens = tonumber(options.max_tokens) or CHECKPOINT_MAX_TOKENS
-        local generated, used, summary_err = models.working_summary(model, text, math.floor(max_tokens))
-        if summary_err then return nil, summary_err end
-        summary, tokens = generated :: string, used
-    end
-    local range = (prompt :: any).range or {}
-    local captured, capture_err = capture(payload, types.trim(range.to_id) ~= "" and range.to_id or nil)
-    if capture_err then return nil, capture_err end
-    return { summary = summary, tokens = tokens, metadata = { source = types.SOURCE, capture = captured } }, nil
 end
 
--- Recall (wippy.agent:memory) ----------------------------------------------
-
-local function recall_query(input: any): string
-    local parts: { string } = {}
-    if types.trim(input.working_on) ~= "" then parts[#parts + 1] = types.trim(input.working_on) end
-    local actions = type(input.recent_actions) == "table" and input.recent_actions or {}
-    for i = math.max(1, #actions - 2), #actions do
-        local action = actions[i]
-        local text = type(action) == "string" and action or (type(action) == "table" and action.content) or ""
-        if types.trim(text) ~= "" then parts[#parts + 1] = types.trim(text) end
+local function open_component(kb_id, access, contract_id)
+    if trim(kb_id) == "" then
+        return nil, "knowledge base is not configured"
     end
-    return table.concat(parts, "\n")
+    local instance, open_err = deps.component.open(kb_id, access, contract_id)
+    if open_err then return nil, open_err end
+    if not instance then return nil, "component open returned no instance" end
+    return instance, nil
 end
 
-function M.recall(input: any): (any?, error?)
-    local args = type(input) == "table" and input or {}
-    local component_id, store, store_err = M.memory({ context = { memory_id = ctx.get("component_id") } }, component.ACCESS.READ)
-    if store_err then return nil, store_err end
-    local query = recall_query(args)
-    if query == "" then return { memories = {} }, nil end
-    local cfg = (store :: any).effective
-    local constraints = type(args.constraints) == "table" and args.constraints or {}
-    local max_items = math.floor(tonumber(constraints.max_items) or cfg.recall_max_items)
-    local max_length = math.floor(tonumber(constraints.max_length) or cfg.recall_max_length)
-    local exclude: { [string]: boolean } = {}
-    for _, id in ipairs(type(args.previous_memories) == "table" and args.previous_memories or {}) do exclude[tostring(id)] = true end
-    local agent_id = types.trim(ctx.get("agent_id"))
-    local rows, err = recall.search({
-        component_id = component_id :: string, query = query, limit = max_items, kinds = RECALL_KINDS,
-        scopes = recall.visible_scopes(agent_id), exclude = exclude,
+local function item_text(item)
+    if type(item) == "table" and type(item.content) == "string" then return item.content end
+    return ""
+end
+
+local function recall_query(payload)
+    local explicit = trim(config_value(payload, "recall_query", ""))
+    if explicit ~= "" then return explicit end
+
+    local prompt_result, prompt_err = read_prompt(payload, {
+        mode = "window",
+        last = 8,
+        max_chars = 3000,
     })
-    if err then return nil, err end
-    local memories: { any } = {}
-    local used = 0
-    for _, row in ipairs(rows :: any) do
-        if used + #row.content > max_length then break end
-        used = used + #row.content
-        memories[#memories + 1] = {
-            id = row.id,
-            content = row.content,
-            metadata = { type = row.kind, source = types.SOURCE, created_at = row.recorded_at, valid_at = row.valid_at },
-        }
+    if prompt_err then return nil, prompt_err end
+    if type(prompt_result) == "table" and trim(prompt_result.text) ~= "" then
+        return prompt_result.text, nil
     end
-    return { memories = memories }, nil
+    return nil, nil
 end
 
--- Memory knowledge bases the caller can read, for the agent memory picker.
-function M.list_targets(_input: any): any
-    local def, def_err = contract.get(KB_REGISTRY)
-    if def_err or not def then return { success = false, error = "knowledge_bases contract unavailable: " .. tostring(def_err) } end
-    local actor, scope = security.actor(), security.scope()
-    if not actor or not scope then return { success = false, error = "security actor and scope are required" } end
-    local registry_inst, open_err = (def :: any):with_actor(actor):with_scope(scope):open()
-    if open_err or not registry_inst then return { success = false, error = "knowledge_bases open failed: " .. tostring(open_err) } end
-    local rows, list_err = (registry_inst :: any):list({ kb_type = types.KB_TYPE })
-    if list_err then return { success = false, error = tostring(list_err) } end
-    local out: { any } = {}
-    for _, row in ipairs(rows or {}) do
-        local meta = type(row.meta) == "table" and row.meta or {}
-        local id = row.component_id or row.id
-        if types.trim(id) ~= "" then
-            out[#out + 1] = { id = id, title = meta.title or row.name or id, name = meta.title or row.name or id,
-                description = meta.comment or "", kb_type = types.KB_TYPE }
+local function recall_from_kbs(payload)
+    if bool_config(payload, "read_enabled", DEFAULTS.read_enabled) == false then
+        return {}, nil
+    end
+
+    local query, query_err = recall_query(payload)
+    if query_err then return nil, query_err end
+    if trim(query) == "" then return {}, nil end
+
+    local ids = kb_ids(payload)
+    if #ids == 0 then return {}, nil end
+
+    local limit = number_config(payload, "recall_limit", DEFAULTS.recall_limit)
+    local items = {}
+    for _, kb_id in ipairs(ids) do
+        local reader, open_err = open_component(kb_id, deps.component.ACCESS.READ, QUERYABLE_CONTRACT)
+        if not reader then return nil, open_err end
+        local result, read_err = reader:query({ query = query, limit = limit })
+        if read_err then return nil, read_err end
+        for _, item in ipairs((result and result.items) or {}) do
+            local next_item = shallow_copy(item)
+            next_item.kb_id = kb_id
+            items[#items + 1] = next_item
+            if #items >= limit then return items, nil end
         end
     end
-    return { success = true, items = out, count = #out }
+    return items, nil
 end
 
--- Build and prompt functions -------------------------------------------------
-
--- build_func_id: contributes the agent-scoped soul to the compiled prompt.
-function M.build(_prompt: any, context: any): (any?, error?)
-    local agent_id = types.trim(type(context) == "table" and context.agent_id or ctx.get("agent_id"))
-    if agent_id == "" then return {}, nil end
-    local text, err = agent_soul({ context = context }, agent_id)
-    if err then return nil, err end
-    if text == "" then return {}, nil end
-    return { prompt = text }, nil
-end
-
--- prompt_func_id: the pinned owner slice.
-function M.prompt(): (string?, error?)
-    return owner_prompt({})
-end
-
--- Tools --------------------------------------------------------------------
-
--- A tool answer the model can act on: a refused or invalid call.
-local function tool_error(err: any): any
-    return { success = false, error = tostring(err) }
-end
-
--- Remember and ForgetMemory write; a trait context with write_enabled off
--- keeps the memory read-only for this agent.
-local function writable(): (string?, any?, any?)
-    if setting({}, "write_enabled") == false then return nil, nil, tool_error("this agent's memory is read-only") end
-    local memory_id, store, err = M.memory({}, component.ACCESS.WRITE)
-    if err then return nil, nil, tool_error(err) end
-    return memory_id, store, nil
-end
-
-function M.remember(args: any): (any?, error?)
-    local input = type(args) == "table" and args or {}
-    local content = types.trim(input.content)
-    if content == "" then return tool_error("content is required"), nil end
-    local kind = types.trim(input.kind)
-    if kind == "" then kind = types.KIND.FACT end
-    if not types.KIND_SET[kind] or kind == types.KIND.IDENTITY or kind == types.KIND.RULE then
-        return tool_error("kind must be one of fact, preference, profile_slot, skill, lesson"), nil
+-- The recall digest: the guidance line, then each item's text numbered in order.
+-- max_chars is the lifecycle's injection budget for the activate message; the
+-- SearchMemory exposes summary rows separately.
+local function recall_message(payload, items, max_chars)
+    if type(items) ~= "table" or #items == 0 then return nil end
+    local guidance = trim(config_value(payload, "recall_prompt", DEFAULTS.recall_prompt))
+    if guidance == "" then guidance = DEFAULT_RECALL_PROMPT end
+    local lines = { guidance }
+    local remaining = max_chars
+    for index, item in ipairs(items) do
+        if remaining and remaining <= 0 then break end
+        local text = item_text(item)
+        if remaining then
+            text = truncate(text, remaining)
+            remaining = remaining - #text
+        end
+        if text ~= "" then
+            lines[#lines + 1] = tostring(index) .. ". " .. text
+        end
     end
-    local cardinality = types.trim(input.cardinality)
-    if cardinality ~= "" and not types.CARDINALITY_SET[cardinality] then return tool_error("cardinality must be single or multi"), nil end
-    local memory_id, store, refusal = writable()
-    if refusal then return refusal, nil end
-    local owner = types.actor_id()
-    if owner == "" then return tool_error("remember requires a signed-in user"), nil end
-    local value = input.value
-    if value == nil then value = content end
-    local key, key_err = types.topic_key(input.key, content, value)
-    if key_err then return tool_error(key_err), nil end
-    local idempotency, hash_err = types.digest({ "tool.remember", owner, key, value, content })
-    if hash_err then return nil, hash_err end
-    local run = ctx.get("agent_run")
-    local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
-    local written, write_err = writer.write(memory_id :: string, idempotency :: string, {
-        source = types.ITEM_SOURCE.TOOL, actor = owner, keyed_by_head = true,
-    }, function(d: any): (any?, error?)
-        local err = reconcile.decide(d, {
-            { kind = kind, key = key, cardinality = cardinality ~= "" and cardinality or nil, value = value, content = content,
-                valid_at = input.valid_at, confidence = 1 },
-        }, {
-            embedding_model = (store :: any).embedding_model, judge_model = (store :: any).effective.judge_model,
-            scope_family = types.SCOPE.OWNER, scope_id = owner, explicit = true,
-            host_kind = host_kind ~= "" and host_kind or nil, host_id = host_id,
-        })
-        return nil, err
-    end)
-    if write_err then return nil, write_err end
-    return { success = true, memory_id = memory_id, item_ids = (written :: any).item_ids, outcome = (written :: any).stats }, nil
+    if #lines == 1 then return nil end
+    return table.concat(lines, "\n")
 end
 
--- ForgetMemory erases one of the caller's own memories. The agent's identity,
--- rules, skills and lessons are edited by people on the memory page only.
-function M.forget(args: any): (any?, error?)
-    local input = type(args) == "table" and args or {}
-    local item_id = types.trim(input.item_id)
-    if item_id == "" then return tool_error("item_id is required"), nil end
-    local memory_id, _, refusal = writable()
-    if refusal then return refusal, nil end
-    local item, item_err = items.get(memory_id :: string, item_id)
-    if item_err then return nil, item_err end
-    if not item then return tool_error("memory item not found"), nil end
-    if (item :: any).scope_key ~= types.scope_key(types.SCOPE.OWNER, types.actor_id()) then
-        return tool_error("only your own memories can be forgotten here"), nil
-    end
-    local forgotten, forget_err = ops.forget(memory_id :: string, item_id)
-    if forget_err then return nil, forget_err end
-    return { success = true, memory_id = memory_id, item_id = (forgotten :: any).item_id }, nil
+local function checkpoint_prompt_text(payload)
+    local selector = shallow_copy(payload.selector or {mode = "since_checkpoint"})
+    selector.max_chars = selector.max_chars or number_config(payload, "checkpoint_source_max_chars", DEFAULTS.checkpoint_source_max_chars)
+    local prompt_result, prompt_err = read_prompt(payload, selector)
+    local text = type(prompt_result) == "table" and prompt_result.text or ""
+    return text, prompt_result, prompt_err
 end
 
--- SearchMemory: ranked current memories of the user and this agent.
-function M.search(args: any): (any?, error?)
-    local input = type(args) == "table" and args or {}
-    if setting({}, "read_enabled") == false then
-        return tool_error("memory search is disabled for this agent"), nil
-    end
-    local query = types.trim(input.query)
-    if query == "" then return tool_error("query is required"), nil end
-    local limit = math.floor(tonumber(input.limit) or tonumber(setting({}, "recall_limit")) or 5)
-    if limit < 1 or limit > SEARCH_MAX then return tool_error("limit must be between 1 and " .. SEARCH_MAX), nil end
-    local offset = math.floor(tonumber(input.cursor) or 0)
-    if offset < 0 then return tool_error("cursor is invalid"), nil end
-    local memory_id, _, err = M.memory({}, component.ACCESS.READ)
-    if err then return tool_error(err), nil end
-    local scopes = recall.visible_scopes(ctx.get("agent_id"))
-    local rows, search_err = recall.search({
-        component_id = memory_id :: string, query = query, limit = offset + limit + 1,
-        scopes = scopes,
+local function generate_text(payload, model, text, system)
+    local builder = deps.prompt.new()
+    builder:add_system(system)
+    builder:add_user(text)
+    local response, err = deps.llm.generate(builder, {
+        model = model,
+        temperature = number_config(payload, "checkpoint_temperature", DEFAULTS.checkpoint_temperature),
+        max_tokens = number_config(payload, "checkpoint_max_tokens", DEFAULTS.checkpoint_max_tokens),
     })
-    if search_err then return nil, search_err end
-    local fields = type(input.fields) == "table" and input.fields or {}
-    local page: { any } = {}
-    for i = offset + 1, math.min(offset + limit, #(rows :: any)) do
-        local row = (rows :: any)[i]
-        local out: { [string]: any } = {
-            id = row.id, kb_id = memory_id, node_type = row.kind, score = row.similarity, source = row.source,
-            created_at = row.recorded_at, content = row.content,
-        }
-        for _, name in ipairs(fields) do
-            if name == "*" then
-                for k, v in pairs(row) do out[k] = v end
-            else
-                out[name] = row[name]
+    if err then return nil, err end
+    if not response or trim(response.result) == "" then return nil, "checkpoint generation returned no text" end
+    if response.finish_reason and response.finish_reason ~= "stop" then
+        return nil, "checkpoint generation does not complete: " .. tostring(response.finish_reason)
+    end
+    return response, nil
+end
+
+local function generate_checkpoint(payload, text)
+    if trim(text) == "" then
+        return NO_DURABLE_MEMORY, { strategy = "empty", skipped = true }, nil
+    end
+
+    local model = trim(config_value(payload, "checkpoint_model", DEFAULTS.checkpoint_model))
+    if model == "" or model == "none" then
+        return NO_DURABLE_MEMORY, { strategy = "no_model", model = model, skipped = true }, nil
+    end
+
+    local system = table.concat({
+        "You write durable long-term memory for an agent.",
+        "Return exactly " .. NO_DURABLE_MEMORY .. " when there are no stable facts, preferences, decisions, project state, open tasks, constraints, or next actions worth remembering.",
+        "Otherwise return markdown only, with heading exactly: ## Memory Digest",
+        "Use terse bullets. Do not answer the user. Do not ask follow-up questions. Do not preserve assistant replies, tool narration, progress updates, acknowledgements, or raw transcript.",
+    }, "\n")
+    local custom = trim(config_value(payload, "checkpoint_prompt", ""))
+    if custom ~= "" then system = system .. "\nMemory write policy:\n" .. custom end
+    local response, llm_err = generate_text(payload, model, text, system)
+    if llm_err then return nil, {strategy = "llm", model = model}, llm_err end
+
+    local normalized, normalize_reason = normalize_memory_digest(response.result)
+    if not normalized then
+        return NO_DURABLE_MEMORY, {
+            strategy = "llm",
+            model = model,
+            tokens = response.tokens,
+            skipped = true,
+            skip_reason = normalize_reason,
+        }, nil
+    end
+
+    return normalized, {
+        strategy = "llm",
+        model = model,
+        tokens = response.tokens,
+    }, nil
+end
+
+-- A SearchMemory cursor is "<kb index>:<offset>,<offset>,..." with one offset per
+-- configured knowledge base; no cursor starts every KB at 0 from the first KB.
+local function parse_cursor(cursor, kb_count): (integer?, { integer })
+    local offsets: { integer } = {}
+    if cursor == nil or cursor == "" then
+        for index = 1, kb_count do offsets[index] = 0 end
+        return 1, offsets
+    end
+    if type(cursor) ~= "string" then return nil, offsets end
+    local start_text, offset_text = cursor:match("^(%d+):([%d,]+)$")
+    local start = tonumber(start_text)
+    if not start or start < 1 or start > kb_count then return nil, offsets end
+    for value in (offset_text .. ","):gmatch("(%d+),") do offsets[#offsets + 1] = math.floor(tonumber(value) :: number) end
+    if #offsets ~= kb_count then return nil, offsets end
+    return math.floor(start), offsets
+end
+
+local function query_memory(args)
+    args = type(args) == "table" and args or {}
+    if bool_config(args, "read_enabled", DEFAULTS.read_enabled) == false then
+        return {
+            success = false,
+            error = "Memory recall is disabled for this trait instance.",
+            count = 0,
+            items = {},
+            message = "Memory recall is disabled for this trait instance.",
+        }, nil
+    end
+
+    local query = trim(tostring(args.query or ""))
+    if query == "" then
+        return { success = false, error = "query is required" }
+    end
+
+    local ids: { string } = {}
+    local explicit_kb_id = trim(tostring(args.kb_id or ""))
+    if explicit_kb_id ~= "" then
+        ids = { explicit_kb_id }
+    else
+        ids = kb_ids(args)
+    end
+    if #ids == 0 then
+        return { success = false, error = "memory knowledge base is not configured" }
+    end
+
+    local limit = math.floor(number_config(args, "limit", number_config(args, "recall_limit", DEFAULTS.recall_limit)))
+    local start, offsets = parse_cursor(args.cursor, #ids)
+    if not start then
+        return { success = false, error = "cursor must be a next_cursor value from a previous SearchMemory result" }
+    end
+
+    -- Each knowledge base answers its own ranked page from its offset; the merged
+    -- order interleaves them rank by rank in configured KB order. The cursor keeps
+    -- each KB's offset and the KB the next rank resumes from, so consecutive pages
+    -- walk every match of every KB exactly once.
+    local pages: { any } = {}
+    for index, kb_id in ipairs(ids) do
+        local reader, open_err = open_component(kb_id, deps.component.ACCESS.READ, QUERYABLE_CONTRACT)
+        if not reader then return nil, open_err end
+        local result, read_err = reader:query({ query = query, offset = offsets[index], limit = limit })
+        if read_err then return nil, read_err end
+        if result.success == false then
+            local failure = shallow_copy(result)
+            failure.kb_id = kb_id
+            return failure
+        end
+        local kb_items: { any } = {}
+        for _, item in ipairs(result.items or {}) do
+            local next_item = shallow_copy(item)
+            next_item.kb_id = kb_id
+            kb_items[#kb_items + 1] = next_item
+        end
+        pages[index] = { items = kb_items, more = result.next_offset ~= nil, taken = 0 }
+    end
+
+    local items: { any } = {}
+    local last = start - 1
+    local rank = 1
+    while #items < limit do
+        local found = false
+        for step = 0, #ids - 1 do
+            local index = (start - 1 + step) % #ids + 1
+            local item = pages[index].items[rank]
+            if item and #items < limit then
+                items[#items + 1] = item
+                pages[index].taken = pages[index].taken + 1
+                last = index
+                found = true
             end
         end
-        page[#page + 1] = out
+        if not found then break end
+        rank = rank + 1
     end
-    local contested, contested_err = recall.search({
-        component_id = memory_id :: string, query = query, limit = offset + limit + 1, group_by = "conflict_group",
-        scopes = scopes, statuses = { types.STATUS.CONFLICT },
-    })
-    if contested_err then return nil, contested_err end
-    local group_ids: { string } = {}
-    for _, row in ipairs(contested :: any) do group_ids[#group_ids + 1] = row.id end
-    local page_groups: { string } = {}
-    for i = offset + 1, math.min(offset + limit, #group_ids) do page_groups[#page_groups + 1] = group_ids[i] end
-    local members, members_err = items.group_members(memory_id :: string, page_groups, scopes)
-    if members_err then return nil, members_err end
-    local groups: { [string]: any } = {}
-    local alternatives: { any } = {}
-    for _, group_id in ipairs(page_groups) do
-        local group = { group_id = group_id, status = "unresolved", options = {} }
-        groups[group_id] = group
-        alternatives[#alternatives + 1] = group
+
+    local next_offsets: { string } = {}
+    local remaining = false
+    for index, page in ipairs(pages) do
+        next_offsets[index] = tostring(offsets[index] + page.taken)
+        if page.more or page.taken < #page.items then remaining = true end
     end
-    for _, row in ipairs(members :: any) do
-        local group = groups[row.conflict_group]
-        if group then
-        group.options[#group.options + 1] = { id = row.id, content = row.content, valid_at = row.valid_at }
+    local next_cursor = remaining and (tostring(last % #ids + 1) .. ":" .. table.concat(next_offsets, ",")) or nil
+
+    local summaries = {}
+    for _, item in ipairs(items) do
+        local metadata = type(item.metadata) == "table" and item.metadata or {}
+        local row = {id = item.id, kb_id = item.kb_id, title = item.title or metadata.title, score = item.score,
+            node_type = item.node_type, snippet = item.snippet, source = item.source or metadata.source,
+            created_at = item.created_at, updated_at = item.updated_at}
+        for _, field in ipairs(args.fields or {}) do
+            if field == "*" then
+                for key, value in pairs(item) do row[key] = value end
+            else row[field] = item[field] end
         end
+        summaries[#summaries + 1] = row
     end
-    local result: { [string]: any } = {
-        success = true, query = query, count = #page, items = page, alternatives = alternatives,
-        note = "Memory is derived from prior conversations and may be incomplete or out of date. Alternatives are " ..
-            "unresolved: the person has said contradicting things; ask before relying on either.",
-    }
-    if #(rows :: any) > offset + limit or #group_ids > offset + limit then result.next_cursor = tostring(offset + limit) end
+    return {
+        success = true,
+        query = query,
+        count = #items,
+        items = summaries,
+        next_cursor = next_cursor,
+        note = "Memory is derived from prior conversations and may be incomplete or inaccurate; use judgment before relying on it.",
+    }, nil
+end
+
+local function external_id(payload, prompt_result, phase)
+    local range = type(prompt_result) == "table" and type(prompt_result.range) == "table" and prompt_result.range or {}
+    return table.concat({
+        "agent-memory",
+        safe_id(payload.agent.id or "agent"),
+        safe_id(host_key(payload.host)),
+        safe_id(phase or payload.reason or "checkpoint"),
+        safe_id(range.from_id or "start"),
+        safe_id(range.to_id or "end"),
+        safe_id(range.checkpoint_id or "latest"),
+    }, ":")
+end
+
+local function commit_checkpoint(payload, memory, prompt_result, checkpoint_meta, phase)
+    if bool_config(payload, "write_enabled", DEFAULTS.write_enabled) == false then
+        return nil, nil
+    end
+
+    local normalized, normalize_reason = normalize_memory_digest(memory)
+    if not normalized then
+        return {
+            success = true,
+            skipped = true,
+            reason = checkpoint_meta and checkpoint_meta.skip_reason or normalize_reason or "no_durable_memory",
+        }, nil
+    end
+
+    local kb_id = write_kb_id(payload)
+    if trim(kb_id) == "" then
+        return nil, nil
+    end
+
+    local writer, open_err = open_component(kb_id, deps.component.ACCESS.WRITE, EMBEDDABLE_CONTRACT)
+    if not writer then return nil, open_err end
+
+    local title = trim(config_value(payload, "memory_title", "Memory Digest"))
+    local result, write_err = writer:embed_content({
+        content = normalized,
+        content_type = "text/markdown",
+        title = title,
+        external_id = external_id(payload, prompt_result, phase),
+        metadata = {
+            source = SOURCE,
+            node_kind = "agent_memory_checkpoint",
+            title = title,
+            agent = payload.agent,
+            host = payload.host,
+            reason = payload.reason,
+            phase = phase,
+            range = type(prompt_result) == "table" and prompt_result.range or nil,
+            checkpoint = checkpoint_meta,
+            digest_format = "memory_digest.v1",
+        },
+        source_ref = {
+            kind = "agent_memory",
+            origin = SOURCE,
+            title = title,
+            agent_id = payload.agent.id,
+            host = payload.host,
+            phase = phase,
+            range = type(prompt_result) == "table" and prompt_result.range or nil,
+        },
+    })
+    if write_err then return nil, write_err end
+    if type(result) ~= "table" then return nil, "embed_content returned no result" end
+    if result.success == false then
+        if result.error ~= nil then return nil, result.error end
+        return nil, "embed_content reported failure without an error"
+    end
     return result, nil
 end
+
+function M.apply(payload)
+    local valid, err = validate_common(payload)
+    if not valid then return nil, err end
+    if payload.phase ~= "activate" and payload.phase ~= "deactivate" then
+        return { messages = {}, observations = {}, metadata = { ignored = true, phase = payload.phase } }, nil
+    end
+
+    if payload.phase == "activate" then
+        local items, recall_err = recall_from_kbs(payload)
+        if recall_err then return nil, recall_err end
+        local content = recall_message(payload, items, number_config(payload, "recall_max_chars", DEFAULTS.recall_max_chars))
+        local messages = {}
+        if content then
+            messages[#messages + 1] = {
+                role = "developer",
+                content = content,
+                metadata = {
+                    source = SOURCE,
+                    lifecycle_phase = "activate",
+                    memory_count = #items,
+                },
+            }
+        end
+        return {
+            messages = messages,
+            observations = {},
+            metadata = {
+                phase = "activate",
+                memory_count = #items,
+                kb_count = #kb_ids(payload),
+            },
+        }, nil
+    end
+
+    local text, prompt_result, prompt_err = checkpoint_prompt_text(payload)
+    if prompt_err then return nil, prompt_err end
+    local memory, checkpoint_meta, checkpoint_err = generate_checkpoint(payload, text)
+    if checkpoint_err then return nil, checkpoint_err end
+    local commit_result, commit_err = commit_checkpoint(payload, memory, prompt_result, checkpoint_meta, "deactivate")
+    if commit_err then return nil, commit_err end
+    return {
+        observations = {},
+        metadata = {
+            phase = "deactivate",
+            committed = commit_result ~= nil and commit_result.skipped ~= true,
+            skipped = commit_result ~= nil and commit_result.skipped == true,
+            skip_reason = commit_result and commit_result.reason or nil,
+            strategy = checkpoint_meta and checkpoint_meta.strategy,
+        },
+    }, nil
+end
+
+function M.create(payload)
+    local valid, err = validate_common(payload)
+    if not valid then return nil, err end
+
+    local text, prompt_result, prompt_err = checkpoint_prompt_text(payload)
+    if prompt_err then return nil, prompt_err end
+    local memory, checkpoint_meta, checkpoint_err = generate_checkpoint(payload, text)
+    if checkpoint_err then return nil, checkpoint_err end
+    local summary, summary_tokens = "No working conversation state.", {}
+    if trim(text) ~= "" then
+        local model = trim(payload.agent.model)
+        if model == "" then model = trim(config_value(payload, "checkpoint_model", DEFAULTS.checkpoint_model)) end
+        local response, summary_err = generate_text(payload, model, text, table.concat({
+            "You create a working session checkpoint, separate from durable long-term memory.",
+            "Use terse bullets only. Put decisions, open tasks, the current request and constraints first, then essential facts and tool conclusions.",
+            "Preserve identifiers, quoted values and numbers exactly. Exclude repetitive background text, raw tool output, narration, headings and duplicate facts.",
+            "Include temporary session-only information needed to continue the work, even when it does not belong in durable memory.",
+            "Preserve the previous working summary included in the context together with new facts and unfinished work.",
+            "Return the complete working summary only; never return NO_DURABLE_MEMORY.",
+        }, "\n"))
+        if summary_err then return nil, summary_err end
+        summary, summary_tokens = response.result, response.tokens or {}
+        if is_no_durable_memory(summary) then return nil, "working checkpoint contains no session context" end
+    end
+    local combined_tokens = shallow_copy(checkpoint_meta and checkpoint_meta.tokens)
+    for key, value in pairs(summary_tokens or {}) do
+        if type(value) == "number" then combined_tokens[key] = key == "context_tokens" and value or (combined_tokens[key] or 0) + value end
+    end
+    local commit_result, commit_err = commit_checkpoint(payload, memory, prompt_result, checkpoint_meta, "checkpoint")
+    if commit_err then return nil, commit_err end
+    local metadata = {
+        source = SOURCE,
+        strategy = checkpoint_meta and checkpoint_meta.strategy,
+        committed = commit_result ~= nil and commit_result.skipped ~= true,
+        skipped = commit_result ~= nil and commit_result.skipped == true,
+        skip_reason = commit_result and commit_result.reason or checkpoint_meta and checkpoint_meta.skip_reason or nil,
+    }
+    return {
+        memory = memory,
+        summary = summary,
+        tokens = combined_tokens,
+        metadata = metadata,
+    }, nil
+end
+
+function M.recall(args)
+    return query_memory(args)
+end
+
+M._private = {
+    truncate = truncate,
+    kb_ids = kb_ids,
+    external_id = external_id,
+    normalize_memory_digest = normalize_memory_digest,
+    is_no_durable_memory = is_no_durable_memory,
+}
 
 return M

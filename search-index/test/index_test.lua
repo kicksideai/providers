@@ -108,6 +108,21 @@ local function define_tests()
     test.describe("search index", function()
         test.before_all(function() create_schema() end)
 
+        test.it("rejects unknown grouping columns at every public search entry before assembling SQL", function()
+            local db = open()
+            local opts = {partition = uuid.v7(), group_by = "kind; DROP TABLE si_rows"}
+            for _, query in ipairs({
+                function() return index.dense_search(db, SPEC, vector(1), opts) end,
+                function() return index.lexical_search(db, SPEC, "row", opts) end,
+                function() return index.search(db, SPEC, vector(1), opts) end,
+            }) do
+                local rows, err = query()
+                test.is_nil(rows)
+                test.is_true(errors.is(err, errors.INVALID), tostring(err))
+            end
+            db:release()
+        end)
+
         test.it("ranks distinct groups before limiting dense and lexical candidates", function()
             local part = uuid.v7()
             insert_many(part, "first", 60, 1, 0)
@@ -152,7 +167,28 @@ local function define_tests()
             test.eq(rows[1].id, current)
         end)
 
-        test.it("returns every eligible row up to the limit when nearer rows of other partitions and scopes crowd the vector index", function()
+        test.it("keeps filtered vector retrieval compatible with the installed pgvector capabilities", function()
+            local db, sqlite = open()
+            if not sqlite then
+                local versions, err = db:query("SELECT extversion FROM pg_extension WHERE extname='vector'")
+                test.is_nil(err, tostring(err))
+                local major, minor = tostring(versions[1].extversion):match("^(%d+)%.(%d+)")
+                db:release()
+                if tonumber(major) == 0 and tonumber(minor) < 8 then
+                    -- Older indexes retain their approximate scan behavior.
+                    -- Prove ordinary filtered retrieval still works after the
+                    -- extension has loaded and reserved the hnsw prefix.
+                    local legacy_part = uuid.v7()
+                    local id = insert(legacy_part, "lesson", "current", "legacy vector", vector(1))
+                    local rows = search({partition=legacy_part, limit=1,
+                        filters={{column="kind", values={"lesson"}, table="vectors"}}})
+                    test.eq(#rows, 1)
+                    test.eq(rows[1].id, id)
+                    return
+                end
+            else
+                db:release()
+            end
             local part = uuid.v7()
             insert_many(uuid.v7(), "fact", 2000, 1, 0)
             insert_many(part, "fact", 1500, 1, 0)
@@ -163,6 +199,34 @@ local function define_tests()
             rows = search({ partition = part, limit = 50, filters = filters })
             test.eq(#rows, 50)
             for _, row in ipairs(rows) do test.eq(row.kind, "lesson") end
+        end)
+
+        test.it("keeps search settings local and leaves the connection usable", function()
+            local db, sqlite = open()
+            if sqlite then
+                local rows, err = index.dense_search(db, SPEC, vector(1), {partition=uuid.v7(), limit=1})
+                db:release()
+                test.is_nil(err, tostring(err))
+                test.eq(#rows, 0)
+                return
+            end
+            -- Load the extension before taking the baseline: its GUC defaults
+            -- become registered the first time its vector input function runs.
+            local _, load_err = db:query("SELECT '[0]'::vector")
+            test.is_nil(load_err, tostring(load_err))
+            local before, before_err = db:query("SELECT current_setting('hnsw.iterative_scan', true) AS mode")
+            test.is_nil(before_err, tostring(before_err))
+            local rows, search_err = index.dense_search(db, SPEC, vector(1), {partition=uuid.v7(), limit=1})
+            test.is_nil(search_err, tostring(search_err))
+            test.eq(#rows, 0)
+            local after, after_err = db:query("SELECT current_setting('hnsw.iterative_scan', true) AS mode")
+            local tx, begin_err = db:begin()
+            test.is_nil(begin_err, tostring(begin_err))
+            local _, rollback_err = tx:rollback()
+            test.is_nil(rollback_err, tostring(rollback_err))
+            db:release()
+            test.is_nil(after_err, tostring(after_err))
+            test.eq(after[1].mode, before[1].mode)
         end)
 
         test.it("fuses lexical identifier hits ahead of dense neighbors", function()
