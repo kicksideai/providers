@@ -288,6 +288,47 @@ entries:
       test: wippy.test:test
       gen_node: kickside.code_execution:node_generate_lib
 
+  - name: assist_api_fixture
+    kind: library.lua
+    source: file://assist_api_fixture.lua
+
+  - name: assist_api_http
+    kind: library.lua
+    source: file://assist_api_http.lua
+    imports: { fixture: app:assist_api_fixture }
+
+  - name: assist_api_security
+    kind: library.lua
+    source: file://assist_api_security.lua
+    imports: { fixture: app:assist_api_fixture }
+
+  - name: assist_api_funcs
+    kind: library.lua
+    source: file://assist_api_funcs.lua
+    imports: { fixture: app:assist_api_fixture }
+
+  # Load the production endpoint source unchanged, with aliases that capture
+  # its HTTP-to-generator boundary in the native harness.
+  - name: assist_under_test
+    kind: library.lua
+    source: file://assist_under_test.lua
+    modules: [json]
+    imports:
+      http: app:assist_api_http
+      security: app:assist_api_security
+      funcs: app:assist_api_funcs
+
+  - name: code_execution_assist_api_test
+    kind: function.lua
+    meta: { type: test, suite: code_execution_assist_api }
+    source: file://suites/assist_api_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      assist: app:assist_under_test
+      fixture: app:assist_api_fixture
+
   - name: code_execution_recommend_test
     kind: function.lua
     meta: { type: test, suite: code_execution_recommend }
