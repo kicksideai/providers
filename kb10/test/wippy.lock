@@ -58,8 +58,8 @@ modules:
       version: 0.5.9
       hash: 11bb24279b79463cac1c5c82e0474079f500d4cd091760132281889658f88561
     - name: wippy/migration
-      version: 0.3.24
-      hash: 9ce9cbcde0e149762ef69c84710f5072da814e72d4e5eb93c7211ed51941b13b
+      version: 0.3.25
+      hash: ba9cc3761c8b85bd0d629b833ea3daffda88fe69bc5ec04de66890564eaf3313
     - name: wippy/relay
       version: 0.3.17
       hash: 3bc0461104725386eb3cb7ebaf7c3edc5896c134a4cc7d69f136609a21a5a2ac

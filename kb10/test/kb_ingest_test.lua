@@ -10,6 +10,9 @@ local upload_record_repo = require("upload_record_repo")
 local kb10_types = require("kb10_types")
 local kb10_store = require("kb10_store")
 local thread_ingest = require("thread_ingest")
+local source_worker = require("source_worker_lib")
+local worker_fixtures = require("source_worker_fixtures")
+local artifact_cleanup_repo = require("artifact_cleanup_repo")
 
 local function uuid()
     local id, err = crypto.random.uuid()
@@ -595,6 +598,67 @@ local function define_tests()
                 test.eq("custom.trait.source", event.body.source_ref.origin.type)
                 test.eq(external_id, event.body.source_ref.origin.id)
                 test.eq(external_id, event.body.source_ref.external_id)
+            end)
+
+            test.it("materializes an upload larger than the event row bound", function()
+                local upload_id = uuid()
+                local marker = "Large artifact searchable content"
+                local content = string.rep(" ", 5 * 1024 * 1024) .. "# Large artifact\n" .. marker
+                local _, upload_err = upload_record_repo.create(upload_id, test_user_id, #content,
+                    "text/plain", "app:uploads", "large.txt", "document", {}, "completed", "large-checksum")
+                test.is_nil(upload_err)
+                local artifact, artifact_err = artifact_content_repo.create_artifact({upload_id=upload_id,
+                    kind="markdown",role="primary",mime_type="text/plain",content=content,
+                    metadata={filename="large.txt"}})
+                test.is_nil(artifact_err)
+                local result, ingest_err = new_executor(test_user_id):call("kickside.knowledge.injection:on_upload_complete", {
+                    upload_id=upload_id,status="completed",params={kb_id=test_kb_id}})
+                test.is_nil(ingest_err)
+                test.eq(result.success,true,tostring(result.error))
+                test.is_nil(result.skipped)
+                local event = event_for_external(test_kb_id,"upload:"..upload_id,"kickside.knowledge.events:content.upserted")
+                test.not_nil(event)
+                test.is_nil(event.body.content)
+                test.eq(event.body.content_omitted,true)
+                test.eq(event.body.content_bytes,#content)
+                test.eq(event.body.source_ref.artifact_id,artifact.artifact_id)
+                local materialized, worker_err = source_worker.run_with_deps({thread_id=test_kb_id,
+                    projection={id=result.projection_id},events={event},range={from_seq=event.seq,to_seq=event.seq},
+                    worker_config={target_kb_ids={test_kb_id}}},worker_fixtures.worker_deps({
+                        embedder=worker_fixtures.fake_embedder,
+                        summarizer=function() return "Large artifact summary",nil end,
+                        enricher=function() return "",nil end,
+                    }))
+                test.is_nil(worker_err,tostring(worker_err))
+                test.eq(materialized.metrics.items_failed,0)
+                test.eq(materialized.metrics.documents_inserted,1)
+                local db, db_err = sql.get("app:db")
+                test.is_nil(db_err)
+                local nodes, nodes_err = db:query([[SELECT content FROM kb10_nodes WHERE node_type='document'
+                    AND store_id IN (SELECT id FROM kb10_stores WHERE component_id=$1)]],{test_kb_id})
+                test.is_nil(nodes_err)
+                local found = false
+                for _, node in ipairs(nodes) do
+                    if node.content == content then found = true end
+                end
+                test.eq(found,true,"the materialized document retains the complete stored artifact")
+                local _, cleanup_err = artifact_cleanup_repo.delete_for_upload(upload_id)
+                test.is_nil(cleanup_err)
+                local retry,retry_err=source_worker.run_with_deps({thread_id=test_kb_id,
+                    projection={id=result.projection_id},events={event},range={from_seq=event.seq,to_seq=event.seq},
+                    worker_config={target_kb_ids={test_kb_id}}},worker_fixtures.worker_deps({
+                        embedder=worker_fixtures.fake_embedder,
+                        summarizer=function() return "unused",nil end,
+                        enricher=function() return "",nil end,
+                    }))
+                test.is_nil(retry_err)
+                test.eq(retry.patch.last_status,"retrying")
+                test.eq(retry.patch.last_failed_batch.attempts,1)
+                test.contains(retry.patch.last_error,"artifact")
+                test.eq(retry.metrics.documents_inserted,0)
+                local _, delete_err = db:execute("DELETE FROM kickside_uploads WHERE uuid=$1",{upload_id})
+                test.is_nil(delete_err)
+                db:release()
             end)
 
             test.it("upload completion preserves URL-backed canonical identity", function()
