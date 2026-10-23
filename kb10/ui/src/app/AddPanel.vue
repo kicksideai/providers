@@ -167,22 +167,24 @@ watch(() => props.kbId, () => { ing.clearItems(); ing.reset() })
       <div v-else-if="uploadsError" class="ap-uploads-state err"><Icon icon="tabler:alert-circle" aria-hidden="true" /> {{ uploadsError }}</div>
       <div v-else-if="!filteredUploads.length" class="ap-uploads-state"><Icon icon="tabler:folder-off" aria-hidden="true" /> No uploads found.</div>
       <ul v-else class="ap-uploads">
-        <li
-          v-for="u in filteredUploads"
-          :key="u.uuid"
-          class="ap-upload"
-          :class="{ on: selected[u.uuid] }"
-          @click="toggleSelect(u.uuid)"
-        >
-          <Icon class="ap-upload-check" :icon="selected[u.uuid] ? 'tabler:square-check' : 'tabler:square'" aria-hidden="true" />
-          <Icon class="ap-upload-ico" icon="tabler:file-text" aria-hidden="true" />
-          <span class="ap-upload-main">
-            <span class="ap-upload-name">{{ u.filename }}</span>
-            <span class="ap-upload-meta">
-              <span v-if="u.mime_type" class="mono">{{ u.mime_type }}</span>
-              <span v-if="fmtSize(u.size)">{{ fmtSize(u.size) }}</span>
+        <li v-for="u in filteredUploads" :key="u.uuid">
+          <button
+            type="button"
+            class="ap-upload"
+            :class="{ on: selected[u.uuid] }"
+            :aria-pressed="!!selected[u.uuid]"
+            @click="toggleSelect(u.uuid)"
+          >
+            <Icon class="ap-upload-check" :icon="selected[u.uuid] ? 'tabler:square-check' : 'tabler:square'" aria-hidden="true" />
+            <Icon class="ap-upload-ico" icon="tabler:file-text" aria-hidden="true" />
+            <span class="ap-upload-main">
+              <span class="ap-upload-name">{{ u.filename }}</span>
+              <span class="ap-upload-meta">
+                <span v-if="u.mime_type" class="mono">{{ u.mime_type }}</span>
+                <span v-if="fmtSize(u.size)">{{ fmtSize(u.size) }}</span>
+              </span>
             </span>
-          </span>
+          </button>
         </li>
       </ul>
     </section>

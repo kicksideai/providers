@@ -1,8 +1,8 @@
-import { _ as ue, u as ke, a as ye, d as we, W as _e, c as $e } from "./styles-r2_gRByf.js";
+import { _ as ue, u as ke, a as ye, d as we, W as _e, c as $e } from "./styles-DHjGpAOW.js";
 import { ref as v, computed as y, onBeforeUnmount as ie, watch as H, defineComponent as se, openBlock as s, createElementBlock as p, createElementVNode as c, createTextVNode as S, toDisplayString as g, createCommentVNode as C, renderSlot as he, createBlock as Q, Transition as Ce, withCtx as G, withModifiers as Ee, normalizeClass as te, createVNode as f, unref as a, nextTick as pe, Fragment as ne, renderList as le, onMounted as Se } from "vue";
 import { Icon as I } from "@iconify/vue";
 import { api as ae, host as de, loadByTagName as De, define as Te } from "@wippy-fe/proxy";
-import { c as Me, E as fe, i as ve, s as Ne, a as me, _ as Z, u as Le, b as ze, n as ee, d as Ie, e as Oe, f as Be, g as Pe, h as Re, j as je, k as Ve, l as Ke, m as Ue, o as Xe, p as qe, q as Ae } from "./package-CNcWGLZ-.js";
+import { c as Me, E as fe, i as ve, s as Ne, a as me, _ as Z, u as Le, b as ze, n as ee, d as Ie, e as Oe, f as Be, g as Pe, h as Re, j as je, k as Ve, l as Ke, m as Ue, o as Xe, p as qe, q as Ae } from "./package-DvVPJ2qE.js";
 const xe = {
   "text/markdown": "MD",
   "text/plain": "TXT",

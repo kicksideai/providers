@@ -1,4 +1,5 @@
 @import "@kickside/ui-kit/kx-tokens.css";
+@import "@kickside/ui-kit/kx-tone.css";
 @import "@kickside/ui-kit/kx-shell.css";
 @import "@kickside/ui-kit/kx-controls.css";
 @import "@kickside/ui-kit/kx-overlay.css";
@@ -273,6 +274,7 @@ select.ap-input { cursor: pointer; }
   max-height: 360px; overflow-y: auto;
 }
 .ap-upload {
+  width: 100%; text-align: left; font: inherit; color: inherit;
   display: flex; align-items: center; gap: 10px; padding: 8px 11px; cursor: pointer;
   border-radius: 8px; border: 1px solid var(--p-content-border-color); background: var(--kx-surface-1);
   transition: border-color .13s, background .13s;
@@ -674,13 +676,7 @@ wc-model-picker { display: block; }
 .kc-search-zero > svg { width: 30px; height: 30px; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); margin-bottom: 4px; }
 .kc-search-zero-t { font-size: 14px; font-weight: 700; color: var(--p-text-color); }
 .kc-search-zero-s { font-size: 12.5px; color: var(--p-text-muted-color); max-width: 340px; line-height: 1.5; }
-/* Canonical primary-button contrast: the theme's dark-mode contrast token is
-   near-black, which is muddy and low-contrast on the mid-tone brand primary.
-   Correct the token at the shadow host in dark mode -- every primary CTA in this
-   component (whatever its class) inherits white text. Token-driven, not per-button. */
-@media (prefers-color-scheme: dark) {
-  :host { --p-primary-contrast-color: var(--p-surface-0) !important; }
-}
+/* Primary actions consume the host's paired primary/contrast theme tokens. */
 
 /* Graph view: the full-KB search/ask panel replaces the force canvas when the
    search icon is toggled (the concept filter stays in the rail). It fills the

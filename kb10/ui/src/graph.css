@@ -95,7 +95,7 @@
 
 .gx-links { pointer-events: none; }
 .gx-link { fill: none; stroke: color-mix(in srgb, var(--p-text-color) 18%, transparent); stroke-width: 1.5; transition: opacity .18s, stroke .18s; }
-.gx-link.subtopic { stroke: var(--p-help-400); stroke-width: 2; opacity: .55; }
+.gx-link.subtopic { stroke: var(--kx-tone-violet); stroke-width: 2; opacity: .55; }
 .gx-link.categorized { stroke-dasharray: 4 4; opacity: .4; }
 .gx-link.lit { opacity: .95; stroke-width: 2.5; }
 .gx-link.faded { opacity: .07; }
@@ -147,7 +147,7 @@
 .gx-legend-cluster { background: conic-gradient(hsl(262 62% 60%), hsl(199 62% 60%), hsl(24 62% 60%), hsl(142 62% 60%), hsl(348 62% 60%), hsl(262 62% 60%)); }
 .gx-legend-sep { height: 1px; background: var(--gx-glass-border); margin: 1px 0; }
 .gx-legend-line { width: 18px; flex: none; }
-.gx-legend-line.subtopic { border-top: 2px solid var(--p-help-400); }
+.gx-legend-line.subtopic { border-top: 2px solid var(--kx-tone-violet); }
 .gx-legend-line.categorized { border-top: 1px dashed color-mix(in srgb, var(--p-text-color) 18%, transparent); }
 
 /* ── Zoom controls ────────────────────────────────────────────────────────── */
@@ -333,9 +333,6 @@
 .gx-treat-actions .kx-btn { flex: 1; }
 .gx-treat-hint { margin: 0; font-size: 11px; line-height: 1.5; color: var(--p-text-muted-color); }
 
-@media (prefers-color-scheme: dark) {
-  :host { --p-primary-contrast-color: var(--p-surface-0) !important; }
-}
 
 /* ── Concept rail: kebab, indented tree rows, drill breadcrumb ─────────────── */
 /* Hover-revealed kebab on a concept/document row — opens the actions menu. */

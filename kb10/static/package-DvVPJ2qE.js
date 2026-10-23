@@ -1,4 +1,4 @@
-import { defineComponent as G, openBlock as u, createElementBlock as d, createElementVNode as r, renderSlot as me, normalizeClass as z, createVNode as g, unref as l, withKeys as Re, createCommentVNode as A, Fragment as Y, renderList as te, createBlock as he, createTextVNode as B, toDisplayString as $, watch as ce, onBeforeUnmount as _e, Transition as Me, withCtx as Ae, withModifiers as be, ref as O, computed as j, isRef as Se, nextTick as ze, onMounted as Ie, withDirectives as ue, vModelText as xe, vModelSelect as Ve } from "vue";
+import { defineComponent as G, openBlock as u, createElementBlock as d, createElementVNode as r, renderSlot as me, normalizeClass as z, createVNode as g, unref as l, withKeys as Re, createCommentVNode as A, Fragment as Y, renderList as te, createBlock as he, createTextVNode as P, toDisplayString as S, watch as ce, onBeforeUnmount as _e, Transition as Me, withCtx as Ae, withModifiers as be, ref as O, computed as j, isRef as Se, nextTick as ze, onMounted as Ie, withDirectives as ue, vModelText as xe, vModelSelect as Ve } from "vue";
 import { Icon as C } from "@iconify/vue";
 import { on as Oe, api as Q, host as re } from "@wippy-fe/proxy";
 function Le(e, s = "") {
@@ -122,8 +122,8 @@ function ro(e, s) {
       const U = Math.min(84, m(Ce, Ee, D) + 6);
       I.set(c.id, { fill: fe(E, 32, U), stroke: fe(E, 32, Math.max(50, U - 14)) });
     } else {
-      const U = m(Ce, Ee, D), P = m(We, He, D);
-      I.set(c.id, { fill: fe(E, P, U), stroke: fe(E, P, Math.max(28, U - 17)) });
+      const U = m(Ce, Ee, D), B = m(We, He, D);
+      I.set(c.id, { fill: fe(E, B, U), stroke: fe(E, B, Math.max(28, U - 17)) });
     }
   }
   return I;
@@ -430,8 +430,8 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
           icon: o.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"])) : A("", !0),
-        B(" " + $(o.label) + " ", 1),
-        o.count !== void 0 ? (u(), d("span", dt, $(o.count), 1)) : A("", !0)
+        P(" " + S(o.label) + " ", 1),
+        o.count !== void 0 ? (u(), d("span", dt, S(o.count), 1)) : A("", !0)
       ], 10, ut))), 128))
     ]));
   }
@@ -493,7 +493,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
                   icon: e.icon,
                   "aria-hidden": "true"
                 }, null, 8, ["icon"]),
-                B($(e.title), 1)
+                P(S(e.title), 1)
               ]),
               g(ve, {
                 icon: "tabler:x",
@@ -636,7 +636,7 @@ const _t = {
   },
   emits: ["open", "close"],
   setup(e, { emit: s }) {
-    const t = e, a = s, { query: n, results: o, answer: p, loading: _, error: L, performed: b, run: m, ask: I, runDebounced: c, clear: y } = ht(() => t.kbId), E = O("search"), x = O(!1), D = O(""), U = j(() => t.layout === "panel" && t.ask && E.value === "ask"), P = j(() => _.value ? "tabler:hourglass" : U.value ? "tabler:sparkles" : "tabler:arrow-right"), W = j(() => o.value[0]), q = j(() => U.value ? o.value.slice(1) : o.value), ne = j(() => t.layout === "rail" && x.value && n.value.trim() !== "" && (_.value || b.value || !!L.value));
+    const t = e, a = s, { query: n, results: o, answer: p, loading: _, error: L, performed: b, run: m, ask: I, runDebounced: c, clear: y } = ht(() => t.kbId), E = O("search"), x = O(!1), D = O(""), U = j(() => t.layout === "panel" && t.ask && E.value === "ask"), B = j(() => _.value ? "tabler:hourglass" : U.value ? "tabler:sparkles" : "tabler:arrow-right"), W = j(() => o.value[0]), q = j(() => U.value ? o.value.slice(1) : o.value), ne = j(() => t.layout === "rail" && x.value && n.value.trim() !== "" && (_.value || b.value || !!L.value));
     function Z() {
       n.value.trim() && (D.value = n.value.trim(), U.value ? I(8) : m(20));
     }
@@ -671,7 +671,7 @@ const _t = {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
-          r("span", null, $(l(L)), 1)
+          r("span", null, S(l(L)), 1)
         ])) : l(o).length ? (u(), d("div", kt, [
           (u(!0), d(Y, null, te(l(o), (w) => (u(), d("button", {
             key: w.id,
@@ -684,12 +684,12 @@ const _t = {
                   icon: "tabler:file-text",
                   "aria-hidden": "true"
                 }),
-                B($(l(de)(w)), 1)
+                P(S(l(de)(w)), 1)
               ])) : A("", !0),
-              r("span", wt, $(w.node_type || "result"), 1),
-              w.similarity != null ? (u(), d("span", $t, $(l($e)(w.similarity)), 1)) : A("", !0)
+              r("span", wt, S(w.node_type || "result"), 1),
+              w.similarity != null ? (u(), d("span", $t, S(l($e)(w.similarity)), 1)) : A("", !0)
             ]),
-            r("span", St, $(l(we)(w.content, 160)), 1)
+            r("span", St, S(l(we)(w.content, 160)), 1)
           ], 40, yt))), 128))
         ])) : l(b) && !l(_) ? (u(), d("div", Ct, [
           g(l(C), {
@@ -717,7 +717,7 @@ const _t = {
               icon: "tabler:search",
               "aria-hidden": "true"
             }),
-            k[11] || (k[11] = B(" Search ", -1))
+            k[11] || (k[11] = P(" Search ", -1))
           ], 2),
           r("button", {
             class: z(["kc-search-mode", { on: E.value === "ask" }]),
@@ -727,7 +727,7 @@ const _t = {
               icon: "tabler:message-question",
               "aria-hidden": "true"
             }),
-            k[12] || (k[12] = B(" Ask ", -1))
+            k[12] || (k[12] = P(" Ask ", -1))
           ], 2)
         ])) : A("", !0),
         r("div", It, [
@@ -739,7 +739,7 @@ const _t = {
           }, null, 8, ["modelValue", "placeholder"])
         ]),
         g(ve, {
-          icon: P.value,
+          icon: B.value,
           label: U.value ? "Ask" : "Search",
           variant: "bordered",
           active: l(_),
@@ -758,7 +758,7 @@ const _t = {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
-        r("span", null, $(l(L)), 1)
+        r("span", null, S(l(L)), 1)
       ])) : A("", !0),
       l(_) ? (u(), d("div", Ut, [
         (u(), d(Y, null, te(3, (w) => r("div", {
@@ -772,9 +772,9 @@ const _t = {
               icon: "tabler:sparkles",
               "aria-hidden": "true"
             }),
-            B(" " + $(l(p) ? "Answer" : "Best match") + ' for "' + $(D.value) + '"', 1)
+            P(" " + S(l(p) ? "Answer" : "Best match") + ' for "' + S(D.value) + '"', 1)
           ]),
-          r("p", Dt, $(l(p) || l(we)(W.value?.content, 700)), 1),
+          r("p", Dt, S(l(p) || l(we)(W.value?.content, 700)), 1),
           W.value?.parent_id ? (u(), d("button", {
             key: 0,
             class: "kc-ans-src",
@@ -784,8 +784,8 @@ const _t = {
               icon: "tabler:file-text",
               "aria-hidden": "true"
             }),
-            k[13] || (k[13] = B(" Open source document ", -1)),
-            W.value?.similarity != null ? (u(), d("span", Bt, $(l($e)(W.value?.similarity)), 1)) : A("", !0)
+            k[13] || (k[13] = P(" Open source document ", -1)),
+            W.value?.similarity != null ? (u(), d("span", Bt, S(l($e)(W.value?.similarity)), 1)) : A("", !0)
           ])) : A("", !0)
         ])) : A("", !0),
         r("div", Pt, [
@@ -801,19 +801,19 @@ const _t = {
                   icon: "tabler:file-text",
                   "aria-hidden": "true"
                 }),
-                B($(l(de)(w)), 1)
+                P(S(l(de)(w)), 1)
               ])) : A("", !0),
-              r("span", jt, $(w.node_type || "passage"), 1),
-              w.llm_score != null ? (u(), d("span", Kt, "LLM " + $(Math.round(w.llm_score)), 1)) : A("", !0),
-              w.similarity != null ? (u(), d("span", Gt, $(l($e)(w.similarity)), 1)) : A("", !0)
+              r("span", jt, S(w.node_type || "passage"), 1),
+              w.llm_score != null ? (u(), d("span", Kt, "LLM " + S(Math.round(w.llm_score)), 1)) : A("", !0),
+              w.similarity != null ? (u(), d("span", Gt, S(l($e)(w.similarity)), 1)) : A("", !0)
             ]),
-            r("p", Wt, $(l(we)(w.content, 360)), 1),
+            r("p", Wt, S(l(we)(w.content, 360)), 1),
             w.parent_id ? (u(), d("span", Ht, [
               g(l(C), {
                 icon: "tabler:arrow-up-right",
                 "aria-hidden": "true"
               }),
-              k[14] || (k[14] = B(" Open document", -1))
+              k[14] || (k[14] = P(" Open document", -1))
             ])) : A("", !0)
           ], 10, zt))), 128))
         ])
@@ -829,7 +829,7 @@ const _t = {
           icon: U.value ? "tabler:message-question" : "tabler:search",
           "aria-hidden": "true"
         }, null, 8, ["icon"]),
-        r("div", Qt, $(U.value ? "Ask your knowledge base" : "Search your knowledge base"), 1),
+        r("div", Qt, S(U.value ? "Ask your knowledge base" : "Search your knowledge base"), 1),
         k[17] || (k[17] = r("div", { class: "kc-search-zero-s" }, "Two-stage vector + LLM retrieval across every indexed passage.", -1))
       ]))
     ]));
@@ -899,7 +899,7 @@ const _t = {
                   icon: "tabler:file-search",
                   "aria-hidden": "true"
                 }),
-                r("span", tn, $(e.title), 1)
+                r("span", tn, S(e.title), 1)
               ]),
               g(ve, {
                 icon: "tabler:x",
@@ -939,7 +939,7 @@ const _t = {
         icon: "tabler:file-search",
         "aria-hidden": "true"
       }),
-      r("span", null, $(e.label || "View original"), 1)
+      r("span", null, S(e.label || "View original"), 1)
     ]));
   }
 }), sn = { class: "kc-docsum" }, an = { class: "kc-docsum-h" }, Mo = /* @__PURE__ */ G({
@@ -958,17 +958,17 @@ const _t = {
           icon: e.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"]),
-        B(" " + $(e.label), 1)
+        P(" " + S(e.label), 1)
       ]),
       r("p", {
         class: z(["kc-docsum-b", { clamp: a.value && !t.value }])
-      }, $(e.text), 3),
+      }, S(e.text), 3),
       a.value ? (u(), d("button", {
         key: 0,
         class: "kc-docsum-more",
         type: "button",
         onClick: o[0] || (o[0] = (p) => t.value = !t.value)
-      }, $(t.value ? "Show less" : "Show more"), 1)) : A("", !0)
+      }, S(t.value ? "Show less" : "Show more"), 1)) : A("", !0)
     ]));
   }
 }), ln = { class: "kx-empty kx-empty-spacious" }, rn = { class: "kx-empty-title" }, cn = {
@@ -996,8 +996,8 @@ const _t = {
           "aria-hidden": "true"
         }, null, 8, ["icon"])
       ], 2),
-      r("div", rn, $(e.title), 1),
-      e.hint ? (u(), d("div", cn, $(e.hint), 1)) : A("", !0),
+      r("div", rn, S(e.title), 1),
+      e.hint ? (u(), d("div", cn, S(e.hint), 1)) : A("", !0),
       e.cta ? (u(), d("button", {
         key: 1,
         class: "kx-btn kx-btn-primary kx-empty-cta",
@@ -1008,7 +1008,7 @@ const _t = {
           icon: e.ctaIcon,
           "aria-hidden": "true"
         }, null, 8, ["icon"])) : A("", !0),
-        B(" " + $(e.cta), 1)
+        P(" " + S(e.cta), 1)
       ])) : A("", !0)
     ]));
   }
@@ -1122,7 +1122,7 @@ function vn(e, s) {
   function U(i, f) {
     t.value = [...t.value, { key: _("q"), name: i, uuid: f, status: "done" }], x();
   }
-  const P = /* @__PURE__ */ new Map(), W = [];
+  const B = /* @__PURE__ */ new Map(), W = [];
   function q(i) {
     return !!i && typeof i == "object" && !Array.isArray(i);
   }
@@ -1153,11 +1153,11 @@ function vn(e, s) {
   }
   function H(i) {
     const f = `upload:${i}`;
-    if (P.has(f)) return;
+    if (B.has(f)) return;
     const h = Oe("@message", (M) => {
       ne(M) === f && ee(i, M);
     });
-    typeof h == "function" && P.set(f, h);
+    typeof h == "function" && B.set(f, h);
   }
   async function V(i) {
     if (!(!i || !t.value.some((f) => f.uuid === i && ie.includes(f.status))))
@@ -1199,8 +1199,8 @@ function vn(e, s) {
     for (const i of y.splice(0)) clearTimeout(i);
     for (const i of W.splice(0)) clearTimeout(i);
     ae++, X && X();
-    for (const i of P.values()) i();
-    P.clear();
+    for (const i of B.values()) i();
+    B.clear();
   });
   async function ye(i, f, h) {
     try {
@@ -1240,7 +1240,7 @@ function vn(e, s) {
   function v(i) {
     T([i]);
   }
-  async function S(i = 100, f = 0) {
+  async function $(i = 100, f = 0) {
     const { data: h } = await Q.get(`/api/v1/uploads/list?limit=${i}&offset=${f}`), N = (Array.isArray(h?.uploads) ? h.uploads : []).map((F) => ({
       uuid: String(F.uuid),
       filename: String(F.filename || F.meta && F.meta.filename || F.uuid),
@@ -1294,7 +1294,7 @@ function vn(e, s) {
     removeItem: I,
     uploadFile: v,
     uploadFiles: T,
-    listMyUploads: S,
+    listMyUploads: $,
     ingestExistingUploads: ge,
     ingestText: Be
   };
@@ -1323,7 +1323,7 @@ const hn = { class: "ap" }, _n = {
 }, Tn = {
   key: 3,
   class: "ap-uploads"
-}, Mn = ["onClick"], An = { class: "ap-upload-main" }, In = { class: "ap-upload-name" }, On = { class: "ap-upload-meta" }, Ln = {
+}, Mn = ["aria-pressed", "onClick"], An = { class: "ap-upload-main" }, In = { class: "ap-upload-name" }, On = { class: "ap-upload-meta" }, Ln = {
   key: 0,
   class: "mono"
 }, Un = { key: 1 }, Fn = {
@@ -1364,10 +1364,10 @@ const hn = { class: "ap" }, _n = {
       const v = T.dataTransfer?.files;
       v?.length && n.uploadFiles(v);
     }
-    const E = O([]), x = O(!1), D = O(""), U = O(""), P = O({}), W = j(() => {
+    const E = O([]), x = O(!1), D = O(""), U = O(""), B = O({}), W = j(() => {
       const T = U.value.trim().toLowerCase();
       return T ? E.value.filter((v) => v.filename.toLowerCase().includes(T)) : E.value;
-    }), q = j(() => Object.values(P.value).filter(Boolean).length);
+    }), q = j(() => Object.values(B.value).filter(Boolean).length);
     async function ne() {
       x.value = !0, D.value = "";
       try {
@@ -1380,11 +1380,11 @@ const hn = { class: "ap" }, _n = {
       }
     }
     function Z(T) {
-      P.value = { ...P.value, [T]: !P.value[T] };
+      B.value = { ...B.value, [T]: !B.value[T] };
     }
     async function oe() {
-      const T = E.value.filter((v) => P.value[v.uuid]).map((v) => ({ uuid: v.uuid, name: v.filename }));
-      T.length && (await n.ingestExistingUploads(T), n.errMsg.value || (P.value = {}));
+      const T = E.value.filter((v) => B.value[v.uuid]).map((v) => ({ uuid: v.uuid, name: v.filename }));
+      T.length && (await n.ingestExistingUploads(T), n.errMsg.value || (B.value = {}));
     }
     function ee(T) {
       return !T || T <= 0 ? "" : T < 1024 ? `${T} B` : T < 1024 * 1024 ? `${(T / 1024).toFixed(0)} KB` : `${(T / 1024 / 1024).toFixed(1)} MB`;
@@ -1409,23 +1409,23 @@ const hn = { class: "ap" }, _n = {
       n.clearItems(), n.reset();
     }), (T, v) => (u(), d("div", hn, [
       r("div", _n, [
-        (u(), d(Y, null, te(p, (S) => r("button", {
-          key: S.id,
-          class: z(["ap-mode", { on: o.value === S.id }]),
+        (u(), d(Y, null, te(p, ($) => r("button", {
+          key: $.id,
+          class: z(["ap-mode", { on: o.value === $.id }]),
           role: "tab",
-          "aria-selected": o.value === S.id,
-          onClick: (ge) => L(S.id)
+          "aria-selected": o.value === $.id,
+          onClick: (ge) => L($.id)
         }, [
           g(l(C), {
-            icon: S.icon,
+            icon: $.icon,
             "aria-hidden": "true"
           }, null, 8, ["icon"]),
-          r("span", null, $(S.label), 1)
+          r("span", null, S($.label), 1)
         ], 10, bn)), 64))
       ]),
       l(n).errMsg.value ? (u(), d("div", kn, [
         g(l(C), { icon: "tabler:alert-circle" }),
-        B($(l(n).errMsg.value), 1)
+        P(S(l(n).errMsg.value), 1)
       ])) : A("", !0),
       o.value === "file" ? (u(), d("section", yn, [
         r("input", {
@@ -1441,8 +1441,8 @@ const hn = { class: "ap" }, _n = {
           type: "button",
           class: z(["ap-drop", { over: m.value }]),
           onClick: I,
-          onDragover: v[0] || (v[0] = be((S) => m.value = !0, ["prevent"])),
-          onDragleave: v[1] || (v[1] = (S) => m.value = !1),
+          onDragover: v[0] || (v[0] = be(($) => m.value = !0, ["prevent"])),
+          onDragleave: v[1] || (v[1] = ($) => m.value = !1),
           onDrop: y
         }, [
           g(l(C), {
@@ -1456,7 +1456,7 @@ const hn = { class: "ap" }, _n = {
       ])) : o.value === "uploads" ? (u(), d("section", xn, [
         r("div", wn, [
           ue(r("input", {
-            "onUpdate:modelValue": v[2] || (v[2] = (S) => U.value = S),
+            "onUpdate:modelValue": v[2] || (v[2] = ($) => U.value = $),
             class: "ap-input",
             type: "text",
             placeholder: "Filter your uploads…",
@@ -1474,7 +1474,7 @@ const hn = { class: "ap" }, _n = {
               class: z(l(n).busy.value && "spin"),
               "aria-hidden": "true"
             }, null, 8, ["icon", "class"]),
-            B(" " + $(q.value ? `Add ${q.value} selected` : "Add selected"), 1)
+            P(" " + S(q.value ? `Add ${q.value} selected` : "Add selected"), 1)
           ], 8, $n)
         ]),
         x.value ? (u(), d("div", Sn, [
@@ -1483,43 +1483,48 @@ const hn = { class: "ap" }, _n = {
             class: "spin",
             "aria-hidden": "true"
           }),
-          v[9] || (v[9] = B(" Loading your uploads…", -1))
+          v[9] || (v[9] = P(" Loading your uploads…", -1))
         ])) : D.value ? (u(), d("div", Cn, [
           g(l(C), {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
-          B(" " + $(D.value), 1)
+          P(" " + S(D.value), 1)
         ])) : W.value.length ? (u(), d("ul", Tn, [
-          (u(!0), d(Y, null, te(W.value, (S) => (u(), d("li", {
-            key: S.uuid,
-            class: z(["ap-upload", { on: P.value[S.uuid] }]),
-            onClick: (ge) => Z(S.uuid)
+          (u(!0), d(Y, null, te(W.value, ($) => (u(), d("li", {
+            key: $.uuid
           }, [
-            g(l(C), {
-              class: "ap-upload-check",
-              icon: P.value[S.uuid] ? "tabler:square-check" : "tabler:square",
-              "aria-hidden": "true"
-            }, null, 8, ["icon"]),
-            g(l(C), {
-              class: "ap-upload-ico",
-              icon: "tabler:file-text",
-              "aria-hidden": "true"
-            }),
-            r("span", An, [
-              r("span", In, $(S.filename), 1),
-              r("span", On, [
-                S.mime_type ? (u(), d("span", Ln, $(S.mime_type), 1)) : A("", !0),
-                ee(S.size) ? (u(), d("span", Un, $(ee(S.size)), 1)) : A("", !0)
+            r("button", {
+              type: "button",
+              class: z(["ap-upload", { on: B.value[$.uuid] }]),
+              "aria-pressed": !!B.value[$.uuid],
+              onClick: (ge) => Z($.uuid)
+            }, [
+              g(l(C), {
+                class: "ap-upload-check",
+                icon: B.value[$.uuid] ? "tabler:square-check" : "tabler:square",
+                "aria-hidden": "true"
+              }, null, 8, ["icon"]),
+              g(l(C), {
+                class: "ap-upload-ico",
+                icon: "tabler:file-text",
+                "aria-hidden": "true"
+              }),
+              r("span", An, [
+                r("span", In, S($.filename), 1),
+                r("span", On, [
+                  $.mime_type ? (u(), d("span", Ln, S($.mime_type), 1)) : A("", !0),
+                  ee($.size) ? (u(), d("span", Un, S(ee($.size)), 1)) : A("", !0)
+                ])
               ])
-            ])
-          ], 10, Mn))), 128))
+            ], 10, Mn)
+          ]))), 128))
         ])) : (u(), d("div", En, [
           g(l(C), {
             icon: "tabler:folder-off",
             "aria-hidden": "true"
           }),
-          v[10] || (v[10] = B(" No uploads found.", -1))
+          v[10] || (v[10] = P(" No uploads found.", -1))
         ]))
       ])) : (u(), d("section", Fn, [
         r("div", Nn, [
@@ -1529,12 +1534,12 @@ const hn = { class: "ap" }, _n = {
                 class: "ap-label",
                 for: "ap-title"
               }, [
-                B("Title "),
+                P("Title "),
                 r("span", { class: "ap-opt" }, "optional")
               ], -1)),
               ue(r("input", {
                 id: "ap-title",
-                "onUpdate:modelValue": v[3] || (v[3] = (S) => H.value = S),
+                "onUpdate:modelValue": v[3] || (v[3] = ($) => H.value = $),
                 class: "ap-input",
                 type: "text",
                 placeholder: `Give this ${_.value} a title`,
@@ -1550,7 +1555,7 @@ const hn = { class: "ap" }, _n = {
               }, "Format", -1)),
               ue(r("select", {
                 id: "ap-format",
-                "onUpdate:modelValue": v[4] || (v[4] = (S) => k.value = S),
+                "onUpdate:modelValue": v[4] || (v[4] = ($) => k.value = $),
                 class: "ap-input"
               }, [...v[12] || (v[12] = [
                 r("option", { value: "text/plain" }, "Plain text", -1),
@@ -1567,11 +1572,11 @@ const hn = { class: "ap" }, _n = {
                 class: "ap-label",
                 for: "ap-content"
               }, "Content", -1)),
-              w.value ? (u(), d("span", qn, $(w.value.toLocaleString()) + " chars", 1)) : A("", !0)
+              w.value ? (u(), d("span", qn, S(w.value.toLocaleString()) + " chars", 1)) : A("", !0)
             ]),
             ue(r("textarea", {
               id: "ap-content",
-              "onUpdate:modelValue": v[5] || (v[5] = (S) => V.value = S),
+              "onUpdate:modelValue": v[5] || (v[5] = ($) => V.value = $),
               class: "ap-textarea",
               rows: "12",
               placeholder: `Paste or write the ${_.value} to add to this knowledge base…`
@@ -1585,7 +1590,7 @@ const hn = { class: "ap" }, _n = {
                 icon: "tabler:sparkles",
                 "aria-hidden": "true"
               }),
-              v[15] || (v[15] = B(" Content is chunked and embedded automatically.", -1))
+              v[15] || (v[15] = P(" Content is chunked and embedded automatically.", -1))
             ]),
             r("button", {
               class: "ap-submit",
@@ -1597,7 +1602,7 @@ const hn = { class: "ap" }, _n = {
                 class: z(l(n).busy.value && "spin"),
                 "aria-hidden": "true"
               }, null, 8, ["icon", "class"]),
-              B(" " + $(l(n).busy.value ? "Adding…" : "Add to knowledge base"), 1)
+              P(" " + S(l(n).busy.value ? "Adding…" : "Add to knowledge base"), 1)
             ], 8, Wn)
           ])
         ])
@@ -1608,21 +1613,21 @@ const hn = { class: "ap" }, _n = {
           l(n).busy.value ? A("", !0) : (u(), d("button", {
             key: 0,
             class: "ap-items-clear",
-            onClick: v[6] || (v[6] = (S) => l(n).clearItems())
+            onClick: v[6] || (v[6] = ($) => l(n).clearItems())
           }, "Clear done"))
         ]),
         r("ul", Jn, [
-          (u(!0), d(Y, null, te(l(n).items.value, (S) => (u(), d("li", {
-            key: S.key,
-            class: z(["ap-item", S.status])
+          (u(!0), d(Y, null, te(l(n).items.value, ($) => (u(), d("li", {
+            key: $.key,
+            class: z(["ap-item", $.status])
           }, [
             g(l(C), {
-              class: z(["ap-item-ic", ["uploading", "processing", "embedding"].includes(S.status) && "spin"]),
-              icon: ke(S.status),
+              class: z(["ap-item-ic", ["uploading", "processing", "embedding"].includes($.status) && "spin"]),
+              icon: ke($.status),
               "aria-hidden": "true"
             }, null, 8, ["class", "icon"]),
-            r("span", Qn, $(S.name), 1),
-            r("span", Yn, $(S.error || ae[S.status]), 1)
+            r("span", Qn, S($.name), 1),
+            r("span", Yn, S($.error || ae[$.status]), 1)
           ], 2))), 128))
         ])
       ])) : A("", !0)
@@ -1671,4 +1676,4 @@ export {
   ko as y,
   mo as z
 };
-//# sourceMappingURL=package-CNcWGLZ-.js.map
+//# sourceMappingURL=package-DvVPJ2qE.js.map
