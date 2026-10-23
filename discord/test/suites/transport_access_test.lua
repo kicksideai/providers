@@ -99,8 +99,10 @@ local function define_tests()
             end
             local by_content = {}
             for _, row in ipairs(sends()) do by_content[row.content] = row end
-            local first, retried = by_content["first attempt"], by_content["retried attempt"]
-            local other, unkeyed = by_content["other delivery"], by_content["unkeyed"]
+            local first = by_content["first attempt"] or error("first keyed post was not captured")
+            local retried = by_content["retried attempt"] or error("retried keyed post was not captured")
+            local other = by_content["other delivery"] or error("second keyed post was not captured")
+            local unkeyed = by_content["unkeyed"] or error("unkeyed post was not captured")
             test.eq(#first.nonce, 25)
             test.eq(first.enforce_nonce, "true")
             test.eq(retried.nonce, first.nonce)
