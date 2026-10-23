@@ -11,7 +11,9 @@
 --   output = { documents = [{ external_source, external_id,
 --                              external_version, content, content_type,
 --                              title?, embed_text, metadata, node_type? }, ...] }
---          | { documents = [], error = "..." }   (logged, batch continues)
+--          | { documents = [], error = "...", retryable? = true }
+-- Explicitly retryable extractor failures use the existing bounded batch retry;
+-- ordinary extractor validation errors keep their existing skip behavior.
 --
 -- The worker:
 --   1. Builds an event_type → extractor_id map from the registry.
@@ -369,7 +371,7 @@ local function default_dispatcher(event, deps)
     end
 
     if result.error and result.error ~= "" then
-        return nil, "extractor error: " .. tostring(result.error)
+        return nil, "extractor error: " .. tostring(result.error), result.retryable == true
     end
 
     return {
@@ -1166,11 +1168,15 @@ local function run_with_deps(input_raw, deps)
             if not from_seq or event.seq < from_seq then from_seq = event.seq end
             if not to_seq or event.seq > to_seq then to_seq = event.seq end
 
-            local items, dispatch_err = dispatcher(event)
+            local items, dispatch_err, retryable = dispatcher(event)
             if dispatch_err then
                 logger:warn("dispatcher error", {
                     event_id = event.id, type = event.type, error = dispatch_err,
                 })
+                if retryable == true then
+                    batch_error = tostring(dispatch_err)
+                    break
+                end
             elseif items == nil then
                 metrics.events_unsupported = metrics.events_unsupported + 1
             else

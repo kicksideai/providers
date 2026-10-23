@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/kicksideai/providers/compare/discord-v0.1.21...discord-v0.1.22) (2026-10-23)
+
+
+### Bug Fixes
+
+* **discord:** dedupe retried posts with an enforced nonce ([a3425a6](https://github.com/kicksideai/providers/commit/a3425a6ebf313072132885b2337a12facf3c3759))
+
 ## 0.1.19 (2026-10-09)
 
 - Honor connection capacity at canonical provider transports (7c19888b)

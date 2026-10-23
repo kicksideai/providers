@@ -35,6 +35,25 @@ local function define_tests()
 
         local doc_dispatcher = dispatcher_for({ ["fixture.page"] = document_handler })
 
+        for _, retryable in ipairs({false, true}) do
+            test.it("preserves extractor error policy with retryable=" .. tostring(retryable), function()
+                local result, err = source_worker.run_with_deps({
+                    thread_id=uuid(),projection={id=uuid()},
+                    events={build_event({seq=1,type="fixture.page",body={}})},
+                    worker_config={target_kb_ids={uuid()}},
+                },worker_deps({embedder=fake_embedder,
+                    dispatcher=function() return nil,"artifact unavailable",retryable end}))
+                test.is_nil(err)
+                if retryable then
+                    test.eq(result.patch.last_status,"retrying")
+                    test.eq(result.patch.last_failed_batch.attempts,1)
+                    test.contains(result.patch.last_error,"artifact unavailable")
+                else
+                    test.eq(result.patch.last_status,"skipped_no_items")
+                end
+            end)
+        end
+
         test.it("rejects missing thread_id", function()
             local result, err = source_worker.run_with_deps({
                 projection = { id = uuid() },
