@@ -5,10 +5,18 @@ MODULES := airtable box dropbox linear notion asr atlassian bitbucket code_execu
 ENCRYPTION_KEY ?= 0000000000000000000000000000000000000000000000000000000000000000
 export ENCRYPTION_KEY
 
-.PHONY: list build lint $(MODULES)
+.PHONY: list ui-kit build lint $(MODULES)
 
 list:
 	@echo $(MODULES)
+
+# Prepare each module's declared UI Kit artifact before legal inventory/builds.
+ui-kit:
+	@for module in $(MODULES); do \
+		if grep -q '^ui-kit:' "$$module/Makefile"; then \
+			$(MAKE) -C $$module ui-kit || exit $$?; \
+		fi; \
+	done
 
 build:
 	@for module in $(MODULES); do \

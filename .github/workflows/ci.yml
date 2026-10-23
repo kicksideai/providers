@@ -50,7 +50,13 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-    - uses: kicksideai/.github/actions/legal-check@5e168263ac995d107c968af658b810e22788cb6a
+    - uses: kicksideai/.github/actions/setup-wippy@5401fa65bed7d8648125957520e94206ed1ffd0b
+      with:
+        version: 0.3.47a
+        hub-url: https://hub.wippy.ai
+    - name: Materialize Wippy frontend build inputs
+      run: make ui-kit
+    - uses: kicksideai/.github/actions/legal-check@c4ac1451e35773714b882a75d5fdfa64c1d316c8
       with:
         base: ${{ github.event.pull_request.base.sha }}
   modules:
