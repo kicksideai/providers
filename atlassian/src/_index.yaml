@@ -176,7 +176,10 @@ entries:
     component: kickside/component
 
   - name: dep.kickside.connection
-    version: '*'
+    # `client` imports capacity_http and endpoints.  Those surfaces first ship
+    # with the 0.3 connection contract, so accepting an older connection lets
+    # Hub plan an install that can never materialize its provider graph.
+    version: '>=0.3.0'
     kind: ns.dependency
     meta:
       comment: Implements the shared connection contract and base connection helpers.
