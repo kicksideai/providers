@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/kicksideai/providers/compare/github-v0.1.22...github-v0.1.23) (2026-10-23)
+
+
+### Bug Fixes
+
+* **github:** refine live service fixture ([#40](https://github.com/kicksideai/providers/issues/40)) ([2fba053](https://github.com/kicksideai/providers/commit/2fba053b98f93cd3f978ad0d55385c49a97e41c2))
+
 ## [0.1.22](https://github.com/kicksideai/providers/compare/github-v0.1.21...github-v0.1.22) (2026-10-20)
 
 
