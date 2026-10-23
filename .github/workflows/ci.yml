@@ -487,6 +487,7 @@ jobs:
             make -C kb10 ui-kit
             npm --prefix kb10/ui ci
             npm --prefix kb10/ui run type-check
+            npm --prefix kb10/ui test
             npm --prefix kb10/ui run build
             make -C kb10 lockrefresh
             cd kb10/test
@@ -507,6 +508,7 @@ jobs:
             make -C kb10 ui-kit
             npm --prefix kb10/ui ci
             npm --prefix kb10/ui run type-check
+            npm --prefix kb10/ui test
             npm --prefix kb10/ui run build
             make -C kb10 lockrefresh
             cd kb10/test
