@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.14](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.13...llm-ocr-v0.1.14) (2026-10-23)
+
+
+### Bug Fixes
+
+* **llm-ocr:** report stable error codes and keep provider text private ([d6bd36b](https://github.com/kicksideai/providers/commit/d6bd36b436f9e590a5590b3cb558c823e45301ae))
+* **llm-ocr:** report stable error codes and keep provider text private ([e228bc3](https://github.com/kicksideai/providers/commit/e228bc34f46a536b62ac9d970a73823ada0fe6c9))
+
 ## 0.1.11 (2026-10-08)
 
 - fix: bind Security in provider hosts and inspect supplied configs (88d42b29)
