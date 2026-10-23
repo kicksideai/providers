@@ -50,6 +50,38 @@ local function define_tests()
                 test.eq(policy:evaluate(actor, "access", id .. ".unlisted"), "undefined", id)
             end
         end)
+        test.it("grants members the published Memory capability runtime without a blanket grant", function()
+            local requirement, err = registry.get("kickside.memory.security:user_security_scope")
+            test.is_nil(err)
+            test.not_nil(requirement)
+            test.eq(requirement.kind, "ns.requirement")
+            test.eq(requirement.data.default, "kickside.security.groups:members")
+            local targets = requirement.data.targets or {}
+            test.eq(#targets, 2)
+            test.eq(targets[1].entry, "kickside.memory.security:module_access")
+            test.eq(targets[1].path, ".groups +=")
+            test.eq(targets[2].entry, "kickside.memory.security:module_runtime")
+            test.eq(targets[2].path, ".groups +=")
+
+            for _, policy_id in ipairs({
+                "kickside.memory.security:module_access",
+                "kickside.memory.security:module_runtime",
+            }) do
+                local policy = assert(registry.get(policy_id))
+                test.eq(policy.data.groups[1], "kickside.security.groups:members", policy_id)
+            end
+
+            local member_policy = assert(security.policy("kickside.memory.security:module_access"))
+            local actor = security.new_actor("memory-member", {})
+            test.eq(member_policy:evaluate(actor, "registry.get", "kickside.memory:knowledge_based_memory"), "allow")
+            test.eq(member_policy:evaluate(actor, "registry.get", "unrelated.module:private_trait"), "undefined")
+            test.eq(member_policy:evaluate(actor, "registry.get", "kickside.memory.private:private_trait"), "undefined")
+
+            local explicit_deny = assert(security.policy("kickside.memory.test.module_access:explicit_memory_deny"))
+            local scope = assert(security.new_scope({ member_policy, explicit_deny }))
+            test.eq(scope:evaluate(actor, "registry.get", "kickside.memory:knowledge_based_memory"), "deny",
+                "an explicit deny must override the member capability grant")
+        end)
         test.it("admits owned member endpoints and rejects other modules", function()
             local policy, err = security.policy("kickside.memory.security:module_access")
             test.is_nil(err)
