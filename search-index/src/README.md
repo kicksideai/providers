@@ -37,3 +37,10 @@ to the read transaction and does not change the caller's session defaults.
 
 Each hit carries `id` and `similarity`; fused hits also carry
 `vector_similarity`, `vector_rank`, `lexical_rank` and `hybrid_score`.
+
+`search` accepts optional `group_by`, naming a column in `spec.columns`.
+Each dense and lexical ranking selects distinct non-null group values before
+its candidate limit; fusion then ranks groups by their best member in each
+ranking. Group results use the group value as `id`. Callers load authorized
+members after paging these group results. Omitting `group_by` preserves row
+search and its response shape.
