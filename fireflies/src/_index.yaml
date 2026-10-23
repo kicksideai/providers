@@ -17,7 +17,7 @@ entries:
     component: kickside/component
 
   - name: dep.kickside.connection
-    version: '*'
+    version: '>=0.3.0'
     kind: ns.dependency
     meta:
       comment: Resolves external connections and their OAuth credentials.

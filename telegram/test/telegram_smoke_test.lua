@@ -90,14 +90,14 @@ local function define_tests()
         test.it("declares every foreign package used by production entries", function()
             for _, expected in ipairs({
                 { "component", "kickside/component" },
-                { "connection", "kickside/connection" },
+                { "connection", "kickside/connection", ">=0.3.0" },
                 { "contract", "kickside/contract" },
                 { "dm", "kickside/dm" },
                 { "channel", "kickside/channel" },
             }) do
                 local dep = get("kickside.telegram:dep.kickside." .. expected[1])
                 test.eq(value(dep, "component"), expected[2])
-                test.eq(tostring(value(dep, "version") or ""), "*", expected[2] .. " must stay unpinned")
+                test.eq(tostring(value(dep, "version") or ""), expected[3] or "*", expected[2] .. " must retain its compatibility bound")
             end
         end)
 
