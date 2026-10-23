@@ -28,6 +28,7 @@ type Spec = {
 }
 
 type SearchOptions = {
+    group_by: string?,
     partition: any,
     limit: integer?,
     filters: { Filter }?,
@@ -174,9 +175,18 @@ local function filtered_hnsw_query(db: any, query: string, params: { any }): (an
     return rows, nil
 end
 
+-- Every public retrieval path validates a grouping column before SQL assembly.
+local function group_error(spec: Spec, opts: SearchOptions): error?
+    if opts.group_by == nil then return nil end
+    for _, column in ipairs(spec.columns) do if column == opts.group_by then return nil end end
+    return errors.new({kind = errors.INVALID, message = "search group must be a row column"})
+end
+
 -- Nearest rows by vector distance. Each row carries `similarity` in [0, 1]:
 -- exp(-distance) for vec0 L2, 1 - cosine_distance/2 for pgvector.
 function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts: SearchOptions): (any, any?)
+    local invalid_group = group_error(spec, opts)
+    if invalid_group then return nil, invalid_group end
     local limit = opts.limit or 10
     local sqlite, type_err = index.is_sqlite(db)
     if type_err then return nil, type_err end
@@ -185,7 +195,17 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
     local params: { any }
     local idx: integer
     local query: string
-    if sqlite then
+    if opts.group_by then
+        local group = opts.group_by :: string
+        local distance = sqlite and ("vec_distance_L2(e." .. vector_column .. ", $1)") or
+            ("e." .. vector_column .. " <=> ($1::vector)")
+        query = "SELECT n." .. group .. " AS id, MIN(" .. distance .. ") AS vector_distance FROM " .. spec.rows ..
+            " n JOIN " .. spec.vectors .. " e ON n." .. spec.row_key .. " = e." .. spec.vector_key ..
+            " WHERE n." .. spec.partition .. " = $2 AND n." .. group .. " IS NOT NULL"
+        params = { index.vector_literal(query_vector), opts.partition }
+        query, idx = append_filters(query, params, 2, opts.filters, aliases)
+        query = query .. " GROUP BY n." .. group .. " ORDER BY vector_distance, n." .. group .. " LIMIT $" .. (idx + 1)
+    elseif sqlite then
         local knn_k = limit
         if has_filters(opts.filters) then
             knn_k = math.min(limit * VECTOR_OVERFETCH_FACTOR, VECTOR_OVERFETCH_MAX)
@@ -250,11 +270,18 @@ end
 -- Rows matching the query text, best first (bm25 on SQLite, ts_rank on
 -- PostgreSQL). Returns rows, error, and whether the query was anchored.
 function index.lexical_search(db: any, spec: Spec, query_text: string, opts: SearchOptions): (any, any?, boolean)
+    local invalid_group = group_error(spec, opts)
+    if invalid_group then return nil, invalid_group, false end
     local sqlite, type_err = index.is_sqlite(db)
     if type_err then return nil, type_err, false end
     local match, anchored = index.lexical_query(query_text, sqlite :: boolean)
     if not match then return {}, nil, false end
-    local query = "SELECT " .. row_select(spec, "n", nil)
+    local selection = row_select(spec, "n", nil)
+    if opts.group_by then
+        selection = "n." .. opts.group_by .. " AS id, " .. (sqlite and ("bm25(" .. spec.fts .. ")") or
+            ("-ts_rank(n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32)")) .. " AS lexical_distance"
+    end
+    local query = "SELECT " .. selection
     if sqlite then
         query = query .. " FROM " .. spec.fts .. " JOIN " .. spec.rows .. " n ON n." .. spec.row_key .. " = " .. spec.fts .. "." .. spec.fts_key ..
             " WHERE " .. spec.fts .. " MATCH $1 AND n." .. spec.partition .. " = $2"
@@ -264,7 +291,11 @@ function index.lexical_search(db: any, spec: Spec, query_text: string, opts: Sea
     local params: { any } = { match, opts.partition }
     local idx = 2
     query, idx = append_filters(query, params, idx, opts.filters, { rows = "n", vectors = "n" })
-    if sqlite then
+    if opts.group_by then
+        query = query .. " AND n." .. opts.group_by .. " IS NOT NULL"
+        query = "WITH matches AS MATERIALIZED (" .. query .. ") SELECT id, MIN(lexical_distance) AS lexical_distance FROM matches " ..
+            "GROUP BY id ORDER BY lexical_distance, id"
+    elseif sqlite then
         query = query .. " ORDER BY bm25(" .. spec.fts .. "), n." .. spec.row_key
     else
         query = query .. " ORDER BY ts_rank(n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32) DESC, n." .. spec.row_key
@@ -324,7 +355,7 @@ function index.search(db: any, spec: Spec, query_vector: { number }, opts: Searc
     end
     local limit = opts.limit or 10
     local expanded: SearchOptions = {
-        partition = opts.partition, limit = math.max(50, limit * 4), filters = opts.filters,
+        partition = opts.partition, limit = math.max(50, limit * 4), filters = opts.filters, group_by = opts.group_by,
     }
     local lexical, lex_err, anchored = index.lexical_search(db, spec, opts.query_text :: string, expanded)
     if lex_err then return nil, errors.wrap(lex_err, "lexical search failed") end

@@ -108,6 +108,36 @@ local function define_tests()
     test.describe("search index", function()
         test.before_all(function() create_schema() end)
 
+        test.it("rejects unknown grouping columns at every public search entry before assembling SQL", function()
+            local db = open()
+            local opts = {partition = uuid.v7(), group_by = "kind; DROP TABLE si_rows"}
+            for _, query in ipairs({
+                function() return index.dense_search(db, SPEC, vector(1), opts) end,
+                function() return index.lexical_search(db, SPEC, "row", opts) end,
+                function() return index.search(db, SPEC, vector(1), opts) end,
+            }) do
+                local rows, err = query()
+                test.is_nil(rows)
+                test.is_true(errors.is(err, errors.INVALID), tostring(err))
+            end
+            db:release()
+        end)
+
+        test.it("ranks distinct groups before limiting dense and lexical candidates", function()
+            local part = uuid.v7()
+            insert_many(part, "first", 60, 1, 0)
+            insert(part, "second", "current", "second row", vector(0, 1))
+            insert("excluded-" .. part, "hidden", "current", "first row", vector(1))
+            local found = search({ partition = part, query_text = "row", vector = vector(1), group_by = "kind", limit = 2 })
+            test.eq(#found, 2)
+            test.eq(found[1].id, "first")
+            test.eq(found[2].id, "second")
+            local dense = search({ partition = part, vector = vector(1), group_by = "kind", limit = 2 })
+            test.eq(#dense, 2)
+            test.eq(dense[1].id, "first")
+            test.eq(dense[2].id, "second")
+        end)
+
         test.it("ranks by vector distance inside one partition", function()
             local part = uuid.v7()
             local near = insert(part, "fact", "current", "alpha", vector(1, 0))
