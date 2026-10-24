@@ -230,15 +230,16 @@ local function define_tests()
 
         test.it("declares every foreign package used by production entries", function()
             for _, expected in ipairs({
-                { "component", "kickside/component" },
-                { "connection", "kickside/connection" },
-                { "contract", "kickside/contract" },
-                { "oauth", "kickside/oauth" },
-                { "settings", "kickside/settings" },
+                { "component", "kickside/component", "*" },
+                { "connection", "kickside/connection", ">=0.3.0" },
+                { "contract", "kickside/contract", "*" },
+                { "oauth", "kickside/oauth", "*" },
+                { "settings", "kickside/settings", "*" },
             }) do
                 local dep = get("kickside.atlassian:dep.kickside." .. expected[1])
                 test.eq(value(dep, "component"), expected[2])
-                test.eq(tostring(value(dep, "version") or ""), "*", expected[2] .. " must stay unpinned")
+                test.eq(tostring(value(dep, "version") or ""), expected[3],
+                    expected[2] .. " must retain its declared compatibility bound")
             end
         end)
     end)
