@@ -21,7 +21,7 @@ const emit = defineEmits<{ (e: 'select', id: string): void }>()
     >
       <Icon v-if="t.icon" :icon="t.icon" aria-hidden="true" />
       {{ t.label }}
-      <span v-if="t.count !== undefined" class="kc-count">{{ t.count }}</span>
+      <span v-if="t.count !== undefined" class="kx-count">{{ t.count }}</span>
     </button>
   </div>
 </template>

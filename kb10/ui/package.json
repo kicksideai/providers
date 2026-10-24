@@ -14,7 +14,8 @@
   "dependencies": {
     "@wippy-fe/theme": "*",
     "@wippy-fe/webcomponent-core": "*",
-    "@wippy-fe/webcomponent-vue": "*"
+    "@wippy-fe/webcomponent-vue": "*",
+    "@kickside/ui-kit": "*"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
@@ -74,5 +75,8 @@
     "test": "vitest run",
     "dev": "vite build --watch",
     "type-check": "vue-tsc --noEmit"
-  }
+  },
+  "workspaces": [
+    "./.wippy/npm/@*/*"
+  ]
 }

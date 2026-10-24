@@ -4,7 +4,7 @@ const CSS = `
   :host { display: block; }
   .box {
     display: flex; align-items: center; gap: 8px;
-    height: var(--kb-ctl, 34px); padding: 0 10px;
+    height: var(--kx-control-height, 34px); padding: 0 10px;
     border: 1px solid var(--p-content-border-color); border-radius: 8px;
     background: var(--p-content-background); color: var(--p-text-color);
     font: 400 13px/1 'Inter', system-ui, sans-serif;

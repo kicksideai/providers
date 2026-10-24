@@ -9,13 +9,13 @@ const emit = defineEmits<{ (e: 'toggle'): void }>()
 </script>
 
 <template>
-  <div class="kc-railsec" :class="{ closed: !open }">
-    <button class="kc-railsec-h" :aria-expanded="open" @click="emit('toggle')">
-      <Icon class="kc-railsec-chev" icon="tabler:chevron-right" aria-hidden="true" />
-      <Icon v-if="icon" class="kc-railsec-ic" :icon="icon" aria-hidden="true" />
-      <span class="kc-railsec-t">{{ title }}</span>
+  <div class="kx-railsec" :class="{ closed: !open }">
+    <button class="kx-railsec-h" :aria-expanded="open" @click="emit('toggle')">
+      <Icon class="kx-railsec-chev" icon="tabler:chevron-right" aria-hidden="true" />
+      <Icon v-if="icon" class="kx-railsec-ic" :icon="icon" aria-hidden="true" />
+      <span class="kx-railsec-t">{{ title }}</span>
       <span v-if="count !== undefined" class="count">{{ count }}</span>
     </button>
-    <div v-show="open" class="kc-railsec-b"><slot /></div>
+    <div v-show="open" class="kx-railsec-b"><slot /></div>
   </div>
 </template>

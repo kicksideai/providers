@@ -1,7 +1,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 
 // The resizable rail: a pointer-driven handle on the rail's right edge drives a
-// persisted, clamped width that feeds `--kb-nav-w` (the shell's rail column). Both
+// persisted, clamped width that feeds `--kx-rail-width` (the shell's rail column). Both
 // the wiki and graph views share it so the rail behaves identically in each.
 const NAV_WIDTH_KEY = 'kb10:wiki:navWidth'
 const NAV_WIDTH_MIN = 220

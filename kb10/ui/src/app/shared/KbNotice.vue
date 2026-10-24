@@ -16,7 +16,7 @@ const resolvedIcon = props.icon || {
 </script>
 
 <template>
-  <div class="kc-notice" :class="tone">
+  <div class="kx-notice" :class="tone">
     <Icon :icon="resolvedIcon" aria-hidden="true" />
     <span><slot /></span>
   </div>

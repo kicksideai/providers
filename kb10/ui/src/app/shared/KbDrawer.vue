@@ -20,14 +20,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <Transition name="kc-drawer">
-    <div v-if="open" class="kc-drawer-mask" @click.self="emit('close')">
-      <aside class="kc-drawer" role="dialog" :aria-label="title">
-        <div class="kc-drawer-h">
-          <span class="kc-drawer-title"><Icon :icon="icon" aria-hidden="true" />{{ title }}</span>
+  <Transition name="kx-drawer">
+    <div v-if="open" class="kx-drawer-mask" @click.self="emit('close')">
+      <aside class="kx-drawer" role="dialog" :aria-label="title">
+        <div class="kx-drawer-h">
+          <span class="kx-drawer-title"><Icon :icon="icon" aria-hidden="true" />{{ title }}</span>
           <IconButton icon="tabler:x" label="Close" @click="emit('close')" />
         </div>
-        <div class="kc-drawer-b"><slot /></div>
+        <div class="kx-drawer-b"><slot /></div>
       </aside>
     </div>
   </Transition>

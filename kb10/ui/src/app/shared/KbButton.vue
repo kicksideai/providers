@@ -16,8 +16,8 @@ const emit = defineEmits<{ (e: 'click'): void }>()
 
 <template>
   <button
-    class="kc-btn"
-    :class="[`kc-btn-${variant}`, small && 'sm']"
+    class="kx-btn"
+    :class="[`kx-btn-${variant}`, small && 'sm']"
     :type="type"
     :disabled="disabled"
     @click="emit('click')"

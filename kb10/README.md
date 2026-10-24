@@ -102,3 +102,26 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 ## License
 
 [KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
+
+## Shared UI chrome
+
+The UI consumes `kickside/ui-kit` as a build input, separate from its runtime
+module dependencies. `make ui-kit` resolves the current Hub package,
+materializes `kickside.ui_kit:package_fs` under `ui/.wippy`, and installs the npm
+workspace declared by `ui/package.json`. Build, dev, typecheck-ui and test-ui
+prepare this input automatically. The UI imports tokens before shell, controls,
+overlay and state styles; the local wrappers retain their component APIs.
+
+For development against an unpublished ui-kit change, pack the shared package
+and pass its absolute filename through the existing `UI_KIT_WAPP` input:
+
+```sh
+# In the kickside checkout's platform/ui-kit directory:
+wippy update
+wippy pack --embed kickside.ui_kit:package_fs "$UI_KIT_WAPP"
+# In this module directory:
+make ui-kit UI_KIT_WAPP="$UI_KIT_WAPP"
+make typecheck-ui build test-ui UI_KIT_WAPP="$UI_KIT_WAPP"
+```
+
+The declared build dependency continues to resolve the published package.

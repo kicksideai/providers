@@ -357,7 +357,7 @@ watch(() => props.kbId, () => { hidden.value = new Set(); focusId.value = null; 
     ref="railRef"
     class="gx"
     :class="{ 'wk-dragging': navDragging }"
-    :style="{ '--kb-nav-w': navWidth + 'px' }"
+    :style="{ '--kx-rail-width': navWidth + 'px' }"
   >
     <KbShell v-if="concepts.length">
       <template #rail>
@@ -387,7 +387,7 @@ watch(() => props.kbId, () => { hidden.value = new Set(); focusId.value = null; 
         ><span class="wn-resizer-grip" /></div>
       </template>
 
-      <div v-if="searchOpen" class="kc-main-scroll">
+      <div v-if="searchOpen" class="kx-main-scroll">
         <KbSearch
           :kb-id="kbId"
           layout="panel"

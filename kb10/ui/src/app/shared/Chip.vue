@@ -3,5 +3,5 @@
 </script>
 
 <template>
-  <span class="kc-chip"><slot /></span>
+  <span class="kx-chip"><slot /></span>
 </template>
