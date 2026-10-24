@@ -67,7 +67,7 @@ Lockfiles: `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`,
 
 LICENSE: [License text](#license-text-769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c)
 
-### npm: @kickside/ui-kit@1.5.7
+### npm: @kickside/ui-kit@1.6.0
 
 License: LicenseRef-KickSide-Community-1.0
 
