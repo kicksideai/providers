@@ -116,7 +116,7 @@
 /* Folder affordance: the drill-in chevron, lit on hover. */
 .wn-go { flex: none; width: 15px; height: 15px; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); transition: color .12s, transform .12s; }
 .wn-item.folder:hover .wn-go { color: var(--p-text-muted-color); transform: translateX(1px); }
-.wn-empty { padding: 14px 10px; font-size: 12px; color: color-mix(in srgb, var(--p-text-color) 45%, transparent); text-align: center; }
+.wn-empty { padding: 14px 10px; font-size: 12px; color: var(--p-text-muted-color); text-align: center; }
 
 /* ── Center: reading column ──────────────────────────────────────────────── */
 /* Content is left-aligned against the nav (no centering gutter); index grids
