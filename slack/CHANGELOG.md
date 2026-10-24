@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/kicksideai/providers/compare/slack-v0.1.16...slack-v0.1.17) (2026-10-24)
+
+
+### Bug Fixes
+
+* **providers:** declare Connection capability floors ([#45](https://github.com/kicksideai/providers/issues/45)) ([84c3562](https://github.com/kicksideai/providers/commit/84c3562b06d6c4fe18b2a43be7eac01fab32b814))
+
 ## 0.1.14 (2026-10-08)
 
 - fix: preserve native result bounds and refresh selected model limits (b9dc370d)

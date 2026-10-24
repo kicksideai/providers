@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/kicksideai/providers/compare/fireflies-v0.1.24...fireflies-v0.1.25) (2026-10-24)
+
+
+### Bug Fixes
+
+* **providers:** declare Connection capability floors ([#45](https://github.com/kicksideai/providers/issues/45)) ([84c3562](https://github.com/kicksideai/providers/commit/84c3562b06d6c4fe18b2a43be7eac01fab32b814))
+
 ## 0.1.24 (2026-10-17)
 
 - Refresh packaged module descriptions and documentation.

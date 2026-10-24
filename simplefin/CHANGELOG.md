@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/kicksideai/providers/compare/simplefin-v0.1.14...simplefin-v0.1.15) (2026-10-24)
+
+
+### Bug Fixes
+
+* **providers:** declare Connection capability floors ([#45](https://github.com/kicksideai/providers/issues/45)) ([84c3562](https://github.com/kicksideai/providers/commit/84c3562b06d6c4fe18b2a43be7eac01fab32b814))
+
 ## 0.1.14 (2026-10-17)
 
 - Declare registry entry requirements with value_kind and default bindings.
