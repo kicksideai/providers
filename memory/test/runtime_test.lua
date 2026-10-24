@@ -1,8 +1,35 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local runtime = require("runtime")
 local sql = require("sql")
 local prompt = require("prompt")
+local registry = require("registry")
 local function define_tests()
+    test.describe("standalone Memory installation", function()
+        test.it("keeps only its existing UI host requirement and provider contracts", function()
+            local requirements = assert(registry.find({[".kind"] = "ns.requirement"}))
+            local found = 0
+            for _, entry in ipairs(requirements) do
+                local id = tostring(entry.id)
+                if id:sub(1, #"kickside.memory:") == "kickside.memory:" then
+                    found = found + 1
+                    test.eq(id, "kickside.memory:ui_server")
+                end
+            end
+            test.eq(found, 1)
+            local dependencies = assert(registry.find({[".kind"] = "ns.dependency"}))
+            local expected = {["wippy/agent"] = true, ["wippy/llm"] = true,
+                ["kickside/component"] = true, ["kickside/contract"] = true}
+            local total = 0
+            for _, entry in ipairs(dependencies) do
+                if tostring(entry.id):sub(1, #"kickside.memory:") == "kickside.memory:" then
+                    test.is_true(expected[entry.data.component] == true, tostring(entry.data.component))
+                    total = total + 1
+                end
+            end
+            test.eq(total, 4)
+        end)
+    end)
     test.describe("session checkpoint working memory", function()
         test.after_each(function() runtime._reset_deps() end)
         local function setup(text, window, fail_working, bytes_per_token, declared_window, truncate_working, durable_result)

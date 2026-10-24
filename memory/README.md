@@ -99,3 +99,6 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 ## License
 
 [KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
+
+
+Typed, ledger-backed Memory knowledge bases are provided separately by the optional `kickside/memory-kb` module. This module continues to use the configured queryable/embeddable providers; it does not require that driver.

@@ -28,6 +28,7 @@ entries:
     prompt: wippy.llm:prompt
   modules:
   - sql
+  - registry
 - name: dep.kickside.component
   kind: ns.dependency
   component: kickside/component
