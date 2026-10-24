@@ -1,6 +1,13 @@
 version: '1.0'
 namespace: kickside.memory.test.module_access
 entries:
+- name: outsider_policy
+  kind: security.policy
+  groups: [app:memory_outsider]
+  policy:
+    resources: app:unrelated
+    actions: access
+    effect: allow
 - name: explicit_memory_deny
   kind: security.policy
   policy:
