@@ -364,7 +364,9 @@ end
 local function checkpoint_selector(payload)
     -- `selector = {}` is an explicit host choice. Do not replace it with the
     -- deactivation range merely because it has no fields.
-    if payload.selector ~= nil then return shallow_copy(payload.selector) end
+    if payload.selector ~= nil then
+        return shallow_copy(payload.selector or {mode = "since_checkpoint"})
+    end
 
     if payload.phase == "deactivate" then
         local refs = type(payload.refs) == "table" and payload.refs or nil

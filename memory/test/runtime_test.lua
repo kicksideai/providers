@@ -166,6 +166,22 @@ local function define_tests()
             test.is_nil(captured.selector.to_id)
             test.eq(captured.selector.max_chars, 256)
         end)
+        test.it("preserves the legacy default when the host supplies a false selector", function()
+            local captured = setup("[PREFERENCE:tea]", 8192)
+            local result, err = runtime.apply({
+                phase = "deactivate", host = {kind = "session", session_id = "owned-session"},
+                agent = {id = "owned-agent", model = "active-model"}, selector = false,
+                refs = {deactivation_range = {from_id = "exclusive-row", to_id = "last-outgoing-row"}},
+                checkpoint_source_max_chars = 256,
+                run_context = {contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding"},
+            })
+            test.is_nil(err)
+            test.is_true(result.metadata.skipped)
+            test.eq(captured.selector.mode, "since_checkpoint")
+            test.is_nil(captured.selector.from_id)
+            test.is_nil(captured.selector.to_id)
+            test.eq(captured.selector.max_chars, 256)
+        end)
         test.it("falls back to since-checkpoint for malformed deactivation bounds", function()
             for _, range in ipairs({
                 {},
