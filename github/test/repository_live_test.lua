@@ -17,6 +17,7 @@ local function define_tests()
             test.is_true(type(repo) == "string" and repo:match("^kickside%-connector%-demo") ~= nil, "Live tests require a disposable kickside-connector-demo repository")
             local service, service_err = component.get_service()
             test.is_nil(service_err)
+            if not service then error(service_err or "Connection service unavailable") end
             local id = uuid.v4()
             local registered, register_err = service:register({component_id = id, impl_id = "kickside.github.connection:github_connection",
                 meta = {class = "connection", provider = "github", title = "Disposable repository verification"}, private_context = {token = token}})

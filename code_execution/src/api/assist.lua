@@ -1,6 +1,6 @@
 -- POST /api/v1/code-execution/assist — generate sandbox Lua for an intent over a whitelist.
 --
--- Body: { intent, tool_ids?, sample? }. Runs the code generator (via funcs.call, keeping
+-- Body: { intent, tool_ids?, sample?, model? }. Runs the code generator (via funcs.call, keeping
 -- its flow/llm closure isolated) which drafts Lua against the SDK reference and validates
 -- it by a side-effect-free dry-run (the simulation sdk). Returns
 -- { validated = true, code, suggested_trigger } when a draft runs clean, or
@@ -44,6 +44,9 @@ local function handler()
         intent = body.intent,
         tool_ids = type(body.tool_ids) == "table" and body.tool_ids or {},
         sample = body.sample,
+        -- An explicit selection must reach the generator. Its context window
+        -- and capabilities need not match the class:fast default.
+        model = type(body.model) == "string" and body.model or nil,
     })
     if err then
         res:set_status(http.STATUS.BAD_REQUEST)
