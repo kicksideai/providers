@@ -23,6 +23,7 @@ workspace:
     kickside/agents: ../../../kickside/platform/agents
     kickside/automation: ../../../kickside/platform/automation
     kickside/channel: ../../../kickside/platform/channel
+    kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
     kickside/component: ../../../kickside/core/component
     kickside/connection: ../../../kickside/platform/connection
     kickside/contract: ../../../kickside/core/contract

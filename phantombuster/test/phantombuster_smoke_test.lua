@@ -159,16 +159,16 @@ local function define_tests()
             test.eq(targets[1].path, ".meta.server")
         end)
 
-        test.it("declares unpinned direct package dependencies in production", function()
+        test.it("declares direct package dependencies in production", function()
             for _, expected in ipairs({
                 { "component", "kickside/component" },
-                { "connection", "kickside/connection" },
+                { "connection", "kickside/connection", ">=0.3.0" },
                 { "contract", "kickside/contract" },
                 { "uploads", "kickside/uploads" },
             }) do
                 local dep = get("kickside.phantombuster:dep.kickside." .. expected[1])
                 test.eq(value(dep, "component"), expected[2])
-                test.eq(tostring(value(dep, "version") or ""), "*", expected[2] .. " must stay unpinned")
+                test.eq(tostring(value(dep, "version") or ""), expected[3] or "*", expected[2] .. " must retain its compatibility bound")
             end
         end)
 
