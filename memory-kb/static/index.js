@@ -1,7 +1,7 @@
 import { defineComponent as k, ref as l, computed as _, watch as v, openBlock as m, createElementBlock as p, createElementVNode as i, unref as r, createBlock as w, withCtx as C, createTextVNode as E, toDisplayString as h, createCommentVNode as x, createVNode as V } from "vue";
 import "@iconify/vue";
 import { define as S } from "@wippy-fe/proxy";
-import { u as M, a as N, b as j, p as R, s as A, c as B, e as D, m as K } from "./useWidget-Oapw5JdO.js";
+import { u as M, a as N, b as j, p as R, s as A, c as B, e as D, m as K } from "./useWidget-BPOH7QYN.js";
 const O = { class: "mm-stack" }, P = { class: "mm-field" }, T = ["config"], I = { class: "mm-toggle" }, z = /* @__PURE__ */ k({
   __name: "knowledge-memory",
   setup(Y) {
