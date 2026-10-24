@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/kicksideai/providers/compare/atlassian-v0.1.27...atlassian-v0.1.28) (2026-10-23)
+
+
+### Bug Fixes
+
+* **atlassian:** require the capacity connection contract ([#41](https://github.com/kicksideai/providers/issues/41)) ([f7a8c3f](https://github.com/kicksideai/providers/commit/f7a8c3fd0f8d1b979185f04c68ab0f5f79e39c39))
+
 ## 0.1.27 (2026-10-17)
 
 - Declare registry entry requirements with value_kind and default bindings.
