@@ -1,19 +1,31 @@
 export VERSION
 # kickside/memory-kb — memory knowledge-base engine, agent trait and memory provider.
 MODULE := memory-kb
+WIPPY_BIN ?= wippy
+UI_KIT_WAPP ?=
 
-.PHONY: build dev ui-kit lint typecheck test test-pg lockrefresh verify publish
+.PHONY: build dev ui-kit ui-install lint typecheck test-ui test test-pg lockrefresh verify publish
 # @kickside/ui-kit is a build input: resolved in build-inputs/, materialized into
 # the UI workspace before npm installs it.
 ui-kit:
-	cd build-inputs && wippy install
-	wippy artifacts materialize $$(ls build-inputs/.wippy/vendor/kickside/ui-kit-*.wapp | grep -v sha256 | sort | tail -1) kickside.ui_kit:package_fs --root ui/.wippy
-build: ui-kit
-	cd ui && npm ci && npm run build
+	@set -e; \
+	wapp="$(UI_KIT_WAPP)"; \
+	if [ -z "$$wapp" ]; then \
+	  ( cd build-inputs && $(WIPPY_BIN) update --src-dir src ); \
+	  wapp=$$(ls build-inputs/.wippy/vendor/kickside/ui-kit-*.wapp 2>/dev/null | grep -v sha256 | sort | tail -1); \
+	fi; \
+	test -n "$$wapp" || { echo "no kickside/ui-kit .wapp; is the module published?"; exit 1; }; \
+	$(WIPPY_BIN) artifacts materialize "$$wapp" kickside.ui_kit:package_fs --root ui/.wippy
+ui-install: ui-kit
+	cd ui && npm ci
+build: ui-install
+	cd ui && npm run build
 dev:
 	cd ui && npm run dev
-typecheck: ui-kit
-	cd ui && npm ci && npm run type-check
+typecheck: ui-install
+	cd ui && npm run type-check
+test-ui: ui-install
+	cd ui && npm test
 lint:
 	cd test && wippy lint $(WIPPY_LINT_ARGS) --ns app --ns 'app.*' --ns 'kickside.memory_kb' --ns 'kickside.memory_kb.*' --level error
 	wippy publish --dry-run $(WIPPY_PUBLISH_ARGS) --version 0.0.0

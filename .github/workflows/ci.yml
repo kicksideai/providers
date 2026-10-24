@@ -658,11 +658,7 @@ jobs:
             source_root="$PWD"
             export TMPDIR="$source_root/.scratch"
             mkdir -p "$TMPDIR"
-            make -C memory-kb ui-kit
-            npm --prefix memory-kb/ui ci
-            npm --prefix memory-kb/ui run type-check
-            npm --prefix memory-kb/ui test
-            npm --prefix memory-kb/ui run build
+            make -C memory-kb typecheck test-ui build
             make -C memory-kb lockrefresh
             cd memory-kb/test
             wippy lint --ns app --ns 'app.*' --ns kickside.memory_kb --ns 'kickside.memory_kb.*' --level error
@@ -679,11 +675,7 @@ jobs:
             source_root="$PWD"
             export TMPDIR="$source_root/.scratch"
             mkdir -p "$TMPDIR"
-            make -C memory-kb ui-kit
-            npm --prefix memory-kb/ui ci
-            npm --prefix memory-kb/ui run type-check
-            npm --prefix memory-kb/ui test
-            npm --prefix memory-kb/ui run build
+            make -C memory-kb typecheck test-ui build
             make -C memory-kb lockrefresh
             cd memory-kb/test
             databases=()
