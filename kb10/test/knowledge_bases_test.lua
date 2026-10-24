@@ -2,6 +2,7 @@
 
 local test = require("test")
 local sql = require("sql")
+local json = require("json")
 local crypto = require("crypto")
 local funcs = require("funcs")
 local security = require("security")
@@ -357,7 +358,8 @@ local function define_tests()
                     test.is_nil(admit_err, tostring(admit_err))
                     test.is_true(admitted.success)
                     local deleted, delete_err = call(exec, "kb_delete", { component_id = id })
-                    test.is_nil(delete_err, tostring(delete_err))
+                    local delete_details = type(delete_err) == "userdata" and delete_err:details() or nil
+                    test.is_nil(delete_err, tostring(delete_err) .. " " .. (json.encode(delete_details or {}) or ""))
                     test.eq(deleted.component_id, id)
                     for _, table_name in ipairs({ "kickside_components", "kb10_stores", "kb10_maintenance_runs" }) do
                         local rows, read_err = db:query("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id=$1", { id })

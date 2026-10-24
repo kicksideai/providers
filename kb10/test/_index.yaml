@@ -353,7 +353,7 @@ entries:
       suite: knowledge_bases_registry_suite
     source: file://knowledge_bases_test.lua
     method: run
-    modules: [sql, crypto, funcs, security, contract]
+    modules: [sql, crypto, funcs, security, contract, json]
     imports:
       test: wippy.test:test
       engines: kickside.knowledge:engines
