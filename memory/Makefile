@@ -4,7 +4,7 @@ MODULE := memory
 
 .PHONY: build dev publish lint
 build:
-	cd ui && npm install && npm run build
+	cd ui && npm ci && npm run build
 dev:
 	cd ui && npm run dev
 lint:

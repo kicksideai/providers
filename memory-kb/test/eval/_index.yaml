@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app.eval
+
+# Capture and reconcile eval. The target below scripts the ideal model answers;
+# a live run overrides its models and sets answers: live to score real ones.
+
+entries:
+  - name: target
+    kind: registry.entry
+    meta:
+      type: memory.eval_target
+      extraction_model: test-fast
+      judge_model: test-fast
+      embedding_model: test-embed
+      answers: scripted
+
+  - name: cases
+    kind: library.lua
+    source: file://cases.lua
+
+  - name: eval
+    kind: library.lua
+    source: file://eval.lua
+    modules: [registry, json]
+    imports:
+      fixture: app.suites:fixture
+      cases: app.eval:cases
+
+  - name: eval_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_eval
+      timeout: 600s
+    source: file://eval_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      eval: app.eval:eval

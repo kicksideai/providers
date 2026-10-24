@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
@@ -27,6 +28,8 @@ const emit = useEvents<MemoryEvents>()
 
 // Number inputs keep the raw string so a partially-typed value is not clobbered;
 // the emitted payload clamps to a positive finite number, else the default.
+const keptContext = ref<Record<string, unknown>>({})
+const keptCheckpoint = ref<Record<string, unknown>>({})
 const kbIds = ref<string[]>([])
 const readEnabled = ref<boolean>(DEFAULTS.read_enabled)
 const writeEnabled = ref<boolean>(DEFAULTS.write_enabled)
@@ -77,6 +80,9 @@ function applyConfig(cfg: ComponentProps['config']): void {
   const merged = { ...context, ...parsed }
   const agentOptions = isRecord(parsed.agent_options) ? parsed.agent_options : {}
   const options = isRecord(agentOptions.checkpoint) ? agentOptions.checkpoint : {}
+  const { context: _context, agent_options: _agentOptions, ...flat } = parsed
+  keptContext.value = { ...context, ...flat }
+  keptCheckpoint.value = { ...options }
 
   kbIds.value = isStringArray(merged.kb_ids)
     ? merged.kb_ids
@@ -92,6 +98,8 @@ function applyConfig(cfg: ComponentProps['config']): void {
 }
 
 function resetToDefaults(): void {
+  keptContext.value = {}
+  keptCheckpoint.value = {}
   kbIds.value = []
   readEnabled.value = DEFAULTS.read_enabled
   writeEnabled.value = DEFAULTS.write_enabled
@@ -106,6 +114,7 @@ function resetToDefaults(): void {
 function buildConfig(): MemoryConfig {
   const checkpointModelValue = checkpointModel.value || DEFAULTS.checkpoint_model
   const context = {
+    ...keptContext.value,
     kb_ids: [...kbIds.value],
     read_enabled: readEnabled.value,
     write_enabled: writeEnabled.value,
@@ -119,9 +128,10 @@ function buildConfig(): MemoryConfig {
     context,
     agent_options: {
       checkpoint: {
+        ...keptCheckpoint.value,
         token_threshold: num(tokenThreshold.value, DEFAULTS.token_threshold),
         model: context.checkpoint_model,
-        max_tokens: 1000,
+        max_tokens: numberValue(keptCheckpoint.value.max_tokens) ?? 1000,
       },
     },
   }
@@ -176,10 +186,10 @@ onMounted(async () => {
 <template>
   <div class="km">
     <div class="field">
-      <span>Memory knowledge base</span>
+      <span id="legacy_memory_kbs">Memory knowledge bases</span>
       <div data-kb-picker>
-        <wc-kb-picker v-if="!kbPickerFailed" :config="kbConfigJson" @config-changed="onKbChanged"></wc-kb-picker>
-        <input v-else name="kb_id_fallback" placeholder="Knowledge base id" :value="kbIds[0] || ''" @input="onKbFallback" />
+        <wc-kb-picker aria-labelledby="legacy_memory_kbs" v-if="!kbPickerFailed" :config="kbConfigJson" @config-changed="onKbChanged"></wc-kb-picker>
+        <input v-else aria-label="Memory knowledge base ID" name="kb_id_fallback" placeholder="Knowledge base id" :value="kbIds[0] || ''" @input="onKbFallback" />
       </div>
       <span class="hint">{{ hint }}</span>
     </div>
@@ -208,10 +218,10 @@ onMounted(async () => {
         />
       </label>
       <div class="field">
-        <span>Checkpoint model</span>
+        <span id="legacy_checkpoint_model">Checkpoint model</span>
         <div data-model-picker>
-          <wc-model-picker v-if="!modelPickerFailed" :value="modelValue" @select="onModelSelect"></wc-model-picker>
-          <input v-else name="model_fallback" placeholder="class:fast" :value="modelValue" @input="onModelFallback" />
+          <wc-model-picker aria-labelledby="legacy_checkpoint_model" v-if="!modelPickerFailed" :value="modelValue" @select="onModelSelect"></wc-model-picker>
+          <input v-else aria-label="Checkpoint model" name="model_fallback" placeholder="class:fast" :value="modelValue" @input="onModelFallback" />
         </div>
       </div>
     </div>

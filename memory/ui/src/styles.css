@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 */
 /* Knowledge Base Memory capability config surface. Styled only with the
    universal --p-* theme vocabulary (with literal fallbacks) so it renders
    correctly inside the shadow DOM of the trait config host. Ported verbatim

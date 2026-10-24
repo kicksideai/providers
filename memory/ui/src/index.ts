@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { WippyVueElement, define } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
 import type { ComponentProps, MemoryEvents } from './types.ts'
 import KnowledgeMemory from './app/knowledge-memory.vue'
 import stylesText from './styles.css?inline'
-import pkg from '../package.json'
+const propsSchema = { type: 'object', properties: { config: { type: 'object', description: 'Existing KB memory context and checkpoint policy.' } } }
 
 // The Knowledge Base Memory trait config component (kickside-knowledge-memory).
 // The trait config host passes the activation context + checkpoint policy as the
@@ -11,7 +12,7 @@ import pkg from '../package.json'
 class KicksideKnowledgeMemoryElement extends WippyVueElement<ComponentProps, MemoryEvents> {
   static get wippyConfig(): WippyElementConfig<ComponentProps> {
     return {
-      propsSchema: pkg.wippy.props as WippyPropsSchema,
+      propsSchema: propsSchema as WippyPropsSchema,
       hostCssKeys: ['themeConfigUrl'] as const,
       inlineCss: stylesText,
     }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 // The trait activation context this capability persists. The first selected KB is
 // the write target unless the runtime overrides it.
 export interface MemoryContext {
