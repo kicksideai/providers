@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/kicksideai/providers/compare/code-execution-v0.1.21...code-execution-v0.1.22) (2026-10-23)
+
+
+### Bug Fixes
+
+* **code_execution:** preserve selected assist model ([#38](https://github.com/kicksideai/providers/issues/38)) ([fe105cd](https://github.com/kicksideai/providers/commit/fe105cd1e3417f12a18624363958158355c92b57))
+
 ## 0.1.18 (2026-10-08)
 
 - fix: preserve native result bounds and refresh selected model limits (b9dc370d)

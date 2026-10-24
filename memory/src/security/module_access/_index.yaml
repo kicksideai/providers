@@ -45,3 +45,14 @@ entries:
     - funcs.call
     - funcs.security
     effect: allow
+- name: user_security_scope
+  kind: ns.requirement
+  default: kickside.security.groups:members
+  meta:
+    value_kind: security.scope
+    description: Application group allowed to resolve and run the public Memory capability.
+  targets:
+  - entry: kickside.memory.security:module_access
+    path: .groups +=
+  - entry: kickside.memory.security:module_runtime
+    path: .groups +=

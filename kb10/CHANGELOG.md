@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/kicksideai/providers/compare/kb10-v0.2.7...kb10-v0.2.8) (2026-10-23)
+
+
+### Bug Fixes
+
+* **kb10:** bound document analysis strategies ([#39](https://github.com/kicksideai/providers/issues/39)) ([08d91c1](https://github.com/kicksideai/providers/commit/08d91c12f6f5df58acfb359414651c91f17e16ce))
+
 ## [0.2.7](https://github.com/kicksideai/providers/compare/kb10-v0.2.6...kb10-v0.2.7) (2026-10-23)
 
 

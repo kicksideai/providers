@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/kicksideai/providers/compare/discord-v0.1.22...discord-v0.1.23) (2026-10-23)
+
+
+### Bug Fixes
+
+* **discord:** narrow captured transport rows ([e7529df](https://github.com/kicksideai/providers/commit/e7529df219fc319cf649d378ea7c7c883ca81dbc))
+
 ## [0.1.22](https://github.com/kicksideai/providers/compare/discord-v0.1.21...discord-v0.1.22) (2026-10-23)
 
 
