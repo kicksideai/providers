@@ -1,0 +1,264 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+# Typed ledger events of a memory knowledge base thread.
+version: '1.0'
+namespace: kickside.memory.events
+entries:
+- name: item.added
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A typed memory item enters the memory. The event carries structure only; the text and value are the payload staged under item_id.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      item_id:
+        type: string
+      claim_id:
+        type: string
+      content_hash:
+        type: string
+      kind:
+        type: string
+        enum:
+        - identity
+        - rule
+        - profile_slot
+        - fact
+        - preference
+        - skill
+        - lesson
+      key:
+        type: string
+      cardinality:
+        type: string
+        enum:
+        - single
+        - multi
+      scope_family:
+        type: string
+        enum:
+        - agent
+        - owner
+      scope_id:
+        type: string
+      valid_at:
+        type: string
+      source:
+        type: string
+        enum:
+        - capture
+        - tool
+        - reflection
+        - owner
+      provenance:
+        type: array
+        items:
+          type: object
+          properties:
+            host_kind:
+              type: string
+            host_id:
+              type: string
+            event_id:
+              type: string
+          required:
+          - host_kind
+          - host_id
+          - event_id
+      confidence:
+        type: number
+      priority:
+        type: integer
+    required:
+    - item_id
+    - claim_id
+    - content_hash
+    - kind
+    - key
+    - cardinality
+    - scope_family
+    - scope_id
+    - valid_at
+    - source
+- name: item.revised
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item's presentation (text, priority) changes; its claim does not. The new text is the payload staged under payload_id.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      payload_id:
+        type: string
+      content_hash:
+        type: string
+      priority:
+        type: integer
+    required:
+    - item_id
+    - payload_id
+    - content_hash
+- name: item.superseded
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item stops being current because a newer item replaces it; resolved_conflict names the conflict group a person resolved.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      by:
+        type: string
+      invalid_at:
+        type: string
+      resolved_conflict:
+        type: string
+    required:
+    - item_id
+    - by
+- name: item.merged
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: Items are folded into one item that carries their provenance.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_ids:
+        type: array
+        items:
+          type: string
+      into:
+        type: string
+    required:
+    - item_ids
+    - into
+- name: item.conflicted
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: Items contradict each other and wait for a person to resolve the group.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_ids:
+        type: array
+        items:
+          type: string
+      group_id:
+        type: string
+    required:
+    - item_ids
+    - group_id
+- name: item.archived
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A person archives an item; it leaves recall and the prompt until restored.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      actor:
+        type: string
+    required:
+    - item_id
+- name: item.restored
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An archived item, or the kept member of a resolved conflict, is current again.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      actor:
+        type: string
+    required:
+    - item_id
+- name: item.forgotten
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item is erased - its text, value, vector, provenance and the captured spans that stated it. It cannot be restored.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      actor:
+        type: string
+    required:
+    - item_id
+- name: provenance.added
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: An item is seen again in a host record.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      item_id:
+        type: string
+      host_kind:
+        type: string
+      host_id:
+        type: string
+      event_id:
+        type: string
+    required:
+    - item_id
+    - host_kind
+    - host_id
+    - event_id
+- name: capture.advanced
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A host's conversation is captured through a record.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      host_kind:
+        type: string
+      host_id:
+        type: string
+      agent_id:
+        type: string
+      last_event_id:
+        type: string
+    required:
+    - host_kind
+    - host_id
+    - last_event_id
+- name: consolidation.completed
+  kind: registry.entry
+  meta:
+    type: kickside.core.threads.event
+    comment: A consolidation run finished.
+  schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      run_id:
+        type: string
+      stats:
+        type: object
+    required:
+    - run_id

@@ -1,0 +1,240 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.memory.api
+
+# HTTP surface of the memory web component. {id} is the memory knowledge
+# base component id; access is decided by the component service per route.
+
+entries:
+  - name: handlers
+    kind: library.lua
+    meta:
+      comment: Memory item, conflict and status handlers.
+    source: file://handlers.lua
+    modules: [http, json, security]
+    imports: &handler_imports
+      http_errors: kickside.contract:http_errors
+      component: kickside.component:component
+      types: kickside.memory:types
+      memory_config: kickside.memory:config
+      memory_stores: kickside.memory.persist:stores
+      memory_items: kickside.memory.persist:items
+      memory_runs: kickside.memory.persist:runs
+      memory_models: kickside.memory.engine:models
+      memory_ops: kickside.memory.engine:ops
+
+  - name: list_items
+    kind: function.lua
+    meta:
+      comment: Lists a memory's items filtered by kind, status and scope family (READ).
+    source: file://handlers.lua
+    method: list_items
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: list_items.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Lists a memory's items filtered by kind, status and scope family (READ).
+    method: GET
+    func: list_items
+    path: /memory/{id}/items
+
+  - name: get_item
+    kind: function.lua
+    meta:
+      comment: Returns one memory item with its provenance and versions (READ).
+    source: file://handlers.lua
+    method: get_item
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: get_item.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Returns one memory item with its provenance and versions (READ).
+    method: GET
+    func: get_item
+    path: /memory/{id}/items/{item_id}
+
+  - name: create_item
+    kind: function.lua
+    meta:
+      comment: Adds an identity, rule, skill or lesson item through the ledger (WRITE).
+    source: file://handlers.lua
+    method: create_item
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: create_item.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Adds an identity, rule, skill or lesson item through the ledger (WRITE).
+    method: POST
+    func: create_item
+    path: /memory/{id}/items
+
+  - name: edit_item
+    kind: function.lua
+    meta:
+      comment: Replaces an item's content with a new version that supersedes it (WRITE).
+    source: file://handlers.lua
+    method: edit_item
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: edit_item.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Replaces an item's content with a new version that supersedes it (WRITE).
+    method: PUT
+    func: edit_item
+    path: /memory/{id}/items/{item_id}
+
+  - name: forget_item
+    kind: function.lua
+    meta:
+      comment: Forgets an item - erases its text, value, vector, provenance and the captured spans that stated it (WRITE).
+    source: file://handlers.lua
+    method: forget_item
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: forget_item.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Forgets an item - erases its text, value, vector, provenance and the captured spans that stated it (WRITE).
+    method: POST
+    func: forget_item
+    path: /memory/{id}/items/{item_id}/forget
+
+  - name: archive_item
+    kind: function.lua
+    meta:
+      comment: Archives an item so it leaves recall and the prompt until restored (WRITE).
+    source: file://handlers.lua
+    method: archive_item
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: archive_item.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Archives an item so it leaves recall and the prompt until restored (WRITE).
+    method: POST
+    func: archive_item
+    path: /memory/{id}/items/{item_id}/archive
+
+  - name: restore_item
+    kind: function.lua
+    meta:
+      comment: Restores an archived item (WRITE).
+    source: file://handlers.lua
+    method: restore_item
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: restore_item.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Restores an archived item (WRITE).
+    method: POST
+    func: restore_item
+    path: /memory/{id}/items/{item_id}/restore
+
+  - name: list_conflicts
+    kind: function.lua
+    meta:
+      comment: Lists the memory's conflict groups with their items (READ).
+    source: file://handlers.lua
+    method: list_conflicts
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: list_conflicts.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Lists the memory's conflict groups with their items (READ).
+    method: GET
+    func: list_conflicts
+    path: /memory/{id}/conflicts
+
+  - name: resolve_conflict
+    kind: function.lua
+    meta:
+      comment: Keeps one item of a conflict group current and supersedes the rest (WRITE).
+    source: file://handlers.lua
+    method: resolve_conflict
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: resolve_conflict.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Keeps one item of a conflict group current and supersedes the rest (WRITE).
+    method: POST
+    func: resolve_conflict
+    path: /memory/{id}/conflicts/{group_id}/resolve
+
+  - name: status
+    kind: function.lua
+    meta:
+      comment: Returns the memory's counts, recent runs, effective configuration and its schema (READ).
+    source: file://handlers.lua
+    method: status
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: status.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Returns the memory's counts, recent runs, effective configuration and its schema (READ).
+    method: GET
+    func: status
+    path: /memory/{id}/status
+
+  - name: list_memories
+    kind: function.lua
+    meta:
+      comment: Lists accessible memory knowledge bases (READ).
+    source: file://handlers.lua
+    method: list_memories
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: list_memories.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Lists accessible memory knowledge bases (READ).
+    method: GET
+    func: list_memories
+    path: /memory
+
+  - name: list_topics
+    kind: function.lua
+    meta:
+      comment: Lists canonical topics and current item counts (READ).
+    source: file://handlers.lua
+    method: list_topics
+    modules: [http, json, security]
+    imports: *handler_imports
+
+  - name: list_topics.endpoint
+    kind: http.endpoint
+    meta:
+      router: ""
+      comment: Lists canonical topics and current item counts (READ).
+    method: GET
+    func: list_topics
+    path: /memory/{id}/topics

@@ -36,6 +36,20 @@ describe('published document-backed Memory settings', () => {
     wrapper.unmount()
   })
 
+  it('selects typed memory without discarding document settings', async () => {
+    host.props = { config: { kb_ids: ['documents'], write_kb_id: 'documents', checkpoint_temperature: 0.4 } }
+    const wrapper = mount(LegacyMemory)
+    wrapper.get('wc-kb-picker[aria-labelledby="typed_memory"]').element.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { kb_ids: ['typed-memory'] },
+    }))
+    const config = host.emit.mock.calls.at(-1)![1]
+    expect(config.context.memory_id).toBe('typed-memory')
+    expect(config.context.kb_ids).toEqual(['documents'])
+    expect(config.context.write_kb_id).toBe('documents')
+    expect(config.context.checkpoint_temperature).toBe(0.4)
+    wrapper.unmount()
+  })
+
   it('keeps a flat legacy context and explicit write target when editing a recall limit', async () => {
     host.props = { config: JSON.stringify({ kb_ids: ['a', 'b'], write_kb_id: 'b',
       recall_limit: 8, checkpoint_temperature: 0.3, checkpoint_source_max_chars: 7654 }) }

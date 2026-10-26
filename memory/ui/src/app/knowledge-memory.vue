@@ -3,7 +3,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import { loadByTagName } from '@wippy-fe/proxy'
-import type { ComponentProps, MemoryConfig, MemoryEvents } from '../types.ts'
+import type { ComponentProps, MemoryConfig, MemoryEvents } from '../documentTypes.ts'
 import { isRecord, isStringArray, stringValue, numberValue } from '../decodeConfig'
 
 // The Knowledge Base Memory trait config surface. The host passes the activation
@@ -31,6 +31,7 @@ const emit = useEvents<MemoryEvents>()
 const keptContext = ref<Record<string, unknown>>({})
 const keptCheckpoint = ref<Record<string, unknown>>({})
 const kbIds = ref<string[]>([])
+const memoryId = ref('')
 const readEnabled = ref<boolean>(DEFAULTS.read_enabled)
 const writeEnabled = ref<boolean>(DEFAULTS.write_enabled)
 const tokenThreshold = ref<string>(String(DEFAULTS.token_threshold))
@@ -84,6 +85,7 @@ function applyConfig(cfg: ComponentProps['config']): void {
   keptContext.value = { ...context, ...flat }
   keptCheckpoint.value = { ...options }
 
+  memoryId.value = stringValue(merged.memory_id) || ''
   kbIds.value = isStringArray(merged.kb_ids)
     ? merged.kb_ids
     : typeof merged.kb_id === 'string' && merged.kb_id ? [merged.kb_id] : []
@@ -115,6 +117,7 @@ function buildConfig(): MemoryConfig {
   const checkpointModelValue = checkpointModel.value || DEFAULTS.checkpoint_model
   const context = {
     ...keptContext.value,
+    ...(memoryId.value || "memory_id" in keptContext.value ? { memory_id: memoryId.value } : {}),
     kb_ids: [...kbIds.value],
     read_enabled: readEnabled.value,
     write_enabled: writeEnabled.value,
@@ -139,6 +142,13 @@ function buildConfig(): MemoryConfig {
 
 function emitConfig(): void {
   emit('config-changed', buildConfig())
+}
+
+function onMemoryChanged(event: Event): void {
+  const detail: unknown = event instanceof CustomEvent ? event.detail : undefined
+  const ids = isRecord(detail) && isStringArray(detail.kb_ids) ? detail.kb_ids : []
+  memoryId.value = ids.at(-1) || ''
+  emitConfig()
 }
 
 function onKbChanged(event: Event): void {
@@ -186,7 +196,13 @@ onMounted(async () => {
 <template>
   <div class="km">
     <div class="field">
-      <span id="legacy_memory_kbs">Memory knowledge bases</span>
+      <span id="typed_memory">Typed memory</span>
+      <wc-kb-picker v-if="!kbPickerFailed" aria-labelledby="typed_memory" :config="JSON.stringify({ kb_ids: memoryId ? [memoryId] : [] })" @config-changed="onMemoryChanged"></wc-kb-picker>
+      <span v-else role="alert">The knowledge base picker cannot load.</span>
+      <span class="hint">Select a Memory knowledge base for typed capture and recall. Leave empty to use document knowledge bases.</span>
+    </div>
+    <div class="field">
+      <span id="legacy_memory_kbs">Document knowledge bases</span>
       <div data-kb-picker>
         <wc-kb-picker aria-labelledby="legacy_memory_kbs" v-if="!kbPickerFailed" :config="kbConfigJson" @config-changed="onKbChanged"></wc-kb-picker>
         <input v-else aria-label="Memory knowledge base ID" name="kb_id_fallback" placeholder="Knowledge base id" :value="kbIds[0] || ''" @input="onKbFallback" />

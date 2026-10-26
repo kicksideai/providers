@@ -1,0 +1,28 @@
+version: '1.0'
+namespace: app.published_access
+entries:
+- name: outsider_policy
+  kind: security.policy
+  groups: [app:memory_outsider]
+  policy:
+    resources: app:unrelated
+    actions: access
+    effect: allow
+- name: explicit_memory_deny
+  kind: security.policy
+  policy:
+    resources: kickside.memory:knowledge_based_memory
+    actions: registry.get
+    effect: deny
+- name: test
+  kind: function.lua
+  meta:
+    type: test
+    suite: module_access_policy
+  source: file://test.lua
+  method: run
+  modules:
+  - registry
+  - security
+  imports:
+    test: wippy.test:test

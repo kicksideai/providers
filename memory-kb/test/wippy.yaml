@@ -1,6 +1,0 @@
-# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-organization: kickside
-module: memory-kb-test
-description: Harness that boots kickside/memory-kb with the knowledge control plane, core threads and jobs, and runs its suites on SQLite and PostgreSQL.
-options:
-    unpack_modules: true

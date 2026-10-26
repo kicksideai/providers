@@ -4,6 +4,8 @@ local component = require("component")
 local llm = require("llm")
 local prompt = require("prompt")
 
+local typed = require("typed_runtime")
+
 local M = {}
 
 local QUERYABLE_CONTRACT = "kickside.contract:queryable"
@@ -353,8 +355,42 @@ local function recall_message(payload, items, max_chars)
     return table.concat(lines, "\n")
 end
 
+local function valid_history_id(value)
+    return type(value) == "string" and trim(value) ~= ""
+end
+
+-- Deactivation ranges are supplied by the session lifecycle after it has
+-- persisted the outgoing history.  They bound this durable-memory digest to
+-- the just-deactivated agent span; an absent or malformed range must retain
+-- the historical since-checkpoint behavior rather than widening the read.
+local function checkpoint_selector(payload)
+    -- `selector = {}` is an explicit host choice. Do not replace it with the
+    -- deactivation range merely because it has no fields.
+    if payload.selector ~= nil then
+        return shallow_copy(payload.selector or {mode = "since_checkpoint"})
+    end
+
+    if payload.phase == "deactivate" then
+        local refs = type(payload.refs) == "table" and payload.refs or nil
+        local range = refs and refs.deactivation_range
+        if type(range) == "table" then
+            local from_id, to_id = range.from_id, range.to_id
+            -- from_id is exclusive and is intentionally absent for the first
+            -- known history row.  If it is present, do not silently omit an
+            -- invalid value and accidentally broaden the selected range.
+            if valid_history_id(to_id) and (from_id == nil or valid_history_id(from_id)) then
+                local selector = {mode = "range", to_id = to_id}
+                if from_id ~= nil then selector.from_id = from_id end
+                return selector
+            end
+        end
+    end
+
+    return {mode = "since_checkpoint"}
+end
+
 local function checkpoint_prompt_text(payload)
-    local selector = shallow_copy(payload.selector or {mode = "since_checkpoint"})
+    local selector = checkpoint_selector(payload)
     selector.max_chars = selector.max_chars or number_config(payload, "checkpoint_source_max_chars", DEFAULTS.checkpoint_source_max_chars)
     local prompt_result, prompt_err = read_prompt(payload, selector)
     local text = type(prompt_result) == "table" and prompt_result.text or ""
@@ -615,6 +651,7 @@ local function commit_checkpoint(payload, memory, prompt_result, checkpoint_meta
 end
 
 function M.apply(payload)
+    if trim(config_raw(payload, "memory_id")) ~= "" then return typed.apply(payload) end
     local valid, err = validate_common(payload)
     if not valid then return nil, err end
     if payload.phase ~= "activate" and payload.phase ~= "deactivate" then
@@ -667,6 +704,7 @@ function M.apply(payload)
 end
 
 function M.create(payload)
+    if trim(config_raw(payload, "memory_id")) ~= "" then return typed.create(payload) end
     local valid, err = validate_common(payload)
     if not valid then return nil, err end
 
@@ -712,6 +750,7 @@ function M.create(payload)
 end
 
 function M.recall(args)
+    if trim(config_raw({}, "memory_id")) ~= "" then return typed.search(args) end
     return query_memory(args)
 end
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 version: '1.0'
 vars:
   pg_host: localhost
@@ -5,6 +6,8 @@ vars:
   pg_database: kickside_test_memory
   pg_username: kickside
   pg_password: kickside
+override:
+  kickside.memory.persist:items:imports.memory_db: app.suites:measured_db
 profiles:
   postgres:
     override:
@@ -20,6 +23,25 @@ profiles:
 workspace:
   replacements:
     kickside/memory: ..
+    kickside/search-index: ../../search-index
     kickside/component: ../../../kickside/core/component
     kickside/contract: ../../../kickside/core/contract
+    kickside/core: ../../../kickside/core/core
+    kickside/doc2md: ../../../converters/doc2md
     kickside/execution: ../../../kickside/core/execution
+    kickside/jobs: ../../../kickside/core/jobs
+    kickside/knowledge: ../../../kickside/platform/knowledge
+    kickside/models: ../../../kickside/platform/models
+    kickside/realtime: ../../../kickside/platform/realtime
+    kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
+    kickside/security: ../../../kickside/platform/security
+    kickside/settings: ../../../kickside/platform/settings
+    kickside/uploads: ../../../kickside/platform/uploads
+    kickside/users: ../../../kickside/platform/users
+registry:
+  dispatch_internal_kinds:
+  - registry.entry
+  - ns.requirement
+  - ns.dependency
+  - ns.definition
+  - security.scope

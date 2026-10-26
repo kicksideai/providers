@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.memory.agent
+entries:
+  - name: runtime
+    kind: library.lua
+    meta:
+      name: runtime
+      comment: Agent memory runtime - capture, pinned soul, recall, checkpoint and memory tools.
+    source: file://runtime.lua
+    modules: &runtime_modules [ctx, contract, security]
+    imports: &runtime_imports
+      component: kickside.component:component
+      types: kickside.memory:types
+      memory_config: kickside.memory:config
+      memory_stores: kickside.memory.persist:stores
+      memory_items: kickside.memory.persist:items
+      memory_runs: kickside.memory.persist:runs
+      memory_jobs: kickside.memory.engine:jobs
+      memory_models: kickside.memory.engine:models
+      memory_writer: kickside.memory.engine:writer
+      memory_ledger: kickside.memory.engine:ledger
+      memory_ops: kickside.memory.engine:ops
+      memory_recall: kickside.memory.engine:recall
+      memory_reconcile: kickside.memory.engine:reconcile
+
+  - name: memory_provider_recall
+    kind: function.lua
+    meta:
+      comment: wippy.agent:memory recall - scoped hybrid recall of current memories, skipping previously injected ids. Called by the agent runtime each step, not by the model.
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: recall
+
+  - name: list_memory_targets
+    kind: function.lua
+    meta:
+      comment: Lists the memory knowledge bases the caller can read, for the agent memory picker.
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: list_targets
+
+  - name: memory_build
+    kind: function.lua
+    meta:
+      comment: Trait build function - contributes the agent's identity, rules, skills and lessons to the compiled prompt.
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: build
+
+  - name: memory_prompt
+    kind: function.lua
+    meta:
+      comment: Trait prompt function - the owner profile and preferences pinned when the agent activated in this host.
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: prompt
+
+  - name: memory_remember_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.write] }
+      title: Remember
+      llm_alias: Remember
+      llm_description: "Store a durable memory about the user that should hold in future conversations: a fact, preference, profile attribute, skill or lesson. The memory is reconciled with what is already known (an update replaces the older value)."
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "content": {"type": "string", "description": "One self-contained sentence about the user, e.g. 'The user lives in Berlin.'"},
+            "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson"]},
+            "key": {"type": "string", "description": "Required canonical topic key: 1-64 lowercase letters, digits or underscores, beginning with a letter. Name the attribute (for example home_city), never the memory sentence or value."},
+            "value": {"description": "The typed value only, e.g. Berlin or false."},
+            "cardinality": {"type": "string", "enum": ["single", "multi"], "description": "single when the user holds one value of this key at a time (home city, diet); multi when several hold together (allergies). A key the memory already knows keeps its cardinality."},
+            "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"}
+          },
+          "required": ["content", "key"]
+        }
+      output_schema: |
+        {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_ids": {"type": "array", "items": {"type": "string"}}, "outcome": {"type": "object"}}, "required": ["success"]}
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: remember
+
+  - name: memory_forget_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.write] }
+      title: Forget Memory
+      llm_alias: ForgetMemory
+      llm_description: "Forget one of the user's memories by its id (from SearchMemory) when the user asks you to forget it. It is erased for good, with every earlier version of it."
+      input_schema: |
+        {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
+      output_schema: |
+        {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_id": {"type": "string"}}, "required": ["success"]}
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: forget
+
+  - name: memory_binding
+    kind: contract.binding
+    meta:
+      title: Memory Recall
+      comment: Implements wippy.agent:memory recall over a memory knowledge base.
+    contracts:
+      - contract: wippy.agent:memory
+        context_required: [component_id]
+        methods:
+          recall: kickside.memory.agent:memory_provider_recall
+
+  - name: memory_provider
+    kind: registry.entry
+    meta:
+      type: agent.memory_provider
+      title: Memory
+      comment: Recalls typed long-term memory from a selected memory knowledge base each step.
+      icon: tabler:brain
+      order: 20
+      implementation_id: kickside.memory.agent:memory_binding
+      list_targets: kickside.memory.agent:list_memory_targets
