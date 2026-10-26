@@ -251,7 +251,9 @@ function M.decode_json(value: any): any
 end
 
 function M.invalid(message: string, details: any?): error
-    return errors.new({ kind = errors.INVALID, message = message, details = details })
+    local info = details or {}
+    info.memory_explanation = message
+    return errors.new({ kind = errors.INVALID, message = message, details = info })
 end
 
 function M.not_found(message: string): error
@@ -259,16 +261,31 @@ function M.not_found(message: string): error
 end
 
 function M.unavailable(message: string, details: any?): error
-    return errors.new({ kind = errors.UNAVAILABLE, message = message, retryable = true, details = details })
+    local info = details or {}
+    info.memory_explanation = message
+    return errors.new({ kind = errors.UNAVAILABLE, message = message, retryable = true, details = info })
 end
 
 -- A failed dependency call: what failed, with the dependency's own kind and
 -- retry flag. An error without a kind is internal and not retried.
 function M.failed(message: string, err: any): error
     if type(err) == "userdata" then
-        return errors.new({ kind = err:kind(), retryable = err:retryable() == true, message = message .. ": " .. err:message(), details = err:details() })
+        local details = err:details() or {}
+        details.memory_explanation = message
+        return errors.new({ kind = err:kind(), retryable = err:retryable() == true, message = message .. ": " .. err:message(), details = details })
     end
-    return errors.new({ kind = errors.INTERNAL, retryable = false, message = message .. ": " .. tostring(err) })
+    return errors.new({ kind = errors.INTERNAL, retryable = false, message = message .. ": " .. tostring(err), details = { memory_explanation = message } })
+end
+
+function M.failure(err: any): (string?, error?)
+    local failure = { kind = errors.INTERNAL, code = errors.INTERNAL, explanation = "Memory operation violates an internal invariant.", retryable = false }
+    if type(err) == "userdata" then
+        local details = err:details() or {}
+        failure.kind, failure.code = err:kind(), details.cause_kind or err:kind()
+        failure.explanation = details.memory_explanation or failure.explanation
+        failure.retryable = err:retryable() == true
+    end
+    return json.encode(failure)
 end
 
 function M.internal(message: string, details: any?): error

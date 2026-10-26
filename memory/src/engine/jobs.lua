@@ -148,12 +148,12 @@ end
 -- Closes the run as failed and answers the job: a retryable error is raised so
 -- the queue retries it; any other failure is a deterministic job error.
 local function fail(run_id: string, err: any): any
-    local message = tostring(err)
+    local message, encode_err = types.failure(err)
+    if encode_err then error(encode_err) end
     local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message)
     if close_err then error(close_err) end
     -- Queue diagnostics outlive erasable input, so they carry classification only.
-    local diagnostic = "memory operation failed"
-    if type(err) == "userdata" then diagnostic = diagnostic .. " (" .. tostring(err:kind()) .. ")" end
+    local diagnostic = message
     if retryable(err) then
         error(errors.new({ kind = err:kind(), retryable = true, message = diagnostic }))
     end
@@ -185,7 +185,6 @@ local function admit(value: any, run_type: string): any
     end
     local outcome, run_err = execution_identity.run_as(identity, AUTHORIZED[run_type], value, { deferred_owner = JOB[run_type] })
     if run_err then
-        if retryable(run_err) then error(run_err) end
         return fail((run :: any).id, run_err)
     end
     return outcome

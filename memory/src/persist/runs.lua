@@ -182,8 +182,8 @@ end
 function M.finish(run_id: string, status: string, last_error: string?, stats: any?): (any?, error?)
     return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
         local _, err = tx:execute(
-            "UPDATE kickside_memory_kb_runs SET status = $1, last_error = CASE WHEN run_type = $2 AND CAST(input AS TEXT) = '{}' THEN NULL ELSE $3 END, stats = $4, finished_at = $5 WHERE id = $6",
-            { status, types.RUN_TYPE.DERIVE, last_error or sql.NULL, json.encode(stats or {}), types.now(), run_id })
+            "UPDATE kickside_memory_kb_runs SET status = $1, last_error = $2, stats = $3, finished_at = $4 WHERE id = $5",
+            { status, last_error or sql.NULL, json.encode(stats or {}), types.now(), run_id })
         if err then return nil, types.failed("memory run close failed", err) end
         return true, nil
     end)

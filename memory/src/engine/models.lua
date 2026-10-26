@@ -25,14 +25,14 @@ local TRANSIENT_KINDS = {
 local function model_error(step: string, err: any): error
     local message = step .. " failed: " .. tostring(err)
     if type(err) ~= "userdata" then
-        return types.internal(message, { step = step, cause = { message = tostring(err), retryable = false } })
+        return types.internal(message, { step = step, memory_explanation = step .. " failed", cause = { message = tostring(err), retryable = false } })
     end
     local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
     return errors.new({
         kind = retryable and err:kind() or errors.INTERNAL,
         retryable = retryable,
         message = message,
-        details = { step = step, cause_kind = err:kind(), cause = error_envelope.encode(err) },
+        details = { step = step, memory_explanation = step .. " failed", cause_kind = err:kind(), cause = error_envelope.encode(err) },
     })
 end
 
