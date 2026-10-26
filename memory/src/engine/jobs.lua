@@ -155,7 +155,9 @@ local function fail(run_id: string, err: any): any
     -- Queue diagnostics outlive erasable input, so they carry classification only.
     local diagnostic = message
     if retryable(err) then
-        error(errors.new({ kind = err:kind(), retryable = true, message = diagnostic }))
+        local failure = types.decode_json(message)
+        error(errors.new({ kind = err:kind(), retryable = true, message = diagnostic,
+            details = { memory_explanation = failure.explanation, cause_kind = failure.code } }))
     end
     return { ok = false, job_error = diagnostic, failure_class = "deterministic" }
 end
