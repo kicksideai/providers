@@ -324,7 +324,7 @@ entries:
         additionalProperties: false
         properties:
           plan_expiry_days:
-            group: learning
+            section: learning
             order: 11
             type: integer
             minimum: 1

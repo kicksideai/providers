@@ -50,7 +50,12 @@ Read preceding context to understand short answers. A trip destination, hypothet
 or answer to a question about travel does not change where the person lives. Change a
 single-valued profile attribute only when the person explicitly states that it changes.
 
-Each item must be stated in the message it cites, in the user's own words. Skip:
+Each item cites the new user statement that supplies its evidence. Interpret that
+statement in its preceding context: an answer to a question supplies the detail the
+question asks for. Context-only lines and existing memories ground the meaning and
+earlier state but are never new citations. A goal update carries forward its known
+details and adds the answer's new detail to both value.details and content; do not
+replace a goal with an empty state or drop newly supplied details. Skip:
 - questions that state no goal or durable information ("where do I live?");
 - task chatter that adds no goal, decision, constraint or next step;
 - statements too vague to act on later ("I've traveled before", "I forgot where I was");
@@ -162,7 +167,7 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
                             { type = "string" },
                             { type = "object", additionalProperties = false, required = { "status", "next_step", "details" }, properties = {
                                 status = { type = "string", enum = { "open", "done" } },
-                                next_step = { type = "string" }, details = { type = "string" },
+                                next_step = { type = "string" }, details = { type = "string", minLength = 1 },
                             } },
                         } },
                         content = { type = "string" },
@@ -201,7 +206,10 @@ local function key_listing(keys: { any }): string
     end
     for _, row in ipairs(keys) do
         if row.kind ~= kind then flush(); kind, names = row.kind, {} end
-        names[#names + 1] = row.key .. " (" .. tostring(row.cardinality) .. ")"
+        local description = row.key .. " (" .. tostring(row.cardinality) .. ")"
+        if row.content then description = description .. ": " .. row.content end
+        if row.value ~= nil then description = description .. " State: " .. json.encode(row.value) end
+        names[#names + 1] = description
     end
     flush()
     return table.concat(lines, "\n")

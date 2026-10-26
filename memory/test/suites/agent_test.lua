@@ -18,6 +18,28 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("offers existing goal state when interpreting a contextual answer", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local seeded = fixture.remember(user, id, { fixture.candidate("plan", "trip_tickets", {
+                status = "open", next_step = "Choose a destination", details = "The user needs tickets.",
+            }, "The user needs tickets.", "seed", "2026-09-01T00:00:00Z") }, "goal-state-seed")
+            fixture.settle(user, id)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "question", role = "assistant", content = "Where are you heading?" } })
+            apply(user, "before_step", id, session, "agent-a")
+            fixture.wait_runs(user, id, "derive", 1)
+            fixture.history.record(session, { { id = "answer", role = "user", content = "London" } })
+            fixture.extraction({ fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", "answer") })
+            fixture.verdict("SUPERSEDE", { seeded.item_ids[1] })
+            apply(user, "before_step", id, session, "agent-a")
+            fixture.wait_runs(user, id, "derive", 2)
+            local prompt = fixture.script.prompts("structured_output")[1].system
+            test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(schema.properties.items.items.properties.value.anyOf[2].properties.details.minLength, 1)
+        end)
+
         test.it("normalizes every candidate once using required numbered result properties", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { mappings = {

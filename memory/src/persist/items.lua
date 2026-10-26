@@ -444,10 +444,11 @@ end
 function M.keys(component_id: string, scope_key: string, limit: integer): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(
-            "SELECT DISTINCT kind, key, cardinality, content FROM kickside_memory_kb_items WHERE component_id = $1 AND scope_key = $2 AND status IN ($3, $4) " ..
+            "SELECT DISTINCT kind, key, cardinality, content, value FROM kickside_memory_kb_items WHERE component_id = $1 AND scope_key = $2 AND status IN ($3, $4) " ..
             "ORDER BY kind, key LIMIT $5",
             { component_id, scope_key, types.STATUS.CURRENT, types.STATUS.CONFLICT, limit })
         if err then return nil, types.failed("memory key read failed", err) end
+        for _, row in ipairs(rows or {}) do row.value = types.decode_json(row.value) end
         return rows or {}, nil
     end)
 end
