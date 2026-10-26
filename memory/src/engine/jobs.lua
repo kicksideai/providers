@@ -60,7 +60,7 @@ end
 -- A derive run over a span, under the caller's frozen identity; its id is
 -- derived from the memory, host and event range so a span schedules once.
 local function new_derive_run(component_id: string, host_kind: string, host_id: string, agent_id: string?,
-    from_event_id: string, to_event_id: string, span: { any }): (any?, any?, error?)
+    from_event_id: string, to_event_id: string, span: { any }, context: { any }?): (any?, any?, error?)
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, nil, id_err end
     local run_id, hash_err = types.digest({ "derive", component_id, host_kind, host_id, from_event_id, to_event_id })
@@ -69,7 +69,7 @@ local function new_derive_run(component_id: string, host_kind: string, host_id: 
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
         host_kind = host_kind, host_id = host_id, agent_id = agent_id,
         from_event_id = from_event_id, to_event_id = to_event_id,
-        input = { span = types.bounded_span(span), owner_id = (identity :: any).principal.id },
+        input = { span = types.bounded_span(span), context = context, owner_id = (identity :: any).principal.id },
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }, identity, nil
 end
@@ -82,6 +82,7 @@ type Capture = {
     from_event_id: string,
     to_event_id: string,
     span: { any },
+    context: { any }?,
 }
 
 -- Advances a host's capture cursor over a span and schedules its derive run.
@@ -89,7 +90,7 @@ type Capture = {
 -- the same span already advanced the cursor.
 function M.capture(capture: Capture): (any?, error?)
     local run, identity, err = new_derive_run(capture.component_id, capture.host_kind, capture.host_id, capture.agent_id,
-        capture.from_event_id, capture.to_event_id, capture.span)
+        capture.from_event_id, capture.to_event_id, capture.span, capture.context)
     if err then return nil, err end
     return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }), capture.from_event_id)
 end
@@ -243,7 +244,7 @@ function M.derive_authorized(value: any): any
         if #span > 0 then
             local keys, keys_err = items.keys(run.component_id, types.scope_key(types.SCOPE.OWNER, types.trim(input.owner_id)), KEY_LIMIT)
             if keys_err then return nil, keys_err end
-            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions)
+            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions, input.context)
             if extract_err then return nil, extract_err end
             candidates = extracted
         end
@@ -252,6 +253,7 @@ function M.derive_authorized(value: any): any
             embedding_model = store.embedding_model, judge_model = cfg.judge_model,
             scope_family = types.SCOPE.OWNER, scope_id = types.trim(input.owner_id),
             host_kind = run.host_kind, host_id = run.host_id, events = events, run_id = run.id,
+            conversation = models.conversation(span, input.context),
         })
     end)
     if write_err then return fail(run.id, write_err) end

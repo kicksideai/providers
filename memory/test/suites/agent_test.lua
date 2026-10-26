@@ -18,6 +18,30 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("carries preceding questions as uncitable context into extraction and reconciliation", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "seed") }, "context-seed")
+            fixture.settle(user, id)
+            fixture.history.record(session, {
+                { id = "question", role = "assistant", content = "Where are you planning to travel?" },
+            })
+            apply(user, "before_step", id, session, "agent-a")
+            fixture.wait_runs(user, id, "derive", 1)
+            fixture.history.record(session, { { id = "answer", role = "user", content = "London" } })
+            fixture.extraction({ fixture.candidate("profile_slot", "home_city", "London", "The user lives in London.", "answer") })
+            fixture.verdict("NOOP", { fixture.items(user, id)[1].id })
+            apply(user, "before_step", id, session, "agent-a")
+            local runs = fixture.wait_runs(user, id, "derive", 2)
+            for _, run in ipairs(runs) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
+            local prompts = fixture.script.prompts("structured_output")
+            test.is_true(prompts[1].user:find("Where are you planning to travel?", 1, true) ~= nil, prompts[1].user)
+            test.eq(table.concat(fixture.script.requests("structured_output")[1].properties.items.items.properties.event_id.enum, ","), "answer")
+            test.is_true(prompts[2].user:find("Where are you planning to travel?", 1, true) ~= nil, prompts[2].user)
+            test.eq(fixture.items(user, id)[1].value, "Berlin")
+        end)
+
         test.it("captures the conversation since the cursor before a step, keeping user and assistant text only", function()
             local user = fixture.user()
             local id = fixture.memory(user, { capture_experience = true })

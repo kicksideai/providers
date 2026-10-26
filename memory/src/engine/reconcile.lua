@@ -46,6 +46,7 @@ type Options = {
     -- Span messages candidates cite, by id: when it was said and its text.
     events: { [string]: { at: string?, text: string? } }?,
     run_id: string?,
+    conversation: string?,
 }
 
 local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
@@ -90,6 +91,7 @@ end
 local function judge(d: any, opts: Options, fields: any, stated: string?, neighbors: { any }, actions: { string }): (any?, error?)
     local verdict, err = models.judge(opts.judge_model, {
         kind = fields.kind, key = fields.key, content = fields.content, valid_at = fields.valid_at, stated = stated,
+        conversation = opts.conversation,
     }, neighbors, actions)
     if err then return nil, err end
     d.stats.judged = d.stats.judged + 1

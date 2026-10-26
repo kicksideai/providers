@@ -28,6 +28,8 @@ local KB_REGISTRY = "kickside.knowledge:knowledge_bases"
 
 -- Messages read on the first capture of a host without a cursor.
 local FIRST_CAPTURE_WINDOW = 20
+local CAPTURE_CONTEXT_WINDOW = 10
+local CAPTURE_CONTEXT_MAX_CHARS = 6000
 local CHECKPOINT_SOURCE_MAX_CHARS = 12000
 local CHECKPOINT_MAX_TOKENS = 1000
 local SEARCH_MAX = 50
@@ -206,10 +208,23 @@ local function capture(payload: any, to_event_id: string?): (any?, error?)
     if #events == 0 then return skipped("no_new_history"), nil end
     local span = gate(events, cfg)
     if #span == 0 then return skipped("nothing_to_capture"), nil end
+    local preceding, preceding_err = history(payload, { mode = "range", to_id = tostring(events[1].id) })
+    if preceding_err then return nil, preceding_err end
+    local prior = (preceding :: any).events
+    local context: { any } = {}
+    local remaining = CAPTURE_CONTEXT_MAX_CHARS
+    for i = #prior - 1, math.max(1, #prior - CAPTURE_CONTEXT_WINDOW), -1 do
+        local entry = span_entry(prior[i], cfg)
+        if entry and remaining > 0 then
+            entry.text = entry.text:sub(-remaining)
+            remaining = remaining - #entry.text
+            table.insert(context, 1, entry)
+        end
+    end
     local scheduled, schedule_err = jobs.capture({
         component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
         agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
-        to_event_id = tostring(events[#events].id), span = span,
+        to_event_id = tostring(events[#events].id), span = span, context = context,
     })
     if schedule_err then return nil, schedule_err end
     return { captured = (scheduled :: any).scheduled, run_id = (scheduled :: any).run_id, memory_id = memory_id }, nil

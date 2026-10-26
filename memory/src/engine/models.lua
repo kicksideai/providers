@@ -46,6 +46,10 @@ Keep only what the user states about themselves, their work and their world that
 still matter in a later conversation: facts, preferences, decisions, corrections, and
 outcomes of finished work. A correction is a new item with the corrected value.
 
+Read preceding context to understand short answers. A trip destination, hypothetical,
+or answer to a question about travel does not change where the person lives. Change a
+single-valued profile attribute only when the person explicitly states that it changes.
+
 Each item must be stated in the message it cites, in the user's own words. Skip:
 - requests, questions and instructions to the assistant ("find me...", "where do I live?",
   "one trip idea please"): asking states nothing about the user; a request that also states
@@ -85,6 +89,9 @@ Choose exactly one action:
   the person says they are unsure, or two sources disagree.
 
 new_memory.stated, when present, is what the person said; it tells an update from a contradiction.
+conversation includes preceding context and the captured span. A destination or hypothetical
+answer never changes a profile attribute. Choose NOOP for such a misinterpreted candidate.
+Only an explicit statement of change can replace a single-valued profile attribute.
 target_ids lists the existing memory ids the action applies to (empty for ADD).
 Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
 
@@ -179,17 +186,26 @@ end
 -- span: { { id, role, text, created_at } }; keys: the { kind, key } pairs the
 -- person's memories use. A span in which nobody states anything yields no
 -- candidates without a model call.
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?): (any?, error?)
+function M.conversation(span: { any }, context: { any }?): string
     local lines: { string } = {}
-    local ids: { string } = {}
+    for _, message in ipairs(context or {}) do
+        lines[#lines + 1] = string.format("(%s, preceding context only) %s", message.role, message.text)
+    end
     for _, message in ipairs(span) do
         if STATEMENT_ROLES[message.role] then
-            ids[#ids + 1] = message.id
             lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
         else
             -- Context lines carry no id: nothing can cite them.
             lines[#lines + 1] = string.format("(%s, context only) %s", message.role, message.text)
         end
+    end
+    return table.concat(lines, "\n")
+end
+
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?): (any?, error?)
+    local ids: { string } = {}
+    for _, message in ipairs(span) do
+        if STATEMENT_ROLES[message.role] then ids[#ids + 1] = message.id end
     end
     if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
@@ -197,7 +213,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
         system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. key_listing(keys)
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
-    local response, err = llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })
+    local response, err = llm.structured_output(candidate_schema(ids), messages(system, M.conversation(span, context)), { model = model })
     if err then return nil, model_error("memory extraction", err) end
     return read_candidates(response, "memory extraction")
 end
@@ -259,7 +275,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     }
     local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT, json.encode({
             new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at,
-                stated = candidate.stated },
+                stated = candidate.stated }, conversation = candidate.conversation,
             existing_memories = listing,
         })), { model = model })
     if err then return nil, model_error("memory reconcile judge", err) end
