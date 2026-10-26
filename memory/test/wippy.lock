@@ -21,8 +21,8 @@ modules:
       version: 0.8.14
       hash: 76754d9e6c3255d7a46feba23d38c3e086bbb836de41e7f02d197f04c4202a6c
     - name: kickside/execution
-      version: 0.2.6
-      hash: 2afe22b62adf3db9b28d55d18c3db47ea1c2b209b652b23567ebd2e39b463036
+      version: 0.2.7
+      hash: 3954d2cc679886deb8a15a4a3c8c36e4ea09e578f09a2eb6f27f0ac62e10fdf7
     - name: kickside/jobs
       version: 0.1.61
       hash: 57e1176282d8961ebbffb4325b2fc9a5e18c40e7288eb9dd27cf1cddf7365b0f
@@ -44,8 +44,8 @@ modules:
       version: 0.1.1
       hash: 420b6722733c6b69754942c5dbd375e634d35325427abda5408fb70bc6701d3f
     - name: kickside/security
-      version: 0.2.10
-      hash: 59a370b98670454367b069dad7b577d3d30d6e2d627780c4fede8e8e0480262e
+      version: 0.2.13
+      hash: 845a2645aeb80fd9769026bf5479f05e82959503e52839bac479098b6512fb2f
     - name: kickside/settings
       version: 0.3.0
       hash: b3e970dbff3a845badbc90feee6582df079880e86674916f540c3f54673046bf
