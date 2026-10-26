@@ -442,7 +442,7 @@ local function define_tests()
             test.is_nil(err, tostring(err))
             test.is_true(result.deleted == true, json.encode(result))
             for _, table_name in ipairs({ "kickside_memory_kb_items", "kickside_memory_kb_payloads", "kickside_memory_kb_keys", "kickside_memory_kb_provenance", "kickside_memory_kb_embeddings",
-                "kickside_memory_kb_cursors", "kickside_memory_kb_runs", "kickside_memory_kb_stores" }) do
+                "kickside_memory_kb_cursors", "kickside_memory_kb_run_sources", "kickside_memory_kb_runs", "kickside_memory_kb_stores" }) do
                 test.eq(count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
             end
             test.eq(count("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id = $1", { id }), 0)

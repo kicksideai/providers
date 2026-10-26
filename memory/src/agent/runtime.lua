@@ -148,6 +148,18 @@ local function gate(events: { any }, cfg: any): { any }
     return span
 end
 
+local function latest_statement(run: any): (any?, error?)
+    if type(run) ~= "table" or type(run.run_context) ~= "table" then return nil, nil end
+    local recent, err = history(run, { mode = "window", last = FIRST_CAPTURE_WINDOW })
+    if err then return nil, err end
+    local statement = nil
+    for _, event in ipairs((recent :: any).events) do
+        local entry = span_entry(event, { capture_conversation = true })
+        if entry and entry.role == "user" then statement = entry end
+    end
+    return statement, nil
+end
+
 -- Captures the host's history since its cursor (through `to_event_id` when
 -- given) into the memory. Both capture paths go through here; the cursor
 -- moves under compare-and-set, so a span is captured once.
@@ -524,6 +536,8 @@ function M.remember(args: any): (any?, error?)
     if hash_err then return nil, hash_err end
     local run = ctx.get("agent_run")
     local host_kind, host_id = host_ref(type(run) == "table" and run.host or nil)
+    local statement, statement_err = latest_statement(run)
+    if statement_err then return nil, statement_err end
     local written, write_err = writer.write(memory_id :: string, idempotency :: string, {
         source = types.ITEM_SOURCE.TOOL, actor = owner, keyed_by_head = true,
     }, function(d: any): (any?, error?)
@@ -531,7 +545,7 @@ function M.remember(args: any): (any?, error?)
         if keys_err then return nil, keys_err end
         local candidates, normalize_err = models.normalize((store :: any).effective.judge_model, {
             { kind = kind, key = key, cardinality = cardinality ~= "" and cardinality or nil, value = value, content = content,
-                valid_at = input.valid_at, confidence = 1 },
+                valid_at = input.valid_at or (statement and statement.created_at), event_id = statement and statement.id, confidence = 1 },
         }, keys :: any)
         if normalize_err then return nil, normalize_err end
         local err = reconcile.decide(d, candidates :: any, {
@@ -563,15 +577,10 @@ function M.forget(args: any): (any?, error?)
     if type(run) ~= "table" or type(run.run_context) ~= "table" then
         return tool_error("ForgetMemory requires the user's explicit erasure request; corrections use Remember"), nil
     end
-    local recent, recent_err = history(run, { mode = "window", last = FIRST_CAPTURE_WINDOW })
-    if recent_err then return nil, recent_err end
-    local statement = ""
-    for _, event in ipairs((recent :: any).events) do
-        local entry = span_entry(event, { capture_conversation = true })
-        if entry and entry.role == "user" then statement = entry.text end
-    end
-    if statement == "" then return tool_error("ForgetMemory requires the user's explicit erasure request; corrections use Remember"), nil end
-    local permitted, intent_err = models.forget_requested((store :: any).effective.judge_model, statement, item)
+    local statement, statement_err = latest_statement(run)
+    if statement_err then return nil, statement_err end
+    if not statement then return tool_error("ForgetMemory requires the user's explicit erasure request; corrections use Remember"), nil end
+    local permitted, intent_err = models.forget_requested((store :: any).effective.judge_model, statement.text, item)
     if intent_err then return nil, intent_err end
     if not permitted then return tool_error("This is not an explicit erasure request. Use Remember to supersede a corrected value."), nil end
     local forgotten, forget_err = ops.forget(memory_id :: string, item_id)

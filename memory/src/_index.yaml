@@ -115,6 +115,8 @@ entries:
     targets:
       - entry: kickside.memory.migrations:01_memory_schema
         path: .meta.target_db
+      - entry: kickside.memory.migrations:02_run_sources
+        path: .meta.target_db
       - entry: kickside.memory:db_config
         path: .meta.db_id
 

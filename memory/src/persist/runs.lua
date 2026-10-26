@@ -36,6 +36,20 @@ type RunInput = {
     actor_context: string?,
 }
 
+function M.sources_tx(tx: any, run: any): error?
+    local input = run.input or {}
+    for _, messages in ipairs({ input.span or {}, input.context or {} }) do
+        for _, message in ipairs(messages) do
+            local id = types.trim(message.id)
+            if id == "" then return types.invalid("memory source event id is required") end
+            local _, err = tx:execute("INSERT INTO kickside_memory_kb_run_sources (component_id, run_id, event_id) VALUES ($1, $2, $3) ON CONFLICT (component_id, run_id, event_id) DO NOTHING",
+                { run.component_id, run.id, id })
+            if err then return types.failed("memory run source enrollment failed", err) end
+        end
+    end
+    return nil
+end
+
 local function insert_tx(tx: any, run: RunInput): (any?, error?)
     local existing, read_err = tx:query("SELECT id, job_id FROM kickside_memory_kb_runs WHERE id = $1", { run.id })
     if read_err then return nil, types.failed("memory run lookup failed", read_err) end
@@ -51,6 +65,8 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
             run.agent_id or "", run.from_event_id or "", run.to_event_id or "", json.encode(run.input or {}),
             run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now() })
     if err then return nil, types.failed("memory run insert failed", err) end
+    local sources_err = M.sources_tx(tx, run)
+    if sources_err then return nil, sources_err end
     return { created = true }, nil
 end
 

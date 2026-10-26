@@ -87,6 +87,7 @@ function M.purge_page(component_id: string): (any?, error?)
             "DELETE FROM kickside_memory_kb_payloads WHERE component_id = $1",
             "DELETE FROM kickside_memory_kb_keys WHERE component_id = $1",
             "DELETE FROM kickside_memory_kb_cursors WHERE component_id = $1",
+            "DELETE FROM kickside_memory_kb_run_sources WHERE component_id = $1",
             "DELETE FROM kickside_memory_kb_runs WHERE component_id = $1",
             "DELETE FROM kickside_memory_kb_stores WHERE component_id = $1",
         }) do

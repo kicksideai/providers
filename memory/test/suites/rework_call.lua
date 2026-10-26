@@ -7,9 +7,16 @@ local sql = require("sql")
 local index = require("search_index")
 local measured_items = items
 local measured_db = require("measured_db")
+local source_migration = require("source_migration")
 
 local function call(a: any): (any?, error?)
-    if a.op == "seed" then
+    if a.op == "backfill_sources" then
+        local db, err = sql.get("app:db")
+        if err then return nil, err end
+        local result = source_migration({ db = db, db_type = db:type(), id = a.id })
+        db:release()
+        return result, nil
+    elseif a.op == "seed" then
         local vectors, err = models.embed("test-embed", { a.content or "Synthetic evidence." })
         if err then return nil, err end
         return writer.write(a.component_id, a.idempotency or "seed", { source = "owner" }, function(d: any): (any?, error?)

@@ -192,54 +192,17 @@ local function supersede_tx(tx: any, component_id: string, item_id: string, succ
     })
 end
 
--- The erase set is collected before payload deletion; retained runs are read
--- once for the whole decision, including uncited mentions of typed leaves.
+-- Source events identify retained inputs without inspecting memory text or values.
 local function scrub_runs_tx(tx: any, component_id: string, forgotten: { string }): error?
-    if #forgotten == 0 then return nil end
-    local drop: { [string]: boolean } = {}
-    local owned: { [string]: boolean } = {}
-    local texts: { [string]: boolean } = {}
-    local function retain(value: any)
-        if type(value) == "table" then
-            for _, child in pairs(value) do retain(child) end
-        elseif value ~= nil then
-            local text = tostring(value):lower()
-            if text ~= "" then texts[text] = true end
-        end
-    end
     for first = 1, #forgotten, 200 do
         local params: { any } = { component_id }
         for i = first, math.min(first + 199, #forgotten) do params[#params + 1] = forgotten[i] end
         local ids = index.placeholders(#params - 1, 2)
-        local payloads, payload_err = tx:query("SELECT content, value FROM kickside_memory_kb_payloads WHERE component_id = $1 AND owner_item_id IN (" .. ids .. ")", params)
-        if payload_err then return types.failed("memory erase payload read failed", payload_err) end
-        for _, payload in ipairs(payloads or {}) do retain(payload.content); retain(types.decode_json(payload.value)) end
-        local refs, refs_err = tx:query("SELECT event_id FROM kickside_memory_kb_provenance WHERE component_id = $1 AND item_id IN (" .. ids .. ")", params)
-        if refs_err then return types.failed("memory provenance read failed", refs_err) end
-        for _, ref in ipairs(refs or {}) do drop[tostring(ref.event_id)] = true end
-        local owners, owner_err = tx:query("SELECT run_id FROM kickside_memory_kb_items WHERE component_id = $1 AND id IN (" .. ids .. ") AND run_id IS NOT NULL", params)
-        if owner_err then return types.failed("memory run ownership read failed", owner_err) end
-        for _, owner in ipairs(owners or {}) do owned[owner.run_id] = true end
-    end
-    local function contains(text: any): boolean
-        if type(text) ~= "string" then return false end
-        local lower = text:lower()
-        for held in pairs(texts) do if lower:find(held, 1, true) then return true end end
-        return false
-    end
-    local rows, err = tx:query("SELECT id, input, last_error FROM kickside_memory_kb_runs WHERE component_id = $1", { component_id })
-    if err then return types.failed("memory run read failed", err) end
-    for _, row in ipairs(rows or {}) do
-        local input = types.decode_json(row.input)
-        local affected = owned[row.id] == true
-        for _, message in ipairs(type(input) == "table" and input.span or {}) do
-            if drop[tostring(message.id)] or contains(message.text) then affected = true end
-        end
-        if affected or contains(row.last_error) then
-            local _, update_err = tx:execute("UPDATE kickside_memory_kb_runs SET input = $1, last_error = NULL WHERE component_id = $2 AND id = $3",
-                { affected and "{}" or json.encode(input), component_id, row.id })
-            if update_err then return types.failed("memory run scrub failed", update_err) end
-        end
+        local _, err = tx:execute("UPDATE kickside_memory_kb_runs SET input = '{}', last_error = NULL WHERE component_id = $1 AND (" ..
+            "id IN (SELECT run_id FROM kickside_memory_kb_items WHERE component_id = $1 AND id IN (" .. ids .. ")) OR " ..
+            "id IN (SELECT s.run_id FROM kickside_memory_kb_run_sources s JOIN kickside_memory_kb_provenance p " ..
+            "ON p.component_id = s.component_id AND p.event_id = s.event_id WHERE p.component_id = $1 AND p.item_id IN (" .. ids .. ")))", params)
+        if err then return types.failed("memory source input erase failed", err) end
     end
     return nil
 end
