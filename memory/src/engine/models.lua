@@ -84,7 +84,8 @@ Each item has:
 - valid_at: when it became true if the span says so (RFC3339), else ""
 - confidence: 0..1
 
-Return {"items": []} when nothing durable is stated.]]
+Return scalar attributes in items and ongoing goals in plans. Both arrays are required;
+return {"items": [], "plans": []} when nothing durable is stated.]]
 
 local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of the same person.
 
@@ -167,7 +168,9 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
         }
     end
     local scalar = item(scalar_kinds, { type = "string" }, { "single", "multi" })
-    local shape: any = scalar
+    local schema = { type = "object", additionalProperties = false, required = { "items" }, properties = {
+        items = { type = "array", items = scalar },
+    } }
     if not kinds then
         local goal = item({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
             required = { "status", "next_step", "details" }, properties = {
@@ -175,11 +178,10 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
                 next_step = { type = "string" }, details = { type = "string", minLength = 1 },
             },
         }, { "single" })
-        shape = { anyOf = { scalar, goal } }
+        schema.properties.plans = { type = "array", items = goal }
+        schema.required[#schema.required + 1] = "plans"
     end
-    return { type = "object", additionalProperties = false, required = { "items" }, properties = {
-        items = { type = "array", items = shape },
-    } }
+    return schema
 end
 
 local function read_candidates(response: any, step: string): (any?, error?)
@@ -187,8 +189,14 @@ local function read_candidates(response: any, step: string): (any?, error?)
     if type(data) ~= "table" or type(data.items) ~= "table" then
         return nil, types.unavailable(step .. " returned malformed output")
     end
+    local candidates = {}
+    for _, item in ipairs(data.items) do candidates[#candidates + 1] = item end
+    if step == "memory extraction" then
+        if type(data.plans) ~= "table" then return nil, types.unavailable(step .. " returned malformed goals") end
+        for _, item in ipairs(data.plans) do candidates[#candidates + 1] = item end
+    end
     local out: { any } = {}
-    for index, item in ipairs(data.items) do
+    for index, item in ipairs(candidates) do
         if type(item) ~= "table" or not types.KIND_SET[item.kind] or types.trim(item.key) == ""
             or types.trim(item.content) == "" or not types.CARDINALITY_SET[item.cardinality] then
             return nil, types.unavailable(step .. " returned a malformed item at " .. tostring(index))

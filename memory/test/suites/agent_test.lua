@@ -18,9 +18,27 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("extracts scalar attributes and goals through independently typed collections", function()
+            local user = fixture.user()
+            local attribute = fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement")
+            local goal = fixture.candidate("plan", "ticket_booking", { status = "open", next_step = "Compare routes", details = "Travel tickets" }, "The user needs travel tickets.", "statement")
+            fixture.script.respond("structured_output", { items = { attribute }, plans = { goal } })
+            fixture.normalization({ attribute, goal })
+            local result, err = fixture.op(user, "extract", { span = { { id = "statement", role = "user", text = "I live in Paris and need travel tickets." } } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result, 2)
+            test.eq(result[1].kind, "profile_slot")
+            test.eq(result[1].value, "Paris")
+            test.eq(result[2].kind, "plan")
+            test.eq(result[2].value.details, "Travel tickets")
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(schema.properties.items.items.properties.value.type, "string")
+            test.eq(schema.properties.plans.items.properties.value.type, "object")
+        end)
+
         test.it("rejects goal-shaped output for an extracted scalar attribute", function()
             local user = fixture.user()
-            fixture.script.respond("structured_output", { items = { fixture.candidate("profile_slot", "pet_name", {
+            fixture.script.respond("structured_output", { plans = {}, items = { fixture.candidate("profile_slot", "pet_name", {
                 status = "open", next_step = "", details = "A cat named Biscuit",
             }, "The user's cat is named Biscuit.", "statement") } })
             local result, err = fixture.op(user, "extract", { span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
@@ -49,7 +67,7 @@ local function define_tests()
             local prompt = fixture.script.prompts("structured_output")[1].system
             test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
             local schema = fixture.script.requests("structured_output")[1]
-            test.eq(schema.properties.items.items.anyOf[2].properties.value.properties.details.minLength, 1)
+            test.eq(schema.properties.plans.items.properties.value.properties.details.minLength, 1)
         end)
 
         test.it("normalizes every candidate once using required numbered result properties", function()
@@ -79,7 +97,7 @@ local function define_tests()
             fixture.settle(user, id)
             local session = "s-" .. user
             fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
-            fixture.script.respond("structured_output", { items = { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal") } })
+            fixture.script.respond("structured_output", { items = {}, plans = { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal") } })
             fixture.script.respond("structured_output", { mappings = { ["1"] = { key = "home_city", value = "", kind = "profile_slot", cardinality = "single" } } })
             apply(user, "before_step", id, session, "agent-a")
             local runs = fixture.wait_runs(user, id, "derive", 1)
@@ -168,7 +186,7 @@ local function define_tests()
             fixture.settle(user, id)
             local session = "s-" .. user
             fixture.history.record(session, { { id = "move", role = "user", content = "I moved to Berlin." } })
-            fixture.script.respond("structured_output", { items = { fixture.candidate("profile_slot", "current_city", "The user lives in Berlin.", "The user lives in Berlin.", "move") } })
+            fixture.script.respond("structured_output", { plans = {}, items = { fixture.candidate("profile_slot", "current_city", "The user lives in Berlin.", "The user lives in Berlin.", "move") } })
             fixture.script.respond("structured_output", { mappings = { ["1"] = { key = "home_city", value = "Berlin", kind = "profile_slot", cardinality = "single" } } })
             fixture.verdict("SUPERSEDE", { seed.item_ids[1] })
             local applied, err = apply(user, "before_step", id, session, "agent-a")
@@ -202,7 +220,7 @@ local function define_tests()
             for _, run in ipairs(runs) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
             local prompts = fixture.script.prompts("structured_output")
             test.is_true(prompts[1].user:find("Where are you planning to travel?", 1, true) ~= nil, prompts[1].user)
-            test.eq(table.concat(fixture.script.requests("structured_output")[1].properties.items.items.anyOf[1].properties.event_id.enum, ","), "answer")
+            test.eq(table.concat(fixture.script.requests("structured_output")[1].properties.items.items.properties.event_id.enum, ","), "answer")
             test.is_true(prompts[3].user:find("Where are you planning to travel?", 1, true) ~= nil, prompts[3].user)
             test.eq(fixture.items(user, id)[1].value, "Berlin")
         end)
@@ -328,7 +346,7 @@ local function define_tests()
             apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 2)
             local schema = fixture.script.requests("structured_output")[1]
-            test.eq(table.concat(schema.properties.items.items.anyOf[1].properties.event_id.enum, ","), "n2")
+            test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "n2")
             local span = fixture.script.prompts("structured_output")[1].user
             test.is_true(span:find("[n2]", 1, true) ~= nil, span)
             test.is_true(span:find("[n3]", 1, true) == nil, span)
