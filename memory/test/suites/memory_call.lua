@@ -21,6 +21,7 @@ local agent_compiler = require("agent_compiler")
 
 local OPS: { [string]: (any) -> (any, any) } = {
     normalize = function(a: any) return models.normalize("test-fast", a.candidates, a.keys or {}) end,
+    extract = function(a: any) return models.extract("test-fast", a.span, {}, nil) end,
     create = function(a: any) return ops.create(a.component_id, a.fields) end,
     edit = function(a: any) return ops.edit(a.component_id, a.item_id, a.fields) end,
     forget = function(a: any) return ops.forget(a.component_id, a.item_id) end,

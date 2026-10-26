@@ -70,7 +70,9 @@ Each item has:
 - key: a short stable topic, e.g. "home_city", "preferred_language", "employer"
 - cardinality: "single" when the person holds one value at a time (name, home city, diet,
   employer, birth date), "multi" when several hold together (allergies, children, pets)
-- value: the value only, e.g. "Berlin"; plans use an object with status ("open" or
+- value: only the new value stated, e.g. "Berlin". Never combine an older, different
+  attribute value with the new one; reconciliation decides their relationship. When the
+  user states several simultaneous values, extract separate candidates. Plans use an object with status ("open" or
   "done"), next_step (last agreed next action), details (decisions and constraints).
 - plan: one record per ongoing goal, with a stable key per goal. Several goals coexist
   under different keys. Each goal key has cardinality single and updates by supersession.
@@ -111,6 +113,8 @@ when it names the same attribute, regardless of phrasing or kind (home city and 
 city, diet and dietary preference). Different attributes or distinct goals keep distinct
 keys. Candidates about the same attribute reuse one key within the batch too.
 Use the candidate's key only for an attribute no existing key represents.
+Conversation grounds the new claim. Existing values guide attribute identity, never an
+unstated union of old and new values. Preserve only the newly stated scalar value.
 The value is the attribute value alone, never a sentence about the user: "Pepper", not
 "The user's cat is named Pepper." Preserve typed non-string values; return an empty
 string for their value field. Do not add information or change the meaning.
@@ -148,37 +152,34 @@ local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PRO
 local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
     local event_id: any = { type = "string" }
     if event_ids then event_id = { type = "string", enum = event_ids } end
-    return {
-        type = "object",
-        additionalProperties = false,
-        required = { "items" },
-        properties = {
-            items = {
-                type = "array",
-                items = {
-                    type = "object",
-                    additionalProperties = false,
-                    required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
-                    properties = {
-                        kind = { type = "string", enum = kinds or CANDIDATE_KINDS },
-                        key = { type = "string" },
-                        cardinality = { type = "string", enum = { types.CARDINALITY.SINGLE, types.CARDINALITY.MULTI } },
-                        value = { anyOf = {
-                            { type = "string" },
-                            { type = "object", additionalProperties = false, required = { "status", "next_step", "details" }, properties = {
-                                status = { type = "string", enum = { "open", "done" } },
-                                next_step = { type = "string" }, details = { type = "string", minLength = 1 },
-                            } },
-                        } },
-                        content = { type = "string" },
-                        event_id = event_id,
-                        valid_at = { type = "string" },
-                        confidence = { type = "number" },
-                    },
-                },
+    local scalar_kinds = {}
+    for _, kind in ipairs(kinds or CANDIDATE_KINDS) do
+        if kind ~= types.KIND.PLAN then scalar_kinds[#scalar_kinds + 1] = kind end
+    end
+    local function item(allowed: { string }, value: any, cardinalities: { string }): any
+        return { type = "object", additionalProperties = false,
+            required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
+            properties = {
+                kind = { type = "string", enum = allowed }, key = { type = "string" },
+                cardinality = { type = "string", enum = cardinalities }, value = value,
+                content = { type = "string" }, event_id = event_id, valid_at = { type = "string" }, confidence = { type = "number" },
             },
-        },
-    }
+        }
+    end
+    local scalar = item(scalar_kinds, { type = "string" }, { "single", "multi" })
+    local shape: any = scalar
+    if not kinds then
+        local goal = item({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
+            required = { "status", "next_step", "details" }, properties = {
+                status = { type = "string", enum = { "open", "done" } },
+                next_step = { type = "string" }, details = { type = "string", minLength = 1 },
+            },
+        }, { "single" })
+        shape = { anyOf = { scalar, goal } }
+    end
+    return { type = "object", additionalProperties = false, required = { "items" }, properties = {
+        items = { type = "array", items = shape },
+    } }
 end
 
 local function read_candidates(response: any, step: string): (any?, error?)
@@ -191,6 +192,12 @@ local function read_candidates(response: any, step: string): (any?, error?)
         if type(item) ~= "table" or not types.KIND_SET[item.kind] or types.trim(item.key) == ""
             or types.trim(item.content) == "" or not types.CARDINALITY_SET[item.cardinality] then
             return nil, types.unavailable(step .. " returned a malformed item at " .. tostring(index))
+        end
+        if item.kind ~= types.KIND.PLAN and type(item.value) ~= "string" then
+            return nil, types.unavailable(step .. " returned a non-scalar attribute")
+        end
+        if item.kind == types.KIND.PLAN and types.validate_value(item.kind, item.value) then
+            return nil, types.unavailable(step .. " returned an invalid goal state")
         end
         out[#out + 1] = item
     end
@@ -249,10 +256,10 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     if err then return nil, model_error("memory extraction", err) end
     local candidates, read_err = read_candidates(response, "memory extraction")
     if read_err then return nil, read_err end
-    return M.normalize(model, candidates :: any, keys)
+    return M.normalize(model, candidates :: any, keys, M.conversation(span, context))
 end
 
-function M.normalize(model: string, candidates: { any }, keys: { any }): (any?, error?)
+function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?): (any?, error?)
     if #candidates == 0 then return candidates, nil end
     local names, named = {}, {}
     local known: { [string]: any } = {}
@@ -284,7 +291,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }): (any?, 
     local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
         mappings = { type = "object", additionalProperties = false, properties = properties, required = required },
     } }
-    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT, json.encode({ candidates = candidates, existing_keys = keys })), { model = model })
+    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model })
     if err then return nil, model_error("memory normalization", err) end
     local mappings = response and response.result and response.result.mappings
     if type(mappings) ~= "table" then return nil, types.unavailable("memory normalization returned malformed output") end

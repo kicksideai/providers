@@ -18,6 +18,18 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("rejects goal-shaped output for an extracted scalar attribute", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { items = { fixture.candidate("profile_slot", "pet_name", {
+                status = "open", next_step = "", details = "A cat named Biscuit",
+            }, "The user's cat is named Biscuit.", "statement") } })
+            local result, err = fixture.op(user, "extract", { span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(tostring(err), "memory extraction returned a non-scalar attribute")
+            test.eq(#fixture.script.requests("structured_output"), 1)
+        end)
+
         test.it("offers existing goal state when interpreting a contextual answer", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -37,7 +49,7 @@ local function define_tests()
             local prompt = fixture.script.prompts("structured_output")[1].system
             test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
             local schema = fixture.script.requests("structured_output")[1]
-            test.eq(schema.properties.items.items.properties.value.anyOf[2].properties.details.minLength, 1)
+            test.eq(schema.properties.items.items.anyOf[2].properties.value.properties.details.minLength, 1)
         end)
 
         test.it("normalizes every candidate once using required numbered result properties", function()
@@ -190,7 +202,7 @@ local function define_tests()
             for _, run in ipairs(runs) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
             local prompts = fixture.script.prompts("structured_output")
             test.is_true(prompts[1].user:find("Where are you planning to travel?", 1, true) ~= nil, prompts[1].user)
-            test.eq(table.concat(fixture.script.requests("structured_output")[1].properties.items.items.properties.event_id.enum, ","), "answer")
+            test.eq(table.concat(fixture.script.requests("structured_output")[1].properties.items.items.anyOf[1].properties.event_id.enum, ","), "answer")
             test.is_true(prompts[3].user:find("Where are you planning to travel?", 1, true) ~= nil, prompts[3].user)
             test.eq(fixture.items(user, id)[1].value, "Berlin")
         end)
@@ -316,7 +328,7 @@ local function define_tests()
             apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 2)
             local schema = fixture.script.requests("structured_output")[1]
-            test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "n2")
+            test.eq(table.concat(schema.properties.items.items.anyOf[1].properties.event_id.enum, ","), "n2")
             local span = fixture.script.prompts("structured_output")[1].user
             test.is_true(span:find("[n2]", 1, true) ~= nil, span)
             test.is_true(span:find("[n3]", 1, true) == nil, span)
