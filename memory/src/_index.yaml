@@ -117,6 +117,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.memory.migrations:02_run_sources
         path: .meta.target_db
+      - entry: kickside.memory.migrations:03_payload_embeddings
+        path: .meta.target_db
       - entry: kickside.memory:db_config
         path: .meta.db_id
 

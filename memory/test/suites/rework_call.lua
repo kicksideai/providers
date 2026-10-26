@@ -8,12 +8,14 @@ local index = require("search_index")
 local measured_items = items
 local measured_db = require("measured_db")
 local source_migration = require("source_migration")
+local embedding_migration = require("embedding_migration")
 
 local function call(a: any): (any?, error?)
-    if a.op == "backfill_sources" then
+    if a.op == "backfill_sources" or a.op == "backfill_embeddings" then
         local db, err = sql.get("app:db")
         if err then return nil, err end
-        local result = source_migration({ db = db, db_type = db:type(), id = a.id })
+        local migrate = a.op == "backfill_sources" and source_migration or embedding_migration
+        local result = migrate({ db = db, db_type = db:type(), id = a.id })
         db:release()
         return result, nil
     elseif a.op == "seed" then
@@ -85,11 +87,18 @@ local function call(a: any): (any?, error?)
         local event = { type = types.EVENT.ITEM_REVISED, seq = item.last_seq + 1,
             body = { item_id = item.id, payload_id = payload_id, content_hash = hash } }
         if a.op == "revision_race" then
+            db = assert(sql.get("app:db"))
+            local staged = assert(db:query("SELECT content_hash FROM kickside_memory_kb_embeddings WHERE item_id = $1", { item.id }))
+            db:release()
             local stale, stale_err = items.set_embedding(a.component_id, item.id, vector, item.content_hash)
             if stale_err then return nil, stale_err end
             local _, fold_err = items.fold(a.component_id, { event })
             if fold_err then return nil, fold_err end
-            return { stale_written = stale, item = items.get(a.component_id, item.id) }, nil
+            db = assert(sql.get("app:db"))
+            local folded = assert(db:query("SELECT content_hash FROM kickside_memory_kb_embeddings WHERE item_id = $1", { item.id }))
+            db:release()
+            return { stale_written = stale, staged_hash = staged[1].content_hash, original_hash = item.content_hash,
+                vector_hash = folded[1].content_hash, item = items.get(a.component_id, item.id) }, nil
         end
         local _, fold_err = items.fold(a.component_id, { event })
         if fold_err then return nil, fold_err end

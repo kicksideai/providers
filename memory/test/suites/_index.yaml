@@ -140,6 +140,7 @@ entries:
     imports:
       measured_db: app.suites:measured_db
       source_migration: kickside.memory.migrations:02_run_sources_implementation
+      embedding_migration: kickside.memory.migrations:03_payload_embeddings_implementation
       memory_writer: kickside.memory.engine:writer
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
