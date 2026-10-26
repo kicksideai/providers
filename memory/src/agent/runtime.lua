@@ -551,7 +551,7 @@ function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     local item_id = types.trim(input.item_id)
     if item_id == "" then return tool_error("item_id is required"), nil end
-    local memory_id, _, refusal = writable()
+    local memory_id, store, refusal = writable()
     if refusal then return refusal, nil end
     local item, item_err = items.get(memory_id :: string, item_id)
     if item_err then return nil, item_err end
@@ -559,6 +559,21 @@ function M.forget(args: any): (any?, error?)
     if (item :: any).scope_key ~= types.scope_key(types.SCOPE.OWNER, types.actor_id()) then
         return tool_error("only your own memories can be forgotten here"), nil
     end
+    local run = ctx.get("agent_run")
+    if type(run) ~= "table" or type(run.run_context) ~= "table" then
+        return tool_error("ForgetMemory requires the user's explicit erasure request; corrections use Remember"), nil
+    end
+    local recent, recent_err = history(run, { mode = "window", last = FIRST_CAPTURE_WINDOW })
+    if recent_err then return nil, recent_err end
+    local statement = ""
+    for _, event in ipairs((recent :: any).events) do
+        local entry = span_entry(event, { capture_conversation = true })
+        if entry and entry.role == "user" then statement = entry.text end
+    end
+    if statement == "" then return tool_error("ForgetMemory requires the user's explicit erasure request; corrections use Remember"), nil end
+    local permitted, intent_err = models.forget_requested((store :: any).effective.judge_model, statement, item)
+    if intent_err then return nil, intent_err end
+    if not permitted then return tool_error("This is not an explicit erasure request. Use Remember to supersede a corrected value."), nil end
     local forgotten, forget_err = ops.forget(memory_id :: string, item_id)
     if forget_err then return nil, forget_err end
     return { success = true, memory_id = memory_id, item_id = (forgotten :: any).item_id }, nil

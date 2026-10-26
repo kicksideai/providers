@@ -67,7 +67,7 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Remember
       llm_alias: Remember
-      llm_description: "Store a durable memory about the user or an ongoing plan. Use one topic key per goal and update its complete state as work progresses. Existing attributes and plans update by supersession."
+      llm_description: "Store a durable memory about the user or an ongoing plan. Use this for corrections and changed values: supersession preserves earlier versions. Never call ForgetMemory for a correction. Use one topic key per goal and update its complete state as work progresses."
       input_schema: |
         {
           "type": "object",
@@ -95,7 +95,7 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Forget Memory
       llm_alias: ForgetMemory
-      llm_description: "Forget one of the user's memories by its id (from SearchMemory) when the user asks you to forget it. It is erased for good, with every earlier version of it."
+      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Never use this for a correction, changed value or update; use Remember to supersede the earlier value. Requires an item id from SearchMemory and verifies the latest user request before erasing."
       input_schema: |
         {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
       output_schema: |
