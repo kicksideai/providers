@@ -3,102 +3,175 @@
 import { computed, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { api } from '@wippy-fe/proxy'
-import Button from 'primevue/button'
-import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
-import { KIND_LABEL, errorText, isRecord, type MemoryItem, type Provenance } from './types'
-import { severity, when, type Memory } from './useMemory'
+import ConfirmDialog from './chrome/ConfirmDialog.vue'
+import { KIND_META, aboutLabel, fullTime, relativeTime, sourceLabel, topicLabel } from './format'
+import { errorText, isRecord, type MemoryItem, type Provenance } from './types'
+import { severity, type Memory } from './useMemory'
 
-// One memory: its text, when it was true and learned, its versions and the
-// messages it was seen in. Identity and rules are edited here as new versions.
-const props = defineProps<{ memory: Memory; item: MemoryItem }>()
-const emit = defineEmits<{ (e: 'replaced', item: MemoryItem): void }>()
+// One memory in the reader: what it says, whom it is about, when it held and
+// how it was learned, its version history and the conversations it came from.
+// The detail, its history and every action are bound to the same item id, and a
+// response for an earlier selection is dropped.
+const props = defineProps<{ memory: Memory; itemId: string }>()
+const emit = defineEmits<{ (e: 'replaced', id: string): void; (e: 'gone'): void }>()
 
-const detail = ref<MemoryItem>(props.item)
+const item = ref<MemoryItem | null>(null)
 const versions = ref<MemoryItem[]>([])
+const nextVersions = ref<number | null>(null)
 const provenance = ref<Provenance[]>([])
-const editing = ref('')
-const confirmingForget = ref(false)
-const itemUrl = computed(() => `${props.memory.base.value}/items/${encodeURIComponent(props.item.id)}`)
-const editable = computed(() => (detail.value.kind === 'identity' || detail.value.kind === 'rule') && detail.value.status === 'current')
+const loadError = ref('')
+const editing = ref<string | null>(null)
+const forgetting = ref(false)
 
-async function load() {
-  editing.value = ''
-  confirmingForget.value = false
-  if (detail.value.id !== props.item.id) detail.value = props.item
+const url = computed(() => `${props.memory.base.value}/items/${encodeURIComponent(props.itemId)}`)
+const meta = computed(() => (item.value ? KIND_META[item.value.kind] : null))
+const live = computed(() => item.value?.status === 'current' || item.value?.status === 'conflict')
+
+let generation = 0
+async function load(offset = 0) {
+  const current = ++generation
+  const target = url.value
   try {
-    const { data } = await api.get(itemUrl.value)
-    if (!isRecord(data)) return
-    if (isRecord(data.item)) detail.value = data.item as unknown as MemoryItem
-    versions.value = (Array.isArray(data.versions) ? data.versions : []) as MemoryItem[]
-    provenance.value = (Array.isArray(data.provenance) ? data.provenance : []) as Provenance[]
+    const { data } = await api.get(offset ? `${target}?offset=${offset}` : target)
+    if (current !== generation || !isRecord(data)) return
+    if (!offset) {
+      const loaded = isRecord(data.item) ? (data.item as unknown as MemoryItem) : null
+      // A forgotten memory keeps only an erased record; there is nothing to show.
+      if (!loaded || loaded.status === 'forgotten') {
+        emit('gone')
+        return
+      }
+      item.value = loaded
+      provenance.value = (Array.isArray(data.provenance) ? data.provenance : []) as Provenance[]
+    }
+    const page = (Array.isArray(data.versions) ? data.versions : []) as MemoryItem[]
+    versions.value = offset ? [...versions.value, ...page] : page
+    nextVersions.value = typeof data.next_offset === 'number' ? data.next_offset : null
+    loadError.value = ''
   } catch (err) {
-    props.memory.error.value = errorText(err)
+    if (current !== generation) return
+    if (isRecord(err) && isRecord(err.response) && err.response.status === 404) emit('gone')
+    else loadError.value = errorText(err)
   }
 }
 
-watch([() => props.item.id, props.memory.revision], () => { void load() }, { immediate: true })
+watch(() => props.itemId, () => {
+  item.value = null
+  versions.value = []
+  editing.value = null
+  forgetting.value = false
+  void load()
+}, { immediate: true })
+watch(props.memory.revision, () => { void load() })
 
-function forget() {
-  void props.memory.act(() => api.post(`${itemUrl.value}/forget`, {}))
+function post(action: string) {
+  const target = `${url.value}/${action}`
+  return props.memory.act(() => api.post(target, {}))
 }
-function archive() {
-  void props.memory.act(() => api.post(`${itemUrl.value}/archive`, {}))
-}
-function restore() {
-  void props.memory.act(() => api.post(`${itemUrl.value}/restore`, {}))
-}
-function save() {
-  const content = editing.value.trim()
-  if (!content) return
-  void props.memory.act(async () => {
-    const { data } = await api.put(itemUrl.value, { content })
-    if (isRecord(data) && typeof data.item_id === 'string') emit('replaced', { ...detail.value, id: data.item_id })
+
+async function save() {
+  const content = (editing.value || '').trim()
+  if (!content || !item.value) return
+  const target = url.value
+  const ok = await props.memory.act(async () => {
+    const { data } = await api.put(target, { content })
+    if (isRecord(data) && typeof data.item_id === 'string' && data.item_id !== props.itemId) emit('replaced', data.item_id)
   })
+  if (ok) editing.value = null
+}
+
+async function forget() {
+  if (await post('forget')) {
+    forgetting.value = false
+    emit('gone')
+  }
+}
+
+function sourceOf(ref: Provenance): string {
+  if (ref.host_kind === 'session') return 'Conversation'
+  if (ref.host_kind === 'dataflow') return 'Workflow run'
+  if (ref.host_kind === 'content') return 'Document'
+  return ref.host_kind
 }
 </script>
 
 <template>
-  <div class="mm-panel">
-    <div class="mm-panel-h"><span>{{ KIND_LABEL[detail.kind] }} · {{ detail.key }}</span><Tag class="kx-tag-sm" :severity="severity(detail.status)" :value="detail.status" /></div>
-    <div class="mm-panel-b">
-      <template v-if="editing">
-        <Textarea v-model="editing" auto-resize aria-label="Memory text" />
-        <div class="mm-actions">
-          <Button label="Save new version" size="small" :disabled="memory.busy.value" @click="save"><template #icon><Icon icon="tabler:check" /></template></Button>
-          <Button label="Cancel" size="small" severity="secondary" text @click="editing = ''" />
+  <div v-if="loadError" class="kx-notice error"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ loadError }}</span></div>
+  <div v-else-if="!item" class="mm-skel-reader"><div v-for="i in 4" :key="i" class="mm-skel-line" /></div>
+  <article v-else class="mm-reader">
+    <header class="mm-head">
+      <span class="mm-head-ic" :class="meta?.group"><Icon :icon="meta?.icon || 'tabler:note'" aria-hidden="true" /></span>
+      <div class="mm-head-body">
+        <div class="mm-head-top">
+          <span class="kx-chip">{{ meta?.label }}</span>
+          <span class="mm-topic">{{ topicLabel(item.key) }}</span>
+          <Tag v-if="item.status !== 'current'" class="kx-tag-sm" :severity="severity(item.status)" :value="item.status" />
+          <span class="mm-head-acts">
+            <button v-if="live && editing === null" type="button" class="kx-btn kx-btn-ghost sm" @click="editing = item.content">
+              <Icon icon="tabler:pencil" aria-hidden="true" />Edit
+            </button>
+            <button v-if="live" type="button" class="kx-btn kx-btn-ghost sm" :disabled="memory.busy.value" @click="post('archive')">
+              <Icon icon="tabler:archive" aria-hidden="true" />Archive
+            </button>
+            <button v-if="item.status === 'archived'" type="button" class="kx-btn kx-btn-ghost sm" :disabled="memory.busy.value" @click="post('restore')">
+              <Icon icon="tabler:restore" aria-hidden="true" />Restore
+            </button>
+            <button type="button" class="kx-btn kx-btn-ghost sm mm-danger" :disabled="memory.busy.value" @click="forgetting = true">
+              <Icon icon="tabler:trash" aria-hidden="true" />Forget
+            </button>
+          </span>
         </div>
-      </template>
-      <div v-else class="mm-row-t">{{ detail.content }}</div>
-      <dl class="mm-dl">
-        <dt>About</dt><dd>{{ detail.scope_family === 'agent' ? `agent ${detail.scope_id}` : 'the person who said it' }}</dd>
-        <dt>True since</dt><dd>{{ when(detail.valid_at) }}</dd>
-        <template v-if="detail.invalid_at"><dt>Until</dt><dd>{{ when(detail.invalid_at) }}</dd></template>
-        <dt>Learned</dt><dd>{{ when(detail.recorded_at) }} · {{ detail.source }}</dd>
-      </dl>
-      <div class="mm-actions">
-        <Button v-if="editable && !editing" label="Edit" size="small" severity="secondary" outlined @click="editing = detail.content"><template #icon><Icon icon="tabler:pencil" /></template></Button>
-        <Button v-if="detail.status === 'current' || detail.status === 'conflict'" label="Archive" size="small" severity="secondary" outlined :disabled="memory.busy.value" @click="archive"><template #icon><Icon icon="tabler:archive" /></template></Button>
-        <Button v-if="detail.status === 'archived'" label="Restore" size="small" severity="secondary" outlined :disabled="memory.busy.value" @click="restore"><template #icon><Icon icon="tabler:restore" /></template></Button>
-        <Button v-if="detail.status !== 'forgotten' && !confirmingForget" label="Forget" size="small" severity="danger" outlined :disabled="memory.busy.value" @click="confirmingForget = true"><template #icon><Icon icon="tabler:trash" /></template></Button>
-      </div>
-      <Message v-if="confirmingForget" severity="warn" size="small">
-        Forget erases this memory, every earlier version of it and the conversation lines it was learned from. It cannot be undone.
-        <div class="mm-actions mm-confirm">
-          <Button label="Forget for good" size="small" severity="danger" :disabled="memory.busy.value" @click="forget" />
-          <Button label="Cancel" size="small" severity="secondary" text @click="confirmingForget = false" />
+        <div v-if="editing !== null" class="mm-edit">
+          <Textarea v-model="editing" auto-resize rows="2" aria-label="Memory text" />
+          <div class="mm-edit-acts">
+            <button type="button" class="kx-btn kx-btn-primary sm" :disabled="memory.busy.value || !editing.trim()" @click="save">
+              <Icon icon="tabler:check" aria-hidden="true" />Save as new version
+            </button>
+            <button type="button" class="kx-btn kx-btn-ghost sm" @click="editing = null">Cancel</button>
+          </div>
         </div>
-      </Message>
-      <p class="mm-h">Versions</p>
-      <div v-for="version in versions" :key="version.id" class="mm-version" :class="{ past: version.status !== 'current' }">
-        <Tag class="kx-tag-sm" :severity="severity(version.status)" :value="`v${version.version}`" /><span>{{ version.content }}</span>
+        <h2 v-else class="mm-title">{{ item.content }}</h2>
+        <div class="mm-facts">
+          <span class="mm-fact"><Icon icon="tabler:user-circle" aria-hidden="true" />{{ aboutLabel(item) }}</span>
+          <span class="mm-fact" :title="fullTime(item.valid_at)"><Icon icon="tabler:calendar-event" aria-hidden="true" />True since {{ relativeTime(item.valid_at) }}</span>
+          <span v-if="item.invalid_at" class="mm-fact" :title="fullTime(item.invalid_at)"><Icon icon="tabler:calendar-off" aria-hidden="true" />Until {{ relativeTime(item.invalid_at) }}</span>
+          <span class="mm-fact" :title="fullTime(item.recorded_at)"><Icon icon="tabler:sparkles" aria-hidden="true" />{{ sourceLabel(item.source) }}</span>
+          <span class="mm-fact"><Icon icon="tabler:stack-2" aria-hidden="true" />{{ item.cardinality === 'single' ? 'One value at a time' : 'Can hold several values' }}</span>
+        </div>
       </div>
-      <p class="mm-h">Seen in</p>
-      <span v-if="!provenance.length" class="mm-hint">Added by a person or by consolidation.</span>
-      <span v-for="ref in provenance" :key="ref.host_kind + ref.host_id + ref.event_id" class="mm-hint">
-        {{ ref.host_kind }} {{ ref.host_id }} · message {{ ref.event_id }}
-      </span>
-    </div>
-  </div>
+    </header>
+
+    <section class="mm-sec" aria-labelledby="mm-history">
+      <h3 id="mm-history" class="mm-sec-h">History</h3>
+      <ol class="mm-timeline">
+        <li v-for="version in versions" :key="version.id" :class="{ now: version.id === item.id, past: version.status !== 'current' }">
+          <span class="mm-dot" aria-hidden="true" />
+          <span class="mm-tl-body">
+            <span class="mm-tl-t">{{ version.content }}</span>
+            <span class="mm-tl-s">v{{ version.version }} · {{ relativeTime(version.valid_at) }}<template v-if="version.status !== 'current'"> · {{ version.status }}</template></span>
+          </span>
+        </li>
+      </ol>
+      <button v-if="nextVersions !== null" type="button" class="kx-btn kx-btn-ghost sm" @click="load(nextVersions)">Show older versions</button>
+    </section>
+
+    <section class="mm-sec" aria-labelledby="mm-sources">
+      <h3 id="mm-sources" class="mm-sec-h">Learned from</h3>
+      <p v-if="!provenance.length" class="mm-muted">{{ item.source === 'owner' ? 'Added by a person on this page.' : 'No conversation recorded for this memory.' }}</p>
+      <ul v-else class="mm-sources">
+        <li v-for="ref in provenance" :key="ref.host_kind + ref.host_id + ref.event_id">
+          <Icon icon="tabler:message-circle" aria-hidden="true" />
+          <span>{{ sourceOf(ref) }}</span>
+          <span v-if="ref.recorded_at" class="mm-muted" :title="fullTime(ref.recorded_at)">{{ relativeTime(ref.recorded_at) }}</span>
+        </li>
+      </ul>
+    </section>
+  </article>
+
+  <ConfirmDialog :open="forgetting" danger icon="tabler:trash" title="Forget this memory" :subtitle="item ? topicLabel(item.key) : ''"
+    confirm-label="Forget for good" :busy="memory.busy.value" @cancel="forgetting = false" @confirm="forget">
+    This erases the memory, every earlier version of it and the conversation lines it was learned from. It cannot be undone.
+  </ConfirmDialog>
 </template>
