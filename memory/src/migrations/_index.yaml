@@ -63,3 +63,22 @@ entries:
     source: file://03_payload_embeddings.lua
     imports:
       migration: wippy.migration:migration
+
+  - name: 04_run_diagnostics
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, memory, data]
+      comment: Replace unclassified historical failures with content-free diagnostics.
+      target_db: ""
+      timestamp: "2026-10-26T00:00:02Z"
+    source: file://_fn_04_run_diagnostics.lua
+    imports:
+      operation_impl: kickside.memory.migrations:04_run_diagnostics_implementation
+    method: migrate
+
+  - name: 04_run_diagnostics_implementation
+    kind: library.lua
+    source: file://04_run_diagnostics.lua
+    imports:
+      migration: wippy.migration:migration

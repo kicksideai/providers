@@ -9,12 +9,13 @@ local measured_items = items
 local measured_db = require("measured_db")
 local source_migration = require("source_migration")
 local embedding_migration = require("embedding_migration")
+local diagnostic_migration = require("diagnostic_migration")
 
 local function call(a: any): (any?, error?)
-    if a.op == "backfill_sources" or a.op == "backfill_embeddings" then
+    if a.op == "backfill_sources" or a.op == "backfill_embeddings" or a.op == "migrate_diagnostics" then
         local db, err = sql.get("app:db")
         if err then return nil, err end
-        local migrate = a.op == "backfill_sources" and source_migration or embedding_migration
+        local migrate = ({ backfill_sources = source_migration, backfill_embeddings = embedding_migration, migrate_diagnostics = diagnostic_migration })[a.op]
         local result = migrate({ db = db, db_type = db:type(), id = a.id })
         db:release()
         return result, nil
