@@ -34,6 +34,12 @@ local function define_tests()
             fixture.settle(user, id)
             local events = fixture.op(user, "ledger", { component_id = id })
             test.is_true(#events >= 2)
+            for _, event in ipairs(events) do
+                if event.type == "kickside.memory.events:item.added" then
+                    local body = type(event.body) == "table" and event.body or json.decode(event.body)
+                    test.is_nil(body.key)
+                end
+            end
             local text = json.encode(events)
             test.is_true(text:find("Quillbeak", 1, true) == nil, text)
             test.is_true(text:find("Zephyrine", 1, true) == nil, text)
