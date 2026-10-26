@@ -67,15 +67,15 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Remember
       llm_alias: Remember
-      llm_description: "Store a durable memory about the user that should hold in future conversations: a fact, preference, profile attribute, skill or lesson. The memory is reconciled with what is already known (an update replaces the older value)."
+      llm_description: "Store a durable memory about the user or an ongoing plan. Use one topic key per goal and update its complete state as work progresses. Existing attributes and plans update by supersession."
       input_schema: |
         {
           "type": "object",
           "properties": {
             "content": {"type": "string", "description": "One self-contained sentence about the user, e.g. 'The user lives in Berlin.'"},
-            "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson"]},
+            "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson", "plan"]},
             "key": {"type": "string", "description": "Required canonical topic key: 1-64 lowercase letters, digits or underscores, beginning with a letter. Name the attribute (for example home_city), never the memory sentence or value."},
-            "value": {"description": "The typed value only, e.g. Berlin or false."},
+            "value": {"description": "The typed value only, e.g. Berlin or false. A plan uses an object with status (open or done), next_step and details (strings)."},
             "cardinality": {"type": "string", "enum": ["single", "multi"], "description": "single when the user holds one value of this key at a time (home city, diet); multi when several hold together (allergies). A key the memory already knows keeps its cardinality."},
             "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"}
           },

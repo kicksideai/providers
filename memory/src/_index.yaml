@@ -316,10 +316,19 @@ entries:
         consolidation_interval_hours: 24
         capture_conversation: true
         capture_experience: false
+        plan_expiry_days: 30
       config_schema:
         type: object
         additionalProperties: false
         properties:
+          plan_expiry_days:
+            group: learning
+            order: 11
+            type: integer
+            minimum: 1
+            maximum: 3650
+            title: Open plan expiry (days)
+            description: Open goals remain pinned for this many days after their last update. Expired and completed goals remain searchable.
           extraction_model:
             order: 1
             type: string

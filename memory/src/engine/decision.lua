@@ -129,6 +129,11 @@ type Scope = { scope_family: string, scope_id: string }
 -- A new item for a claim, with its payload staged and its structure on the
 -- ledger. The caller decides what it replaces.
 function Decision:add(scope: Scope, fields: Fields): (any?, error?)
+    local value_err = types.validate_value(fields.kind, fields.value)
+    if value_err then return nil, value_err end
+    if fields.kind == types.KIND.PLAN and fields.cardinality ~= types.CARDINALITY.SINGLE then
+        return nil, types.invalid("each plan goal holds one state")
+    end
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
     local key, key_err = types.topic_key(fields.key, fields.content, fields.value)
     if key_err then return nil, key_err end

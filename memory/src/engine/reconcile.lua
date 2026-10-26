@@ -120,7 +120,7 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
         if card_err then return card_err end
         local fields = {
             kind = candidate.kind, key = key, value = value, content = candidate.content,
-            cardinality = established or candidate.cardinality or types.CARDINALITY.MULTI,
+            cardinality = established or candidate.cardinality or types.default_cardinality(candidate.kind),
             valid_at = types.utc(candidate.valid_at) or event.at or d.now,
             confidence = candidate.confidence, provenance = provenance, vector = (embedded :: any)[index], run_id = opts.run_id,
         }

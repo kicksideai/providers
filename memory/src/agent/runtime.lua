@@ -33,12 +33,12 @@ local CAPTURE_CONTEXT_MAX_CHARS = 6000
 local CHECKPOINT_SOURCE_MAX_CHARS = 12000
 local CHECKPOINT_MAX_TOKENS = 1000
 local SEARCH_MAX = 50
-local RECALL_KINDS = { types.KIND.FACT, types.KIND.SKILL, types.KIND.LESSON }
+local RECALL_KINDS = { types.KIND.FACT, types.KIND.SKILL, types.KIND.LESSON, types.KIND.PLAN }
 local AGENT_SOUL_KINDS = { types.KIND.IDENTITY, types.KIND.RULE, types.KIND.SKILL, types.KIND.LESSON }
-local OWNER_SOUL_KINDS = { types.KIND.PROFILE_SLOT, types.KIND.PREFERENCE }
+local OWNER_SOUL_KINDS = { types.KIND.PROFILE_SLOT, types.KIND.PREFERENCE, types.KIND.PLAN }
 
 local KIND_ORDER: { [string]: integer } = {
-    identity = 1, rule = 2, profile_slot = 3, preference = 4, skill = 5, lesson = 6, fact = 7,
+    identity = 1, rule = 2, profile_slot = 3, preference = 4, plan = 5, skill = 6, lesson = 7, fact = 8,
 }
 
 -- Configuration ------------------------------------------------------------
@@ -252,6 +252,7 @@ local function render(rows: { any }, heading: string, max_chars: integer): (stri
     local used = #heading
     for _, row in ipairs(rows) do
         local text = row.content
+        if row.kind == types.KIND.PLAN then text = row.content .. " Next step: " .. row.value.next_step end
         if (row.kind == types.KIND.PROFILE_SLOT or row.kind == types.KIND.PREFERENCE) and type(row.value) == "string" then
             local label = row.key:gsub("_", " ")
             text = label:sub(1, 1):upper() .. label:sub(2) .. ": " .. row.value
@@ -288,7 +289,14 @@ local function pin(payload: any): (any?, error?)
     local host_kind, host_id = host_ref(payload.host)
     local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, types.actor_id()), OWNER_SOUL_KINDS)
     if rows_err then return nil, rows_err end
-    local text, pinned = render(rows :: any, "## What you know about the user\nUse these facts as defaults. Propose using what you know instead of asking again; the user can correct you.", (store :: any).effective.soul_owner_max_chars)
+    local visible: { any } = {}
+    local cutoff = types.after_seconds(-(store :: any).effective.plan_expiry_days * 86400)
+    for _, row in ipairs(rows :: any) do
+        if row.kind ~= types.KIND.PLAN or (row.value.status == "open" and (types.utc(row.recorded_at) or "") > cutoff) then
+            visible[#visible + 1] = row
+        end
+    end
+    local text, pinned = render(visible, "## What you know about the user\nUse these facts as defaults. Propose using what you know instead of asking again; the user can correct you.", (store :: any).effective.soul_owner_max_chars)
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
     return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text, pinned)
@@ -500,7 +508,7 @@ function M.remember(args: any): (any?, error?)
     local kind = types.trim(input.kind)
     if kind == "" then kind = types.KIND.FACT end
     if not types.KIND_SET[kind] or kind == types.KIND.IDENTITY or kind == types.KIND.RULE then
-        return tool_error("kind must be one of fact, preference, profile_slot, skill, lesson"), nil
+        return tool_error("kind must be one of fact, preference, profile_slot, skill, lesson, plan"), nil
     end
     local cardinality = types.trim(input.cardinality)
     if cardinality ~= "" and not types.CARDINALITY_SET[cardinality] then return tool_error("cardinality must be single or multi"), nil end

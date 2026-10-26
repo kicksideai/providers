@@ -88,7 +88,7 @@ function M.create(component_id: string, fields: any): (any?, error?)
         if cardinality == "" then
             local established, err = d:cardinality_of(types.scope_key(scope_family, scope_id), key)
             if err then return nil, err end
-            cardinality = established or types.CARDINALITY.MULTI
+            cardinality = established or types.default_cardinality(kind)
         end
         return assert_claim(d, { scope_family = scope_family, scope_id = scope_id }, {
             kind = kind, key = key, cardinality = cardinality, value = value,

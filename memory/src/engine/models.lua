@@ -44,31 +44,34 @@ local EXTRACTION_PROMPT = [[You extract durable memory about the user from a con
 
 Keep only what the user states about themselves, their work and their world that will
 still matter in a later conversation: facts, preferences, decisions, corrections, and
-outcomes of finished work. A correction is a new item with the corrected value.
+outcomes of finished work, and ongoing goals or plans. A correction is a new item with the corrected value.
 
 Read preceding context to understand short answers. A trip destination, hypothetical,
 or answer to a question about travel does not change where the person lives. Change a
 single-valued profile attribute only when the person explicitly states that it changes.
 
 Each item must be stated in the message it cites, in the user's own words. Skip:
-- requests, questions and instructions to the assistant ("find me...", "where do I live?",
-  "one trip idea please"): asking states nothing about the user; a request that also states
-  something durable ("find a quiet hotel, I can't sleep with noise") keeps only that part;
-- the current task's chatter: options picked, things to check later, scheduling of the
-  work at hand;
+- questions that state no goal or durable information ("where do I live?");
+- task chatter that adds no goal, decision, constraint or next step;
 - statements too vague to act on later ("I've traveled before", "I forgot where I was");
 - greetings, thanks, acknowledgements and small talk;
 - the assistant's suggestions, answers and narration, raw tool output, and anything inside
   recalled-memory notes - none of these is the user stating anything.
 
 Each item has:
-- kind: fact | preference | profile_slot | skill | lesson
+- kind: fact | preference | profile_slot | skill | lesson | plan
   (profile_slot = a stable single-valued attribute such as name, home city, employer, role,
   diet, timezone)
 - key: a short stable topic, e.g. "home_city", "preferred_language", "employer"
 - cardinality: "single" when the person holds one value at a time (name, home city, diet,
   employer, birth date), "multi" when several hold together (allergies, children, pets)
-- value: the value only, e.g. "Berlin"
+- value: the value only, e.g. "Berlin"; plans use an object with status ("open" or
+  "done"), next_step (last agreed next action), details (decisions and constraints).
+- plan: one record per ongoing goal, with a stable key per goal. Several goals coexist
+  under different keys. Each goal key has cardinality single and updates by supersession.
+  Requests such as "I need to buy tickets" start an open plan; short answers such as a
+  destination update that plan using preceding context. Retain known decisions and details
+  when updating its complete state. Only mark done on completion or cancellation.
 - content: one self-contained sentence in the third person about the user
 - event_id: the id of the user, tool or document message that states it
 - valid_at: when it became true if the span says so (RFC3339), else ""
@@ -92,6 +95,8 @@ new_memory.stated, when present, is what the person said; it tells an update fro
 conversation includes preceding context and the captured span. A destination or hypothetical
 answer never changes a profile attribute. Choose NOOP for such a misinterpreted candidate.
 Only an explicit statement of change can replace a single-valued profile attribute.
+Plans about the same goal update by SUPERSEDE as their details or next step progress.
+Different goals or attributes remain separate.
 target_ids lists the existing memory ids the action applies to (empty for ADD).
 Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
 
@@ -130,7 +135,7 @@ local function messages(system: string, user: string): { any }
 end
 
 -- Kinds a model may propose; identity and rules are set by people.
-local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PROFILE_SLOT, types.KIND.SKILL, types.KIND.LESSON }
+local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PROFILE_SLOT, types.KIND.SKILL, types.KIND.LESSON, types.KIND.PLAN }
 
 local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
     local event_id: any = { type = "string" }
@@ -150,7 +155,13 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
                         kind = { type = "string", enum = kinds or CANDIDATE_KINDS },
                         key = { type = "string" },
                         cardinality = { type = "string", enum = { types.CARDINALITY.SINGLE, types.CARDINALITY.MULTI } },
-                        value = { type = "string" },
+                        value = { anyOf = {
+                            { type = "string" },
+                            { type = "object", additionalProperties = false, required = { "status", "next_step", "details" }, properties = {
+                                status = { type = "string", enum = { "open", "done" } },
+                                next_step = { type = "string" }, details = { type = "string" },
+                            } },
+                        } },
                         content = { type = "string" },
                         event_id = event_id,
                         valid_at = { type = "string" },

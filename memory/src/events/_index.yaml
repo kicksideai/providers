@@ -29,6 +29,7 @@ entries:
         - preference
         - skill
         - lesson
+        - plan
       key:
         type: string
       cardinality:

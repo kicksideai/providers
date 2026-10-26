@@ -221,8 +221,8 @@ end
 
 -- A candidate as extraction returns it. Profile slots and preferences hold one
 -- value unless `cardinality` says otherwise.
-function M.candidate(kind: string, key: string, value: string, content: string, event_id: string?, valid_at: string?, cardinality: string?): any
-    local default = (kind == "profile_slot" or kind == "preference") and "single" or "multi"
+function M.candidate(kind: string, key: string, value: any, content: string, event_id: string?, valid_at: string?, cardinality: string?): any
+    local default = (kind == "profile_slot" or kind == "preference" or kind == "plan") and "single" or "multi"
     return { kind = kind, key = key, cardinality = cardinality or default, value = value, content = content,
         event_id = event_id or "", valid_at = valid_at or "", confidence = 0.9 }
 end

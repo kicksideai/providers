@@ -22,6 +22,7 @@ M.KIND = {
     PREFERENCE = "preference",
     SKILL = "skill",
     LESSON = "lesson",
+    PLAN = "plan",
 }
 
 M.SCOPE = {
@@ -132,6 +133,19 @@ function M.normalize_key(value: any): string
     local text = M.trim(type(value) == "string" and value or tostring(value or "")):lower()
     text = text:gsub("[%s%p]+", "_"):gsub("^_+", ""):gsub("_+$", "")
     return text
+end
+
+function M.default_cardinality(kind: string): string
+    return kind == M.KIND.PLAN and M.CARDINALITY.SINGLE or M.CARDINALITY.MULTI
+end
+
+function M.validate_value(kind: string, value: any): error?
+    if kind ~= M.KIND.PLAN then return nil end
+    if type(value) ~= "table" or (value.status ~= "open" and value.status ~= "done")
+        or type(value.next_step) ~= "string" or type(value.details) ~= "string" then
+        return M.invalid("a plan requires status open or done, next_step and details")
+    end
+    return nil
 end
 
 -- One input budget for capture and both ingestion entry points, applied before

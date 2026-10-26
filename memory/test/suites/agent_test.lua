@@ -18,6 +18,60 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("pins open goals across conversations and retains completed and expired goals for search", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { plan_expiry_days = 7 })
+            local function plan(key: string, status: string, details: string): any
+                local result, err = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "plan", scope_family = "owner", key = key,
+                    value = { status = status, next_step = "Compare tickets", details = details },
+                    content = "The user plans " .. details .. ".",
+                } })
+                test.is_nil(err, tostring(err))
+                return result
+            end
+            local trip = plan("trip_tickets", "open", "London from Berlin")
+            plan("garden_design", "open", "a vegetable garden")
+            plan("finished_goal", "done", "a completed course")
+            local expired = plan("old_goal", "open", "an old project")
+            fixture.settle(user, id)
+            local db = fixture.db()
+            local _, update_err = db:execute("UPDATE kickside_memory_kb_items SET recorded_at = $1 WHERE id = $2", { "2020-01-01T00:00:00Z", expired.item_id })
+            db:release()
+            test.is_nil(update_err, tostring(update_err))
+            local session = "s-" .. user
+            apply(user, "activate", id, session, "agent-a")
+            local prompt = fixture.op(user, "prompt", {}, fixture.agent_context(id, session, "agent-a"))
+            test.is_true(prompt:find("London from Berlin", 1, true) ~= nil, prompt)
+            test.is_true(prompt:find("vegetable garden", 1, true) ~= nil, prompt)
+            test.is_true(prompt:find("Compare tickets", 1, true) ~= nil, prompt)
+            test.is_nil(prompt:find("completed course", 1, true), prompt)
+            test.is_nil(prompt:find("old project", 1, true), prompt)
+            local finished, finish_err = fixture.op(user, "edit", { component_id = id, item_id = trip.item_id, fields = {
+                value = { status = "done", next_step = "", details = "London tickets booked" }, content = "The user booked London tickets.",
+            } })
+            test.is_nil(finish_err, tostring(finish_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = trip.item_id }).status, "superseded")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = finished.item_id }).cardinality, "single")
+            local found = fixture.op(user, "tool_search", { input = { query = "old project" } }, fixture.agent_context(id, session, "agent-a"))
+            test.is_true(found.success)
+            local seen = false
+            for _, item in ipairs(found.items) do if item.id == expired.item_id then seen = true end end
+            test.is_true(seen)
+        end)
+
+        test.it("rejects a plan without a typed goal state", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local result, err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "plan", scope_family = "owner", key = "trip_tickets", value = "London", content = "The user plans a London trip.",
+            } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(#fixture.items(user, id), 0)
+        end)
+
         test.it("normalizes synonymous extracted keys and sentence values before claim identity", function()
             local user = fixture.user()
             local id = fixture.memory(user)
