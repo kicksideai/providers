@@ -2,8 +2,8 @@
   "name": "@kickside/memory-ui",
   "version": "0.1.0",
   "specification": "wippy-component-1.0",
-  "title": "KickSide Memory KB",
-  "description": "Typed, versioned memory knowledge bases and explicitly selected agent Memory settings.",
+  "title": "KickSide Memory",
+  "description": "Memory trait settings, memory create pane and memory knowledge base page for kickside/memory.",
   "browser": "dist/index.js",
   "files": [
     "dist/",
@@ -48,7 +48,7 @@
       "properties": {
         "config": {
           "type": "object",
-          "description": "Memory trait context. memory_id selects typed storage; kb_ids and write_kb_id retain document storage and checkpoint settings.",
+          "description": "Memory trait context { memory_id, write_enabled, read_enabled, recall_limit }.",
           "default": {}
         }
       }

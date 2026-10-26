@@ -1,274 +1,156 @@
-import { defineComponent as Y, ref as s, computed as U, watch as Z, onMounted as ee, openBlock as d, createElementBlock as u, createElementVNode as t, toDisplayString as te, withDirectives as p, vModelCheckbox as P, createTextVNode as m, vModelText as C } from "vue";
-import "@iconify/vue";
-import { loadByTagName as j, define as oe } from "@wippy-fe/proxy";
-import { u as le, a as ne, m as ae } from "./element-DWmSgOr-.js";
-function v(a) {
-  return a !== null && typeof a == "object" && !Array.isArray(a);
-}
-function A(a) {
-  return Array.isArray(a) && a.every((o) => typeof o == "string");
-}
-function S(a) {
-  return typeof a == "string" ? a : void 0;
-}
-function M(a) {
-  return typeof a == "number" && Number.isFinite(a) ? a : void 0;
-}
-const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
+import { defineComponent as S, ref as m, watch as h, openBlock as a, createElementBlock as r, createElementVNode as s, createVNode as d, unref as o, toDisplayString as u, createCommentVNode as c, Fragment as w, renderList as $, normalizeClass as j, createTextVNode as _ } from "vue";
+import { Icon as b } from "@iconify/vue";
+import { api as K, define as U } from "@wippy-fe/proxy";
+import { u as F, a as O, b as P, i as x, e as q, m as B } from "./types-CLfIEQjM.js";
+import { s as D } from "./index-DfgWIb0k.js";
+import { u as L, _ as z } from "./useMemory-DzBogiMW.js";
+const A = { class: "mm-trait" }, Y = { class: "mm-field" }, G = {
+  key: 0,
+  class: "kx-notice error"
+}, H = {
   key: 1,
-  role: "alert"
-}, de = { class: "field" }, ue = { "data-kb-picker": "" }, pe = ["config"], me = ["value"], _e = { class: "hint" }, ke = { class: "switches" }, ve = { class: "check" }, be = { class: "check" }, ye = { class: "row" }, he = { class: "field" }, fe = { class: "field" }, ge = { "data-model-picker": "" }, we = ["value"], xe = ["value"], Ce = { style: { display: "grid", gap: "10px", "margin-top": "10px" } }, Se = { class: "field" }, Me = { class: "field" }, Ee = {
-  class: "row",
-  style: { "margin-top": "10px" }
-}, Ie = { class: "field" }, Ve = { class: "field" }, Te = /* @__PURE__ */ Y({
+  class: "kx-notice warn"
+}, J = {
+  class: "mm-choices",
+  role: "radiogroup",
+  "aria-labelledby": "trait_memory"
+}, Q = ["aria-checked", "onClick"], W = { class: "mm-choice-ic" }, X = { class: "mm-choice-main" }, Z = { class: "mm-choice-t" }, ee = {
+  key: 0,
+  class: "mm-choice-s"
+}, te = {
+  key: 0,
+  class: "mm-choice-empty"
+}, oe = {
+  key: 1,
+  class: "mm-choice-empty mm-hint-err"
+}, ne = {
+  key: 2,
+  class: "mm-choice-empty"
+}, se = ["disabled"], ae = { class: "mm-toggle" }, re = /* @__PURE__ */ S({
   __name: "knowledge-memory",
-  setup(a) {
-    const o = {
-      read_enabled: !0,
-      write_enabled: !0,
-      token_threshold: 64e3,
-      checkpoint_model: "class:fast",
-      checkpoint_prompt: "",
-      recall_prompt: "",
-      recall_limit: 5,
-      recall_max_chars: 4e3
-    }, K = le(), O = ne(), E = s({}), I = s({}), c = s([]), _ = s(""), b = s(o.read_enabled), y = s(o.write_enabled), h = s(String(o.token_threshold)), k = s(o.checkpoint_model), f = s(o.checkpoint_prompt), g = s(o.recall_prompt), w = s(String(o.recall_limit)), x = s(String(o.recall_max_chars)), V = s(!1), D = s(!1), J = U(() => JSON.stringify({ kb_ids: c.value })), F = U(() => k.value || o.checkpoint_model), R = U(
-      () => c.value.length ? `${c.value.length} selected; the first selected base is the write target.` : "Select a knowledge base to enable recall and optional writes."
-    );
-    function T(l, e) {
-      const n = Number(l);
-      return Number.isFinite(n) && n > 0 ? n : e;
-    }
-    function B(l) {
-      if (l == null || l === "") return;
-      let e;
-      if (typeof l == "string")
+  setup(de) {
+    const N = ["read_enabled", "recall_limit"], R = F(), M = O(), l = m(""), p = m(!0), C = m({}), f = m(""), v = m("");
+    let V;
+    h(f, (n) => {
+      clearTimeout(V), V = setTimeout(() => {
+        v.value = n.trim();
+      }, 250);
+    }), h(() => R.value.config, (n) => {
+      const e = P(n);
+      l.value = String(e.memory_id || ""), p.value = e.write_enabled !== !1, C.value = Object.fromEntries(Object.entries(e).filter(([t]) => N.includes(t)));
+    }, { immediate: !0, deep: !0 });
+    const T = m(0), i = L(() => `/api/v1/memory?limit=20${v.value ? `&q=${encodeURIComponent(v.value)}` : ""}`, "items", T), g = m(null), k = m(!1), y = m("");
+    h(l, async (n) => {
+      if (g.value = null, y.value = "", !!n) {
+        k.value = !0;
         try {
-          e = JSON.parse(l);
-        } catch {
-          H();
-          return;
+          const { data: e } = await K.get(`/api/v1/knowledge/${encodeURIComponent(n)}`);
+          if (n !== l.value) return;
+          g.value = x(e) && e.kb_type === "memory" ? { id: n, name: String(e.name || "") } : null;
+        } catch (e) {
+          const t = x(e) && x(e.response) ? e.response.status : 0;
+          n === l.value && t !== 404 && t !== 403 && (y.value = q(e));
+        } finally {
+          n === l.value && (k.value = !1);
         }
-      else if (typeof l == "object")
-        e = l;
-      else
-        return;
-      if (!v(e)) return;
-      const n = v(e.context) ? e.context : {}, i = { ...n, ...e }, L = v(e.agent_options) ? e.agent_options : {}, N = v(L.checkpoint) ? L.checkpoint : {}, { context: De, agent_options: Fe, ...X } = e;
-      E.value = { ...n, ...X }, I.value = { ...N }, _.value = S(i.memory_id) || "", c.value = A(i.kb_ids) ? i.kb_ids : typeof i.kb_id == "string" && i.kb_id ? [i.kb_id] : [], b.value = i.read_enabled !== !1, y.value = i.write_enabled !== !1, k.value = S(i.checkpoint_model) || S(N.model) || o.checkpoint_model, f.value = S(i.checkpoint_prompt) || "", g.value = S(i.recall_prompt) || "", h.value = String(M(N.token_threshold) ?? M(i.token_threshold) ?? o.token_threshold), w.value = String(M(i.recall_limit) || o.recall_limit), x.value = String(M(i.recall_max_chars) || o.recall_max_chars);
-    }
-    function H() {
-      E.value = {}, I.value = {}, c.value = [], b.value = o.read_enabled, y.value = o.write_enabled, h.value = String(o.token_threshold), k.value = o.checkpoint_model, f.value = o.checkpoint_prompt, g.value = o.recall_prompt, w.value = String(o.recall_limit), x.value = String(o.recall_max_chars);
-    }
-    function $() {
-      const l = k.value || o.checkpoint_model, e = {
-        ...E.value,
-        ..._.value || "memory_id" in E.value ? { memory_id: _.value } : {},
-        kb_ids: [...c.value],
-        read_enabled: b.value,
-        write_enabled: y.value,
-        checkpoint_model: l,
-        checkpoint_prompt: f.value,
-        recall_prompt: g.value,
-        recall_limit: T(w.value, o.recall_limit),
-        recall_max_chars: T(x.value, o.recall_max_chars)
-      };
-      return {
-        context: e,
-        agent_options: {
-          checkpoint: {
-            ...I.value,
-            token_threshold: T(h.value, o.token_threshold),
-            model: e.checkpoint_model,
-            max_tokens: M(I.value.max_tokens) ?? 1e3
-          }
-        }
-      };
-    }
-    function r() {
-      O("config-changed", $());
-    }
-    function q(l) {
-      const e = l instanceof CustomEvent ? l.detail : void 0, n = v(e) && A(e.kb_ids) ? e.kb_ids : [];
-      _.value = n.at(-1) || "", r();
-    }
-    function z(l) {
-      const e = l instanceof CustomEvent ? l.detail : void 0;
-      c.value = v(e) && A(e.kb_ids) ? e.kb_ids : [], r();
-    }
-    function G(l) {
-      if (!(l.target instanceof HTMLInputElement)) return;
-      const e = l.target.value;
-      c.value = e ? [e] : [], r();
-    }
-    function Q(l) {
-      const e = l instanceof CustomEvent ? l.detail : void 0;
-      k.value = typeof e == "string" && e || o.checkpoint_model, r();
-    }
-    function W(l) {
-      if (!(l.target instanceof HTMLInputElement)) return;
-      const e = l.target.value;
-      k.value = e || o.checkpoint_model, r();
-    }
-    return Z(() => K.value.config, B, { immediate: !0, deep: !0 }), ee(async () => {
-      try {
-        customElements.get("wc-kb-picker") || await j("wc-kb-picker", { timeoutMs: 8e3 });
-      } catch {
-        V.value = !0;
       }
-      try {
-        customElements.get("wc-model-picker") || await j("wc-model-picker", { timeoutMs: 8e3 });
-      } catch {
-        D.value = !0;
-      }
-    }), (l, e) => (d(), u("div", ie, [
-      t("div", se, [
-        e[7] || (e[7] = t("span", { id: "typed_memory" }, "Typed memory", -1)),
-        V.value ? (d(), u("span", ce, "The knowledge base picker cannot load.")) : (d(), u("wc-kb-picker", {
-          key: 0,
-          "aria-labelledby": "typed_memory",
-          config: JSON.stringify({ kb_ids: _.value ? [_.value] : [] }),
-          onConfigChanged: q
-        }, null, 40, re)),
-        e[8] || (e[8] = t("span", { class: "hint" }, "Select a Memory knowledge base for typed capture and recall. Leave empty to use document knowledge bases.", -1))
-      ]),
-      t("div", de, [
-        e[9] || (e[9] = t("span", { id: "legacy_memory_kbs" }, "Document knowledge bases", -1)),
-        t("div", ue, [
-          V.value ? (d(), u("input", {
-            key: 1,
-            "aria-label": "Memory knowledge base ID",
-            name: "kb_id_fallback",
-            placeholder: "Knowledge base id",
-            value: c.value[0] || "",
-            onInput: G
-          }, null, 40, me)) : (d(), u("wc-kb-picker", {
-            key: 0,
-            "aria-labelledby": "legacy_memory_kbs",
-            config: J.value,
-            onConfigChanged: z
-          }, null, 40, pe))
-        ]),
-        t("span", _e, te(R.value), 1)
-      ]),
-      t("div", ke, [
-        t("label", ve, [
-          p(t("input", {
-            name: "read_enabled",
-            type: "checkbox",
-            "onUpdate:modelValue": e[0] || (e[0] = (n) => b.value = n),
-            onChange: r
-          }, null, 544), [
-            [P, b.value]
-          ]),
-          e[10] || (e[10] = m(" Inject memory on activation ", -1))
-        ]),
-        t("label", be, [
-          p(t("input", {
-            name: "write_enabled",
-            type: "checkbox",
-            "onUpdate:modelValue": e[1] || (e[1] = (n) => y.value = n),
-            onChange: r
-          }, null, 544), [
-            [P, y.value]
-          ]),
-          e[11] || (e[11] = m(" Persist checkpoints to memory ", -1))
-        ])
-      ]),
-      t("div", ye, [
-        t("label", he, [
-          e[12] || (e[12] = m("Checkpoint after tokens ", -1)),
-          p(t("input", {
-            name: "token_threshold",
-            type: "number",
-            min: "200",
-            max: "200000",
-            step: "100",
-            "onUpdate:modelValue": e[2] || (e[2] = (n) => h.value = n),
-            onInput: r
-          }, null, 544), [
-            [C, h.value]
-          ])
-        ]),
-        t("div", fe, [
-          e[13] || (e[13] = t("span", { id: "legacy_checkpoint_model" }, "Checkpoint model", -1)),
-          t("div", ge, [
-            D.value ? (d(), u("input", {
-              key: 1,
-              "aria-label": "Checkpoint model",
-              name: "model_fallback",
-              placeholder: "class:fast",
-              value: F.value,
-              onInput: W
-            }, null, 40, xe)) : (d(), u("wc-model-picker", {
-              key: 0,
-              "aria-labelledby": "legacy_checkpoint_model",
-              value: F.value,
-              onSelect: Q
-            }, null, 40, we))
-          ])
-        ])
-      ]),
-      t("details", null, [
-        e[18] || (e[18] = t("summary", null, "Advanced", -1)),
-        t("div", Ce, [
-          t("label", Se, [
-            e[14] || (e[14] = m("Memory write instructions ", -1)),
-            p(t("textarea", {
-              name: "checkpoint_prompt",
-              placeholder: "Store relevant details for future conversations. Do not store literal assistant answers.",
-              "onUpdate:modelValue": e[3] || (e[3] = (n) => f.value = n),
-              onInput: r
-            }, null, 544), [
-              [C, f.value]
+    }, { immediate: !0 });
+    function E() {
+      M("config-changed", { context: { ...C.value, memory_id: l.value, write_enabled: p.value } });
+    }
+    function I(n) {
+      l.value = n.id, E();
+    }
+    return (n, e) => (a(), r("div", A, [
+      s("div", Y, [
+        e[5] || (e[5] = s("span", {
+          id: "trait_memory",
+          class: "mm-label"
+        }, "Memory", -1)),
+        e[6] || (e[6] = s("span", { class: "mm-hint" }, "The agent remembers into this memory and recalls from it. Models, limits and cadence are set on the memory.", -1)),
+        y.value ? (a(), r("div", G, [
+          d(o(b), {
+            icon: "tabler:alert-circle",
+            "aria-hidden": "true"
+          }),
+          s("span", null, u(y.value), 1)
+        ])) : l.value && !g.value && !k.value ? (a(), r("div", H, [
+          d(o(b), {
+            icon: "tabler:alert-triangle",
+            "aria-hidden": "true"
+          }),
+          e[3] || (e[3] = s("span", null, "The memory this agent used is not available to you, or is not a Memory knowledge base. Pick one below.", -1))
+        ])) : c("", !0),
+        d(z, {
+          modelValue: f.value,
+          "onUpdate:modelValue": e[0] || (e[0] = (t) => f.value = t),
+          placeholder: "Find a memory…",
+          label: "Find a memory"
+        }, null, 8, ["modelValue"]),
+        s("div", J, [
+          (a(!0), r(w, null, $(o(i).rows.value, (t) => (a(), r("button", {
+            key: t.id,
+            type: "button",
+            role: "radio",
+            class: j(["mm-choice", { on: t.id === l.value }]),
+            "aria-checked": t.id === l.value,
+            onClick: (ue) => I(t)
+          }, [
+            s("span", W, [
+              d(o(b), {
+                icon: t.id === l.value ? "tabler:circle-check-filled" : "tabler:brain",
+                "aria-hidden": "true"
+              }, null, 8, ["icon"])
+            ]),
+            s("span", X, [
+              s("span", Z, u(t.name), 1),
+              t.description || t.item_count !== void 0 ? (a(), r("span", ee, [
+                _(u(t.description), 1),
+                t.description && t.item_count !== void 0 ? (a(), r(w, { key: 0 }, [
+                  _(" · ")
+                ], 64)) : c("", !0),
+                t.item_count !== void 0 ? (a(), r(w, { key: 1 }, [
+                  _(u(t.item_count) + " memories", 1)
+                ], 64)) : c("", !0)
+              ])) : c("", !0)
             ])
-          ]),
-          t("label", Me, [
-            e[15] || (e[15] = m("Recall guidance ", -1)),
-            p(t("textarea", {
-              name: "recall_prompt",
-              placeholder: "Long-term memory may be incomplete or inaccurate; use it as advisory context.",
-              "onUpdate:modelValue": e[4] || (e[4] = (n) => g.value = n),
-              onInput: r
-            }, null, 544), [
-              [C, g.value]
-            ])
-          ])
+          ], 10, Q))), 128)),
+          o(i).loading.value && !o(i).rows.value.length ? (a(), r("div", te, [
+            d(o(b), {
+              icon: "tabler:loader-2",
+              class: "spin",
+              "aria-hidden": "true"
+            }),
+            e[4] || (e[4] = _("Loading memories…", -1))
+          ])) : o(i).error.value ? (a(), r("div", oe, u(o(i).error.value), 1)) : o(i).rows.value.length ? c("", !0) : (a(), r("div", ne, u(v.value ? "No memory matches." : "No memories yet. Create one from Knowledge → New knowledge base → Memory."), 1))
         ]),
-        t("div", Ee, [
-          t("label", Ie, [
-            e[16] || (e[16] = m("Recall results ", -1)),
-            p(t("input", {
-              name: "recall_limit",
-              type: "number",
-              min: "1",
-              max: "20",
-              "onUpdate:modelValue": e[5] || (e[5] = (n) => w.value = n),
-              onInput: r
-            }, null, 544), [
-              [C, w.value]
-            ])
-          ]),
-          t("label", Ve, [
-            e[17] || (e[17] = m("Recall budget ", -1)),
-            p(t("input", {
-              name: "recall_max_chars",
-              type: "number",
-              min: "500",
-              max: "20000",
-              step: "500",
-              "onUpdate:modelValue": e[6] || (e[6] = (n) => x.value = n),
-              onInput: r
-            }, null, 544), [
-              [C, x.value]
-            ])
-          ])
-        ])
+        o(i).next.value !== null ? (a(), r("button", {
+          key: 2,
+          type: "button",
+          class: "kx-btn kx-btn-ghost sm",
+          disabled: o(i).loading.value,
+          onClick: e[1] || (e[1] = //@ts-ignore
+          (...t) => o(i).more && o(i).more(...t))
+        }, "Show more", 8, se)) : c("", !0)
+      ]),
+      s("div", ae, [
+        e[7] || (e[7] = s("span", { class: "mm-field" }, [
+          s("span", { class: "mm-label" }, "Remember conversations"),
+          s("span", { class: "mm-hint" }, "Off keeps the memory read-only for this agent: it recalls but learns nothing new.")
+        ], -1)),
+        d(o(D), {
+          modelValue: p.value,
+          "onUpdate:modelValue": [
+            e[2] || (e[2] = (t) => p.value = t),
+            E
+          ],
+          "aria-label": "Remember conversations"
+        }, null, 8, ["modelValue"])
       ])
     ]));
   }
-}), Ne = { props: { type: "object", properties: { config: { type: "object", description: "Memory trait context. memory_id selects typed storage; kb_ids and write_kb_id retain document storage and checkpoint settings.", default: {} } } } }, Ue = {
-  wippy: Ne
-}, Ae = ae(Te, Ue.wippy.props);
-oe(import.meta.url, Ae);
+}), le = { props: { type: "object", properties: { config: { type: "object", description: "Memory trait context { memory_id, write_enabled, read_enabled, recall_limit }.", default: {} } } } }, ie = {
+  wippy: le
+}, me = B(re, ie.wippy.props);
+U(import.meta.url, me);
 //# sourceMappingURL=knowledge_memory.js.map

@@ -321,6 +321,7 @@ entries:
         additionalProperties: false
         properties:
           extraction_model:
+            section: models
             order: 1
             type: string
             minLength: 1
@@ -328,6 +329,7 @@ entries:
             description: Model that reads conversations and picks what to remember. Consolidation uses it too.
             web_component: wc-model-picker
           judge_model:
+            section: models
             order: 2
             type: string
             minLength: 1
@@ -335,14 +337,14 @@ entries:
             description: Model that decides whether a new memory is new, a duplicate, an update or a contradiction.
             web_component: wc-model-picker
           extraction_instructions:
-            group: advanced
-            order: 3
+            section: learning
+            order: 5
             type: string
             title: Memory policy
             description: Extra instructions for what this memory keeps.
             format: textarea
           recall_max_items:
-            group: advanced
+            section: recall
             order: 6
             type: integer
             minimum: 1
@@ -350,42 +352,49 @@ entries:
             title: Recall items
             description: Memories recalled per step.
           recall_max_length:
-            group: advanced
+            section: recall
             order: 7
             type: integer
             minimum: 200
             maximum: 50000
             title: Recall budget (characters)
+            description: Most text recalled into one step.
           soul_agent_max_chars:
-            group: advanced
+            section: recall
             order: 8
             type: integer
             minimum: 0
             maximum: 20000
             title: Agent identity and rules budget (characters)
+            description: Most text of the agent's identity and rules in its instructions.
           soul_owner_max_chars:
-            group: advanced
+            section: recall
             order: 9
             type: integer
             minimum: 0
             maximum: 20000
             title: User profile budget (characters)
+            description: Most text of what is known about the person, pinned at the start of a conversation.
           consolidation_interval_hours:
-            group: advanced
+            section: upkeep
             order: 10
             type: number
             minimum: 1
             maximum: 720
             title: Consolidation every (hours)
+            description: How often the memory reviews what changed and draws lessons from it.
           capture_conversation:
-            order: 4
+            section: learning
+            order: 3
             type: boolean
             title: Capture conversations
+            description: Learn from what people say to agents that use this memory.
           capture_experience:
-            group: advanced
-            order: 5
+            section: learning
+            order: 4
             type: boolean
             title: Capture tool outcomes
+            description: Also learn from how tool calls turned out.
 
   # Agent side. The runtime library keeps its published id.
 
