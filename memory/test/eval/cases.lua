@@ -13,8 +13,8 @@
 
 local function u(id: string, text: string): any return { id = id, role = "user", content = text } end
 local function a(id: string, text: string): any return { id = id, role = "assistant", content = text } end
-local function c(kind: string, key: string, value: string, content: string, event_id: string): any
-    local cardinality = (kind == "profile_slot" or kind == "preference") and "single" or "multi"
+local function c(kind: string, key: string, value: any, content: string, event_id: string): any
+    local cardinality = (kind == "profile_slot" or kind == "preference" or kind == "plan") and "single" or "multi"
     return { kind = kind, key = key, cardinality = cardinality, value = value, content = content, event_id = event_id, valid_at = "", confidence = 0.9 }
 end
 
@@ -113,9 +113,10 @@ return {
         seed = { u("s1", "My cat is called Biscuit, by the way.") },
         follow = { u("f1", "What do you remember about my pets?"), a("f2", "You have a cat named Biscuit.") },
         ideal = { seed = { c("fact", "cat_name", "Biscuit", "The user's cat is called Biscuit.", "s1") }, follow = {} } },
-    { name = "booking request", expect = "IGNORE",
+    { name = "booking request", expect = "ADD",
         follow = { u("f1", "Can you look up trains from Berlin to Munich on Friday morning?") },
-        ideal = { follow = {} } },
+        ideal = { follow = { c("plan", "rail_booking", { status = "open", next_step = "Compare train options",
+            details = "Berlin to Munich on Friday morning" }, "The user needs train options from Berlin to Munich on Friday morning.", "f1") } } },
     { name = "task chatter", expect = "IGNORE",
         follow = { u("f1", "Ok let's go with the second option and check the prices tomorrow.") },
         ideal = { follow = {} } },

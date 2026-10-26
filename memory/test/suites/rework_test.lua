@@ -156,7 +156,7 @@ local function define_tests()
                 local run, read_err = fixture.op(user, "run", { run_id = run_id })
                 test.is_nil(read_err, tostring(read_err))
                 test.eq(run.status, "scheduled")
-                test.eq(json.encode(run.input), json.encode(input))
+                test.eq(json.encode(run.input), (json.encode(input)))
             end)
         end
 
@@ -196,7 +196,7 @@ local function define_tests()
             test.eq(#sources, 2)
             test.eq(sources[1].event_id, "current-source")
             test.eq(sources[2].event_id, "prior-source")
-            test.eq(json.encode(fixture.op(user, "run", { run_id = run_id }).input), json.encode(input))
+            test.eq(json.encode(fixture.op(user, "run", { run_id = run_id }).input), (json.encode(input)))
         end)
 
         test.it("erases source-owned numeric boolean and structured input and diagnostics", function()
