@@ -160,8 +160,9 @@ local function define_tests()
             } })
             test.not_nil(created)
             fixture.settle(user, id)
+            fixture.normalization({ { key = "diet", value = "vegan" } })
             local stored = fixture.op(user, "tool_remember", { input = {
-                content = "The user is vegan.", kind = "preference", key = "diet", value = "vegan",
+                content = "The user is vegan.", kind = "preference", key = "dietary_preference", value = "The user is vegan.",
             } }, fixture.agent_context(id, session, "agent-a"))
             test.is_true(stored.success, json.encode(stored))
             fixture.settle(user, id)
@@ -295,10 +296,12 @@ local function define_tests()
             local id = fixture.memory(user)
             local context = fixture.agent_context(id, "s-" .. user, "agent-a")
             local input = { content = "The user's bike is red.", key = "bike_color", value = "red" }
+            fixture.normalization({ input })
             local first = fixture.op(user, "tool_remember", { input = input }, context)
             fixture.settle(user, id)
             fixture.op(user, "tool_forget", { input = { item_id = first.item_ids[1] } }, context)
             fixture.settle(user, id)
+            fixture.normalization({ input })
             local again = fixture.op(user, "tool_remember", { input = input }, context)
             test.is_true(again.success, json.encode(again))
             fixture.settle(user, id)

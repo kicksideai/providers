@@ -206,6 +206,13 @@ end
 
 function M.extraction(items: { any })
     script.respond("structured_output", { items = items })
+    if #items > 0 then M.normalization(items) end
+end
+
+function M.normalization(items: { any })
+    local mappings = {}
+    for i, item in ipairs(items) do mappings[i] = { index = i, key = item.key, value = type(item.value) == "string" and item.value or "" } end
+    script.respond("structured_output", { mappings = mappings })
 end
 
 function M.verdict(action: string, target_ids: { string })

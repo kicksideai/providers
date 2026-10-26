@@ -95,6 +95,16 @@ Only an explicit statement of change can replace a single-valued profile attribu
 target_ids lists the existing memory ids the action applies to (empty for ADD).
 Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
 
+local NORMALIZATION_PROMPT = [[Normalize candidate memory attributes before reconciliation.
+For every candidate return its index, canonical key and value. Reuse an existing key
+when it names the same attribute, regardless of phrasing or kind (home city and current
+city, diet and dietary preference). Different attributes or distinct goals keep distinct
+keys. Candidates about the same attribute reuse one key within the batch too.
+Use the candidate's key only for an attribute no existing key represents.
+The value is the attribute value alone, never a sentence about the user: "Pepper", not
+"The user's cat is named Pepper." Preserve typed non-string values; return an empty
+string for their value field. Do not add information or change the meaning.]]
+
 local REFLECTION_PROMPT = [[You review a person's numbered memories and derive lessons: concrete
 ways to help this person that no single memory says. A lesson combines at least two
 memories into guidance for acting, e.g. memories "the dog hates long car rides" and "always
@@ -215,7 +225,55 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local response, err = llm.structured_output(candidate_schema(ids), messages(system, M.conversation(span, context)), { model = model })
     if err then return nil, model_error("memory extraction", err) end
-    return read_candidates(response, "memory extraction")
+    local candidates, read_err = read_candidates(response, "memory extraction")
+    if read_err then return nil, read_err end
+    return M.normalize(model, candidates :: any, keys)
+end
+
+function M.normalize(model: string, candidates: { any }, keys: { any }): (any?, error?)
+    if #candidates == 0 then return candidates, nil end
+    local indices, names, named = {}, {}, {}
+    local known: { [string]: any } = {}
+    local function name(key: string)
+        if not named[key] then names[#names + 1] = key; named[key] = true end
+    end
+    for _, row in ipairs(keys) do name(row.key); known[row.key] = row end
+    for i, candidate in ipairs(candidates) do indices[#indices + 1] = i; name(candidate.key) end
+    local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
+        mappings = { type = "array", minItems = #candidates, maxItems = #candidates, items = {
+            type = "object", additionalProperties = false, required = { "index", "key", "value" }, properties = {
+                index = { type = "integer", enum = indices }, key = { type = "string", enum = names }, value = { type = "string" },
+            },
+        } },
+    } }
+    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT, json.encode({ candidates = candidates, existing_keys = keys })), { model = model })
+    if err then return nil, model_error("memory normalization", err) end
+    local mappings = response and response.result and response.result.mappings
+    if type(mappings) ~= "table" or #mappings ~= #candidates then return nil, types.unavailable("memory normalization returned malformed output") end
+    local out, seen = {}, {}
+    for _, mapping in ipairs(mappings) do
+        if type(mapping) ~= "table" then return nil, types.unavailable("memory normalization returned an invalid mapping") end
+        local candidate = candidates[mapping.index]
+        local allowed = false
+        for _, name in ipairs(names) do if mapping.key == name then allowed = true end end
+        if not candidate or seen[mapping.index] or not allowed or type(mapping.value) ~= "string" then
+            return nil, types.unavailable("memory normalization returned an invalid mapping")
+        end
+        seen[mapping.index] = true
+        local normalized = {}
+        for k, v in pairs(candidate) do normalized[k] = v end
+        normalized.key = mapping.key
+        if type(candidate.value) == "string" then
+            normalized.value = types.trim(mapping.value)
+            if normalized.value == "" then return nil, types.unavailable("memory normalization returned an empty value") end
+        end
+        if known[mapping.key] then
+            normalized.kind = known[mapping.key].kind
+            normalized.cardinality = known[mapping.key].cardinality
+        end
+        out[mapping.index] = normalized
+    end
+    return out, nil
 end
 
 -- items: { { id, kind, key, content } }

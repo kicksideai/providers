@@ -185,6 +185,7 @@ local function define_tests()
             } }, context)
             test.eq(content_key.success, false)
 
+            fixture.normalization({ { key = "notification_setting", value = false } })
             local stored = fixture.op(user, "tool_remember", { input = {
                 content = "The user disables notifications.", key = "notification_setting", value = false,
             } }, context)
@@ -277,12 +278,12 @@ local function define_tests()
             } })
             fixture.settle(user, component_id)
             fixture.op(user, "apply", { payload = fixture.payload("activate", session, "agent-a") }, context)
-            test.is_true(fixture.op(user, "prompt", {}, context):find("drinks tea", 1, true) ~= nil)
+            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink: tea", 1, true) ~= nil)
 
             local _, archive_err = fixture.op(user, "archive", { component_id = component_id, item_id = added.item_id })
             test.is_nil(archive_err, tostring(archive_err))
             fixture.settle(user, component_id)
-            test.is_true(fixture.op(user, "prompt", {}, context):find("drinks tea", 1, true) == nil)
+            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink: tea", 1, true) == nil)
         end)
 
         test.it("rejects a pin whose rendered text was revised before its transaction", function()
