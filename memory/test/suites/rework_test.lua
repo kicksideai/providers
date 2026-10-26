@@ -128,6 +128,51 @@ local function define_tests()
             end
         end)
 
+        for _, case in ipairs({
+            { name = "numeric", value = 1, text = "I need 10 tickets for the museum." },
+            { name = "boolean", value = false, text = "The guide explains false positives in medical tests." },
+        }) do
+            test.it("preserves unrelated pending input when forgetting a " .. case.name .. " value", function()
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local added, create_err = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "fact", scope_family = "owner", key = "setting", value = case.value,
+                    content = "The setting is configured.",
+                } })
+                test.is_nil(create_err, tostring(create_err))
+                fixture.settle(user, id)
+                local run_id = "unrelated:" .. id
+                local input = { owner_id = user, span = { { id = "independent-message", role = "user", text = case.text } } }
+                local db = fixture.db()
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_kb_runs
+                    (id, component_id, run_type, status, input, created_at)
+                    VALUES ($1, $2, 'derive', 'scheduled', $3, '2026-01-01T00:00:00Z')]],
+                    { run_id, id, json.encode(input) })
+                db:release()
+                test.is_nil(insert_err, tostring(insert_err))
+                local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
+                test.is_nil(forget_err, tostring(forget_err))
+                fixture.settle(user, id)
+                local run, read_err = fixture.op(user, "run", { run_id = run_id })
+                test.is_nil(read_err, tostring(read_err))
+                test.eq(run.status, "scheduled")
+                test.eq(run.input, input)
+            end)
+        end
+
+        test.it("erases through source ownership without reading retained run text", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local seeded, seed_err = op(user, "seed", { component_id = id, user = user, count = 1 })
+            test.is_nil(seed_err, tostring(seed_err))
+            fixture.settle(user, id)
+            local result, err = op(user, "erase_cost", { component_id = id, item_id = seeded.item_ids[1], seq = 10000 })
+            test.is_nil(err, tostring(err))
+            test.eq(result.erased, 1)
+            test.eq(result.run_scans, 0)
+            test.eq(result.run_rows, 0)
+        end)
+
         test.it("erases retained numeric boolean and structured mentions and diagnostics", function()
             local user = fixture.user()
             for _, case in ipairs({
