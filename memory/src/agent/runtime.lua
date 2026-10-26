@@ -251,7 +251,12 @@ local function render(rows: { any }, heading: string, max_chars: integer): (stri
     local selected: { any } = {}
     local used = #heading
     for _, row in ipairs(rows) do
-        local line = "- [" .. row.kind .. "] " .. row.content
+        local text = row.content
+        if (row.kind == types.KIND.PROFILE_SLOT or row.kind == types.KIND.PREFERENCE) and type(row.value) == "string" then
+            local label = row.key:gsub("_", " ")
+            text = label:sub(1, 1):upper() .. label:sub(2) .. ": " .. row.value
+        end
+        local line = "- " .. text
         if used + #line + 1 > max_chars then break end
         lines[#lines + 1] = line
         selected[#selected + 1] = { id = row.id, version = row.version, content_hash = row.content_hash }
@@ -283,7 +288,7 @@ local function pin(payload: any): (any?, error?)
     local host_kind, host_id = host_ref(payload.host)
     local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, types.actor_id()), OWNER_SOUL_KINDS)
     if rows_err then return nil, rows_err end
-    local text, pinned = render(rows :: any, "## What you know about the user", (store :: any).effective.soul_owner_max_chars)
+    local text, pinned = render(rows :: any, "## What you know about the user\nUse these facts as defaults. Propose using what you know instead of asking again; the user can correct you.", (store :: any).effective.soul_owner_max_chars)
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
     return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text, pinned)
