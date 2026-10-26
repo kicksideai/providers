@@ -101,7 +101,7 @@ target_ids lists the existing memory ids the action applies to (empty for ADD).
 Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
 
 local NORMALIZATION_PROMPT = [[Normalize candidate memory attributes before reconciliation.
-For every candidate return its index, canonical key, kind, cardinality and value. Reuse an existing key
+For every candidate return its canonical key, kind, cardinality and value under its numbered property. Reuse an existing key
 when it names the same attribute, regardless of phrasing or kind (home city and current
 city, diet and dietary preference). Different attributes or distinct goals keep distinct
 keys. Candidates about the same attribute reuse one key within the batch too.
@@ -253,7 +253,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }): (any?, 
     end
     for _, row in ipairs(keys) do name(row.key); known[row.key] = row end
     for _, candidate in ipairs(candidates) do name(candidate.key) end
-    local choices, allowed = {}, {}
+    local properties, required, allowed = {}, {}, {}
     for i, candidate in ipairs(candidates) do
         local keys_for_candidate, kinds = {}, {}
         allowed[i] = {}
@@ -267,32 +267,32 @@ function M.normalize(model: string, candidates: { any }, keys: { any }): (any?, 
         for _, kind in ipairs(CANDIDATE_KINDS) do
             if (kind == types.KIND.PLAN) == (candidate.kind == types.KIND.PLAN) then kinds[#kinds + 1] = kind end
         end
-        choices[i] = { type = "object", additionalProperties = false, required = { "index", "key", "value", "kind", "cardinality" }, properties = {
-            index = { type = "integer", enum = { i } }, key = { type = "string", enum = keys_for_candidate }, value = { type = "string" },
+        properties[tostring(i)] = { type = "object", additionalProperties = false, required = { "key", "value", "kind", "cardinality" }, properties = {
+            key = { type = "string", enum = keys_for_candidate }, value = { type = "string" },
             kind = { type = "string", enum = kinds }, cardinality = { type = "string", enum = { "single", "multi" } },
         } }
+        required[#required + 1] = tostring(i)
     end
     local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
-        mappings = { type = "array", minItems = #candidates, maxItems = #candidates, items = { anyOf = choices } },
+        mappings = { type = "object", additionalProperties = false, properties = properties, required = required },
     } }
     local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT, json.encode({ candidates = candidates, existing_keys = keys })), { model = model })
     if err then return nil, model_error("memory normalization", err) end
     local mappings = response and response.result and response.result.mappings
-    if type(mappings) ~= "table" or #mappings ~= #candidates then return nil, types.unavailable("memory normalization returned malformed output") end
-    local out, seen = {}, {}
-    for _, mapping in ipairs(mappings) do
+    if type(mappings) ~= "table" then return nil, types.unavailable("memory normalization returned malformed output") end
+    local out = {}
+    for i, candidate in ipairs(candidates) do
+        local mapping = mappings[tostring(i)]
         if type(mapping) ~= "table" then return nil, types.unavailable("memory normalization returned an invalid mapping") end
-        local candidate = candidates[mapping.index]
-        if not candidate or seen[mapping.index] or not named[mapping.key] or type(mapping.value) ~= "string" then
+        if not named[mapping.key] or type(mapping.value) ~= "string" then
             return nil, types.unavailable("memory normalization returned an invalid mapping")
         end
-        if not allowed[mapping.index][mapping.key] or ((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)) then
+        if not allowed[i][mapping.key] or ((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)) then
             return nil, types.invalid("memory normalization maps incompatible item kinds")
         end
         if not types.KIND_SET[mapping.kind] or not types.CARDINALITY_SET[mapping.cardinality] then
             return nil, types.unavailable("memory normalization returned an invalid item type")
         end
-        seen[mapping.index] = true
         local normalized = {}
         for k, v in pairs(candidate) do normalized[k] = v end
         normalized.key = mapping.key
@@ -305,7 +305,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }): (any?, 
         if known[mapping.key] then
             normalized.cardinality = known[mapping.key].cardinality
         end
-        out[mapping.index] = normalized
+        out[i] = normalized
     end
     return out, nil
 end

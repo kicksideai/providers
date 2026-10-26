@@ -211,7 +211,7 @@ end
 
 function M.normalization(items: { any })
     local mappings = {}
-    for i, item in ipairs(items) do mappings[i] = { index = i, key = item.key, value = type(item.value) == "string" and item.value or "", kind = item.kind or "fact", cardinality = item.cardinality or "multi" } end
+    for i, item in ipairs(items) do mappings[tostring(i)] = { key = item.key, value = type(item.value) == "string" and item.value or "", kind = item.kind or "fact", cardinality = item.cardinality or "multi" } end
     script.respond("structured_output", { mappings = mappings })
 end
 

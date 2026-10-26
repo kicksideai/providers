@@ -5,6 +5,7 @@
 local ops = require("memory_ops")
 local writer = require("memory_writer")
 local reconcile = require("memory_reconcile")
+local models = require("memory_models")
 local runtime = require("runtime")
 local items = require("memory_items")
 local runs = require("memory_runs")
@@ -19,6 +20,7 @@ local types = require("types")
 local agent_compiler = require("agent_compiler")
 
 local OPS: { [string]: (any) -> (any, any) } = {
+    normalize = function(a: any) return models.normalize("test-fast", a.candidates, a.keys or {}) end,
     create = function(a: any) return ops.create(a.component_id, a.fields) end,
     edit = function(a: any) return ops.edit(a.component_id, a.item_id, a.fields) end,
     forget = function(a: any) return ops.forget(a.component_id, a.item_id) end,

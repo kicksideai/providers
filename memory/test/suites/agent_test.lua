@@ -18,6 +18,26 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("normalizes every candidate once using required numbered result properties", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { mappings = {
+                ["1"] = { key = "name", value = "Sam", kind = "profile_slot", cardinality = "single" },
+                ["2"] = { key = "home_city", value = "Paris", kind = "profile_slot", cardinality = "single" },
+                ["3"] = { key = "diet", value = "vegetarian", kind = "profile_slot", cardinality = "single" },
+            } })
+            local normalized, err = fixture.op(user, "normalize", { candidates = {
+                fixture.candidate("profile_slot", "name", "Sam", "The user's name is Sam."),
+                fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris."),
+                fixture.candidate("profile_slot", "diet", "vegetarian", "The user is vegetarian."),
+            } })
+            test.is_nil(err, tostring(err))
+            test.eq(#normalized, 3)
+            test.eq(normalized[1].value, "Sam")
+            test.eq(normalized[2].value, "Paris")
+            test.eq(normalized[3].value, "vegetarian")
+            test.eq(#fixture.script.requests("structured_output")[1].properties.mappings.required, 3)
+        end)
+
         test.it("rejects normalization that maps a goal onto a profile attribute", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -26,7 +46,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
             fixture.script.respond("structured_output", { items = { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal") } })
-            fixture.script.respond("structured_output", { mappings = { { index = 1, key = "home_city", value = "", kind = "profile_slot", cardinality = "single" } } })
+            fixture.script.respond("structured_output", { mappings = { ["1"] = { key = "home_city", value = "", kind = "profile_slot", cardinality = "single" } } })
             apply(user, "before_step", id, session, "agent-a")
             local runs = fixture.wait_runs(user, id, "derive", 1)
             test.eq(runs[1].status, "failed")
@@ -115,7 +135,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.history.record(session, { { id = "move", role = "user", content = "I moved to Berlin." } })
             fixture.script.respond("structured_output", { items = { fixture.candidate("profile_slot", "current_city", "The user lives in Berlin.", "The user lives in Berlin.", "move") } })
-            fixture.script.respond("structured_output", { mappings = { { index = 1, key = "home_city", value = "Berlin", kind = "profile_slot", cardinality = "single" } } })
+            fixture.script.respond("structured_output", { mappings = { ["1"] = { key = "home_city", value = "Berlin", kind = "profile_slot", cardinality = "single" } } })
             fixture.verdict("SUPERSEDE", { seed.item_ids[1] })
             local applied, err = apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))

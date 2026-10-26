@@ -21,6 +21,7 @@ entries:
       memory_ops: kickside.memory.engine:ops
       memory_writer: kickside.memory.engine:writer
       memory_reconcile: kickside.memory.engine:reconcile
+      memory_models: kickside.memory.engine:models
       runtime: kickside.memory.agent:runtime
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
