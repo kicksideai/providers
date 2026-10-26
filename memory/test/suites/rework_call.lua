@@ -15,7 +15,9 @@ local function call(a: any): (any?, error?)
     if a.op == "backfill_sources" or a.op == "backfill_embeddings" or a.op == "migrate_diagnostics" then
         local db, err = sql.get("app:db")
         if err then return nil, err end
-        local migrate = ({ backfill_sources = source_migration, backfill_embeddings = embedding_migration, migrate_diagnostics = diagnostic_migration })[a.op]
+        local migrate = source_migration
+        if a.op == "backfill_embeddings" then migrate = embedding_migration end
+        if a.op == "migrate_diagnostics" then migrate = diagnostic_migration end
         local result = migrate({ db = db, db_type = db:type(), id = a.id })
         db:release()
         return result, nil
