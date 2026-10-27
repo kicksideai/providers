@@ -185,17 +185,10 @@ local CANDIDATE_KINDS = types.MEMORY_KINDS
 local CANDIDATE_KIND_SET = {}
 for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 
-local function topic_schema(plan: boolean, keys: { any }): any
-    local schema: any = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0,63}$" }
-    local excluded = {}
-    for _, row in ipairs(keys) do
-        if (row.kind == types.KIND.PLAN) ~= plan then excluded[#excluded + 1] = row.key end
-    end
-    if #excluded > 0 then schema["not"] = { enum = excluded } end
-    return schema
-end
+-- Kind compatibility between a key and its existing items is validated per candidate after decoding.
+local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0,63}$" }
 
-local function candidate_schema(event_ids: { string }?, kinds: { string }?, keys: { any }?, count: integer): any
+local function candidate_schema(event_ids: { string }?, kinds: { string }?, count: integer): any
     local event_id = enum_string(event_ids or { "" })
     local scalar_kinds = {}
     for _, kind in ipairs(kinds or CANDIDATE_KINDS) do
@@ -205,7 +198,7 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?, keys
         return { type = "object", additionalProperties = false,
             required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
             properties = {
-                kind = enum_string(allowed), key = topic_schema(allowed[1] == types.KIND.PLAN, keys or {}),
+                kind = enum_string(allowed), key = TOPIC_SCHEMA,
                 cardinality = enum_string(cardinalities), value = value,
                 content = bounded_string(LIMITS.content), event_id = event_id,
                 valid_at = bounded_string(LIMITS.valid_at), confidence = { type = "number", minimum = 0, maximum = 1 },
@@ -275,7 +268,7 @@ function M.extraction_capacity(model: string, span: { any }?): (integer?, error?
     end
     if #ids == 0 then ids[1] = uuid.v7() end
     local count = 0
-    while limit and output_budget(candidate_schema(ids, nil, {}, count + 1)) <= limit do count = count + 1 end
+    while limit and output_budget(candidate_schema(ids, nil, count + 1)) <= limit do count = count + 1 end
     if count == 0 then
         return nil, types.invalid("memory extraction model " .. model .. " output limit cannot hold one statement")
     end
@@ -412,7 +405,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local conversation = M.conversation(span, context)
-    local schema = candidate_schema(ids, nil, keys, #ids)
+    local schema = candidate_schema(ids, nil, #ids)
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
@@ -437,7 +430,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             end
         end
         local mapping_properties = {
-            key = topic_schema(candidate.kind == types.KIND.PLAN, keys), kind = enum_string(kinds),
+            key = TOPIC_SCHEMA, kind = enum_string(kinds),
             cardinality = enum_string({ "single", "multi" }),
         }
         local mapping_required = { "key", "kind", "cardinality" }
@@ -522,7 +515,7 @@ function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
         lines[#lines + 1] = string.format("%d. (%s/%s) %s", index, item.kind, item.key, item.content)
         numbers[index] = index
     end
-    local schema = candidate_schema(nil, { types.KIND.LESSON }, nil, math.min(LIMITS.lessons, math.floor(#items / REFLECTION_MIN_SOURCES)))
+    local schema = candidate_schema(nil, { types.KIND.LESSON }, math.min(LIMITS.lessons, math.floor(#items / REFLECTION_MIN_SOURCES)))
     local item_schema = schema.properties.items.items
     item_schema.properties.event_id = enum_string({ "" })
     item_schema.properties.valid_at = enum_string({ "" })

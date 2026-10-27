@@ -115,6 +115,33 @@ local function define_tests()
             test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
+        test.it("sends result schemas built only from keywords constrained decoding supports", function()
+            local supported = { type = true, properties = true, required = true, additionalProperties = true, items = true,
+                maxItems = true, minItems = true, enum = true, maxLength = true, minLength = true, pattern = true, minimum = true, maximum = true }
+            local function check(node: any, path: string)
+                for keyword, child in pairs(node) do
+                    test.is_true(supported[keyword] == true, "unsupported schema keyword " .. keyword .. " at " .. path)
+                    if keyword == "properties" then
+                        for name, property in pairs(child) do check(property, path .. "." .. name) end
+                    elseif keyword == "items" then
+                        check(child, path .. "[]")
+                    end
+                end
+            end
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { items = {}, plans = {} })
+            local _, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "event", role = "user", text = "I live in Oslo and need to renew my passport." },
+            }, keys = {
+                { key = "residence", kind = "profile_slot", cardinality = "single", value = "Paris", content = "Lives in Paris." },
+                { key = "passport_renewal", kind = "plan", cardinality = "single", content = "Renewing a passport." },
+            } })
+            test.is_nil(err, tostring(err))
+            local schemas = fixture.script.requests("structured_output")
+            test.eq(#schemas, 1)
+            check(schemas[1], "$")
+        end)
+
         test.it("sizes output budgets by the bounded result schema and mapping count", function()
             local user = fixture.user()
             local one = candidate("home_city", "Oslo")

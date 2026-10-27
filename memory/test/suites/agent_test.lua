@@ -407,7 +407,7 @@ local function define_tests()
             end
         end)
 
-        test.it("allows new attribute topics while excluding existing goal topics from normalization", function()
+        test.it("rejects an attribute candidate that maps onto an existing goal topic", function()
             local user = fixture.user()
             for _, key in ipairs({ "travel_help", "Travel Help" }) do
                 local lesson = fixture.candidate("lesson", key, "accessible routes", "Suggest accessible routes.")
@@ -420,9 +420,6 @@ local function define_tests()
                 test.eq(#result.items, 0)
                 test.eq(result.stats.rejected, 1)
                 test.eq(result.stats.rejected_normalization_kind, 1)
-                local schema = fixture.script.requests("structured_output")[1].properties.mappings.properties["1"].items.properties.key
-                test.not_nil(schema["not"], "The model must not select an existing goal as an attribute topic")
-                test.eq(table.concat(schema["not"].enum, ","), "travel_help")
             end
         end)
 
