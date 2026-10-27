@@ -98,6 +98,7 @@ local function owner_prompt(payload: any): (string?, error?)
     end
     return cursor and (cursor :: any).pinned_prompt or "", nil
 end
+
 function M.build(_prompt: any, trait_context: any): (any?, error?)
     if types.trim(context.setting({ context = trait_context }, "memory_id")) == "" then
         return nil, types.invalid("the Memory capability has no memory selected")

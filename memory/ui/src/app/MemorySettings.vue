@@ -9,6 +9,8 @@ import { api } from '@wippy-fe/proxy'
 import { errorText, isRecord, parseConfig, type MemoryEvents } from './types'
 import { usePaged } from './useMemory'
 
+// The Memory trait's settings: the one memory an agent uses and whether it
+// learns from conversations. Models, limits and cadence live on the memory.
 const CARRIED_KEYS = ['read_enabled', 'recall_limit']
 
 interface MemoryChoice { id: string; name: string; description?: string; item_count?: number }
