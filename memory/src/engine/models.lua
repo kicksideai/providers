@@ -265,7 +265,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             end
         end
         local mapping_properties = {
-            key = { type = "string" }, kind = { type = "string", enum = kinds },
+            key = { type = "string", pattern = "^[a-z][a-z0-9_]{0,63}$" }, kind = { type = "string", enum = kinds },
             cardinality = { type = "string", enum = { "single", "multi" } },
         }
         local excluded_keys = {}
@@ -308,7 +308,8 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             if type(mapping) ~= "table" or not types.KIND_SET[mapping.kind] or not types.CARDINALITY_SET[mapping.cardinality] then
                 return nil, types.unavailable("memory normalization returned an invalid item type")
             end
-            local existing = known[mapping.key]
+            local mapped_key = types.normalize_key(mapping.key)
+            local existing = known[mapped_key]
             if ((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN))
                 or (existing and ((existing.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)))
                 or (candidate.kind == types.KIND.LESSON and mapping.kind ~= types.KIND.LESSON) then
@@ -326,7 +327,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
                 normalized.value = types.trim(mapping.value)
                 normalized.content = types.trim(mapping.content)
             end
-            local key, key_err = types.topic_key(mapping.key, normalized.content :: string, normalized.value)
+            local key, key_err = types.topic_key(mapped_key, normalized.content :: string, normalized.value)
             if key_err then return nil, key_err end
             normalized.key = key
             out[#out + 1] = normalized
