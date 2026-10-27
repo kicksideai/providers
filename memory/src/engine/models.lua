@@ -77,12 +77,10 @@ goal nor an attribute. An actionable task qualifies even if it is short-lived or
 Each item has:
 - kind: fact | preference | profile_slot | skill | lesson | plan.
   profile_slot is a stable personal attribute with one value at a time.
-- existing_key and new_key: fill exactly one and leave the other empty. Select existing_key from the offered
-  enum when this is an attribute or goal already known for this person. Otherwise
-  declare new_key as a short canonical topic, never its value or sentence: lowercase
-  letters, digits and underscores, starting with a letter, at most 64 characters.
-  Never declare an existing key as new or invent an existing key. Keep the same new
-  key for one attribute throughout the batch. Plans and lessons keep their own keys.
+- key: a short canonical topic, never its value or sentence: lowercase letters, digits
+  and underscores, starting with a letter, at most 64 characters. Reuse an existing
+  topic key for the same attribute or goal. Keep one key for an attribute throughout
+  the batch. Plans and lessons keep their own keys.
 - cardinality: single for one value at a time; multi for independent simultaneous values.
   Plans use single under their own goal key.
 - value: the newly stated attribute value alone, never a union with an earlier value.
@@ -201,7 +199,7 @@ for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 -- Kind compatibility with existing topics is validated after decoding.
 local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0,63}$" }
 
-local function candidate_schema(event_ids: { string }?, kinds: { string }?, count: integer, keys: { any }?): any
+local function candidate_schema(event_ids: { string }?, kinds: { string }?, count: integer): any
     local event_id = enum_string(event_ids or { "" })
     local scalar_kinds = {}
     for _, kind in ipairs(kinds or CANDIDATE_KINDS) do
@@ -217,19 +215,6 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?, coun
                 valid_at = bounded_string(LIMITS.valid_at), confidence = { type = "number", minimum = 0, maximum = 1 },
             },
         }
-        if kinds then return shape end
-        local known, seen = { "" }, {}
-        for _, row in ipairs(keys or {}) do
-            if types.compatible_kinds(allowed[1], row.kind) and not seen[row.key] then
-                known[#known + 1] = row.key
-                seen[row.key] = true
-            end
-        end
-        shape.properties.key = nil
-        shape.properties.existing_key = enum_string(known)
-        shape.properties.new_key = { type = "string", maxLength = LIMITS.key, pattern = "^$|^[a-z][a-z0-9_]{0,63}$" }
-        shape.required[2] = "existing_key"
-        shape.required[#shape.required + 1] = "new_key"
         return shape
     end
     local scalar = item(scalar_kinds, { type = "string", minLength = 1, maxLength = LIMITS.value }, { "single", "multi" })
@@ -382,16 +367,7 @@ local function read_candidates(response: any, step: string, event_ids: { [string
     local out = {}
     local function read(collection: any, plans: boolean): error?
         for _, item in ipairs(collection) do
-            if step == "extraction" then
-                if item.existing_key ~= "" then
-                    if item.new_key ~= "" or not known[item.existing_key] then return validation_error(step, "identity") end
-                    item.key = item.existing_key
-                else
-                    if type(item.new_key) ~= "string" or item.new_key == "" or known[item.new_key] then return validation_error(step, "identity") end
-                    item.key = item.new_key
-                end
-                item.existing_key, item.new_key = nil, nil
-            end
+            if type(item) == "table" and type(item.key) == "string" then item.key = types.normalize_key(item.key) end
             local reason = candidate_reason(item)
             local existing = not reason and known[types.normalize_key(item.key)] or nil
             if existing then
@@ -463,7 +439,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local conversation = M.conversation(span, context)
-    local schema = candidate_schema(ids, nil, #ids, keys)
+    local schema = candidate_schema(ids, nil, #ids)
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })

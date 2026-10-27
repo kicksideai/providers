@@ -7,45 +7,37 @@ local function define_tests()
     test.describe("memory model normalization", function()
         test.before_each(function() fixture.script.reset() end)
 
-        test.it("resolves enum-selected existing keys and separately declared new keys", function()
+        test.it("resolves one normalized key to an existing topic or a new topic", function()
             local user = fixture.user()
-            local item = fixture.candidate("profile_slot", "unused", "Bergen", "Lives in Bergen.", "source")
-            item.key = nil
-            item.existing_key = "home_city"
-            item.new_key = ""
-            fixture.script.respond("structured_output", { items = { item }, plans = {}, lessons = {} })
-            local result, err = fixture.op(user, "model_step", { step = "extract", span = {
-                { id = "source", role = "user", text = "I moved to Bergen." },
-            }, keys = { { kind = "profile_slot", key = "home_city", cardinality = "single" },
-                { kind = "lesson", key = "contact_guidance", cardinality = "multi" },
-                { kind = "plan", key = "repair_goal", cardinality = "single" } } })
-            test.is_nil(err, tostring(err))
-            test.eq(result.items[1].key, "home_city")
-            test.is_nil(result.items[1].existing_key)
-            local schema = fixture.script.requests("structured_output")[1]
-            local choices = schema.properties.items.items.properties
-            test.eq(table.concat(choices.existing_key.enum, ","), ",home_city")
-            test.eq(choices.new_key.pattern, "^$|^[a-z][a-z0-9_]{0,63}$")
-            test.eq(table.concat(schema.properties.plans.items.properties.existing_key.enum, ","), ",repair_goal")
-            test.eq(table.concat(schema.properties.lessons.items.properties.existing_key.enum, ","), ",contact_guidance")
-        end)
-
-        test.it("rejects invented existing keys cross-kind choices ambiguous identities and new-key collisions", function()
-            local user = fixture.user()
-            for _, identity in ipairs({
-                { existing_key = "invented_key" }, { existing_key = "contact_guidance" },
-                { existing_key = "home_city", new_key = "residence" }, { new_key = "home_city" },
-                { new_key = "Bad Key" }, {},
-            }) do
-                local item = fixture.candidate("profile_slot", "unused", "Bergen", "Lives in Bergen.", "source")
-                item.key = nil
-                item.existing_key, item.new_key = "", ""
-                for key, value in pairs(identity) do item[key] = value end
+            for _, key in ipairs({ "home_city", " Home City ", "residence" }) do
+                local item = fixture.candidate("profile_slot", key, "Bergen", "Lives in Bergen.", "source", nil, "multi")
                 fixture.script.respond("structured_output", { items = { item }, plans = {}, lessons = {} })
                 local result, err = fixture.op(user, "model_step", { step = "extract", span = {
                     { id = "source", role = "user", text = "I moved to Bergen." },
-                }, keys = { { kind = "profile_slot", key = "home_city", cardinality = "single" },
-                    { kind = "lesson", key = "contact_guidance", cardinality = "multi" } } })
+                }, keys = { { kind = "profile_slot", key = "home_city", cardinality = "single" } } })
+                test.is_nil(err, tostring(err))
+                local existing = key ~= "residence"
+                test.eq(result.items[1].key, existing and "home_city" or "residence")
+                test.eq(result.items[1].cardinality, existing and "single" or "multi")
+            end
+            local schema = fixture.script.requests("structured_output")[1]
+            for _, collection in ipairs({ "items", "plans", "lessons" }) do
+                local shape = schema.properties[collection].items
+                test.eq(shape.properties.key.pattern, "^[a-z][a-z0-9_]{0,63}$")
+                test.eq(shape.properties.key.maxLength, 64)
+                test.eq(#shape.required, 8)
+                test.eq(shape.required[2], "key")
+            end
+        end)
+
+        test.it("rejects keys with no valid topic interpretation and incompatible kinds", function()
+            local user = fixture.user()
+            for _, key in ipairs({ "", "123", "!!!", "contact_guidance" }) do
+                local item = fixture.candidate("profile_slot", key, "Bergen", "Lives in Bergen.", "source")
+                fixture.script.respond("structured_output", { items = { item }, plans = {}, lessons = {} })
+                local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                    { id = "source", role = "user", text = "I moved to Bergen." },
+                }, keys = { { kind = "lesson", key = "contact_guidance", cardinality = "multi" } } })
                 test.is_nil(result)
                 test.not_nil(err)
             end
@@ -101,9 +93,9 @@ local function define_tests()
 
         test.it("rejects goal-shaped output for an extracted scalar attribute", function()
             local user = fixture.user()
-            fixture.script.respond("structured_output", { plans = {}, lessons = {}, items = { fixture.extracted(fixture.candidate("profile_slot", "pet_name", {
+            fixture.script.respond("structured_output", { plans = {}, lessons = {}, items = { fixture.candidate("profile_slot", "pet_name", {
                 status = "open", next_step = "", details = "A cat named Biscuit",
-            }, "The user's cat is named Biscuit.", "statement")) } })
+            }, "The user's cat is named Biscuit.", "statement") } })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
             test.is_nil(result)
             test.not_nil(err)
@@ -126,7 +118,7 @@ local function define_tests()
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 1)
             fixture.history.record(session, { { id = "answer", role = "user", content = "London" } })
-            fixture.extraction({ fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", "answer") }, { "trip_tickets" })
+            fixture.extraction({ fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", "answer") })
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 2)
             local prompt = fixture.script.prompts("structured_output")[1].system

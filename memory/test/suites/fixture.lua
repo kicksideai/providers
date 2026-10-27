@@ -183,21 +183,11 @@ function M.settle(user_id: string, component_id: string)
     if err then error(tostring(err)) end
 end
 
-function M.extracted(item: any, existing: boolean?): any
-    local output = {}
-    for key, value in pairs(item) do if key ~= "key" then output[key] = value end end
-    output.existing_key = existing and item.key or ""
-    output.new_key = existing and "" or item.key
-    return output
-end
-
-function M.extraction(items: { any }, existing_keys: { string }?)
+function M.extraction(items: { any })
     local attributes, lessons, plans = {}, {}, {}
     for _, item in ipairs(items) do
         local collection = item.kind == "plan" and plans or (item.kind == "lesson" and lessons or attributes)
-        local existing = false
-        for _, key in ipairs(existing_keys or {}) do if key == item.key then existing = true end end
-        collection[#collection + 1] = M.extracted(item, existing)
+        collection[#collection + 1] = item
     end
     script.respond("structured_output", { items = attributes, lessons = lessons, plans = plans })
 end

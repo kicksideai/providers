@@ -10,6 +10,7 @@ local function define_tests()
         test.it("fails consolidation without persisting any lesson when reflection is invalid", function()
             local user = fixture.user()
             local id = fixture.memory(user)
+            fixture.relations({ "unrelated" })
             fixture.remember(user, id, {
                 fixture.candidate("fact", "work_schedule", "night", "The user works at night.", "work-source"),
                 fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
@@ -75,6 +76,33 @@ local function define_tests()
             test.is_true(next_at:before(time.now():add(7 * time.HOUR)), tostring(job.scheduled_at))
         end)
 
+        test.it("completes consolidation when reflection duplicates one of its own source lessons", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("lesson", "contact_window", "evening", "Send requests outside the rest period.", "guidance"),
+                fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest"),
+            }, "duplicate-reflection-seed", { source = "owner" })
+            fixture.settle(user, id)
+            local current = fixture.items(user, id)
+            local source_id
+            for _, item in ipairs(current) do if item.kind == "lesson" then source_id = item.id end end
+            local original = fixture.op(user, "provenance", { component_id = id, item_id = source_id })
+            local duplicate = fixture.candidate("lesson", "contact_window", "evening", "Send requests outside the rest period.", "")
+            duplicate.based_on = { 1, 2 }
+            fixture.script.respond("structured_output", { items = { duplicate } })
+            fixture.normalization({ duplicate })
+            local _, err = fixture.op(user, "wake", { component_id = id })
+            test.is_nil(err, tostring(err))
+            local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
+            test.eq(run.status, "succeeded", tostring(run.last_error))
+            test.eq(run.stats.noop, 1)
+            test.eq(run.stats.added, 0)
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id), 2)
+            test.eq(#fixture.op(user, "provenance", { component_id = id, item_id = source_id }), #original)
+        end)
+
         test.it("erases a reflected lesson when one of its source attributes is forgotten", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -114,6 +142,9 @@ local function define_tests()
         test.it("erases derived memories transitively across source versions while retaining independent lessons", function()
             local user = fixture.user()
             local id = fixture.memory(user, { judge_min_similarity = 0 })
+            fixture.relations({ "unrelated" })
+            fixture.relations({ "unrelated", "unrelated" })
+            fixture.relations({ "unrelated", "unrelated", "unrelated" })
             fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "work_schedule", "night", "The user works at night.", "work-source"),
                 fixture.candidate("preference", "rest_period", "day", "The user rests during the day.", "rest-source"),
@@ -144,6 +175,7 @@ local function define_tests()
                             for _ = 1, neighbor_count do relations[#relations + 1] = "unrelated" end
                             fixture.relations(relations)
                         end
+                        neighbor_count = neighbor_count + 1
                     end
                 end
                 local _, err = fixture.op(user, "wake", { component_id = id })

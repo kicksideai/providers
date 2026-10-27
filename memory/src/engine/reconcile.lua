@@ -74,8 +74,16 @@ local function apply(d: any, action: string, scope: any, fields: any, targets: {
     end
     if action == types.ACTION.NOOP then
         for _, target in ipairs(targets) do
-            local seen_err = d:seen(target, provenance)
-            if seen_err then return seen_err end
+            local source = false
+            if d.source == types.ITEM_SOURCE.REFLECTION then
+                for _, ref in ipairs(provenance) do
+                    if ref.host_kind == "item" and ref.host_id == target.id then source = true; break end
+                end
+            end
+            if not source then
+                local seen_err = d:seen(target, provenance)
+                if seen_err then return seen_err end
+            end
         end
         d.stats.noop = d.stats.noop + 1
         return nil
@@ -168,9 +176,8 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
         if interpreted then
             d.stats.noop = d.stats.noop + 1
         elseif #(live :: any) > 0 then
-            local seen_err = d:reuse((live :: any)[1], provenance, {})
-            if seen_err then return seen_err end
-            d.stats.noop = d.stats.noop + 1
+            local err = apply(d, types.ACTION.NOOP, scope, fields, { (live :: any)[1] }, provenance)
+            if err then return err end
         elseif #(erased :: any) > 0 then
             d.stats.suppressed = d.stats.suppressed + 1
         elseif fields.cardinality == types.CARDINALITY.SINGLE and #(held :: any) > 0 then
@@ -200,7 +207,7 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             end
             for _, staged in ipairs(d.staged) do
                 local state = d.overlay[staged.owner_item_id]
-                if state and state.scope_key == scope_key and state.key == key and staged.vector
+                if state and state.scope_key == scope_key and staged.vector
                     and types.cosine_similarity(fields.vector, staged.vector) >= threshold then consider(state) end
             end
             for _, row in ipairs(near :: any) do consider(row) end

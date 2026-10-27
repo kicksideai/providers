@@ -158,7 +158,7 @@ local function define_tests()
             fixture.settle(user, id)
             local session = "s-" .. user
             fixture.history.record(session, { { id = "move", role = "user", content = "I moved to Berlin." } })
-            fixture.extraction({ fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "move") }, { "home_city" })
+            fixture.extraction({ fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "move") })
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
             test.is_true(applied.metadata.capture.captured)

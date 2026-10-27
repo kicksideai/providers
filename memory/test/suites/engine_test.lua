@@ -77,6 +77,66 @@ local function define_tests()
             test.is_nil(memories["2"])
         end)
 
+        test.it("judges a new alias key and supersedes onto the existing attribute key", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            local first = fixture.remember(user, id, { fixture.candidate("profile_slot", "employer", "Northstar", "The user states their employer.", "first") }, "alias-seed")
+            fixture.settle(user, id)
+            fixture.relations({ "updates" })
+            local result = fixture.remember(user, id, { fixture.candidate("fact", "workplace", "Harbor", "The user states their employer.", "second", nil, "multi") }, "alias-update")
+            test.eq(result.stats.judged, 1)
+            test.eq(result.stats.superseded, 1)
+            fixture.settle(user, id)
+            local current = fixture.op(user, "get", { component_id = id, item_id = result.item_ids[1] })
+            test.eq(current.key, "employer")
+            test.eq(current.cardinality, "single")
+            test.eq(current.value, "Harbor")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = first.item_ids[1] }).status, "superseded")
+            test.eq(#fixture.items(user, id, { key = "workplace" }), 0)
+        end)
+
+        test.it("judges compatible alias keys within the same batch", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            fixture.relations({ "updates" })
+            local result = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "employer", "Northstar", "The user states their employer.", "first"),
+                fixture.candidate("profile_slot", "workplace", "Harbor", "The user states their employer.", "second"),
+            }, "batch-alias-update")
+            test.eq(result.stats.judged, 1)
+            test.eq(result.stats.superseded, 1)
+            fixture.settle(user, id)
+            local current = fixture.items(user, id, { statuses = { "current" } })
+            test.eq(#current, 1)
+            test.eq(current[1].key, "employer")
+            test.eq(current[1].value, "Harbor")
+        end)
+
+        test.it("treats reflection equivalents of their source lessons as noops without new provenance", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            local seeded = fixture.remember(user, id, { fixture.candidate("lesson", "contact_window", "evening", "Send requests outside the rest period.", "source") }, "source-lesson")
+            fixture.settle(user, id)
+            local source_id = seeded.item_ids[1]
+            local original = fixture.op(user, "provenance", { component_id = id, item_id = source_id })
+            for _, key in ipairs({ "contact_window", "request_window" }) do
+                local lesson = fixture.candidate("lesson", key, "evening", "Send requests outside the rest period.", "")
+                lesson.source_ids = { source_id }
+                if key ~= "contact_window" then fixture.relations({ "same" }) end
+                local result, err = fixture.op(user, "remember", { candidates = { lesson }, idempotency = "duplicate-" .. key,
+                    opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast", scope_family = "owner", scope_id = user, source = "reflection" } })
+                test.is_nil(err, tostring(err))
+                test.eq(result.stats.noop, 1)
+                test.eq(result.stats.added, 0)
+                test.eq(result.stats.judged, key == "contact_window" and 0 or 1)
+                fixture.settle(user, id)
+                test.eq(#fixture.items(user, id), 1)
+                local refs = fixture.op(user, "provenance", { component_id = id, item_id = source_id })
+                test.eq(#refs, #original)
+                for _, ref in ipairs(refs) do test.is_true(ref.host_id ~= source_id) end
+            end
+        end)
+
         test.it("rejects reverse and self item provenance at both decision recording paths", function()
             local user = fixture.user()
             local id = fixture.memory(user)

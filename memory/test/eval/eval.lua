@@ -52,7 +52,7 @@ local function script_verdict(verdict: string?, candidate: any?, seeded: { any }
 end
 
 local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer,
-    scripted: any?, verdict: string?, seed: boolean?): (any?, string?)
+    scripted: any?, verdict: string?, seed: boolean?, judgments: any?): (any?, string?)
     fixture.history.record(session, stamp(messages, at))
     if scripted then fixture.script.hold("structured_output") end
     local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
@@ -70,12 +70,11 @@ local function capture(user: string, memory: string, session: string, messages: 
             for _, candidate in ipairs(scripted) do
                 if ids[candidate.event_id] then candidates[#candidates + 1] = candidate end
             end
-            local existing_keys = {}
-            for _, item in ipairs(seeded) do existing_keys[#existing_keys + 1] = item.key end
-            fixture.extraction(candidates, existing_keys)
-            if seed and i > 1 then
-                for _ = 1, #candidates do fixture.relations({ "unrelated" }) end
-            elseif not seed then
+            fixture.extraction(candidates)
+            for index, candidate in ipairs(scripted) do
+                if ids[candidate.event_id] and judgments and judgments[index] then fixture.relations(judgments[index]) end
+            end
+            if not seed then
                 for _, candidate in ipairs(candidates) do
                     if candidate.cardinality ~= "single" then script_verdict(verdict, candidate, seeded) end
                 end
@@ -108,7 +107,7 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
     if target.scripted then fixture.script.reset() end
     if case.seed then
         local seeded, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, derived,
-            target.scripted and case.ideal.seed or nil, nil, true)
+            target.scripted and case.ideal.seed or nil, nil, true, case.ideal.seed_relations)
         if seed_err then return "ERROR", seed_err end
         derived = seeded.count
     end
