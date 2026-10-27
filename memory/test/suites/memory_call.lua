@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
+local config = require("memory_config")
 local ops = require("memory_ops")
 local writer = require("memory_writer")
 local reconcile = require("memory_reconcile")
@@ -25,6 +26,11 @@ local agent_prompt = require("llm_prompt")
 local lifecycle = require("agent_lifecycle")
 
 local OPS: { [string]: (any) -> (any, any) } = {
+    descriptor = function(a: any)
+        local err = config.validate_descriptor(a.meta)
+        if err then return nil, err end
+        return true, nil
+    end,
     model_step = function(a: any)
         local stats = {}
         local result, err

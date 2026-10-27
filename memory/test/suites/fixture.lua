@@ -38,7 +38,8 @@ end
 function M.wait_runs(user_id: string, component_id: string, run_type: string, count: integer): { any }
     local deadline = time.now():add(60 * time.SECOND)
     while true do
-        local rows = M.op(user_id, "runs", { component_id = component_id, run_type = run_type }) or {}
+        local rows, read_err = M.op(user_id, "runs", { component_id = component_id, run_type = run_type })
+        if read_err then error(tostring(read_err)) end
         local done = 0
         for _, run in ipairs(rows) do
             if run.status == "succeeded" or run.status == "failed" then done = done + 1 end
@@ -53,8 +54,9 @@ function M.wait_job(job_id: string, status: string): any
     local deadline = time.now():add(60 * time.SECOND)
     while true do
         local db = M.db()
-        local rows = db:query("SELECT status, attempts, scheduled_at FROM kickside_job WHERE id = $1", { job_id }) or {}
+        local rows, read_err = db:query("SELECT status, attempts, scheduled_at FROM kickside_job WHERE id = $1", { job_id })
         db:release()
+        if read_err then error(tostring(read_err)) end
         if rows[1] and rows[1].status == status then
             rows[1].attempts = tonumber(rows[1].attempts)
             return rows[1]
@@ -74,17 +76,22 @@ local function ensure_user(user_id: string)
     local db = M.db()
     local sqlite = db:type() == sql.type.SQLITE
     local email = user_id:gsub("[^%w_%-]", "_") .. "@memory.test"
+    local _, user_err
+    local _, group_err
     if sqlite then
-        db:execute([[INSERT OR IGNORE INTO app_users (user_id, email, full_name, password_hash, status, created_at, updated_at)
+        _, user_err = db:execute([[INSERT OR IGNORE INTO app_users (user_id, email, full_name, password_hash, status, created_at, updated_at)
             VALUES ($1, $2, 'Memory Test User', '!test:no-password', 'active', strftime('%s', 'now'), strftime('%s', 'now'))]], { user_id, email })
-        db:execute([[INSERT OR IGNORE INTO app_user_groups (user_id, group_id, created_at) VALUES ($1, 'app:user', strftime('%s', 'now'))]], { user_id })
+        if user_err then db:release(); error(tostring(user_err)) end
+        _, group_err = db:execute([[INSERT OR IGNORE INTO app_user_groups (user_id, group_id, created_at) VALUES ($1, 'app:user', strftime('%s', 'now'))]], { user_id })
     else
-        db:execute([[INSERT INTO app_users (user_id, email, full_name, password_hash, status, created_at, updated_at)
+        _, user_err = db:execute([[INSERT INTO app_users (user_id, email, full_name, password_hash, status, created_at, updated_at)
             VALUES ($1, $2, 'Memory Test User', '!test:no-password', 'active', now(), now()) ON CONFLICT (user_id) DO NOTHING]], { user_id, email })
-        db:execute([[INSERT INTO app_user_groups (user_id, group_id, created_at) VALUES ($1, 'app:user', now())
+        if user_err then db:release(); error(tostring(user_err)) end
+        _, group_err = db:execute([[INSERT INTO app_user_groups (user_id, group_id, created_at) VALUES ($1, 'app:user', now())
             ON CONFLICT (user_id, group_id) DO NOTHING]], { user_id })
     end
     db:release()
+    if group_err then error(tostring(group_err)) end
 end
 
 function M.user(prefix: string?): string
@@ -228,6 +235,17 @@ function M.create_claim(user: string, id: string, value: any, cardinality: strin
     if err then error(tostring(err)) end
     M.settle(user, id)
     return result
+end
+
+function M.values(items: { any }): { [string]: any }
+    local out = {}
+    for _, item in ipairs(items) do out[tostring(item.value)] = item end
+    return out
+end
+
+function M.apply(user: string, phase: string, memory: string, session: string, agent: string, extra: any?): (any, any)
+    return M.op(user, "apply", { payload = M.payload(phase, session, agent, extra) },
+        M.agent_context(memory, session, agent))
 end
 
 return M

@@ -7,12 +7,7 @@ local function candidate(key: string, value: string): any
     return fixture.candidate("profile_slot", key, value, "The user states an attribute.", "event", nil, "single")
 end
 
-local function codepoints(text: string): integer
-    local _, count = text:gsub("[^\128-\191]", "")
-    return count
-end
-
-local function maximal(node: any): any
+local function maximal(node: any, text: string): any
     if node.enum then
         local value = node.enum[1]
         for _, option in ipairs(node.enum) do
@@ -22,17 +17,17 @@ local function maximal(node: any): any
     elseif node.type == "object" then
         test.eq(node.additionalProperties, false)
         local value = {}
-        for key, child in pairs(node.properties) do value[key] = maximal(child) end
+        for key, child in pairs(node.properties) do value[key] = maximal(child, text) end
         return value
     elseif node.type == "array" then
         test.is_true(type(node.maxItems) == "number", "Array has no finite bound")
         local value = {}
-        for i = 1, node.maxItems do value[i] = maximal(node.items) end
+        for i = 1, node.maxItems do value[i] = maximal(node.items, text) end
         return value
     elseif node.type == "string" then
         test.is_true(type(node.maxLength) == "number", "String has no finite bound")
         if node.pattern then return string.rep("a", node.maxLength) end
-        return string.rep("界", node.maxLength)
+        return string.rep(text, node.maxLength)
     elseif node.type == "number" then
         test.eq(node.minimum, 0)
         test.eq(node.maximum, 1)
@@ -44,6 +39,194 @@ end
 local function define_tests()
     test.describe("bounded untrusted memory model output", function()
         test.before_each(function() fixture.script.reset() end)
+
+        test.it("directs extraction to omit memory-management requests while retaining personal assertions", function()
+            local user = fixture.user()
+            fixture.extraction({})
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "request", role = "user", text = "Forget my dietary preferences." },
+            } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 0)
+            local instruction = fixture.script.prompts("structured_output")[1].system
+            test.is_true(instruction:find("memory-management requests", 1, true) ~= nil)
+            test.is_true(instruction:find("instructions about stored memory", 1, true) ~= nil)
+        end)
+
+        test.it("extracts scalar attributes and goals through independently typed collections", function()
+            local user = fixture.user()
+            local attribute = fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement")
+            local goal = fixture.candidate("plan", "ticket_booking", { status = "open", next_step = "Compare routes", details = "Travel tickets" }, "The user needs travel tickets.", "statement")
+            fixture.script.respond("structured_output", { items = { attribute }, plans = { goal } })
+            local result, err = fixture.op(user, "extract", { span = { { id = "statement", role = "user", text = "I live in Paris and need travel tickets." } } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result, 2)
+            test.eq(result[1].kind, "profile_slot")
+            test.eq(result[1].value, "Paris")
+            test.eq(result[2].kind, "plan")
+            test.eq(result[2].value.details, "Travel tickets")
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(schema.properties.items.items.properties.value.type, "string")
+            test.eq(schema.properties.plans.items.properties.value.type, "object")
+        end)
+
+        test.it("retains open task requests with no agreed next action or supporting details", function()
+            local user = fixture.user()
+            for _, request in ipairs({ "I need to arrange a repair.", "Can you help me organize a workshop?" }) do
+                local goal = fixture.candidate("plan", "requested_task", {
+                    status = "open", next_step = "", details = request,
+                }, "The user requests help with a task.", "task-source")
+                fixture.extraction({ goal })
+                local result, err = fixture.op(user, "extract", { span = { { id = "task-source", role = "user", text = request } } })
+                test.is_nil(err, tostring(err))
+                test.eq(#result, 1)
+                test.eq(result[1].value.status, "open")
+                test.eq(result[1].value.next_step, "")
+                test.eq(result[1].value.details, request)
+                test.eq(result[1].event_id, "task-source")
+            end
+        end)
+
+        test.it("rejects goal-shaped output for an extracted scalar attribute", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { plans = {}, items = { fixture.candidate("profile_slot", "pet_name", {
+                status = "open", next_step = "", details = "A cat named Biscuit",
+            }, "The user's cat is named Biscuit.", "statement") } })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 0)
+            test.eq(result.stats.rejected, 1)
+            test.eq(result.stats.rejected_extraction_value, 1)
+            test.eq(#fixture.script.requests("structured_output"), 1)
+        end)
+
+        test.it("offers existing goal state when interpreting a contextual answer", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local seeded = fixture.remember(user, id, { fixture.candidate("plan", "trip_tickets", {
+                status = "open", next_step = "Choose a destination", details = "The user needs tickets.",
+            }, "The user needs tickets.", "seed", "2026-09-01T00:00:00Z") }, "goal-state-seed")
+            fixture.settle(user, id)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "question", role = "assistant", content = "Where are you heading?" } })
+            fixture.apply(user, "before_step", id, session, "agent-a")
+            fixture.wait_runs(user, id, "derive", 1)
+            fixture.history.record(session, { { id = "answer", role = "user", content = "London" } })
+            fixture.extraction({ fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", "answer") })
+            fixture.verdict("SUPERSEDE", { seeded.item_ids[1] })
+            fixture.apply(user, "before_step", id, session, "agent-a")
+            fixture.wait_runs(user, id, "derive", 2)
+            local prompt = fixture.script.prompts("structured_output")[1].system
+            test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(schema.properties.plans.items.properties.value.properties.details.minLength, 1)
+        end)
+
+        test.it("splits compound attributes into independent topics with the same evidence in different domains", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { value = "Engineer at Northstar", content = "The user is an engineer at Northstar.", parts = {
+                    { key = "employer", value = "Northstar", content = "The user works at Northstar." },
+                    { key = "occupation", value = "engineer", content = "The user is an engineer." },
+                } },
+                { value = "Cedar College studying chemistry", content = "The user studies chemistry at Cedar College.", parts = {
+                    { key = "school", value = "Cedar College", content = "The user attends Cedar College." },
+                    { key = "field_of_study", value = "chemistry", content = "The user studies chemistry." },
+                } },
+            }) do
+                local parts = example.parts
+                for _, part in ipairs(parts) do part.kind = "profile_slot"; part.cardinality = "single" end
+                fixture.script.respond("structured_output", { mappings = { ["1"] = parts } })
+                local input = fixture.candidate("fact", "background", example.value, example.content, "evidence")
+                input.source_ids = { "source-a", "source-b" }
+                local normalized, err = fixture.op(user, "normalize", { candidates = { input } })
+                test.is_nil(err, tostring(err))
+                test.eq(#normalized, 2)
+                for i, item in ipairs(normalized) do
+                    test.eq(item.key, parts[i].key)
+                    test.eq(item.value, parts[i].value)
+                    test.eq(item.content, parts[i].content)
+                    test.eq(item.event_id, "evidence")
+                    test.eq(table.concat(item.source_ids, ","), "source-a,source-b")
+                    test.eq(item.cardinality, "single")
+                end
+            end
+        end)
+
+        test.it("rejects an attribute candidate that maps onto an existing goal topic", function()
+            local user = fixture.user()
+            for _, key in ipairs({ "travel_help", "Travel Help" }) do
+                local lesson = fixture.candidate("lesson", key, "accessible routes", "Suggest accessible routes.")
+                fixture.normalization({ lesson })
+                local result, err = fixture.op(user, "model_step", { candidates = { lesson }, keys = {
+                    { key = "travel_help", kind = "plan", cardinality = "single" },
+                    { key = "mobility", kind = "profile_slot", cardinality = "single" },
+                } })
+                test.is_nil(err, tostring(err))
+                test.eq(#result.items, 0)
+                test.eq(result.stats.rejected, 1)
+                test.eq(result.stats.rejected_normalization_kind, 1)
+            end
+        end)
+
+        test.it("normalizes typed values without asking for a discarded string substitute", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { mappings = {
+                ["1"] = { { key = "switch", kind = "fact", cardinality = "multi" } },
+                ["2"] = { { key = "goal", kind = "plan", cardinality = "single" } },
+            } })
+            local state = { status = "open", next_step = "", details = "A durable goal" }
+            local result, err = fixture.op(user, "normalize", { candidates = {
+                fixture.candidate("fact", "switch", false, "The switch is false."),
+                fixture.candidate("plan", "goal", state, "An ongoing goal."),
+            } })
+            test.is_nil(err, tostring(err))
+            test.eq(result[1].value, false)
+            test.eq(json.encode(result[2].value), (json.encode(state)))
+            local schema = fixture.script.requests("structured_output")[1].properties.mappings.properties
+            test.is_nil(schema["1"].items.properties.value)
+            test.is_nil(schema["2"].items.properties.value)
+        end)
+
+        test.it("normalizes every candidate once using required numbered result properties", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { mappings = {
+                ["1"] = { { key = "name", value = "Sam", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
+                ["2"] = { { key = "home_city", value = "Paris", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
+                ["3"] = { { key = "diet", value = "vegetarian", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
+            } })
+            local normalized, err = fixture.op(user, "normalize", { candidates = {
+                fixture.candidate("profile_slot", "name", "Sam", "The user's name is Sam."),
+                fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris."),
+                fixture.candidate("profile_slot", "diet", "vegetarian", "The user is vegetarian."),
+            } })
+            test.is_nil(err, tostring(err))
+            test.eq(#normalized, 3)
+            test.eq(normalized[1].value, "Sam")
+            test.eq(normalized[2].value, "Paris")
+            test.eq(normalized[3].value, "vegetarian")
+            test.eq(#fixture.script.requests("structured_output")[1].properties.mappings.required, 3)
+        end)
+
+        test.it("rejects normalization that maps a goal onto a profile attribute", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "seed") }, "normalization-seed")
+            fixture.settle(user, id)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
+            fixture.script.respond("structured_output", { mappings = { ["1"] = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } } })
+            local normalized, err = fixture.op(user, "model_step", { candidates = {
+                fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal"),
+            }, keys = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } })
+            test.is_nil(normalized)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_malformed")
+            fixture.settle(user, id)
+            local rows = fixture.items(user, id)
+            test.eq(#rows, 1)
+            test.eq(rows[1].value, "Berlin")
+        end)
 
         test.it("extracts canonical independent attributes in one call while reusing existing keys", function()
             local user = fixture.user()
@@ -81,13 +264,14 @@ local function define_tests()
                     test.is_nil(result)
                     test.not_nil(err)
                     test.is_true(tostring(err):find("truncated", 1, true) ~= nil, tostring(err))
+                    test.is_true(err:retryable())
                 end
             end
             for _, prompt in ipairs(fixture.script.prompts("structured_output")) do
                 test.is_true(prompt.system:find("one compact JSON object on one line", 1, true) ~= nil)
             end
             for _, options in ipairs(fixture.script.requests("structured_options")) do
-                test.is_true(type(options.max_tokens) == "number" and options.max_tokens > 0 and options.max_tokens < 10000)
+                test.is_true(type(options.max_tokens) == "number" and options.max_tokens > 0 and options.max_tokens <= 32768)
             end
         end)
 
@@ -101,8 +285,8 @@ local function define_tests()
             test.is_nil(result)
             test.not_nil(err)
             test.eq(err:details().code, "model_output_malformed")
-            test.eq(err:kind(), errors.INVALID)
-            test.is_false(err:retryable())
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(err:retryable())
         end)
 
         test.it("returns no reflection when fewer than two source memories exist", function()
@@ -181,9 +365,11 @@ local function define_tests()
                 local schemas = fixture.script.requests("structured_output")
                 local options = fixture.script.requests("structured_options")
                 local schema = schemas[#schemas]
-                local answer = maximal(schema)
                 local budget = options[#options].max_tokens
-                test.is_true(budget >= codepoints(json.encode(answer)), step .. " budget cannot cover maximum compact result")
+                for _, text in ipairs({ "𐍈", "界", '"', "\\", "\n" }) do
+                    local encoded = json.encode(maximal(schema, text))
+                    test.is_true(budget >= #encoded, step .. " budget cannot cover " .. tostring(#encoded) .. " compact UTF-8 bytes")
+                end
                 if step == "extract" then
                     test.eq(schema.properties.items.maxItems, capacity * 4)
                     test.eq(schema.properties.plans.maxItems, capacity)

@@ -18,6 +18,7 @@ entries:
     method: call
     modules: [contract, security, sql, funcs]
     imports:
+      memory_config: kickside.memory:config
       memory_ops: kickside.memory.engine:ops
       memory_writer: kickside.memory.engine:writer
       memory_reconcile: kickside.memory.engine:reconcile
@@ -84,13 +85,60 @@ entries:
       test: wippy.test:test
       fixture: app.suites:fixture
 
-  - name: agent_test
+  - name: tools_test
     kind: function.lua
-    meta:
-      type: test
-      suite: memory_agent
-      timeout: 300s
-    source: file://agent_test.lua
+    meta: { type: test, suite: memory_tools, timeout: 300s }
+    source: file://tools_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: checkpoint_test
+    kind: function.lua
+    meta: { type: test, suite: memory_checkpoint, timeout: 300s }
+    source: file://checkpoint_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: capture_test
+    kind: function.lua
+    meta: { type: test, suite: memory_capture, timeout: 300s }
+    source: file://capture_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: prompt_test
+    kind: function.lua
+    meta: { type: test, suite: memory_prompt, timeout: 300s }
+    source: file://prompt_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: capture_enrollment_test
+    kind: function.lua
+    meta: { type: test, suite: memory_capture_enrollment, timeout: 300s }
+    source: file://capture_enrollment_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: compiler_test
+    kind: function.lua
+    meta: { type: test, suite: memory_compiler, timeout: 300s }
+    source: file://compiler_test.lua
     method: run
     modules: [json]
     imports:
@@ -145,6 +193,7 @@ entries:
     method: call
     modules: [sql]
     imports:
+      memory_decision: kickside.memory.engine:decision
       memory_runs: kickside.memory.persist:runs
       memory_ledger: kickside.memory.engine:ledger
       measured_db: app.suites:measured_db
@@ -190,7 +239,7 @@ entries:
       timeout: 300s
     source: file://concurrency_test.lua
     method: run
-    modules: [sql, time]
+    modules: [time]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
@@ -205,6 +254,25 @@ entries:
     kind: function.lua
     meta: { type: test, suite: memory_models, timeout: 300s }
     source: file://models_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: support_test
+    kind: function.lua
+    meta: { type: test, suite: memory_support, timeout: 300s }
+    source: file://support_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: capture_history_test
+    kind: function.lua
+    meta: { type: test, suite: memory_capture_history, timeout: 300s }
+    source: file://capture_history_test.lua
     method: run
     modules: [json]
     imports:
