@@ -43,6 +43,13 @@ entries:
     meta:
       comment: Event-sourced on the core thread engine (thread upsert, event append, status).
 
+  - name: dep.kickside.doc2md
+    kind: ns.dependency
+    component: kickside/doc2md
+    version: ">=0.8.15"
+    meta:
+      comment: Reads the page and slide markers Doc2MD writes into converted Markdown.
+
   - name: dep.kickside.execution
     kind: ns.dependency
     component: kickside/execution

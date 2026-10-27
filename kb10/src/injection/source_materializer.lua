@@ -326,6 +326,37 @@ function M.chunk_text(input: any, size: integer, overlap: integer): { string }
     return merged
 end
 
+-- locate_chunks assigns each chunk the page or slide range its text covers,
+-- using the hidden markers Doc2MD writes where pages and slides start, and
+-- removes the markers from the chunk text. Text before a chunk's first marker
+-- continues the page of the previous chunk. A chunk left empty is dropped.
+function M.locate_chunks(chunks: {string}): ({string}, {{[string]: any}})
+    local texts: {string} = {}
+    local located: {{[string]: any}} = {}
+    local current: any = nil
+    for _, chunk in ipairs(chunks) do
+        local found = doc2md.markers(chunk)
+        local first, last = current, current
+        if #found > 0 then
+            if first == nil or trim(chunk:sub(1, found[1].start - 1)) == "" then first = found[1] end
+            last = found[#found]
+            current = last
+        end
+        local text = trim(doc2md.strip_markers(chunk))
+        if text ~= "" then
+            local meta: {[string]: any} = {}
+            if first ~= nil then
+                meta[first.kind .. "_start"] = first.number
+                meta[first.kind .. "_end"] = last.number
+                if first.kind == "slide" and first.name ~= nil then meta.slide_name = first.name end
+            end
+            texts[#texts + 1] = text
+            located[#located + 1] = meta
+        end
+    end
+    return texts, located
+end
+
 function M.build_summary_text(doc: any, opts: any?)
     opts = opts or {}
     local summary_max_chars = 0
@@ -334,7 +365,7 @@ function M.build_summary_text(doc: any, opts: any?)
     end
     if summary_max_chars <= 0 then return "" end
     local title = trim(doc.title)
-    local body = doc.content or ""
+    local body = trim(doc2md.strip_markers(doc.content or ""))
     if title ~= "" and body:sub(1, #title) == title then
         body = body:sub(#title + 1):gsub("^%s+", "")
     end
@@ -567,7 +598,8 @@ function M.plan_document_writes(documents: any, opts: MaterializationOptions, su
         end
         local chunks, chunk_metadata, tabular_err = tabular_chunker.chunk_document(doc, chunk_size)
         if tabular_err then return nil, nil, tabular_err end
-        if not chunks then chunks = M.chunk_text(body, chunk_size, chunk_overlap) end
+        local located_metadata = nil
+        if not chunks then chunks, located_metadata = M.locate_chunks(M.chunk_text(body, chunk_size, chunk_overlap)) end
         local max_chunks = chunk_metadata and
             (tonumber(opts.tabular_max_chunks_per_doc) or tonumber(opts.max_chunks_per_doc) or MAX_TABULAR_CHUNKS_PER_DOC)
             or (tonumber(opts.max_chunks_per_doc) or MAX_CHUNKS_PER_DOC)
@@ -600,7 +632,7 @@ function M.plan_document_writes(documents: any, opts: MaterializationOptions, su
             summary_index = nil,
             chunk_indices = {},
             chunk_texts = chunks,
-            chunk_metadata = chunk_metadata or {},
+            chunk_metadata = chunk_metadata or located_metadata or {},
             chunk_prefixes = {},
             image_plans = {},
         }
