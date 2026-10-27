@@ -7,6 +7,32 @@ local function define_tests()
     test.describe("memory consolidation", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("normalizes reflected value-bearing keys before persisting grounded guidance", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("fact", "work_schedule", "night", "The user works at night.", "work-source"),
+                fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
+            }, "reflection-topics")
+            fixture.settle(user, id)
+            local lesson = fixture.candidate("lesson", "contact_evening", "evening", "Contact the user in the evening.", "")
+            lesson.based_on = { 1, 2 }
+            fixture.script.respond("structured_output", { items = { lesson } })
+            fixture.script.respond("structured_output", { mappings = { ["1"] = {
+                { key = "contact_window", kind = "lesson", cardinality = "multi", value = "evening", content = lesson.content },
+            } } })
+            fixture.verdict("ADD", {})
+            local _, err = fixture.op(user, "wake", { component_id = id })
+            test.is_nil(err, tostring(err))
+            local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
+            test.eq(run.status, "succeeded", tostring(run.last_error))
+            fixture.settle(user, id)
+            local lessons = fixture.items(user, id, { kinds = { "lesson" } })
+            test.eq(#lessons, 1)
+            test.eq(lessons[1].key, "contact_window")
+            test.eq(#fixture.op(user, "provenance", { component_id = id, item_id = lessons[1].id }), 2)
+        end)
+
         test.it("runs on demand through the slot, writes reflections, and re-arms on the configured cadence", function()
             local user = fixture.user()
             local id = fixture.memory(user, { consolidation_interval_hours = 6 })

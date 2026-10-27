@@ -305,6 +305,37 @@ local function define_tests()
             test.eq(schema.properties.plans.items.properties.value.properties.details.minLength, 1)
         end)
 
+        test.it("splits compound attributes into independent topics with the same evidence in different domains", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { value = "Engineer at Northstar", content = "The user is an engineer at Northstar.", parts = {
+                    { key = "employer", value = "Northstar", content = "The user works at Northstar." },
+                    { key = "occupation", value = "engineer", content = "The user is an engineer." },
+                } },
+                { value = "Cedar College studying chemistry", content = "The user studies chemistry at Cedar College.", parts = {
+                    { key = "school", value = "Cedar College", content = "The user attends Cedar College." },
+                    { key = "field_of_study", value = "chemistry", content = "The user studies chemistry." },
+                } },
+            }) do
+                local parts = example.parts
+                for _, part in ipairs(parts) do part.kind = "profile_slot"; part.cardinality = "single" end
+                fixture.script.respond("structured_output", { mappings = { ["1"] = parts } })
+                local input = fixture.candidate("fact", "background", example.value, example.content, "evidence")
+                input.source_ids = { "source-a", "source-b" }
+                local normalized, err = fixture.op(user, "normalize", { candidates = { input } })
+                test.is_nil(err, tostring(err))
+                test.eq(#normalized, 2)
+                for i, item in ipairs(normalized) do
+                    test.eq(item.key, parts[i].key)
+                    test.eq(item.value, parts[i].value)
+                    test.eq(item.content, parts[i].content)
+                    test.eq(item.event_id, "evidence")
+                    test.eq(table.concat(item.source_ids, ","), "source-a,source-b")
+                    test.eq(item.cardinality, "single")
+                end
+            end
+        end)
+
         test.it("normalizes typed values without asking for a discarded string substitute", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { mappings = {

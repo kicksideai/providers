@@ -155,7 +155,9 @@ local function call(a: any): (any?, error?)
             return successor, settle_err
         end)
     elseif a.op == "append_race" then
+        local attempts = 0
         return writer.write(a.component_id, "refused", { source = "owner" }, function(d: any): (any?, error?)
+            attempts = attempts + 1
             local vectors, err = models.embed("test-embed", { "Unaccepted evidence." })
             if err then return nil, err end
             local item, add_err = d:add({ scope_family = "owner", scope_id = a.user }, {
@@ -167,7 +169,7 @@ local function call(a: any): (any?, error?)
                 source = "owner", extra_events = { { type = types.EVENT.CONSOLIDATION_COMPLETED, body = {} } },
             }, function(_inner: any): (any?, error?) return nil, nil end)
             if race_err then return nil, race_err end
-            return item, nil
+            return { item = item, attempts = attempts }, nil
         end)
     elseif a.op == "expand" then
         return writer.write(a.component_id, "expand", { source = "owner" }, function(d: any): (any?, error?)
