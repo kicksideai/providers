@@ -75,7 +75,7 @@ function Decision:set(item: any, fields: { [string]: any })
     for k, v in pairs(item) do state[k] = v end
     for k, v in pairs(fields) do state[k] = v end
     self.overlay[item.id] = state
-    self.touched_keys[item.scope_key .. "\0" .. item.key] = { scope_key = item.scope_key, key = item.key }
+    self.touched_keys[item.scope_key .. "\0" .. item.key] = { scope_key = item.scope_key, key = item.key, cardinality = item.cardinality }
 end
 
 -- Rows of a filter merged with this decision's overlay, keeping only live ones
@@ -372,16 +372,15 @@ function Decision:forget(item: any): error?
 end
 
 -- The single-value invariant over every key this decision touched.
-function Decision:check(): error?
+function Decision:check(tx: any): error?
     for _, touched in pairs(self.touched_keys) do
-        local cardinality, card_err = self:cardinality_of(touched.scope_key, touched.key)
-        if card_err then return card_err end
-        local counted, err = items.count_current(self.component_id, touched.scope_key, touched.key)
+        local cardinality = touched.cardinality
+        local counted, err = items.count_current(tx, self.component_id, touched.scope_key, touched.key)
         if err then return err end
         local current = counted :: number
         for id, state in pairs(self.overlay) do
             if state.scope_key == touched.scope_key and state.key == touched.key then
-                local original, original_err = items.get(self.component_id, id)
+                local original, original_err = items.get_tx(tx, self.component_id, id)
                 if original_err then return original_err end
                 if original and original.status == types.STATUS.CURRENT then current = current - 1 end
                 if state.status == types.STATUS.CURRENT then current = current + 1 end
@@ -389,8 +388,7 @@ function Decision:check(): error?
         end
         local single = cardinality == types.CARDINALITY.SINGLE
         if single and current > 1 then
-            return types.internal("decision would leave " .. tostring(current) .. " current values of single-valued key "
-                .. touched.key .. " in " .. touched.scope_key)
+            return types.internal("decision would leave multiple current values of a single-valued key")
         end
     end
     return nil

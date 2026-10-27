@@ -139,6 +139,7 @@ entries:
     modules: [sql]
     imports:
       memory_runs: kickside.memory.persist:runs
+      memory_ledger: kickside.memory.engine:ledger
       measured_db: app.suites:measured_db
       memory_writer: kickside.memory.engine:writer
       memory_items: kickside.memory.persist:items

@@ -34,8 +34,6 @@ function M.write(component_id: string, idempotency: string, opts: WriteOptions, 
     local d = decision.new(component_id, key, opts.source, opts.actor)
     local result, decide_err = decide(d)
     if decide_err then return nil, decide_err end
-    local check_err = d:check()
-    if check_err then return nil, check_err end
     local events: { any } = {}
     for _, event in ipairs(d.events) do events[#events + 1] = event end
     for _, event in ipairs(opts.extra_events or {}) do events[#events + 1] = event end
@@ -45,6 +43,8 @@ function M.write(component_id: string, idempotency: string, opts: WriteOptions, 
             local accepted, accept_err = ledger.append_tx(tx, component_id, events, head :: integer, key)
             if accept_err then return nil, accept_err end
             if accepted.inserted > 0 then
+                local check_err = d:check(tx)
+                if check_err then return nil, check_err end
                 local references: { [string]: boolean } = {}
                 for i, proof in ipairs(accepted.events) do
                     if not proof.duplicate then

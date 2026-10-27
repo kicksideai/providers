@@ -62,7 +62,7 @@ local function encoded(value: any): any
     return json.encode(value)
 end
 
-local function get_tx(tx: any, component_id: string, item_id: string): (any?, error?)
+function M.get_tx(tx: any, component_id: string, item_id: string): (any?, error?)
     local rows, err = tx:query(SELECT .. " WHERE component_id = $1 AND id = $2", { component_id, item_id })
     if err then return nil, types.failed("memory item read failed", err) end
     if not rows or #rows == 0 then return nil, nil end
@@ -155,7 +155,7 @@ end
 local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: integer, body: any, recorded_at: string): error?
     local item_id = types.trim(body.item_id)
     if item_id == "" then return types.invalid("item.added requires item_id") end
-    local existing, read_err = get_tx(tx, component_id, item_id)
+    local existing, read_err = M.get_tx(tx, component_id, item_id)
     if read_err then return read_err end
     if existing then return add_provenance_tx(tx, component_id, item_id, body.provenance, recorded_at) end
     local payload, payload_err = payload_tx(tx, component_id, item_id)
@@ -190,7 +190,7 @@ end
 -- until the item is forgotten, so a rebuild replays the same text.
 local function apply_revised(tx: any, sqlite: boolean, component_id: string, seq: integer, body: any): error?
     local item_id = types.trim(body.item_id)
-    local current, read_err = get_tx(tx, component_id, item_id)
+    local current, read_err = M.get_tx(tx, component_id, item_id)
     if read_err then return read_err end
     if not current or current.last_seq >= seq then return nil end
     local payload, payload_err = payload_tx(tx, component_id, types.trim(body.payload_id))
@@ -367,7 +367,7 @@ end
 
 function M.get(component_id: string, item_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        return get_tx(conn, component_id, item_id)
+        return M.get_tx(conn, component_id, item_id)
     end)
 end
 
@@ -440,13 +440,11 @@ function M.key_cardinality(component_id: string, scope_key: string, key: string)
     end)
 end
 
-function M.count_current(component_id: string, scope_key: string, key: string): (number?, error?)
-    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        local rows, err = conn:query("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND key = $3 AND status = $4",
-            { component_id, scope_key, key, types.STATUS.CURRENT })
-        if err then return nil, types.failed("memory current count failed", err) end
-        return tonumber(rows[1].n), nil
-    end)
+function M.count_current(tx: any, component_id: string, scope_key: string, key: string): (number?, error?)
+    local rows, err = tx:query("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND key = $3 AND status = $4",
+        { component_id, scope_key, key, types.STATUS.CURRENT })
+    if err then return nil, types.failed("memory current count failed", err) end
+    return tonumber(rows[1].n), nil
 end
 
 -- Same claims and explicit supersession edges form a lineage, independently

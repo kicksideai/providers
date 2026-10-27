@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local writer = require("memory_writer")
+local ledger = require("memory_ledger")
 local items = require("memory_items")
 local models = require("memory_models")
 local types = require("types")
@@ -129,6 +130,29 @@ local function call(a: any): (any?, error?)
         }, a.query, { partition = a.component_id, limit = 10 })
         db:release()
         return rows, search_err
+    elseif a.op == "invariant_race" then
+        return writer.write(a.component_id, "outdated-decision", { source = "owner" }, function(d: any): (any?, error?)
+            local previous, read_err = d:get(a.item_id)
+            if read_err then return nil, read_err end
+            local successor, add_err = d:add({ scope_family = "owner", scope_id = a.user }, {
+                kind = "fact", key = previous.key, cardinality = "single", value = "Berlin", content = "The user lives in Berlin.", valid_at = d.now,
+            })
+            if add_err then return nil, add_err end
+            local replace_err = d:replace({previous}, successor)
+            if replace_err then return nil, replace_err end
+            local _, concurrent_err = writer.write(a.component_id, "concurrent-decision", {source="owner"}, function(other: any): (any?, error?)
+                local current, current_err = other:get(a.item_id)
+                if current_err then return nil, current_err end
+                local item, item_err = other:add({scope_family="owner", scope_id=a.user}, {
+                    kind="fact", key=current.key, cardinality="single", value="Rome", content="The user lives in Rome.", valid_at=other.now,
+                })
+                if item_err then return nil, item_err end
+                return item, other:replace({current}, item)
+            end)
+            if concurrent_err then return nil, concurrent_err end
+            local _, settle_err = ledger.settled_head(a.component_id)
+            return successor, settle_err
+        end)
     elseif a.op == "append_race" then
         return writer.write(a.component_id, "refused", { source = "owner" }, function(d: any): (any?, error?)
             local vectors, err = models.embed("test-embed", { "Unaccepted evidence." })
