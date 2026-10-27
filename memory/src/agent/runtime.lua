@@ -309,7 +309,7 @@ local function pin(payload: any): (any?, error?)
             visible[#visible + 1] = row
         end
     end
-    local text, pinned = render(visible, "## What you know about the user\nUse these facts as defaults. Propose using what you know instead of asking again; the user can correct you.", (store :: any).effective.soul_owner_max_chars)
+    local text, pinned = render(visible, "## What you know about the user\nUse these facts as defaults. Do not ask the user to repeat or confirm an attribute shown here. Apply it when relevant, state the assumption and let the user correct it. Ask only for missing details.", (store :: any).effective.soul_owner_max_chars)
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
     return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text, pinned)
