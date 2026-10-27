@@ -182,14 +182,9 @@ function M.topic_key(value: any, content: string, claim_value: any?): (string?, 
     if claim_value ~= nil then
         local _, encode_err = json.encode(claim_value)
         if encode_err then return nil, M.invalid("memory value must be JSON", { cause = tostring(encode_err) }) end
-        local function copied_leaf(leaf: any): boolean
-            if type(leaf) == "table" then
-                for _, child in pairs(leaf) do if copied_leaf(child) then return true end end
-                return false
-            end
-            return leaf ~= nil and copied(tostring(leaf))
+        if type(claim_value) ~= "table" and copied(tostring(claim_value)) then
+            return nil, M.invalid("topic key must not contain the memory value")
         end
-        if copied_leaf(claim_value) then return nil, M.invalid("topic key must not contain the memory value") end
     end
     return key, nil
 end

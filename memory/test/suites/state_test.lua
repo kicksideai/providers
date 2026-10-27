@@ -19,6 +19,28 @@ local function define_tests()
     test.describe("memory state", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("allows goal names from plan state while rejecting scalar values in attribute keys", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local invalid, invalid_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "profile_slot", scope_family = "owner", key = "home_city_berlin", value = "Berlin", content = "The user lives in Berlin.",
+            } })
+            test.is_nil(invalid)
+            test.not_nil(invalid_err)
+            test.eq(invalid_err:message(), "topic key must not contain the memory value")
+            local plan, plan_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "plan", scope_family = "owner", key = "prepare_slides", cardinality = "single",
+                value = { status = "open", next_step = "prepare slides", details = "Prepare slides" },
+                content = "The user needs presentation slides.",
+            } })
+            test.is_nil(plan_err, tostring(plan_err))
+            test.not_nil(plan)
+            fixture.settle(user, id)
+            local stored = fixture.items(user, id, { key = "prepare_slides" })
+            test.eq(#stored, 1)
+            test.eq(stored[1].value.next_step, "prepare slides")
+        end)
+
         test.it("requires a typed value when creating an item", function()
             local user = fixture.user()
             local id = fixture.memory(user)
