@@ -16,6 +16,8 @@ local REQUIRED_DEPENDENCIES = {
     ["kickside.kb10:dep.kickside.contract"] = { "kickside/contract", "*" },
     ["kickside.kb10:dep.kickside.core"] = { "kickside/core", "*" },
     ["kickside.kb10:dep.kickside.search_index"] = { "kickside/search-index", "*" },
+    -- Page and slide locators read the markers API introduced in 0.8.15.
+    ["kickside.kb10:dep.kickside.doc2md"] = { "kickside/doc2md", ">=0.8.15" },
     ["kickside.kb10:dep.kickside.execution"] = { "kickside/execution", "*" },
     ["kickside.kb10:dep.kickside.jobs"] = { "kickside/jobs", "*" },
     -- The maintainable binding implements a contract knowledge defines from

@@ -9,6 +9,38 @@ local function count(haystack: string, needle: string)
 end
 
 local function define_tests()
+    test.describe("page and slide locators", function()
+        local locate = source_materializer.locate_chunks
+        test.it("assigns each chunk the pages its text covers and strips the markers", function()
+            local texts, meta = locate({
+                "<!-- page 1 -->\n\nIntro on the first page.",
+                "Still the first page.\n\n<!-- page 2 -->\n\nSecond page opens.",
+                "<!-- page 3 -->\n\nThird page.\n\n<!-- page 4 -->\n\nFourth page.",
+            })
+            test.eq(#texts, 3)
+            for _, t in ipairs(texts) do test.is_nil((t:find("<!--", 1, true))) end
+            test.eq(meta[1].page_start, 1);test.eq(meta[1].page_end, 1)
+            test.eq(meta[2].page_start, 1);test.eq(meta[2].page_end, 2)
+            test.eq(meta[3].page_start, 3);test.eq(meta[3].page_end, 4)
+        end)
+        test.it("names the slide a chunk starts on", function()
+            local texts, meta = locate({ "<!-- slide 2: Pricing -->\nPlans and tiers." })
+            test.eq(texts[1], "Plans and tiers.")
+            test.eq(meta[1].slide_start, 2);test.eq(meta[1].slide_end, 2);test.eq(meta[1].slide_name, "Pricing")
+        end)
+        test.it("drops a chunk that holds only a marker and leaves unmarked text alone", function()
+            local texts, meta = locate({ "Body without pages.", "<!-- page 5 -->" , "After." })
+            test.eq(#texts, 2)
+            test.eq(texts[1], "Body without pages.");test.is_nil(meta[1].page_start)
+            test.eq(meta[2].page_start, 5)
+        end)
+        test.it("keeps markers out of the deterministic summary", function()
+            local summary = source_materializer.build_summary_text({ title = "Report", content = "<!-- page 1 -->\n\nExecutive summary text." }, { summary_max_chars = 200 })
+            test.is_nil((summary:find("<!--", 1, true)))
+            test.is_true(summary:find("Executive summary text.", 1, true) ~= nil)
+        end)
+    end)
+
     test.describe("markdown-aware chunk_text", function()
         test.it("keeps a fenced code block intact", function()
             local code = "```lua\n" .. string.rep("local x = 1\n", 40) .. "```"

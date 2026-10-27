@@ -49,6 +49,7 @@ entries:
       kb_types: kickside.kb10:types
       engines: kickside.knowledge:engines
       tabular_chunker: kickside.kb10.injection:tabular_chunker
+      doc2md: kickside.convert.doc2md:doc2md
 
   # Maps canonical kickside.knowledge content events into source_worker
   # documents/deletes. Discovered by the source worker at runtime via meta.type.
