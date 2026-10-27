@@ -4,6 +4,8 @@ local component = require("component")
 local llm = require("llm")
 local prompt = require("prompt")
 
+local typed = require("typed_runtime")
+
 local M = {}
 
 local QUERYABLE_CONTRACT = "kickside.contract:queryable"
@@ -649,6 +651,7 @@ local function commit_checkpoint(payload, memory, prompt_result, checkpoint_meta
 end
 
 function M.apply(payload)
+    if trim(config_raw(payload, "memory_id")) ~= "" then return typed.apply(payload) end
     local valid, err = validate_common(payload)
     if not valid then return nil, err end
     if payload.phase ~= "activate" and payload.phase ~= "deactivate" then
@@ -701,6 +704,7 @@ function M.apply(payload)
 end
 
 function M.create(payload)
+    if trim(config_raw(payload, "memory_id")) ~= "" then return typed.create(payload) end
     local valid, err = validate_common(payload)
     if not valid then return nil, err end
 
@@ -746,6 +750,7 @@ function M.create(payload)
 end
 
 function M.recall(args)
+    if trim(config_raw({}, "memory_id")) ~= "" then return typed.search(args) end
     return query_memory(args)
 end
 

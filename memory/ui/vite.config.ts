@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
@@ -18,11 +19,14 @@ export default defineConfig({
     outDir: resolve(__dirname, '../static'),
     emptyOutDir: true,
     lib: {
-      // One element ships from this package: the Knowledge Base Memory capability
-      // config surface. The entry key is the served filename (the registry
-      // entry_point), so it stays knowledge_memory.js.
+      // Three elements ship from this package: the Memory trait settings
+      // (knowledge_memory.js), the memory engine's create pane (memory_create.js)
+      // and the memory knowledge base page (index.js). Entry keys are the
+      // served filenames the registry entry points name.
       entry: {
         knowledge_memory: resolve(__dirname, 'src/index.ts'),
+        memory_create: resolve(__dirname, 'src/create.ts'),
+        index: resolve(__dirname, 'src/manage.ts'),
       },
       name: 'KicksideKnowledgeMemory',
       formats: ['es'],
@@ -31,6 +35,8 @@ export default defineConfig({
       preserveEntrySignatures: false,
       input: {
         knowledge_memory: resolve(__dirname, 'src/index.ts'),
+        memory_create: resolve(__dirname, 'src/create.ts'),
+        index: resolve(__dirname, 'src/manage.ts'),
       },
       external: ['vue', '@iconify/vue', '@wippy-fe/proxy'],
       output: {

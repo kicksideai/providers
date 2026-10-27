@@ -2,6 +2,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick, reactive } from 'vue'
 import LegacyMemory from './knowledge-memory.vue'
 
 const host = vi.hoisted(() => ({ props: {} as { config?: unknown }, emit: vi.fn() }))
@@ -13,6 +14,18 @@ vi.mock('@wippy-fe/proxy', () => ({ loadByTagName: vi.fn().mockResolvedValue(und
 
 describe('published document-backed Memory settings', () => {
   beforeEach(() => { host.emit.mockClear() })
+
+  it('clears the typed target when replacement config cannot be decoded', async () => {
+    host.props = reactive({ config: { memory_id: 'old-memory', kb_ids: ['old-document'] } as unknown })
+    const wrapper = mount(LegacyMemory)
+    host.props.config = '{invalid-json'
+    await nextTick()
+    await wrapper.get('input[name="read_enabled"]').setValue(false)
+    const config = host.emit.mock.calls.at(-1)![1]
+    expect(config.context.kb_ids).toEqual([])
+    expect(config.context.memory_id || '').toBe('')
+    wrapper.unmount()
+  })
 
   it('preserves every saved KB and advanced checkpoint control when a checkbox changes', async () => {
     const context = {
@@ -33,6 +46,20 @@ describe('published document-backed Memory settings', () => {
     expect(config.context).toEqual({ ...context, read_enabled: false })
     expect(config.context).not.toHaveProperty('memory_id')
     expect(config.agent_options.checkpoint).toEqual({ token_threshold: 12345, model: 'saved-model', max_tokens: 222 })
+    wrapper.unmount()
+  })
+
+  it('selects typed memory without discarding document settings', async () => {
+    host.props = { config: { kb_ids: ['documents'], write_kb_id: 'documents', checkpoint_temperature: 0.4 } }
+    const wrapper = mount(LegacyMemory)
+    wrapper.get('wc-kb-picker[aria-labelledby="typed_memory"]').element.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { kb_ids: ['typed-memory'] },
+    }))
+    const config = host.emit.mock.calls.at(-1)![1]
+    expect(config.context.memory_id).toBe('typed-memory')
+    expect(config.context.kb_ids).toEqual(['documents'])
+    expect(config.context.write_kb_id).toBe('documents')
+    expect(config.context.checkpoint_temperature).toBe(0.4)
     wrapper.unmount()
   })
 

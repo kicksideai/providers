@@ -1,7 +1,8 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 organization: kickside
 module: memory
 type: plugin
-description: KickSide agent memory policies and capabilities backed by provider contracts such as knowledge bases.
+description: Memory knowledge bases with typed, versioned long-term memory, and its explicitly selected agent trait and memory provider that capture, recall and render it.
 license: LicenseRef-KickSide-Community-1.0
 repository: https://github.com/kicksideai/providers
 homepage: https://wippy.ai
@@ -41,3 +42,6 @@ exclude:
   - "tests/**"
   - "test-support/**"
   - "app.**:**"
+  - "build-inputs/**"
+  - "buildinputs:**"
+  - "ui/.wippy/**"

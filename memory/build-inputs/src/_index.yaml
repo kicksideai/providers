@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: buildinputs
+
+# Build-time module inputs, resolved and vendored outside the module's runtime
+# graph. `make ui-kit` materializes @kickside/ui-kit from here into ui/.wippy.
+
+entries:
+  - name: definition
+    kind: ns.definition
+    meta:
+      title: kickside/memory build inputs
+      comment: Modules consumed at build time only.
+
+  - name: ui_kit
+    kind: ns.dependency
+    component: kickside/ui-kit
+    version: "*"

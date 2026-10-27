@@ -1,0 +1,191 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app.suites
+
+entries:
+  - name: fixture
+    kind: library.lua
+    source: file://fixture.lua
+    modules: [sql, contract, security, funcs, channel, uuid, time]
+    imports:
+      script: app.llm:script
+      history: app.suites:history
+
+  - name: memory_call
+    kind: function.lua
+    meta: { comment: Runs a named memory operation in the caller's frame. }
+    source: file://memory_call.lua
+    method: call
+    modules: [contract, security, sql]
+    imports:
+      memory_ops: kickside.memory.engine:ops
+      memory_writer: kickside.memory.engine:writer
+      memory_reconcile: kickside.memory.engine:reconcile
+      runtime: kickside.memory.agent:runtime
+      memory_items: kickside.memory.persist:items
+      memory_runs: kickside.memory.persist:runs
+      memory_ledger: kickside.memory.engine:ledger
+      memory_jobs: kickside.memory.engine:jobs
+      memory_bindings: kickside.memory.engine:bindings
+      component: kickside.component:component
+      types: kickside.memory:types
+      agent_compiler: wippy.agent.compiler:compiler
+
+  - name: history
+    kind: library.lua
+    source: file://history.lua
+    modules: [sql, json]
+
+  - name: history_get_history
+    kind: function.lua
+    source: file://history.lua
+    method: get_history
+    modules: [sql, json]
+
+  - name: history_get_prompt
+    kind: function.lua
+    source: file://history.lua
+    method: get_prompt
+    modules: [sql, json]
+
+  - name: history_get_context
+    kind: function.lua
+    source: file://history.lua
+    method: get_context
+    modules: [sql, json]
+
+  - name: history_binding
+    kind: contract.binding
+    meta: { comment: Test run_context over app_history. }
+    contracts:
+      - contract: wippy.agent:run_context
+        methods:
+          get_history: app.suites:history_get_history
+          get_prompt: app.suites:history_get_prompt
+          get_context: app.suites:history_get_context
+
+  - name: engine_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_engine
+      timeout: 300s
+    source: file://engine_test.lua
+    method: run
+    modules: [json, registry]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: agent_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_agent
+      timeout: 300s
+    source: file://agent_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: consolidation_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_consolidation
+      timeout: 300s
+    source: file://consolidation_test.lua
+    method: run
+    modules: [time]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: state_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_state
+      timeout: 300s
+    source: file://state_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: surface_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_surface
+      timeout: 300s
+    source: file://surface_test.lua
+    method: run
+    modules: [json, http_client, registry]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+      session: kickside.users:session
+      user_groups_repo: kickside.users.persist:user_groups_repo
+
+  - name: rework_call
+    kind: function.lua
+    source: file://rework_call.lua
+    method: call
+    modules: [sql]
+    imports:
+      measured_db: app.suites:measured_db
+      memory_writer: kickside.memory.engine:writer
+      memory_items: kickside.memory.persist:items
+      memory_models: kickside.memory.engine:models
+      search_index: kickside.search_index:index
+      types: kickside.memory:types
+
+  - name: rework_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_rework
+      timeout: 300s
+    source: file://rework_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: concurrency_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_concurrency
+      timeout: 300s
+    source: file://concurrency_test.lua
+    method: run
+    modules: [sql, time]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: measured_db
+    kind: library.lua
+    source: file://measured_db.lua
+    imports:
+      memory_db: kickside.memory.persist:db
+
+  - name: legacy_document
+    kind: contract.binding
+    meta: {comment: Document-backed queryable KB fixture; no typed Memory store exists.}
+    contracts:
+      - contract: kickside.contract:queryable
+        context_required: [component_id]
+        methods:
+          query: app.suites:legacy_document_query
+  - name: legacy_document_query
+    kind: function.lua
+    source: file://legacy_document.lua
+    method: query
+    modules: [ctx]

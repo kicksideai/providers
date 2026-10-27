@@ -301,10 +301,14 @@
         "build",
         "dev",
         "lint",
+        "typecheck",
+        "test-ui",
         "test",
-        "publish",
         "test-backend",
-        "test-pg"
+        "test-pg",
+        "lockrefresh",
+        "verify",
+        "publish"
       ],
       "harness": "test",
       "profiles": [
@@ -314,7 +318,11 @@
       "extra_tests": [
         [
           "make",
-          "test"
+          "typecheck"
+        ],
+        [
+          "make",
+          "test-ui"
         ]
       ]
     },

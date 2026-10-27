@@ -1,9 +1,112 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+# Harness for kickside/memory: host resources (database, processes, routers,
+# permissive test scopes), the knowledge control plane and core platform
+# through kickside/memory's dependency graph, a deterministic model provider,
+# and the memory suites. Harness-only; excluded from publish.
 version: '1.0'
 namespace: app
 entries:
+- name: dep.kickside.realtime
+  kind: ns.dependency
+  component: kickside/realtime
+  version: '*'
+- name: dep.kickside.security
+  kind: ns.dependency
+  version: '*'
+  component: kickside/security
+  parameters:
+  - name: api_router
+    value: app:api
+  - name: ui_server
+    value: app:gateway
+  - name: target_db
+    value: app:db
+  - name: process_host
+    value: app:processes
 - name: db
   kind: db.sql.sqlite
+  foreign_keys: true
+  meta:
+    comment: In-memory database for kb10 slice tests.
   file: ':memory:'
+- name: uploads
+  kind: fs.directory
+  meta:
+    comment: Default uploads storage so the artifact content repository can write artifact blobs.
+  directory: ./.wippy
+- name: env_storage
+  kind: env.storage.file
+  meta:
+    type: envstorage
+  file_path: ./.wippy/test.env
+  auto_create: true
+- name: processes
+  kind: process.host
+  lifecycle:
+    auto_start: true
+- name: gateway
+  kind: http.service
+  meta:
+    comment: Test HTTP server.
+  addr: :19131
+  lifecycle:
+    auto_start: true
+- name: api
+  kind: http.router
+  meta:
+    comment: Test API router.
+    server: gateway
+  prefix: /api
+  middleware: [token_auth]
+  options:
+    token_store: kickside.users.security:tokens
+- name: api_public
+  kind: http.router
+  meta:
+    comment: Separate router for wippy/views to avoid colliding views' /components/by-tag/{tag} with the component module's /components/{id}/access
+      on /api.
+    server: gateway
+  prefix: /public
+- name: user
+  kind: security.policy
+  meta:
+    comment: Permissive scope the kb10 suites run their scoped actors under.
+  groups:
+  - kb_test
+  - app:user
+  policy:
+    resources: '*'
+    actions: '*'
+    effect: allow
+- name: admin
+  kind: security.policy
+  meta:
+    comment: Permissive administrator scope used by structured lifecycle grants.
+  groups:
+  - kb_test_admin
+  policy:
+    resources: '*'
+    actions: '*'
+    effect: allow
+- name: dep.kickside.users
+  kind: ns.dependency
+  component: kickside/users
+  version: '*'
+  parameters:
+  - name: kickside.users:public_router
+    value: app:api_public
+  - name: kickside.users:api_router
+    value: app:api
+  - name: kickside.users:target_db
+    value: app:db
+  - name: kickside.users:user_security_scope
+    value: app:user
+  - name: kickside.users:admin_security_scope
+    value: app:admin
+  - name: kickside.users:login_role_resource
+    value: app:*
+  - name: kickside.users:ui_server
+    value: app:gateway
 - name: dep.wippy.test
   kind: ns.dependency
   component: wippy/test
@@ -15,71 +118,171 @@ entries:
   parameters:
   - name: kickside.memory:ui_server
     value: app:gateway
-- name: runtime_test
-  kind: function.lua
-  meta:
-    type: test
-    suite: memory
-  source: file://runtime_test.lua
-  method: run
-  imports:
-    test: wippy.test:test
-    runtime: kickside.memory:runtime
-    prompt: wippy.llm:prompt
-  modules:
-  - sql
-  - registry
-- name: dep.kickside.component
-  kind: ns.dependency
-  component: kickside/component
-  version: '*'
-  parameters:
+  - name: kickside.memory:api_router
+    value: app:api
+  - name: kickside.memory:target_db
+    value: app:db
+  - name: kickside.memory.security:user_security_scope
+    value: app:memory_members
+  - name: kickside.knowledge:api_router
+    value: app:api
+  - name: kickside.knowledge:ui_server
+    value: app:gateway
+  - name: kickside.knowledge.security:user_security_scope
+    value: app:user
+  - name: kickside.automation:ui_server
+    value: app:gateway
+  - name: kickside.automation:api_router
+    value: app:api
+  - name: kickside.automation:target_db
+    value: app:db
+  - name: kickside.settings:target_db
+    value: app:db
+  - name: kickside.settings:api_router
+    value: app:api
+  - name: kickside.settings:ui_server
+    value: app:gateway
   - name: kickside.component:target_db
     value: app:db
   - name: kickside.component:api_router
     value: app:api
-
-- name: dep.wippy.llm
-  kind: ns.dependency
-  component: wippy/llm
-  version: '*'
-- name: gateway
-  kind: http.service
-  addr: :0
-  lifecycle:
-    auto_start: false
-- name: api
-  kind: http.router
-  meta:
-    server: gateway
-  prefix: /api
-- name: user
-  kind: security.policy
-  policy:
-    resources: '*'
-    actions: '*'
-    effect: allow
-- name: env_storage
-  kind: env.storage.file
-  file_path: ./.wippy/test.env
-  auto_create: true
-- name: processes
-  kind: process.host
-  lifecycle:
-    auto_start: true
-- name: dep.wippy.bootloader
-  kind: ns.dependency
-  component: wippy/bootloader
-  version: '*'
-  parameters:
+  - name: kickside.component:lifecycle_impl
+    value: kickside.core.lifecycle:component_lifecycle_impl
+  - name: kickside.core:target_db
+    value: app:db
+  - name: kickside.core.retention:user_security_scope
+    value: app:user
+  - name: kickside.core.threads:user_security_scope
+    value: app:user
+  - name: kickside.core.threads.hydration:user_security_scope
+    value: app:user
+  - name: kickside.core.lifecycle:process_host
+    value: app:processes
+  - name: kickside.core.lifecycle:user_lifecycle_grant
+    value:
+      subject_id: app:user
+      subject_type: group
+      access_mask: 2
+  - name: kickside.core.lifecycle:admin_lifecycle_grant
+    value:
+      subject_id: app:admin
+      subject_type: group
+      access_mask: 3
+  - name: kickside.core.retention:process_host
+    value: app:processes
+  - name: kickside.core.threads:process_host
+    value: app:processes
+  - name: kickside.core.retention:api_router
+    value: app:api
+  - name: kickside.core.threads:api_router
+    value: app:api
+  - name: kickside.core.threads.hydration:api_router
+    value: app:api
+  - name: kickside.core.projections:api_router
+    value: app:api
+  - name: kickside.core.jobs:target_db
+    value: app:db
+  - name: kickside.core.jobs:process_host
+    value: app:processes
+  - name: kickside.uploads:database_resource
+    value: app:db
+  - name: kickside.uploads:env_storage
+    value: app:env_storage
+  - name: kickside.uploads:api_router
+    value: app:api
+  - name: kickside.uploads:storage_id
+    value: app:uploads
+  - name: kickside.uploads:ui_server
+    value: app:gateway
+  - name: kickside.uploads.security:user_security_scope
+    value: app:user
+  - name: userspace.dataflow:target_db
+    value: app:db
+  - name: userspace.dataflow:user_security_scope
+    value: app:user
   - name: wippy.bootloader:application_host
     value: app:processes
   - name: wippy.bootloader:env_storage
     value: app:env_storage
-- name: dep.wippy.migration
-  kind: ns.dependency
-  component: wippy/migration
-  version: '*'
-  parameters:
+  - name: wippy.llm:process_host
+    value: app:processes
+  - name: wippy.llm:env_storage
+    value: app:env_storage
   - name: wippy.migration:app_db
     value: app:db
+  - name: wippy.relay:user_security_scope
+    value: app:user
+  - name: wippy.relay:env_storage
+    value: app:env_storage
+  - name: wippy.relay:application_host
+    value: app:processes
+  - name: wippy.session:api_router
+    value: app:api
+  - name: wippy.session:database_resource
+    value: app:db
+  - name: wippy.session:default_host
+    value: app:processes
+  - name: wippy.session:env_storage
+    value: app:env_storage
+  - name: wippy.session:delegation_func_id
+    value: userspace.dataflow.session:delegate
+  - name: wippy.views:api_router
+    value: app:api_public
+  - name: wippy.views:env_storage
+    value: app:env_storage
+- name: dep.kickside.agents
+  kind: ns.dependency
+  version: '*'
+  component: kickside/agents
+  parameters:
+  - name: kickside.agents:api_router
+    value: app:api
+  - name: kickside.agents:ui_server
+    value: app:gateway
+- name: dep.kickside.connection
+  kind: ns.dependency
+  version: '*'
+  component: kickside/connection
+  parameters:
+  - name: kickside.connection:api_router
+    value: app:api
+  - name: kickside.connection:ui_server
+    value: app:gateway
+- name: dep.kickside.models
+  kind: ns.dependency
+  version: '*'
+  component: kickside/models
+  parameters:
+  - name: kickside.models:target_db
+    value: app:db
+  - name: kickside.models:api_router
+    value: app:api
+  - name: kickside.models:ui_server
+    value: app:gateway
+  - name: kickside.models:process_host
+    value: app:processes
+
+- name: legacy_runtime_test
+  kind: function.lua
+  meta:
+    type: test
+    suite: memory_legacy
+  source: file://legacy_runtime_test.lua
+  method: run
+  modules: [sql, registry]
+  imports:
+    test: wippy.test:test
+    runtime: kickside.memory:runtime
+    prompt: wippy.llm:prompt
+
+
+- name: runtime_test
+  kind: function.lua
+  meta: {type: test, suite: memory_document}
+  source: file://runtime_test.lua
+  method: run
+  modules: [sql, registry]
+  imports:
+    test: wippy.test:test
+    runtime: kickside.memory:runtime
+    prompt: wippy.llm:prompt
