@@ -18,6 +18,13 @@ local function model_error(step: string, err: any): error
     if type(err) ~= "userdata" then
         return types.internal(message, { step = step, cause = { message = tostring(err), retryable = false } })
     end
+    local details = err:details() or {}
+    if details.error_type == "model_error" and type(details.raw_content) == "string" then
+        local _, decode_err = json.decode(details.raw_content)
+        if decode_err then
+            return types.invalid(step .. " returned malformed output", { step = step, code = "model_output_malformed" })
+        end
+    end
     local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
     return errors.new({
         kind = retryable and err:kind() or errors.INTERNAL,
@@ -130,6 +137,8 @@ a letter, at most 64 characters. The same guidance topic keeps its key as advice
 Each lesson has kind lesson, a short stable topic key, cardinality multi, value (guidance in a
 few words), content (one sentence of guidance), based_on (at least two distinct memory
 numbers), empty event_id and valid_at, and confidence from 0 to 1.]]
+
+local JSON_FORMAT = "\n\nReturn one compact JSON object on one line, with no whitespace outside strings, reasoning or extra text."
 
 local WORKING_SUMMARY_PROMPT = [[Summarize the conversation so far as working state for continuing it:
 goals, decisions, open questions, constraints and the next step. Be compact and factual.]]
@@ -321,7 +330,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     local schema = candidate_schema(ids)
     schema.properties.items.maxItems = candidate_count(conversation)
     schema.properties.plans.maxItems = schema.properties.items.maxItems
-    local response, err = llm.structured_output(schema, messages(system, conversation), { model = model, max_tokens = output_budget(schema) })
+    local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = output_budget(schema) })
     if err then return nil, model_error("memory extraction", err) end
     local candidates, read_err = read_candidates(response, "extraction", stats, allowed)
     if read_err then return nil, read_err end
@@ -373,7 +382,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
         mappings = { type = "object", additionalProperties = false, properties = properties, required = required },
     } }
-    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model, max_tokens = output_budget(schema) })
+    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model, max_tokens = output_budget(schema) })
     if err then return nil, model_error("memory normalization", err) end
     local response_err = response_error(response, "memory normalization")
     if response_err then return nil, response_err end
@@ -426,6 +435,7 @@ local REFLECTION_MIN_SOURCES = 2
 
 function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
     stats = stats or {}
+    if #items < REFLECTION_MIN_SOURCES then return {}, nil end
     local lines: { string } = {}
     local numbers: { integer } = {}
     for index, item in ipairs(items) do
@@ -439,7 +449,7 @@ function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
     item_schema.properties.cardinality.enum = { "multi" }
     item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES, maxItems = #items, uniqueItems = true }
     item_schema.required[#item_schema.required + 1] = "based_on"
-    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model, max_tokens = output_budget(schema) })
+    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = output_budget(schema) })
     if err then return nil, model_error("memory reflection", err) end
     local candidates, read_err = read_candidates(response, "reflection", stats)
     if read_err then return nil, read_err end
@@ -483,7 +493,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
             reason = { type = "string" },
         },
     }
-    local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT, json.encode({
+    local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT .. JSON_FORMAT, json.encode({
             new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at,
                 stated = candidate.stated }, conversation = candidate.conversation,
             existing_memories = listing,

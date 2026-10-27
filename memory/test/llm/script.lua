@@ -31,12 +31,12 @@ function M.reset()
     conn:release()
 end
 
-local function push(method: string, response: any, failure: string?, failure_kind: string?, retryable: boolean?)
+local function push(method: string, response: any, failure: string?, failure_kind: string?, retryable: boolean?, details: any?)
     M.ensure()
     local conn = db()
     local rows = conn:query("SELECT COUNT(*) AS n FROM app_llm_script")
     local seq = (rows and rows[1] and tonumber(rows[1].n) or 0) + 1
-    local failure_details = failure_kind ~= nil and { kind = failure_kind } or {}
+    local failure_details = failure_kind ~= nil and { kind = failure_kind, details = details } or {}
     if retryable ~= nil then failure_details.retryable = retryable end
     local encoded = response ~= nil and json.encode(response) or (next(failure_details) ~= nil and json.encode(failure_details) or sql.NULL)
     local _, err = conn:execute("INSERT INTO app_llm_script (seq, method, response, failure) VALUES ($1, $2, $3, $4)",
@@ -48,7 +48,9 @@ end
 function M.respond(method: string, response: any, finish_reason: string?)
     push(method, { data = response, finish_reason = finish_reason or "stop" }, nil)
 end
-function M.fail(method: string, failure: string, kind: string?, retryable: boolean?) push(method, nil, failure, kind, retryable) end
+function M.fail(method: string, failure: string, kind: string?, retryable: boolean?, details: any?)
+    push(method, nil, failure, kind, retryable, details)
+end
 
 function M.hold(method: string)
     push(BARRIER_PREFIX .. method, true, nil)
@@ -75,7 +77,7 @@ function M.await_release(method: string): string?
     end
 end
 
-function M.take(method: string): (any, string?, string?, boolean?, string?)
+function M.take(method: string): (any, string?, string?, boolean?, string?, any?)
     M.ensure()
     local conn = db()
     local rows, err = conn:query("SELECT seq, response, failure FROM app_llm_script WHERE method = $1 ORDER BY seq LIMIT 1", { method })
@@ -86,7 +88,7 @@ function M.take(method: string): (any, string?, string?, boolean?, string?)
     if rows[1].failure and rows[1].failure ~= "" then
         local details = rows[1].response and json.decode(rows[1].response) or {}
         return nil, rows[1].failure, type(details) == "table" and details.kind or nil,
-            type(details) == "table" and details.retryable or nil
+            type(details) == "table" and details.retryable or nil, nil, type(details) == "table" and details.details or nil
     end
     local response = json.decode(rows[1].response)
     return response.data, nil, nil, nil, response.finish_reason

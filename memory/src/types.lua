@@ -234,7 +234,7 @@ function M.decode_json(value: any): any
 end
 
 function M.invalid(message: string, details: any?): error
-    return errors.new({ kind = errors.INVALID, message = message, details = details })
+    return errors.new({ kind = errors.INVALID, retryable = false, message = message, details = details })
 end
 
 function M.not_found(message: string): error

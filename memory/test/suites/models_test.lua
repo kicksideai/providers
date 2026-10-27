@@ -26,9 +26,36 @@ local function define_tests()
                     test.is_true(tostring(err):find("truncated", 1, true) ~= nil, tostring(err))
                 end
             end
+            for _, prompt in ipairs(fixture.script.prompts("structured_output")) do
+                test.is_true(prompt.system:find("one compact JSON object on one line", 1, true) ~= nil)
+            end
             for _, options in ipairs(fixture.script.requests("structured_options")) do
                 test.is_true(type(options.max_tokens) == "number" and options.max_tokens > 0 and options.max_tokens < 10000)
             end
+        end)
+
+        test.it("classifies incomplete JSON reported by a provider before response decoding", function()
+            local user = fixture.user()
+            fixture.script.fail("structured_output", "Model failed to return valid JSON", errors.NOT_FOUND, false,
+                { error_type = "model_error", raw_content = '{"items":[' })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "event", role = "user", text = "I live in Oslo." },
+            } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_malformed")
+            test.eq(err:kind(), errors.INVALID)
+            test.is_false(err:retryable())
+        end)
+
+        test.it("returns no reflection when fewer than two source memories exist", function()
+            local user = fixture.user()
+            for _, items in ipairs({ {}, { { id = "one", kind = "fact", key = "home_city", content = "Lives in Oslo." } } }) do
+                local result, err = fixture.op(user, "model_step", { step = "reflect", items = items })
+                test.is_nil(err, tostring(err))
+                test.eq(#result.items, 0)
+            end
+            test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
         test.it("sizes output budgets by the bounded result schema and mapping count", function()
