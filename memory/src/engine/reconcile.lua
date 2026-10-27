@@ -3,6 +3,8 @@
 local types = require("types")
 local items = require("memory_items")
 local models = require("memory_models")
+local stores = require("memory_stores")
+local config = require("memory_config")
 
 local M = {}
 
@@ -121,6 +123,11 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
     local embedded, embed_err = models.embed(opts.embedding_model, texts)
     if embed_err then return embed_err end
 
+    local store, store_err = stores.get(d.component_id)
+    if store_err then return store_err end
+    local effective, config_err = config.effective((store :: any).config)
+    if config_err then return config_err end
+    local threshold = (effective :: any).judge_min_similarity
     local scope = { scope_family = opts.scope_family, scope_id = opts.scope_id }
     local scope_key = types.scope_key(opts.scope_family, opts.scope_id)
     local reflection = d.source == types.ITEM_SOURCE.REFLECTION
@@ -177,20 +184,28 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
                 if apply_err then return apply_err end
             end
         else
+            local compatible = {}
+            for kind in pairs(types.KIND_SET) do
+                if types.compatible_kinds(candidate.kind, kind) then compatible[#compatible + 1] = kind end
+            end
             local near, near_err = items.search(d.component_id, fields.vector, {
-                statuses = LIVE, scope_keys = { scope_key }, query_text = candidate.content, limit = NEIGHBORS,
+                statuses = LIVE, scope_keys = { scope_key }, kinds = compatible, min_similarity = threshold, limit = NEIGHBORS,
             })
             if near_err then return near_err end
             local neighbors: { any } = {}
             local by_id: { [string]: any } = {}
             local function consider(row: any)
                 local state = d.overlay[row.id] or row
-                if not by_id[state.id] and (state.status == types.STATUS.CURRENT or state.status == types.STATUS.CONFLICT) then
+                if not by_id[state.id] and types.compatible_kinds(fields.kind, state.kind) and (state.status == types.STATUS.CURRENT or state.status == types.STATUS.CONFLICT) then
                     neighbors[#neighbors + 1] = state
                     by_id[state.id] = state
                 end
             end
-            for _, row in ipairs(held :: any) do consider(row) end
+            for _, staged in ipairs(d.staged) do
+                local state = d.overlay[staged.owner_item_id]
+                if state and state.scope_key == scope_key and staged.vector
+                    and types.cosine_similarity(fields.vector, staged.vector) >= threshold then consider(state) end
+            end
             for _, row in ipairs(near :: any) do consider(row) end
             if #neighbors == 0 then
                 local _, add_err = d:add(scope, fields)

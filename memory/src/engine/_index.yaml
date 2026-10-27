@@ -35,6 +35,8 @@ entries:
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
+      memory_stores: kickside.memory.persist:stores
+      memory_config: kickside.memory:config
 
   - name: decision
     kind: library.lua

@@ -302,6 +302,7 @@ entries:
       default_config:
         extraction_model: class:fast
         judge_model: class:fast
+        judge_min_similarity: 0.55
         extraction_instructions: ""
         recall_max_items: 5
         recall_max_length: 4000
@@ -339,6 +340,14 @@ entries:
             title: Reconcile model
             description: Model that decides whether a new memory is new, a duplicate, an update or a contradiction.
             web_component: wc-model-picker
+          judge_min_similarity:
+            section: learning
+            order: 12
+            type: number
+            minimum: 0
+            maximum: 1
+            title: Reconcile similarity floor
+            description: Minimum cosine similarity for a compatible memory to reach the semantic judge. Exact claims and single-valued key updates reconcile deterministically.
           extraction_instructions:
             section: learning
             order: 5

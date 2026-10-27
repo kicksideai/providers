@@ -27,6 +27,36 @@ local function define_tests()
     test.describe("memory knowledge base engine", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("adds without judging unrelated or incompatible nearest memories", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { kind = "fact", value = "Rust", content = "Compiles Rust software.", threshold = 0.55 },
+                { kind = "plan", value = { status = "open", next_step = "", details = "Study music" }, content = "Studies music.", threshold = 0 },
+            }) do
+                local id = fixture.memory(user)
+                fixture.remember(user, id, { fixture.candidate(example.kind, "existing_topic", example.value, example.content) }, "near-seed")
+                fixture.settle(user, id)
+                local result = fixture.remember(user, id, { fixture.candidate("fact", "music_study", "piano", "Studies music.") }, "near-candidate")
+                test.eq(result.stats.added, 1)
+                test.eq(result.stats.judged, 0)
+                test.eq(#fixture.script.requests("structured_output"), 0)
+            end
+        end)
+
+        test.it("judges only compatible neighbours meeting the configured similarity floor inclusively", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            fixture.remember(user, id, { fixture.candidate("fact", "music_study", "piano", "Studies music.") }, "threshold-seed")
+            fixture.settle(user, id)
+            fixture.relations({ "same" })
+            local result = fixture.remember(user, id, { fixture.candidate("skill", "music_skill", "keyboard", "Studies music.") }, "threshold-match")
+            test.eq(result.stats.judged, 1)
+            test.eq(result.stats.noop, 1)
+            local memories = json.decode(fixture.script.prompts("structured_output")[1].user).existing_memories
+            test.eq(memories["1"].key, "music_study")
+            test.is_nil(memories["2"])
+        end)
+
         test.it("rejects reverse and self item provenance at both decision recording paths", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -108,7 +138,6 @@ local function define_tests()
             local state = { status = "open", next_step = "Prepare materials", details = "Community workshop" }
             local seeded = fixture.remember(user, id, { fixture.candidate("plan", "workshop", state, "Organize a workshop.", "seed") }, "plan-seed")
             fixture.settle(user, id)
-            fixture.relations({ "unrelated" })
             fixture.remember(user, id, { fixture.candidate("fact", "workshop_date", "March 14", "The workshop date is March 14.", "date") }, "date-fact")
             fixture.settle(user, id)
             local plan = fixture.op(user, "get", { component_id = id, item_id = seeded.item_ids[1] })
@@ -117,7 +146,7 @@ local function define_tests()
             test.eq(plan.value.details, state.details)
             test.eq(fixture.items(user, id, { key = "workshop_date" })[1].value, "March 14")
             local requests = fixture.script.requests("structured_output")
-            test.eq(table.concat(requests[#requests].properties.relations.properties["1"].enum, ","), "unrelated")
+            test.eq(#requests, 0)
         end)
 
         for _, source in ipairs({ "tool", "owner" }) do
@@ -156,7 +185,6 @@ local function define_tests()
                 fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "statement"),
             }, "explicit", { source = "tool", explicit = true })
             fixture.settle(user, id)
-            fixture.relations({ "unrelated" })
             local other = fixture.remember(user, id, {
                 fixture.candidate("preference", "diet", "vegan", "The user is vegan.", "statement"),
             }, "other-key")
@@ -184,7 +212,7 @@ local function define_tests()
             local first = fixture.create_claim(user, id, "Oslo")
             fixture.relations({ "updates" })
             local changed = fixture.remember(user, id, {
-                fixture.candidate("profile_slot", "residence", "Bergen", "The user moves to Bergen.", "move", nil, "multi"),
+                fixture.candidate("profile_slot", "residence", "Bergen", "The current city is Bergen.", "move", nil, "multi"),
             }, "cross-topic")
             test.eq(changed.stats.superseded, 1)
             fixture.settle(user, id)
@@ -213,8 +241,8 @@ local function define_tests()
             fixture.script.respond("structured_output", { relations = {}, reason = "test" })
             local result, err = fixture.op(user, "remember", {
                 candidates = {
-                    fixture.candidate("fact", "first_attribute", "recorded", "An independent attribute."),
-                    fixture.candidate("fact", "second_attribute", "recorded", "Another independent attribute."),
+                    fixture.candidate("fact", "first_attribute", "recorded", "The current city is recorded."),
+                    fixture.candidate("fact", "second_attribute", "recorded", "The current city is recorded."),
                 },
                 opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast",
                     scope_family = "owner", scope_id = user, source = "capture" },
@@ -442,20 +470,18 @@ local function define_tests()
             local offered = fixture.script.requests("structured_output")[1].properties.relations.properties["1"].enum
             test.eq(table.concat(offered, ","), "same,updates,rephrases,contradicts")
 
-            fixture.relations({ "unrelated", "unrelated" })
             local fact = fixture.remember(user, id, {
                 fixture.candidate("fact", "sibling", "Ana", "The user has a sister, Ana.", "b3"),
             }, "slot-3")
             test.eq(fact.stats.added, 1)
-            local fact_actions = fixture.script.requests("structured_output")[2].properties.relations.properties["1"].enum
-            test.is_true(table.concat(fact_actions, ","):find("unrelated", 1, true) ~= nil)
+            test.eq(fact.stats.judged, 0)
 
             local reflected = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "birth_date", "1990", "The user was born in 1990."),
             }, "slot-4", { source = "reflection" })
             test.eq(reflected.stats.noop, 1)
             test.eq(reflected.stats.added, 0)
-            test.eq(#fixture.script.requests("structured_output"), 2)
+            test.eq(#fixture.script.requests("structured_output"), 1)
         end)
 
         test.it("treats a key as one attribute across kinds: a profile slot value is never added beside another kind's value of that key", function()
@@ -484,7 +510,7 @@ local function define_tests()
             local group = fixture.op(user, "get", { component_id = id, item_id = airline.item_ids[1] }).conflict_group
             fixture.relations({ "rephrases", "contradicts" })
             local restated = fixture.remember(user, id, {
-                fixture.candidate("fact", "passport_birth_date", "1990-03-03", "The user's passport gives 3 March 1990 as their birth date.", "m3"),
+                fixture.candidate("fact", "passport_birth_date", "1990-03-03", "The user was born on 3 March 1990, according to their passport.", "m3"),
             }, "o3")
             fixture.settle(user, id)
             local successor = fixture.op(user, "get", { component_id = id, item_id = restated.item_ids[1] })

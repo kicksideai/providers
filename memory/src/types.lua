@@ -137,6 +137,17 @@ function M.compatible_kinds(left: string, right: string): boolean
     return true
 end
 
+function M.cosine_similarity(left: { number }, right: { number }): number
+    local dot, left_norm, right_norm = 0, 0, 0
+    for i, value in ipairs(left) do
+        dot = dot + value * right[i]
+        left_norm = left_norm + value * value
+        right_norm = right_norm + right[i] * right[i]
+    end
+    if left_norm == 0 or right_norm == 0 then return 0 end
+    return dot / math.sqrt(left_norm * right_norm)
+end
+
 function M.default_cardinality(kind: string): string
     return kind == M.KIND.PLAN and M.CARDINALITY.SINGLE or M.CARDINALITY.MULTI
 end
