@@ -10,9 +10,9 @@ local function define_tests()
         for _, phase in ipairs({ "before_step", "deactivate", "checkpoint" }) do
             test.it("enrolls statement-sized consecutive runs for " .. phase .. " with independent erasure ownership", function()
                 local user = fixture.user()
-                local id = fixture.memory(user)
+                local id = fixture.memory(user, { extraction_model = "test-bounded" })
                 local session = "s-" .. user
-                local capacity, capacity_err = fixture.op(user, "extraction_capacity", {})
+                local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = "test-bounded" })
                 test.is_nil(capacity_err, tostring(capacity_err))
                 test.is_true(capacity >= 1)
                 local events = {}
@@ -75,9 +75,9 @@ local function define_tests()
 
         test.it("does not advance consecutive captures past a failed predecessor", function()
             local user = fixture.user()
-            local id = fixture.memory(user)
+            local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session = "s-" .. user
-            local capacity = fixture.op(user, "extraction_capacity", {})
+            local capacity = fixture.op(user, "extraction_capacity", { model = "test-bounded" })
             local events = {}
             for i = 1, capacity + 1 do
                 events[i] = { id = "failed-batch-" .. tostring(i), role = "user", content = "A statement." }
@@ -96,7 +96,7 @@ local function define_tests()
 
         test.it("partitions complete source events by input bytes and retains trailing evidence", function()
             local user = fixture.user()
-            local id = fixture.memory(user)
+            local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session = "s-" .. user
             local first, second = string.rep("a", 14000), string.rep("b", 14000)
             fixture.history.record(session, {
@@ -126,7 +126,7 @@ local function define_tests()
 
         test.it("rejects an oversized source event before enrolling any capture", function()
             local user = fixture.user()
-            local id = fixture.memory(user)
+            local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session = "s-" .. user
             fixture.history.record(session, {
                 { id = "within-bound", role = "user", content = "A complete statement." },

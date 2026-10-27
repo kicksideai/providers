@@ -9,7 +9,7 @@ local function define_tests()
 
         test.it("bounds deactivation capture to the outgoing agent history", function()
             local user = fixture.user()
-            local id = fixture.memory(user)
+            local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session = "s-" .. user
             fixture.history.record(session, {
                 { id = "earlier", role = "user", content = "An earlier conversation." },
@@ -40,7 +40,7 @@ local function define_tests()
         }) do
             test.it("captures " .. case.name .. " without widening history", function()
                 local user = fixture.user()
-                local id = fixture.memory(user)
+                local id = fixture.memory(user, { extraction_model = "test-bounded" })
                 local session = "s-" .. user
                 fixture.history.record(session, {
                     { id = "a", role = "user", content = "The first message." },
@@ -54,7 +54,7 @@ local function define_tests()
                     if count == 2 then fixture.extraction({}) end
                     fixture.wait_runs(user, id, "derive", count)
                 end
-                local capacity = fixture.op(user, "extraction_capacity", {})
+                local capacity = fixture.op(user, "extraction_capacity", { model = "test-bounded" })
                 local selected_count = case.expected == "" and 0 or #case.expected:gsub(",", "")
                 local count = math.ceil(selected_count / capacity)
                 for _ = 1, count do fixture.extraction({}) end

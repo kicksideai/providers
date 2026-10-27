@@ -33,11 +33,12 @@ local OPS: { [string]: (any) -> (any, any) } = {
     end,
     model_step = function(a: any)
         local stats = {}
+        local model = a.model or "test-fast"
         local result, err
-        if a.step == "extract" then result, err = models.extract("test-fast", a.span, a.keys or {}, nil, a.context, stats)
-        elseif a.step == "reflect" then result, err = models.reflect("test-fast", a.items, stats)
-        elseif a.step == "judge" then result, err = models.judge("test-fast", a.candidate, a.items, { "ADD", "NOOP" })
-        else result, err = models.normalize("test-fast", a.candidates, a.keys or {}, nil, stats) end
+        if a.step == "extract" then result, err = models.extract(model, a.span, a.keys or {}, nil, a.context, stats)
+        elseif a.step == "reflect" then result, err = models.reflect(model, a.items, stats)
+        elseif a.step == "judge" then result, err = models.judge(model, a.candidate, a.items, { "ADD", "NOOP" })
+        else result, err = models.normalize(model, a.candidates, a.keys or {}, nil, stats) end
         if err then return nil, err end
         return { items = result, stats = stats }, nil
     end,

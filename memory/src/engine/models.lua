@@ -230,7 +230,7 @@ end
 -- including two-byte quote/backslash and short control escapes. One token per byte
 -- covers byte-level tokenizers. Longer Unicode escapes exhaust the bound visibly
 -- as retryable truncation; the existing job attempt limit owns retries.
-local function output_budget(schema: any, model: string?): (integer?, error?)
+local function schema_bytes(schema: any, bytes_per_character: integer): integer
     local function size(node: any): integer
         if node.enum then
             local longest = 0
@@ -246,22 +246,23 @@ local function output_budget(schema: any, model: string?): (integer?, error?)
         elseif node.type == "array" then
             return 2 + node.maxItems * size(node.items) + math.max(0, node.maxItems - 1)
         elseif node.type == "string" then
-            return 2 + 4 * node.maxLength
+            return 2 + bytes_per_character * node.maxLength
         elseif node.type == "number" then
             return 24
         end
         error("Unbounded memory result schema: " .. tostring(node.type))
     end
-    local maximum = size(schema)
-    if model then
-        local card, err = llm.resolve_model(model)
-        if err then return nil, err end
-        local limit = tonumber(card and card.output_tokens)
-        if not limit or limit < maximum then
-            return nil, types.invalid("memory model " .. model .. " output limit cannot hold its result schema (" .. tostring(maximum) .. " tokens)")
-        end
+    return size(schema)
+end
+
+local function output_budget(schema: any, model: string): (integer?, error?)
+    local card, err = llm.resolve_model(model)
+    if err then return nil, err end
+    local limit = tonumber(card and card.output_tokens)
+    if not limit or limit < 1 then
+        return nil, types.invalid("memory model " .. model .. " requires a positive output limit")
     end
-    return maximum, nil
+    return math.floor(math.min(limit, schema_bytes(schema, 4))), nil
 end
 
 function M.extraction_capacity(model: string, span: { any }?): (integer?, error?)
@@ -274,7 +275,9 @@ function M.extraction_capacity(model: string, span: { any }?): (integer?, error?
     end
     if #ids == 0 then ids[1] = uuid.v7() end
     local count = 0
-    while limit and output_budget(candidate_schema(ids, nil, count + 1)) <= limit do count = count + 1 end
+    -- Size typical compact ASCII answers; answers exceeding the model output limit fail
+    -- visibly as model_output_truncated and the job system retries the sampling failure.
+    while limit and schema_bytes(candidate_schema(ids, nil, count + 1), 1) <= limit do count = count + 1 end
     if count == 0 then
         return nil, types.invalid("memory extraction model " .. model .. " output limit cannot hold one statement")
     end

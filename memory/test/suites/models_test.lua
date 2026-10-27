@@ -170,7 +170,7 @@ local function define_tests()
             test.eq(#second.items, 2)
         end)
 
-        test.it("budgets cover maximum compact results for every structured call at extraction capacity", function()
+        test.it("budgets cap maximum compact results at the model limit for every structured call", function()
             local user = fixture.user()
             local span, candidates, sources = {}, {}, {}
             local event_id = string.rep("e", 36)
@@ -193,7 +193,8 @@ local function define_tests()
                 local budget = options[#options].max_tokens
                 for _, text in ipairs({ "𐍈", "界", '"', "\\", "\n" }) do
                     local encoded = json.encode(maximal(schema, text))
-                    test.is_true(budget >= #encoded, step .. " budget cannot cover " .. tostring(#encoded) .. " compact UTF-8 bytes")
+                    test.is_true(budget <= 32768)
+                    test.is_true(budget >= math.min(32768, #encoded), step .. " budget does not cover bytes up to the model limit")
                 end
                 if step == "extract" then
                     test.eq(schema.properties.items.maxItems, capacity * 4)
@@ -204,12 +205,13 @@ local function define_tests()
                 elseif step == "judge" then test.eq(schema.properties.target_ids.maxItems, #sources) end
             end
             span[#span + 1] = span[1]
-            local before = #fixture.script.requests("structured_output")
+            fixture.script.respond("structured_output", {}, "length")
             local result, err = fixture.op(user, "model_step", { step = "extract", span = span })
             test.is_nil(result)
             test.not_nil(err)
-            test.is_true(tostring(err):find("output limit", 1, true) ~= nil)
-            test.eq(#fixture.script.requests("structured_output"), before)
+            test.eq(err:details().code, "model_output_truncated")
+            local options = fixture.script.requests("structured_options")
+            test.eq(options[#options].max_tokens, 32768)
         end)
 
         test.it("fails visibly on strings and arrays exceeding the supplied schema bounds", function()
@@ -252,7 +254,7 @@ local function define_tests()
         end)
 
         test.it("rejects extraction models unable to hold one statement on creation and update", function()
-            for _, model in ipairs({ "test-small", "test-bounded" }) do
+            local model = "test-small"
             local user = fixture.user()
             local id, create_err = fixture.try_memory(user, { extraction_model = model })
             test.is_nil(id)
@@ -265,6 +267,72 @@ local function define_tests()
             test.is_true(tostring(update_err):find("one statement", 1, true) ~= nil, tostring(update_err))
             local stored = fixture.op(user, "store", { component_id = id })
             test.is_true(stored.config.extraction_model ~= model)
+        end)
+
+        test.it("admits an 8192-token extraction model on creation and update", function()
+            local user = fixture.user()
+            local id, create_err = fixture.try_memory(user, { extraction_model = "test-bounded" })
+            test.is_nil(create_err, tostring(create_err))
+            test.not_nil(id)
+            local other = fixture.memory(user)
+            local updated, update_err = fixture.op(user, "update_config", { component_id = other,
+                config = { extraction_model = "test-bounded" } })
+            test.is_nil(update_err, tostring(update_err))
+            test.not_nil(updated)
+            local stored = fixture.op(user, "store", { component_id = other })
+            test.eq(stored.config.extraction_model, "test-bounded")
+        end)
+
+        test.it("sizes the largest typical ASCII statement count within the output limit", function()
+            local user = fixture.user()
+            for _, spec in ipairs({ { model = "test-bounded", limit = 8192 }, { model = "test-fast", limit = 32768 } }) do
+                local span = { { id = string.rep("e", 36), role = "user", text = "An attribute." } }
+                local capacity, err = fixture.op(user, "extraction_capacity", { model = spec.model, span = span })
+                test.is_nil(err, tostring(err))
+                test.is_true(capacity >= 1)
+                for i = 2, capacity + 1 do span[i] = span[1] end
+                for _, count in ipairs({ capacity, capacity + 1 }) do
+                    local batch = {}
+                    for i = 1, count do batch[i] = span[i] end
+                    fixture.script.respond("structured_output", {}, "length")
+                    local _, output_err = fixture.op(user, "model_step", { model = spec.model, step = "extract", span = batch })
+                    test.not_nil(output_err)
+                    test.eq(output_err:details().code, "model_output_truncated")
+                    local schemas = fixture.script.requests("structured_output")
+                    local ascii_bytes = #json.encode(maximal(schemas[#schemas], "a"))
+                    test.is_true(count == capacity and ascii_bytes <= spec.limit or count > capacity and ascii_bytes > spec.limit,
+                        "Typical ASCII byte measurement disagrees with statement capacity")
+                    local options = fixture.script.requests("structured_options")
+                    test.eq(options[#options].max_tokens, spec.limit)
+                end
+            end
+        end)
+
+        test.it("caps each structured call at its card limit and preserves smaller schema budgets", function()
+            local user = fixture.user()
+            for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
+                local budgets = {}
+                for _, spec in ipairs({ { model = "test-fast", limit = 32768 }, { model = "test-bounded", limit = 8192 } }) do
+                    fixture.script.respond("structured_output", {}, "length")
+                    local _, err = fixture.op(user, "model_step", { model = spec.model, step = step,
+                        span = { { id = string.rep("e", 36), role = "user", text = "An attribute." } },
+                        candidates = { candidate("attribute", "An attribute") }, candidate = candidate("attribute", "An attribute"),
+                        items = { { id = "source-a", kind = "fact", key = "attribute", content = "An attribute." },
+                            { id = "source-b", kind = "fact", key = "attribute", content = "An attribute." } } })
+                    test.not_nil(err)
+                    test.eq(err:details().code, "model_output_truncated")
+                    test.is_true(err:retryable())
+                    local schemas = fixture.script.requests("structured_output")
+                    local options = fixture.script.requests("structured_options")
+                    local budget = options[#options].max_tokens
+                    test.is_true(budget <= spec.limit)
+                    for _, text in ipairs({ "𐍈", "界", '\"', "\\", "\n" }) do
+                        local measured = #json.encode(maximal(schemas[#schemas], text))
+                        test.is_true(budget >= math.min(spec.limit, measured))
+                    end
+                    budgets[#budgets + 1] = budget
+                end
+                test.eq(budgets[2], math.min(8192, budgets[1]))
             end
         end)
 
