@@ -188,13 +188,13 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
     return schema
 end
 
--- The schema bounds result size; the budget includes JSON structure and field text.
+-- Estimate compact output from its schema, input counts and expected field lengths.
 local OUTPUT = { max_tokens = 8192, min_tokens = 256, characters_per_token = 3,
     max_candidates = 16, max_parts = 8, characters_per_candidate = 120,
     string_lengths = { key = 64, value = 256, content = 384, details = 512, next_step = 256,
         event_id = 128, valid_at = 35, reason = 192 }, default_string_length = 128 }
 
-local function output_budget(schema: any, field: string?): integer
+local function output_budget(schema: any, counts: any): integer
     local function size(node: any, name: string?): number
         if node.enum then
             local longest = 0
@@ -205,14 +205,13 @@ local function output_budget(schema: any, field: string?): integer
             for key, child in pairs(node.properties) do total = total + #key + 4 + size(child, key) end
             return total
         elseif node.type == "array" then
-            return 2 + (node.maxItems or 1) * (size(node.items, name) + 1)
+            return 2 + (counts[name] or 1) * (size(node.items, name) + 1)
         elseif node.type == "string" then
-            node.maxLength = node.maxLength or OUTPUT.string_lengths[name] or OUTPUT.default_string_length
-            return node.maxLength + 2
+            return (node.maxLength or OUTPUT.string_lengths[name] or OUTPUT.default_string_length) + 2
         end
         return 24
     end
-    return math.min(OUTPUT.max_tokens, math.max(OUTPUT.min_tokens, math.ceil(size(schema, field) / OUTPUT.characters_per_token)))
+    return math.min(OUTPUT.max_tokens, math.max(OUTPUT.min_tokens, math.ceil(size(schema, nil) / OUTPUT.characters_per_token)))
 end
 
 local function candidate_count(text: string): integer
@@ -328,9 +327,9 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local conversation = M.conversation(span, context)
     local schema = candidate_schema(ids)
-    schema.properties.items.maxItems = candidate_count(conversation)
-    schema.properties.plans.maxItems = schema.properties.items.maxItems
-    local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = output_budget(schema) })
+    local count = candidate_count(conversation)
+    local budget = output_budget(schema, { items = count, plans = count })
+    local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory extraction", err) end
     local candidates, read_err = read_candidates(response, "extraction", stats, allowed)
     if read_err then return nil, read_err end
@@ -342,7 +341,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     if #candidates == 0 then return candidates, nil end
     local known: { [string]: any } = {}
     for _, row in ipairs(keys) do known[row.key] = row end
-    local properties, required = {}, {}
+    local properties, required, counts = {}, {}, {}
     for i, candidate in ipairs(candidates) do
         local kinds = {}
         for _, kind in ipairs(CANDIDATE_KINDS) do
@@ -363,8 +362,9 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
         end
         if #excluded_keys > 0 then mapping_properties.key["not"] = { enum = excluded_keys } end
         local mapping_required = { "key", "kind", "cardinality" }
-        local mappings: any = { type = "array", minItems = 1, maxItems = math.min(OUTPUT.max_parts,
-            math.max(2, math.ceil((#candidate.content + #json.encode(candidate.value)) / OUTPUT.characters_per_candidate))) }
+        local mappings: any = { type = "array", minItems = 1 }
+        counts[tostring(i)] = math.min(OUTPUT.max_parts,
+            math.max(2, math.ceil((#candidate.content + #json.encode(candidate.value)) / OUTPUT.characters_per_candidate)))
         if type(candidate.value) == "string" then
             mapping_properties.value = { type = "string", minLength = 1 }
             mapping_properties.content = { type = "string", minLength = 1 }
@@ -372,6 +372,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             mapping_required[#mapping_required + 1] = "content"
         else
             mappings.maxItems = 1
+            counts[tostring(i)] = 1
         end
         mappings.items = { type = "object", additionalProperties = false,
             required = mapping_required, properties = mapping_properties,
@@ -382,7 +383,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
         mappings = { type = "object", additionalProperties = false, properties = properties, required = required },
     } }
-    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model, max_tokens = output_budget(schema) })
+    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model, max_tokens = output_budget(schema, counts) })
     if err then return nil, model_error("memory normalization", err) end
     local response_err = response_error(response, "memory normalization")
     if response_err then return nil, response_err end
@@ -443,13 +444,13 @@ function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
         numbers[index] = index
     end
     local schema = candidate_schema(nil, { types.KIND.LESSON })
-    schema.properties.items.maxItems = math.min(OUTPUT.max_parts, math.max(1, math.floor(#items / REFLECTION_MIN_SOURCES)))
+    local counts = { items = math.min(OUTPUT.max_parts, math.floor(#items / REFLECTION_MIN_SOURCES)), based_on = #items }
     local item_schema = schema.properties.items.items
     item_schema.properties.key.pattern = "^[a-z][a-z0-9_]{0,63}$"
     item_schema.properties.cardinality.enum = { "multi" }
-    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES, maxItems = #items, uniqueItems = true }
+    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES }
     item_schema.required[#item_schema.required + 1] = "based_on"
-    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = output_budget(schema) })
+    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = output_budget(schema, counts) })
     if err then return nil, model_error("memory reflection", err) end
     local candidates, read_err = read_candidates(response, "reflection", stats)
     if read_err then return nil, read_err end
@@ -489,7 +490,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
         required = { "action", "target_ids", "reason" },
         properties = {
             action = { type = "string", enum = actions },
-            target_ids = { type = "array", items = { type = "string", enum = ids }, maxItems = #ids },
+            target_ids = { type = "array", items = { type = "string", enum = ids } },
             reason = { type = "string" },
         },
     }
@@ -497,7 +498,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
             new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at,
                 stated = candidate.stated }, conversation = candidate.conversation,
             existing_memories = listing,
-        })), { model = model, max_tokens = output_budget(schema) })
+        })), { model = model, max_tokens = output_budget(schema, { target_ids = #ids }) })
     if err then return nil, model_error("memory reconcile judge", err) end
     local response_err = response_error(response, "memory reconcile judge")
     if response_err then return nil, response_err end
