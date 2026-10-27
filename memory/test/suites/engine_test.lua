@@ -54,22 +54,29 @@ local function define_tests()
             end
         end)
 
-        test.it("rejects targetless judge actions per candidate and continues the decision", function()
+        test.it("fails targetless judge actions and rolls back the whole decision", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             fixture.create_claim(user, id, "Oslo")
             for _, action in ipairs({ "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" }) do
+                fixture.verdict("ADD", {})
                 fixture.verdict(action, {})
+                local result, err = fixture.op(user, "remember", {
+                    candidates = {
+                        fixture.candidate("fact", "first_attribute", "recorded", "An independent attribute."),
+                        fixture.candidate("fact", "second_attribute", "recorded", "Another independent attribute."),
+                    },
+                    opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast",
+                        scope_family = "owner", scope_id = user, source = "capture" },
+                    idempotency = "invalid-verdict-" .. action,
+                })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_invalid_judge_targets")
+                test.is_true(err:retryable())
+                fixture.settle(user, id)
+                test.eq(#fixture.items(user, id, { statuses = { "current" } }), 1)
             end
-            fixture.verdict("ADD", {})
-            local candidates = {}
-            for i = 1, 5 do candidates[i] = fixture.candidate("fact", "attribute_" .. tostring(i), "recorded", "An independent attribute.", "source") end
-            local result = fixture.remember(user, id, candidates, "untrusted-judgements")
-            test.eq(result.stats.rejected, 4)
-            test.eq(result.stats.rejected_judge_targets, 4)
-            test.eq(result.stats.added, 1)
-            fixture.settle(user, id)
-            test.eq(#fixture.items(user, id, { statuses = { "current" } }), 2)
         end)
 
         test.it("reports corrupt stored configuration and retained run JSON instead of empty defaults", function()

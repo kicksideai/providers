@@ -9,17 +9,16 @@ import type { Memory } from './useMemory'
 vi.mock('./useMemory', () => ({ severity: () => 'danger' }))
 vi.mock('@iconify/vue', () => ({ Icon: { template: '<span />' } }))
 
-it('shows rejected candidate counts and content-free reasons in successful activity', () => {
+it('shows model validation as failed activity with a visible reason', () => {
+  const reason = '{"code":"model_output_invalid_extraction_value","retryable":true}'
   const wrapper = mount(ActivityView, {
-    props: { memory: { status: ref({ runs: [{ id: 'run', run_type: 'consolidate', status: 'succeeded',
-      created_at: '2026-01-01T00:00:00Z', stats: { added: 1, rejected: 2,
-        rejected_reflection_topic_key: 1, rejected_normalization_kind: 1 } }] }) } as unknown as Memory },
+    props: { memory: { status: ref({ runs: [{ id: 'run', run_type: 'derive', status: 'failed',
+      created_at: '2026-01-01T00:00:00Z', last_error: reason, stats: {} }] }) } as unknown as Memory },
     global: { stubs: { Tag: true } },
   })
-  expect(wrapper.text()).toContain('1 new')
-  expect(wrapper.text()).toContain('2 rejected')
-  expect(wrapper.text()).toContain('reflection: topic key (1)')
-  expect(wrapper.text()).toContain('normalization: kind (1)')
+  expect(wrapper.text()).toContain(reason)
+  expect(wrapper.text()).not.toContain('No changes')
+  expect(wrapper.findComponent({ name: 'Tag' }).props('value')).toBe('failed')
   wrapper.unmount()
 })
 
@@ -32,7 +31,6 @@ it('shows a rejected source with its content-free reason and byte limits', () =>
     global: { stubs: { Tag: true } },
   })
   expect(wrapper.text()).toContain('1 rejected')
-  expect(wrapper.text()).toContain('source: too large (1)')
   expect(wrapper.text()).toContain(reason)
   expect(wrapper.findComponent({ name: 'Tag' }).props('value')).toBe('rejected')
   wrapper.unmount()

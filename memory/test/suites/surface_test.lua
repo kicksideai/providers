@@ -63,35 +63,39 @@ local function define_tests()
             test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
-        test.it("exposes candidate rejection counts through run activity while valid memories persist", function()
+        test.it("exposes exhausted model validation failures through run activity without partial writes", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session_id = "s-" .. user
             local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "event")
             local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", "event")
-            fixture.script.respond("structured_output", { items = { good, bad }, plans = {} })
+            for i = 1, 3 do fixture.script.respond("structured_output", { items = { good, bad }, plans = {} }) end
             fixture.history.record(session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") },
                 fixture.agent_context(id, session_id, "agent-a"))
             test.is_nil(err, tostring(err))
             local runs = fixture.wait_runs(user, id, "derive", 1)
-            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            local job = fixture.wait_job(runs[1].job_id, "dead")
+            test.eq(job.attempts, 3)
+            test.eq(fixture.op(user, "run", { run_id = runs[1].id }).status, "failed")
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session_id })
+            test.is_true(cursor == nil or cursor.last_event_id == "")
             local response = get_path(user, "/memory/" .. id .. "/status")
             test.eq(response.status, 200, response.raw)
             local found = false
             for _, run in ipairs(response.body.runs) do
                 if run.id == runs[1].id then
                     found = true
-                    test.eq(run.stats.rejected, 1)
-                    test.eq(run.stats.rejected_extraction_topic_key, 1)
+                    test.eq(run.status, "failed")
+                    test.eq(json.decode(run.last_error).code, "model_output_invalid_extraction_topic_key")
+                    test.is_nil(run.stats.rejected)
                     test.is_nil((json.encode(run.stats):find("private", 1, true)))
                 end
             end
             test.is_true(found)
             fixture.settle(user, id)
             local items = fixture.items(user, id)
-            test.eq(#items, 1)
-            test.eq(items[1].value, "Oslo")
+            test.eq(#items, 0)
         end)
         test.before_each(function() fixture.script.reset() end)
 

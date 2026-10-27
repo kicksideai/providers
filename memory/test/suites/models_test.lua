@@ -336,6 +336,101 @@ local function define_tests()
             end
         end)
 
+        test.it("fails invalid candidate values, kinds, evidence and times without partial results", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { field = "value", value = "", reason = "value" },
+                { field = "value", value = "   ", reason = "value" },
+                { field = "value", value = false, reason = "value" },
+                { field = "kind", value = "unknown", reason = "shape" },
+                { field = "event_id", value = "other", reason = "evidence" },
+                { field = "valid_at", value = "yesterday", reason = "time" },
+                { field = "confidence", value = 2, reason = "confidence" },
+            }) do
+                local invalid = candidate("work_role", "engineer")
+                invalid[example.field] = example.value
+                fixture.script.respond("structured_output", { items = { candidate("home_city", "Oslo"), invalid }, plans = {} })
+                local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                    { id = "event", role = "user", text = "I live in Oslo and work as an engineer." },
+                } })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_invalid_extraction_" .. example.reason)
+                test.is_true(err:retryable())
+            end
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(schema.properties.items.items.properties.value.minLength, 1)
+            test.eq(schema.properties.items.items.properties.content.minLength, 1)
+        end)
+
+        test.it("fails empty normalization mappings instead of dropping the candidate", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { mappings = { ["1"] = {} } })
+            local result, err = fixture.op(user, "model_step", { candidates = { candidate("home_city", "Oslo") } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_invalid_normalization_mapping")
+            test.is_true(err:retryable())
+        end)
+
+        test.it("fails invalid judge actions and target combinations", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { action = "ADD", targets = { "a" }, reason = "targets" },
+                { action = "NOOP", targets = {}, reason = "targets" },
+                { action = "NOOP", targets = { "z" }, reason = "targets" },
+                { action = "NOOP", targets = { "a", "a" }, reason = "targets" },
+                { action = "SUPERSEDE", targets = { "a", "b" }, reason = "identity" },
+                { action = "INVALID", targets = {}, reason = "action" },
+            }) do
+                fixture.verdict(example.action, example.targets)
+                local result, err = fixture.op(user, "model_step", { step = "judge",
+                    candidate = candidate("home_city", "Oslo"), actions = { "ADD", "NOOP", "SUPERSEDE" }, items = {
+                        { id = "a", key = "home_city", cardinality = "single" },
+                        { id = "b", key = "occupation", cardinality = "single" },
+                    },
+                })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_invalid_judge_" .. example.reason)
+                test.is_true(err:retryable())
+            end
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(table.concat(schema.properties.target_ids.items.enum, ","), "a,b")
+        end)
+
+        test.it("requires targets in the schema when ADD is unavailable", function()
+            local user = fixture.user()
+            fixture.verdict("NOOP", { "existing" })
+            local result, err = fixture.op(user, "model_step", { step = "judge", actions = { "NOOP", "SUPERSEDE" },
+                candidate = candidate("home_city", "Oslo"), items = { { id = "existing", key = "home_city", cardinality = "single" } },
+            })
+            test.is_nil(err, tostring(err))
+            test.eq(result.items.action, "NOOP")
+            local schema = fixture.script.requests("structured_output")[1]
+            test.eq(schema.properties.target_ids.minItems, 1)
+            local prompt = fixture.script.prompts("structured_output")[1].system
+            test.is_true(prompt:find("Every other action requires at least one target", 1, true) ~= nil)
+        end)
+
+        test.it("fails reflection with duplicate or absent grounding without normalizing partial lessons", function()
+            local user = fixture.user()
+            for _, sources in ipairs({ { 1, 1 }, { 1 }, { 1, 3 } }) do
+                local lesson = fixture.candidate("lesson", "travel_guidance", "accessible routes", "Suggest accessible routes.")
+                lesson.based_on = sources
+                fixture.script.respond("structured_output", { items = { lesson } })
+                local result, err = fixture.op(user, "model_step", { step = "reflect", items = {
+                    { id = "a", kind = "fact", key = "mobility", content = "Uses a wheelchair." },
+                    { id = "b", kind = "plan", key = "trip", content = "Plans a journey." },
+                } })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_invalid_reflection_grounding")
+                test.is_true(err:retryable())
+            end
+            test.eq(#fixture.script.requests("structured_output"), 3)
+        end)
+
         test.it("fails malformed whole responses instead of accepting an empty batch", function()
             local user = fixture.user()
             for _, data in ipairs({ '{"items":[', { items = "invalid", plans = {} }, { items = { invalid = true }, plans = {} } }) do
@@ -346,37 +441,38 @@ local function define_tests()
             end
         end)
 
-        test.it("rejects invalid extraction candidates independently with content-free counts", function()
+        test.it("fails the whole extraction when one candidate violates topic rules", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { items = {
                 candidate("home_city", "Oslo"), candidate("private_value", "private value"),
                 { kind = "unknown", key = "bad", content = "Private text" },
             }, plans = {} })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", text = "I live in Oslo." } } })
-            test.is_nil(err, tostring(err))
-            test.eq(#result.items, 1)
-            test.eq(result.stats.rejected, 2)
-            test.eq(result.stats.rejected_extraction_topic_key, 1)
-            test.eq(result.stats.rejected_extraction_shape, 1)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(err:retryable())
+            test.eq(err:details().code, "model_output_invalid_extraction_topic_key")
+            test.is_nil((tostring(err):find("private", 1, true)))
         end)
 
         test.it("rejects non-string mapping keys before canonicalizing them", function()
             local user = fixture.user()
-            fixture.script.respond("structured_output", { mappings = { ["1"] = {
-                { kind = "profile_slot", cardinality = "single", key = {}, value = "Oslo", content = "Lives in Oslo." },
-                { kind = "profile_slot", cardinality = "single", key = true, value = "Oslo", content = "Lives in Oslo." },
-                { kind = "profile_slot", cardinality = "single", key = 123, value = "Oslo", content = "Lives in Oslo." },
-                { kind = "profile_slot", cardinality = "single", key = "home_city", value = "Oslo", content = "Lives in Oslo." },
-            } } })
-            local result, err = fixture.op(user, "model_step", { candidates = { candidate("home_city", "Oslo") } })
-            test.is_nil(err, tostring(err))
-            test.eq(#result.items, 1)
-            test.eq(result.items[1].key, "home_city")
-            test.eq(result.stats.rejected, 3)
-            test.eq(result.stats.rejected_normalization_shape, 3)
+            for _, key in ipairs({ {}, true, 123 }) do
+                fixture.script.respond("structured_output", { mappings = { ["1"] = {
+                    { kind = "profile_slot", cardinality = "single", key = key, value = "Oslo", content = "Lives in Oslo." },
+                    { kind = "profile_slot", cardinality = "single", key = "home_city", value = "Oslo", content = "Lives in Oslo." },
+                } } })
+                local result, err = fixture.op(user, "model_step", { candidates = { candidate("home_city", "Oslo") } })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.UNAVAILABLE)
+                test.is_true(err:retryable())
+                test.eq(err:details().code, "model_output_invalid_normalization_shape")
+            end
         end)
 
-        test.it("keeps valid mapping parts and candidates when others violate topic rules", function()
+        test.it("fails the whole normalization when one mapping part violates topic rules", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { mappings = {
                 ["1"] = { { kind = "profile_slot", cardinality = "single", key = "private_value", value = "private value", content = "Private text" },
@@ -384,13 +480,15 @@ local function define_tests()
                 ["2"] = { { kind = "profile_slot", cardinality = "single", key = "pet_name", value = "Fennel", content = "The cat is Fennel." } },
             } })
             local result, err = fixture.op(user, "model_step", { candidates = { candidate("home_city", "Oslo"), candidate("pet_name", "Fennel") } })
-            test.is_nil(err, tostring(err))
-            test.eq(#result.items, 2)
-            test.eq(result.stats.rejected, 1)
-            test.eq(result.stats.rejected_normalization_topic_key, 1)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(err:retryable())
+            test.eq(err:details().code, "model_output_invalid_normalization_topic_key")
+            test.is_nil((tostring(err):find("private", 1, true)))
         end)
 
-        test.it("rejects ungrounded and invalid reflection lessons without losing valid guidance", function()
+        test.it("fails reflection when a lesson violates topic rules", function()
             local user = fixture.user()
             local good = fixture.candidate("lesson", "travel_guidance", "plan accessible routes", "Suggest accessible routes.")
             good.based_on = { 1, 2 }
@@ -408,11 +506,12 @@ local function define_tests()
                 { id = "e", kind = "fact", key = "c", content = "A source." },
                 { id = "f", kind = "fact", key = "d", content = "A source." },
             } })
-            test.is_nil(err, tostring(err))
-            test.eq(#result.items, 1)
-            test.eq(result.stats.rejected, 2)
-            test.eq(result.stats.rejected_reflection_topic_key, 1)
-            test.eq(result.stats.rejected_reflection_grounding, 1)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(err:retryable())
+            test.eq(err:details().code, "model_output_invalid_reflection_topic_key")
+            test.is_nil((tostring(err):find("private", 1, true)))
         end)
     end)
 end

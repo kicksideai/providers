@@ -19,6 +19,29 @@ local function define_tests()
             test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
+        test.it("returns visible validation errors from Remember normalization and judge calls", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.create_claim(user, id, "Oslo")
+            local input = { kind = "fact", key = "occupation", cardinality = "multi", value = "engineer", content = "The user is an engineer." }
+            for _, step in ipairs({ "normalization", "judge" }) do
+                if step == "normalization" then
+                    fixture.script.respond("structured_output", { mappings = { ["1"] = {} } })
+                else
+                    fixture.normalization({ input })
+                    fixture.verdict("NOOP", {})
+                end
+                local result, err = fixture.op(user, "tool_remember", { input = input }, fixture.agent_context(id, "s-" .. user, "agent-a"))
+                test.is_nil(result)
+                test.not_nil(err)
+                local code = "model_output_invalid_" .. step .. (step == "normalization" and "_mapping" or "_targets")
+                test.eq(err:details().code, code)
+                test.is_true(tostring(err):find(code, 1, true) ~= nil, tostring(err))
+                fixture.settle(user, id)
+                test.eq(#fixture.items(user, id), 1)
+            end
+        end)
+
         test.it("searches with a fixed typed shape and never exposes raw row fields", function()
             local user = fixture.user()
             local id = fixture.memory(user)

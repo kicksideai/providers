@@ -47,10 +47,12 @@ local function define_tests()
                 status = "open", next_step = "", details = "A cat named Biscuit",
             }, "The user's cat is named Biscuit.", "statement") } })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
-            test.is_nil(err, tostring(err))
-            test.eq(#result.items, 0)
-            test.eq(result.stats.rejected, 1)
-            test.eq(result.stats.rejected_extraction_value, 1)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(err:retryable())
+            test.eq(err:details().code, "model_output_invalid_extraction_value")
+            test.is_nil((tostring(err):find("private", 1, true)))
             test.eq(#fixture.script.requests("structured_output"), 1)
         end)
 
@@ -116,10 +118,12 @@ local function define_tests()
                     { key = "travel_help", kind = "plan", cardinality = "single" },
                     { key = "mobility", kind = "profile_slot", cardinality = "single" },
                 } })
-                test.is_nil(err, tostring(err))
-                test.eq(#result.items, 0)
-                test.eq(result.stats.rejected, 1)
-                test.eq(result.stats.rejected_normalization_kind, 1)
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.UNAVAILABLE)
+                test.is_true(err:retryable())
+                test.eq(err:details().code, "model_output_invalid_normalization_kind")
+                test.is_nil((tostring(err):find("private", 1, true)))
             end
         end)
 

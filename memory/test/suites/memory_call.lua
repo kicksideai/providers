@@ -32,15 +32,14 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return true, nil
     end,
     model_step = function(a: any)
-        local stats = {}
         local model = a.model or "test-fast"
         local result, err
-        if a.step == "extract" then result, err = models.extract(model, a.span, a.keys or {}, nil, a.context, stats)
-        elseif a.step == "reflect" then result, err = models.reflect(model, a.items, stats)
-        elseif a.step == "judge" then result, err = models.judge(model, a.candidate, a.items, { "ADD", "NOOP" })
-        else result, err = models.normalize(model, a.candidates, a.keys or {}, nil, stats) end
+        if a.step == "extract" then result, err = models.extract(model, a.span, a.keys or {}, nil, a.context)
+        elseif a.step == "reflect" then result, err = models.reflect(model, a.items)
+        elseif a.step == "judge" then result, err = models.judge(model, a.candidate, a.items, a.actions or { "ADD", "NOOP" })
+        else result, err = models.normalize(model, a.candidates, a.keys or {}, nil) end
         if err then return nil, err end
-        return { items = result, stats = stats }, nil
+        return { items = result }, nil
     end,
     extraction_capacity = function(a: any) return models.extraction_capacity(a.model or "test-fast", a.span or {}) end,
     update_config = function(a: any) return bindings.update_config(a) end,
