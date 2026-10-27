@@ -371,7 +371,11 @@ local function define_tests()
                 local compound = fixture.candidate("fact", "background", example.value, example.content, "compound-source")
                 fixture.history.record(session, { { id = "compound-source", role = "user", content = example.content } })
                 if example.tool then
-                    fixture.script.respond("structured_output", { mappings = { ["1"] = parts } })
+                    local mappings = {}
+                    for _, part in ipairs(parts) do
+                        mappings[#mappings + 1] = { key = part.key, kind = part.kind, cardinality = part.cardinality, value = part.value, content = part.content }
+                    end
+                    fixture.script.respond("structured_output", { mappings = { ["1"] = mappings } })
                 else fixture.extraction(parts) end
                 if example.tool then
                     local result, err = fixture.op(user, "tool_remember", { input = compound }, fixture.agent_context(id, session, "agent-a"))
@@ -468,14 +472,13 @@ local function define_tests()
             fixture.settle(user, id)
             local session = "s-" .. user
             fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
-            fixture.script.respond("structured_output", { mappings = { ["1"] = { { key = "home_city", value = "", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } } } })
+            fixture.script.respond("structured_output", { mappings = { ["1"] = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } } })
             local normalized, err = fixture.op(user, "model_step", { candidates = {
                 fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal"),
             }, keys = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } })
-            test.is_nil(err, tostring(err))
-            test.eq(#normalized.items, 0)
-            test.eq(normalized.stats.rejected, 1)
-            test.eq(normalized.stats.rejected_normalization_kind, 1)
+            test.is_nil(normalized)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_malformed")
             fixture.settle(user, id)
             local rows = fixture.items(user, id)
             test.eq(#rows, 1)
@@ -616,6 +619,93 @@ local function define_tests()
             test.eq(cursor.last_event_id, "h4")
         end)
 
+        for _, phase in ipairs({ "before_step", "deactivate", "checkpoint" }) do
+            test.it("enrolls statement-sized consecutive runs for " .. phase .. " with independent erasure ownership", function()
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local session = "s-" .. user
+                local capacity, capacity_err = fixture.op(user, "extraction_capacity", {})
+                test.is_nil(capacity_err, tostring(capacity_err))
+                test.is_true(capacity >= 1)
+                local events = {}
+                for i = 1, 2 * capacity + 1 do
+                    events[#events + 1] = { id = "batch-" .. tostring(i), role = "user", content = "Statement " .. tostring(i) .. "." }
+                    events[#events + 1] = { id = "reply-" .. tostring(i), role = "assistant", content = "Acknowledged." }
+                end
+                fixture.history.record(session, events)
+                if phase == "checkpoint" then fixture.script.respond("generate", "Working state.") end
+                -- Hold execution until every slice and its sources are enrolled.
+                fixture.script.hold("structured_output")
+                for i = 1, 3 do fixture.extraction({}) end
+                local extra = phase == "deactivate" and { refs = { deactivation_range = { to_id = events[#events].id } } } or nil
+                local applied, err
+                if phase == "checkpoint" then
+                    applied, err = fixture.op(user, "checkpoint", { payload = fixture.payload(phase, session, "agent-a") }, fixture.agent_context(id, session, "agent-a"))
+                else applied, err = apply(user, phase, id, session, "agent-a", extra) end
+                test.is_nil(err, tostring(err))
+                test.is_true(applied.metadata.capture.captured)
+                local enrolled = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
+                test.eq(#enrolled, 3)
+                table.sort(enrolled, function(a, b) return a.id < b.id end)
+                local previous = ""
+                for i, run in ipairs(enrolled) do
+                    test.eq(run.from_event_id, previous)
+                    test.eq(#run.input.span, i < 3 and 2 * capacity or 2)
+                    local db = fixture.db()
+                    local sources = db:query("SELECT event_id FROM kickside_memory_run_sources WHERE component_id = $1 AND run_id = $2", { id, run.id })
+                    db:release()
+                    test.eq(#sources, #run.input.span + #(run.input.context or {}))
+                    previous = run.to_event_id
+                end
+                fixture.script.release("structured_output")
+                local finished = fixture.wait_runs(user, id, "derive", 3)
+                for _, run in ipairs(finished) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
+                local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+                test.eq(cursor.last_event_id, events[#events].id)
+                local ledger = fixture.op(user, "ledger", { component_id = id })
+                local advanced = {}
+                for _, event in ipairs(ledger) do
+                    if event.type == "kickside.memory.events:capture.advanced" then advanced[#advanced + 1] = json.decode(event.body) end
+                end
+                test.eq(#advanced, 3)
+                for i, event in ipairs(advanced) do
+                    test.eq(event.from_event_id, enrolled[i].from_event_id)
+                    test.eq(event.last_event_id, enrolled[i].to_event_id)
+                end
+                test.eq(#fixture.script.requests("structured_output"), 3)
+                local seeded = fixture.remember(user, id, { fixture.candidate("fact", "setting", "retained", "A retained setting.", "batch-1") }, "batch-erasure")
+                fixture.settle(user, id)
+                local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = seeded.item_ids[1] })
+                test.is_nil(forget_err, tostring(forget_err))
+                fixture.settle(user, id)
+                for _, run in ipairs(enrolled) do
+                    local erased = fixture.op(user, "run", { run_id = run.id })
+                    test.is_nil(erased.input.span)
+                end
+            end)
+        end
+
+        test.it("does not advance consecutive captures past a failed predecessor", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            local capacity = fixture.op(user, "extraction_capacity", {})
+            local events = {}
+            for i = 1, capacity + 1 do
+                events[i] = { id = "failed-batch-" .. tostring(i), role = "user", content = "A statement." }
+            end
+            fixture.history.record(session, events)
+            fixture.script.fail("structured_output", "Invalid model input", errors.INVALID, false)
+            local applied, err = apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(err, tostring(err))
+            test.is_true(applied.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 2)
+            for _, run in ipairs(runs) do test.eq(run.status, "failed", tostring(run.last_error)) end
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+            test.is_true(cursor == nil or cursor.last_event_id == "")
+            test.eq(#fixture.script.requests("structured_output"), 1)
+        end)
+
         test.it("bounds deactivation capture to the outgoing agent history", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -659,22 +749,30 @@ local function define_tests()
                 if case.cursor then
                     fixture.extraction({})
                     apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = case.cursor } })
-                    fixture.wait_runs(user, id, "derive", 1)
+                    local count = case.cursor == "c" and 2 or 1
+                    if count == 2 then fixture.extraction({}) end
+                    fixture.wait_runs(user, id, "derive", count)
                 end
-                fixture.extraction({})
+                local capacity = fixture.op(user, "extraction_capacity", {})
+                local selected_count = case.expected == "" and 0 or #case.expected:gsub(",", "")
+                local count = math.ceil(selected_count / capacity)
+                for _ = 1, count do fixture.extraction({}) end
                 local applied, err = apply(user, "deactivate", id, session, "agent-a", { refs = case.refs, selector = case.selector })
                 test.is_nil(err, tostring(err))
                 if case.expected == "" then
                     test.is_false(applied.metadata.capture.captured)
                 else
-                    local runs = fixture.wait_runs(user, id, "derive", case.cursor and 2 or 1)
-                    local ids = {}
-                    local captured_run
+                    local runs = fixture.wait_runs(user, id, "derive", count + (case.cursor and 1 or 0))
+                    table.sort(runs, function(a, b) return a.id < b.id end)
+                    local ids, capturing = {}, false
                     for _, run in ipairs(runs) do
-                        if run.id == applied.metadata.capture.run_id then captured_run = run end
+                        if run.id == applied.metadata.capture.run_id then capturing = true end
+                        if capturing then
+                            test.eq(run.status, "succeeded", tostring(run.last_error))
+                            for _, event in ipairs(run.input.span) do ids[#ids + 1] = event.id end
+                        end
                     end
-                    test.not_nil(captured_run)
-                    for _, event in ipairs(captured_run.input.span) do ids[#ids + 1] = event.id end
+                    test.is_true(capturing)
                     test.eq(table.concat(ids, ","), case.expected)
                 end
             end)

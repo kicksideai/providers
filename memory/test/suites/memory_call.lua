@@ -35,6 +35,8 @@ local OPS: { [string]: (any) -> (any, any) } = {
         if err then return nil, err end
         return { items = result, stats = stats }, nil
     end,
+    extraction_capacity = function(a: any) return models.extraction_capacity(a.model or "test-fast", a.span or {}) end,
+    update_config = function(a: any) return bindings.update_config(a) end,
     normalize = function(a: any) return models.normalize("test-fast", a.candidates, a.keys or {}) end,
     extract = function(a: any) return models.extract("test-fast", a.span, {}, nil) end,
     create = function(a: any) return ops.create(a.component_id, a.fields) end,

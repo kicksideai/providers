@@ -42,6 +42,7 @@ entries:
       agent_history: kickside.memory.agent:history
       memory_runs: kickside.memory.persist:runs
       memory_jobs: kickside.memory.engine:jobs
+      memory_models: kickside.memory.engine:models
 
   - name: recall
     kind: library.lua

@@ -1,9 +1,44 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local fixture = require("fixture")
+local json = require("json")
 
 local function candidate(key: string, value: string): any
     return fixture.candidate("profile_slot", key, value, "The user states an attribute.", "event", nil, "single")
+end
+
+local function codepoints(text: string): integer
+    local _, count = text:gsub("[^\128-\191]", "")
+    return count
+end
+
+local function maximal(node: any): any
+    if node.enum then
+        local value = node.enum[1]
+        for _, option in ipairs(node.enum) do
+            if #json.encode(option) > #json.encode(value) then value = option end
+        end
+        return value
+    elseif node.type == "object" then
+        test.eq(node.additionalProperties, false)
+        local value = {}
+        for key, child in pairs(node.properties) do value[key] = maximal(child) end
+        return value
+    elseif node.type == "array" then
+        test.is_true(type(node.maxItems) == "number", "Array has no finite bound")
+        local value = {}
+        for i = 1, node.maxItems do value[i] = maximal(node.items) end
+        return value
+    elseif node.type == "string" then
+        test.is_true(type(node.maxLength) == "number", "String has no finite bound")
+        if node.pattern then return string.rep("a", node.maxLength) end
+        return string.rep("界", node.maxLength)
+    elseif node.type == "number" then
+        test.eq(node.minimum, 0)
+        test.eq(node.maximum, 1)
+        return 0.12345678901234567
+    end
+    error("Unexpected result schema type: " .. tostring(node.type))
 end
 
 local function define_tests()
@@ -91,12 +126,106 @@ local function define_tests()
             local second, second_err = fixture.op(user, "model_step", { candidates = { one, two } })
             test.is_nil(second_err, tostring(second_err))
             local options = fixture.script.requests("structured_options")
-            test.is_true(options[2].max_tokens > options[1].max_tokens)
+            test.is_true(options[2].max_tokens > options[1].max_tokens, json.encode(options))
             local schemas = fixture.script.requests("structured_output")
-            test.is_nil(schemas[1].properties.mappings.properties["1"].maxItems)
-            test.is_nil(schemas[1].properties.mappings.properties["1"].items.properties.value.maxLength)
+            test.eq(schemas[1].properties.mappings.properties["1"].maxItems, 4)
+            test.eq(schemas[1].properties.mappings.properties["1"].items.properties.value.maxLength, 160)
             test.eq(#first.items, 1)
             test.eq(#second.items, 2)
+        end)
+
+        test.it("budgets cover maximum compact results for every structured call at extraction capacity", function()
+            local user = fixture.user()
+            local span, candidates, sources = {}, {}, {}
+            local event_id = string.rep("e", 36)
+            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { span = { { id = event_id, role = "user" } } })
+            test.is_nil(capacity_err, tostring(capacity_err))
+            for i = 1, capacity do
+                span[i] = { id = event_id, role = "user", text = "An attribute." }
+                candidates[i] = candidate("attribute_" .. tostring(i), "An attribute")
+            end
+            for i = 1, 2 * capacity do sources[i] = { id = "source-" .. tostring(i), kind = "fact", key = "attribute", content = "An attribute." } end
+            for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
+                fixture.script.respond("structured_output", {}, "length")
+                local _, err = fixture.op(user, "model_step", { step = step, span = span, candidates = candidates,
+                    candidate = candidates[1], items = sources })
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_truncated")
+                local schemas = fixture.script.requests("structured_output")
+                local options = fixture.script.requests("structured_options")
+                local schema = schemas[#schemas]
+                local answer = maximal(schema)
+                local budget = options[#options].max_tokens
+                test.is_true(budget >= codepoints(json.encode(answer)), step .. " budget cannot cover maximum compact result")
+                if step == "extract" then
+                    test.eq(schema.properties.items.maxItems, capacity * 4)
+                    test.eq(schema.properties.plans.maxItems, capacity)
+                elseif step == "reflect" then
+                    test.eq(schema.properties.items.maxItems, math.min(4, capacity))
+                    test.eq(schema.properties.items.items.properties.based_on.maxItems, #sources)
+                elseif step == "judge" then test.eq(schema.properties.target_ids.maxItems, #sources) end
+            end
+            span[#span + 1] = span[1]
+            local before = #fixture.script.requests("structured_output")
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = span })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.is_true(tostring(err):find("output limit", 1, true) ~= nil)
+            test.eq(#fixture.script.requests("structured_output"), before)
+        end)
+
+        test.it("fails visibly on strings and arrays exceeding the supplied schema bounds", function()
+            local user = fixture.user()
+            for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
+                for _, overflow in ipairs({ "string", "array" }) do
+                    local city = candidate("home_city", "Oslo")
+                    local data = { items = { city }, plans = {} }
+                    if step == "normalize" then
+                        data = { mappings = { ["1"] = { { kind = city.kind, key = city.key, cardinality = city.cardinality, value = city.value, content = city.content } } } }
+                    elseif step == "reflect" then
+                        data = { items = { city } }
+                        city.kind = "lesson"; city.cardinality = "multi"; city.event_id = ""; city.based_on = { 1, 2 }
+                    elseif step == "judge" then data = { action = "ADD", reason = "Distinct attribute.", target_ids = {} } end
+                    if overflow == "string" then
+                        if step == "judge" then data.reason = string.rep("x", 193)
+                        elseif step == "normalize" then data.mappings["1"][1].content = string.rep("x", 241)
+                        else city.content = string.rep("x", 241) end
+                    else
+                        if step == "judge" then data.target_ids = { "a", "a", "a" }
+                        elseif step == "normalize" then
+                            for i = 2, 5 do data.mappings["1"][i] = data.mappings["1"][1] end
+                        else
+                            for i = 2, 5 do data.items[i] = city end
+                        end
+                    end
+                    fixture.script.respond("structured_output", data)
+                    local result, err = fixture.op(user, "model_step", { step = step,
+                        span = { { id = "event", role = "user", text = "I live in Oslo." } },
+                        candidates = { candidate("home_city", "Oslo") }, candidate = candidate("home_city", "Oslo"),
+                        neighbors = { { id = "a", kind = "fact", key = "home_city", content = "Lives in Oslo." } },
+                        items = { { id = "a", kind = "fact", key = "home_city", content = "Lives in Oslo." },
+                            { id = "b", kind = "fact", key = "mobility", content = "Uses trains." } },
+                    })
+                    test.is_nil(result, step .. " accepts " .. overflow .. " overflow")
+                    test.not_nil(err)
+                    test.eq(err:details().code, "model_output_malformed")
+                end
+            end
+        end)
+
+        test.it("rejects extraction models unable to hold one statement on creation and update", function()
+            local user = fixture.user()
+            local id, create_err = fixture.try_memory(user, { extraction_model = "test-small" })
+            test.is_nil(id)
+            test.not_nil(create_err)
+            test.is_true(tostring(create_err):find("one statement", 1, true) ~= nil, tostring(create_err))
+            id = fixture.memory(user)
+            local updated, update_err = fixture.op(user, "update_config", { component_id = id, config = { extraction_model = "test-small" } })
+            test.is_nil(updated)
+            test.not_nil(update_err)
+            test.is_true(tostring(update_err):find("one statement", 1, true) ~= nil, tostring(update_err))
+            local stored = fixture.op(user, "store", { component_id = id })
+            test.is_true(stored.config.extraction_model ~= "test-small")
         end)
 
         test.it("fails malformed whole responses instead of accepting an empty batch", function()
@@ -166,6 +295,10 @@ local function define_tests()
             local result, err = fixture.op(user, "model_step", { step = "reflect", items = {
                 { id = "a", kind = "profile_slot", key = "mobility", content = "Uses a wheelchair." },
                 { id = "b", kind = "plan", key = "trip", content = "Plans a train journey." },
+                { id = "c", kind = "fact", key = "a", content = "A source." },
+                { id = "d", kind = "fact", key = "b", content = "A source." },
+                { id = "e", kind = "fact", key = "c", content = "A source." },
+                { id = "f", kind = "fact", key = "d", content = "A source." },
             } })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 1)

@@ -82,3 +82,16 @@ entries:
     providers:
       - id: app.llm:provider
         provider_model: test-embed
+
+  - name: test-small
+    kind: registry.entry
+    meta:
+      type: llm.model
+      name: test-small
+      title: Small output test model
+      capabilities: [generate, structured_output]
+    max_tokens: 100000
+    output_tokens: 256
+    providers:
+      - id: app.llm:provider
+        provider_model: test-small

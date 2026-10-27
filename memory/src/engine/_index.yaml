@@ -20,7 +20,7 @@ entries:
     meta:
       comment: Extraction, reconcile judge, reflection, vectors and working summary model calls.
     source: file://models.lua
-    modules: [json]
+    modules: [json, uuid]
     imports:
       llm: wippy.llm:llm
       types: kickside.memory:types

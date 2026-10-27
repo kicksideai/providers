@@ -67,7 +67,7 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
     return { created = true }, nil
 end
 
-function M.schedule(run: RunInput, params: any, expected: string?): (any?, error?)
+function M.schedule(run: RunInput, params: any, expected: string?, following: { any }?): (any?, error?)
     local scheduled, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any, error?)
         if expected ~= nil then
             local rows, read_err = tx:query(
@@ -84,15 +84,25 @@ function M.schedule(run: RunInput, params: any, expected: string?): (any?, error
             if active_err then return nil, types.failed("memory capture ownership read failed", active_err) end
             if active and #active > 0 then return { scheduled = false, run_id = active[1].id }, nil end
         end
-        local proof, create_err = insert_tx(tx, run)
-        if create_err then return nil, create_err end
-        if not proof.created then return { scheduled = false, run_id = run.id, job_id = proof.job_id }, nil end
-        local queued, queue_err = jobs.enqueue_tx(tx, sqlite and "sqlite" or "postgres", params)
-        if queue_err then return nil, queue_err end
-        if not queued or type(queued.id) ~= "string" then return nil, types.internal("memory queue enrollment returns no job") end
-        local _, attach_err = tx:execute("UPDATE kickside_memory_runs SET job_id = $1 WHERE id = $2", { queued.id, run.id })
-        if attach_err then return nil, types.failed("memory run enrollment failed", attach_err) end
-        return { scheduled = true, run_id = run.id, job_id = queued.id }, nil
+        local batch = { { run = run, params = params } }
+        for _, entry in ipairs(following or {}) do batch[#batch + 1] = entry end
+        local first = nil
+        for _, entry in ipairs(batch) do
+            local current = entry.run
+            local proof, create_err = insert_tx(tx, current)
+            if create_err then return nil, create_err end
+            local job_id = proof.job_id
+            if proof.created then
+                local queued, queue_err = jobs.enqueue_tx(tx, sqlite and "sqlite" or "postgres", entry.params)
+                if queue_err then return nil, queue_err end
+                if not queued or type(queued.id) ~= "string" then return nil, types.internal("memory queue enrollment returns no job") end
+                job_id = queued.id
+                local _, attach_err = tx:execute("UPDATE kickside_memory_runs SET job_id = $1 WHERE id = $2", { job_id, current.id })
+                if attach_err then return nil, types.failed("memory run enrollment failed", attach_err) end
+            end
+            if not first then first = { scheduled = proof.created, run_id = current.id, job_id = job_id } end
+        end
+        return first, nil
     end)
     if err then return nil, err end
     if scheduled.scheduled then

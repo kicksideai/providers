@@ -6,11 +6,27 @@ local context = require("agent_context")
 local history = require("agent_history")
 local runs = require("memory_runs")
 local jobs = require("memory_jobs")
+local models = require("memory_models")
 
 local M = {}
 
 local CAPTURE_CONTEXT_WINDOW = 10
 local CAPTURE_CONTEXT_MAX_CHARS = 6000
+
+local function context_window(entries: { any }): { any }
+    local out = {}
+    local remaining = CAPTURE_CONTEXT_MAX_CHARS
+    for i = #entries, math.max(1, #entries - CAPTURE_CONTEXT_WINDOW + 1), -1 do
+        if remaining > 0 then
+            local entry = {}
+            for key, value in pairs(entries[i]) do entry[key] = value end
+            entry.text = entry.text:sub(-remaining)
+            remaining = remaining - #entry.text
+            table.insert(out, 1, entry)
+        end
+    end
+    return out
+end
 
 -- The derive commit advances the cursor; capture reads the unconsumed host history.
 function M.capture(payload: any, to_event_id: string?): (any?, error?)
@@ -71,21 +87,34 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     local preceding, preceding_err = history.read(payload, { mode = "range", to_id = tostring(events[1].id) })
     if preceding_err then return nil, preceding_err end
     local prior = (preceding :: any).events
-    local prior_context: { any } = {}
-    local remaining = CAPTURE_CONTEXT_MAX_CHARS
-    for i = #prior - 1, math.max(1, #prior - CAPTURE_CONTEXT_WINDOW), -1 do
+    local entries = {}
+    for i = math.max(1, #prior - CAPTURE_CONTEXT_WINDOW), #prior - 1 do
         local entry = history.span_entry(prior[i], cfg)
-        if entry and remaining > 0 then
-            entry.text = entry.text:sub(-remaining)
-            remaining = remaining - #entry.text
-            table.insert(prior_context, 1, entry)
-        end
+        if entry then entries[#entries + 1] = entry end
     end
-    local scheduled, schedule_err = jobs.capture({
-        component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
-        agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
-        to_event_id = tostring(events[#events].id), span = span, context = prior_context,
-    })
+    local maximum, capacity_err = models.extraction_capacity(cfg.extraction_model, span)
+    if capacity_err then return nil, capacity_err end
+    local captures: { any } = {}
+    local part: { any } = {}
+    local count, prior_context = 0, context_window(entries)
+    local function append(to_id: string)
+        captures[#captures + 1] = {
+            component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
+            agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
+            to_event_id = to_id, span = part, context = prior_context,
+        }
+        from = to_id
+        part, count, prior_context = {}, 0, context_window(entries)
+    end
+    for _, entry in ipairs(span) do
+        if models.is_statement(entry) and count == maximum then append(part[#part].id) end
+        part[#part + 1] = entry
+        entries[#entries + 1] = entry
+        if models.is_statement(entry) then count = count + 1 end
+    end
+    append(tostring(events[#events].id))
+    local first: any = table.remove(captures, 1)
+    local scheduled, schedule_err = jobs.capture(first, captures)
     if schedule_err then return nil, schedule_err end
     return { captured = (scheduled :: any).scheduled, run_id = (scheduled :: any).run_id, memory_id = memory_id }, nil
 end

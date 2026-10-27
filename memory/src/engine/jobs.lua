@@ -79,11 +79,18 @@ type Capture = {
     context: { any }?,
 }
 
-function M.capture(capture: Capture): (any?, error?)
+function M.capture(capture: Capture, following: { Capture }?): (any?, error?)
     local run, identity, err = new_derive_run(uuid.v7(), capture.component_id, capture.host_kind, capture.host_id, capture.agent_id,
         capture.from_event_id, capture.to_event_id, capture.span, capture.context)
     if err then return nil, err end
-    return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }), capture.from_event_id)
+    local rest = {}
+    for _, part in ipairs(following or {}) do
+        local next_run, next_identity, next_err = new_derive_run(uuid.v7(), part.component_id, part.host_kind, part.host_id, part.agent_id,
+            part.from_event_id, part.to_event_id, part.span, part.context)
+        if next_err then return nil, next_err end
+        rest[#rest + 1] = { run = next_run, params = enrollment(next_run, next_identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }) }
+    end
+    return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }), capture.from_event_id, rest)
 end
 
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
@@ -220,6 +227,13 @@ function M.derive_authorized(value: any): any
         local fresh, read_err = runs.get(run.id)
         if read_err then return nil, read_err end
         if not fresh then return nil, types.not_found("memory run not found") end
+        if run.host_kind ~= "content" then
+            local cursor, cursor_err = runs.cursor(run.component_id, run.host_kind, run.host_id)
+            if cursor_err then return nil, cursor_err end
+            if (cursor and cursor.last_event_id or "") ~= run.from_event_id then
+                return nil, types.invalid("memory capture predecessor has not advanced the cursor")
+            end
+        end
         local input = fresh.input
         local span = input.span or {}
         local events: { [string]: any } = {}

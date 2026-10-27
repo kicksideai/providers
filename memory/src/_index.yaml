@@ -139,6 +139,7 @@ entries:
     source: file://config.lua
     modules: [registry]
     imports:
+      memory_models: kickside.memory.engine:models
       types: kickside.memory:types
 
   - name: ui_fs

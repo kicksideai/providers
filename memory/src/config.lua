@@ -2,6 +2,7 @@
 
 local registry = require("registry")
 local types = require("types")
+local models = require("memory_models")
 
 local M = {}
 
@@ -57,7 +58,7 @@ local function check_value(key: string, spec: any, value: any): error?
 end
 
 function M.validate(config: any): error?
-    if config == nil then return nil end
+    if config == nil then config = {} end
     if type(config) ~= "table" then return types.invalid("config must be an object") end
     local schema, err = M.schema()
     if err then return err end
@@ -68,7 +69,10 @@ function M.validate(config: any): error?
         local value_err = check_value(tostring(key), spec, value)
         if value_err then return value_err end
     end
-    return nil
+    local effective, effective_err = M.effective(config)
+    if effective_err then return effective_err end
+    local _, capacity_err = models.extraction_capacity((effective :: any).extraction_model)
+    return capacity_err
 end
 
 function M.effective(stored: any): (any?, error?)
