@@ -169,6 +169,66 @@ local function define_tests()
             test.eq(#requests, 0)
         end)
 
+        test.it("keeps owner edits authoritative when reusing an existing claim", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.relations({ "unrelated" })
+            local seeded = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Paris", "A preferred city.", "first-city", nil, "multi"),
+                fixture.candidate("profile_slot", "home_city", "Berlin", "A preferred city.", "second-city", nil, "multi"),
+            }, "owner-reuse-seed")
+            fixture.settle(user, id)
+            local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = seeded.item_ids[1], fields = {
+                content = "The user prefers Berlin.", value = "Berlin",
+            } })
+            test.is_nil(edit_err, tostring(edit_err))
+            fixture.settle(user, id)
+            local owner = fixture.op(user, "get", { component_id = id, item_id = edited.item_id })
+            test.eq(owner.source, "owner")
+            test.eq(owner.content, "The user prefers Berlin.")
+            local refs = fixture.op(user, "provenance", { component_id = id, item_id = owner.id })
+            test.eq(#refs, 2)
+            local result = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Oslo", "The user prefers Oslo.", "first-city", nil, "multi"),
+            }, "owner-reuse-recapture")
+            test.eq(result.stats.noop, 1)
+            test.eq(result.stats.added, 0)
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id, { key = "home_city", statuses = { "current" } }), 1)
+        end)
+
+        for _, edit_value in ipairs({ false, true }) do
+            test.it("keeps owner " .. (edit_value and "value" or "content") .. " edits ahead of capture of the same evidence", function()
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local seeded = fixture.remember(user, id, {
+                    fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement"),
+                }, "owner-edit-seed")
+                fixture.settle(user, id)
+                local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = seeded.item_ids[1], fields = {
+                    content = edit_value and "The user lives in Berlin." or "Paris is the user's home city.",
+                    value = edit_value and "Berlin" or nil,
+                } })
+                test.is_nil(edit_err, tostring(edit_err))
+                fixture.settle(user, id)
+                local owner = fixture.op(user, "get", { component_id = id, item_id = edited.item_id })
+                test.eq(owner.source, "owner")
+                local refs = fixture.op(user, "provenance", { component_id = id, item_id = owner.id })
+                test.eq(#refs, 1)
+                test.eq(refs[1].event_id, "statement")
+                local result = fixture.remember(user, id, {
+                    fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "statement"),
+                }, "owner-edit-recapture")
+                test.eq(result.stats.noop, 1)
+                test.eq(result.stats.added, 0)
+                fixture.settle(user, id)
+                local current = fixture.items(user, id, { key = "home_city", statuses = { "current" } })
+                test.eq(#current, 1)
+                test.eq(current[1].id, owner.id)
+                test.eq(current[1].content, owner.content)
+            end)
+        end
+
         for _, source in ipairs({ "tool", "owner" }) do
             for _, inferred in ipairs({ "capture", "reflection" }) do
                 for _, cardinality in ipairs({ "single", "multi" }) do

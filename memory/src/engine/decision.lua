@@ -335,8 +335,8 @@ function Decision:revise(item: any, content: string, priority: number?, vector: 
     local payload_id, id_err = canonical_json.hash({ "revision", item.id, self.key })
     if id_err then return id_err end
     self.staged[#self.staged + 1] = { payload_id = payload_id, owner_item_id = item.id, content = content, value = item.value, content_hash = content_hash, vector = vector }
-    self:emit(types.EVENT.ITEM_REVISED, { item_id = item.id, payload_id = payload_id, content_hash = content_hash, priority = priority })
-    self:set(item, { content = content, content_hash = content_hash, priority = priority or item.priority })
+    self:emit(types.EVENT.ITEM_REVISED, { item_id = item.id, payload_id = payload_id, content_hash = content_hash, priority = priority, source = self.source })
+    self:set(item, { content = content, content_hash = content_hash, priority = priority or item.priority, source = self.source })
     self.stats.revised = self.stats.revised + 1
     return nil
 end

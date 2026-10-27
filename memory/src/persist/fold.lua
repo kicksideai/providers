@@ -39,7 +39,7 @@ end
 local function set_status_tx(tx: any, component_id: string, item_id: string, seq: integer, fields: { [string]: any }): error?
     local sets: { string } = {}
     local params: { any } = {}
-    for _, name in ipairs({ "status", "superseded_by", "invalid_at", "conflict_group", "content", "value", "content_hash", "priority" }) do
+    for _, name in ipairs({ "status", "superseded_by", "invalid_at", "conflict_group", "content", "value", "content_hash", "priority", "source" }) do
         if fields[name] == NULL then
             sets[#sets + 1] = name .. " = NULL"
         elseif fields[name] ~= nil then
@@ -107,6 +107,7 @@ local function apply_revised(tx: any, sqlite: boolean, component_id: string, seq
     local payload, payload_err = payloads.get_tx(tx, component_id, types.trim(body.payload_id))
     if payload_err then return payload_err end
     local fields: { [string]: any } = { content_hash = body.content_hash }
+    if body.source ~= nil then fields.source = body.source end
     if body.priority ~= nil then fields.priority = math.floor(tonumber(body.priority) or 0) end
     if payload then
         fields.content = payload.content

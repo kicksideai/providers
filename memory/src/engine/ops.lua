@@ -40,19 +40,31 @@ local function assert_claim(d: any, scope: any, fields: any, replaces: { any }):
     if claim_err then return nil, claim_err end
     local live, live_err = d:claimed(scope_key, claim_id :: string, { types.STATUS.CURRENT })
     if live_err then return nil, live_err end
-    if #(live :: any) > 0 then
-        local destination = (live :: any)[1]
-        local reuse_err = d:reuse(destination, {}, replaces)
-        if reuse_err then return nil, reuse_err end
-        return { item_id = destination.id, unchanged = #replaces == 0 }, nil
-    end
     local targets: { any } = {}
     for _, item in ipairs(replaces) do targets[#targets + 1] = item end
-    if fields.cardinality == types.CARDINALITY.SINGLE then
+    if #(live :: any) == 0 and fields.cardinality == types.CARDINALITY.SINGLE then
         local held, held_err = d:held(scope_key, fields.key)
         if held_err then return nil, held_err end
         for _, item in ipairs(held :: any) do targets[#targets + 1] = item end
     end
+    local provenance: { any } = {}
+    for _, target in ipairs(targets) do
+        local refs, refs_err = items.provenance(d.component_id, target.id)
+        if refs_err then return nil, refs_err end
+        for _, ref in ipairs(refs :: any) do provenance[#provenance + 1] = ref end
+    end
+    if #(live :: any) > 0 then
+        local destination = (live :: any)[1]
+        local reuse_err = d:reuse(destination, provenance, replaces)
+        if reuse_err then return nil, reuse_err end
+        local revised = destination.content ~= fields.content or destination.priority ~= fields.priority or destination.source ~= d.source
+        if revised then
+            local revise_err = d:revise(destination, fields.content, fields.priority, fields.vector)
+            if revise_err then return nil, revise_err end
+        end
+        return { item_id = destination.id, unchanged = #replaces == 0 and not revised }, nil
+    end
+    fields.provenance = provenance
     local item, add_err = d:add(scope, fields)
     if add_err then return nil, add_err end
     if #targets > 0 then

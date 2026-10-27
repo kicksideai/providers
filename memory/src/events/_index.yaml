@@ -101,6 +101,8 @@ entries:
         type: string
       priority:
         type: integer
+      source:
+        type: string
     required:
     - item_id
     - payload_id
