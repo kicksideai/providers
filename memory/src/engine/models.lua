@@ -89,10 +89,13 @@ Choose exactly one action:
 - ADD: the new memory covers a distinct attribute, independent value or goal.
 - NOOP: an existing memory already says the same thing, even under another kind or key.
 - SUPERSEDE: the new memory updates or corrects the same attribute or goal. A direct
-  statement of changed state replaces the earlier state.
+  statement that a single-valued attribute changed replaces its earlier value.
+  Joining, leaving, moving, switching, starting or stopping states a change, even
+  without an explicit correction or a reference to the previous value.
 - MERGE: the memories express the same claim and the new wording is more complete.
 - CONFLICT: the claims contradict each other with no basis to select one, such as
-  uncertainty expressed by the person or disagreement between sources.
+  uncertainty expressed by the person or disagreement between sources. Different
+  values before and after an explicitly stated change are not a contradiction.
 
 new_memory.stated is the original statement when available. Read it in conversation
 context. An answer about a task supplies that task's detail; it never changes a stable
@@ -100,6 +103,9 @@ personal attribute. Hypotheticals do not establish attributes either. Choose NOO
 a candidate that mistakes either for a personal attribute. A stable attribute changes
 only through a direct assertion about it. Plans for the same goal update by SUPERSEDE
 as their details or next step progress. Different attributes or goals remain separate.
+Compare the attribute named by each key and its typed value, not incidental mentions
+in content. Independently changeable attributes do not conflict merely because they
+mention the same entity. A value and the time when it changes are separate attributes.
 
 target_ids contains only existing ids from the supplied list, empty for ADD.
 Decide the relationship from the statements; do not infer an update from record order.]]
@@ -495,7 +501,8 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     for _, item in ipairs(neighbors) do
         ids[#ids + 1] = item.id
         known[item.id] = true
-        listing[#listing + 1] = { id = item.id, kind = item.kind, key = item.key, content = item.content, valid_at = item.valid_at }
+        listing[#listing + 1] = { id = item.id, kind = item.kind, key = item.key, cardinality = item.cardinality,
+            value = item.value, content = item.content, valid_at = item.valid_at }
     end
     local schema = {
         type = "object",
@@ -508,7 +515,8 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
         },
     }
     local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT .. JSON_FORMAT, json.encode({
-            new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at,
+            new_memory = { kind = candidate.kind, key = candidate.key, cardinality = candidate.cardinality, value = candidate.value,
+                content = candidate.content, valid_at = candidate.valid_at,
                 stated = candidate.stated }, conversation = candidate.conversation,
             existing_memories = listing,
         })), { model = model, max_tokens = output_budget(schema, { target_ids = #ids }) })

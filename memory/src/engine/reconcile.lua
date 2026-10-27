@@ -76,7 +76,8 @@ end
 
 local function judge(d: any, opts: Options, fields: any, stated: string?, neighbors: { any }, actions: { string }): (any?, error?)
     local verdict, err = models.judge(opts.judge_model, {
-        kind = fields.kind, key = fields.key, content = fields.content, valid_at = fields.valid_at, stated = stated,
+        kind = fields.kind, key = fields.key, cardinality = fields.cardinality, value = fields.value,
+        content = fields.content, valid_at = fields.valid_at, stated = stated,
         conversation = opts.conversation,
     }, neighbors, actions)
     if err then return nil, err end

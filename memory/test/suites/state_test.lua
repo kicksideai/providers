@@ -41,6 +41,48 @@ local function define_tests()
             test.eq(stored[1].value.next_step, "prepare slides")
         end)
 
+        test.it("gives the judge typed attribute identity and change evidence without conflating related claims", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local old = fixture.remember(user, id, { fixture.candidate("profile_slot", "residence", "Oslo", "The user lives in Oslo.", "old") }, "old-residence")
+            fixture.settle(user, id)
+            local statement = "I moved to Lisbon last month."
+            local conversation = "[change][user] " .. statement
+            fixture.verdict("SUPERSEDE", { old.item_ids[1] })
+            local result = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "residence", "Lisbon", "The user lives in Lisbon.", "change"),
+            }, "residence-change", { events = { change = { text = statement } }, conversation = conversation })
+            test.eq(result.stats.superseded, 1)
+            test.eq(result.stats.conflicted, 0)
+            fixture.settle(user, id)
+            fixture.verdict("ADD", {})
+            local related_result = fixture.remember(user, id, {
+                fixture.candidate("fact", "relocation_time", "last month", "The user moved to Lisbon last month.", "change", nil, "single"),
+            }, "relocation-time", { events = { change = { text = statement } }, conversation = conversation })
+            test.eq(related_result.stats.conflicted, 0)
+            test.eq(related_result.stats.added, 1)
+            fixture.settle(user, id)
+            local prompts = fixture.script.prompts("structured_output")
+            local change = json.decode(prompts[1].user)
+            test.eq(change.new_memory.value, "Lisbon")
+            test.eq(change.new_memory.cardinality, "single")
+            test.eq(change.new_memory.stated, statement)
+            test.eq(change.conversation, conversation)
+            test.eq(change.existing_memories[1].value, "Oslo")
+            test.eq(change.existing_memories[1].cardinality, "single")
+            local related = json.decode(prompts[2].user)
+            test.eq(related.new_memory.key, "relocation_time")
+            test.eq(related.new_memory.value, "last month")
+            local current = fixture.items(user, id, { key = "residence", statuses = { "current" } })
+            test.eq(#current, 1)
+            test.eq(current[1].value, "Lisbon")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = old.item_ids[1] }).status, "superseded")
+            fixture.verdict("CONFLICT", { current[1].id })
+            local uncertain = fixture.remember(user, id, { fixture.candidate("profile_slot", "residence", "Porto", "The user may live in Porto.", "uncertain") },
+                "uncertain-residence", { events = { uncertain = { text = "One record says Porto; another says Lisbon. I cannot confirm either." } } })
+            test.eq(uncertain.stats.conflicted, 1)
+        end)
+
         test.it("requires a typed value when creating an item", function()
             local user = fixture.user()
             local id = fixture.memory(user)
