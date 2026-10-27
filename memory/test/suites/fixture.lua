@@ -35,14 +35,15 @@ function M.agent_context(memory_id: string, session_id: string, agent_id: string
     return context
 end
 
-function M.wait_runs(user_id: string, component_id: string, run_type: string, count: integer): { any }
+function M.wait_runs(user_id: string, component_id: string, run_type: string, count: integer, status: string?): { any }
     local deadline = time.now():add(60 * time.SECOND)
     while true do
         local rows, read_err = M.op(user_id, "runs", { component_id = component_id, run_type = run_type })
         if read_err then error(tostring(read_err)) end
         local done = 0
         for _, run in ipairs(rows) do
-            if run.status == "succeeded" or run.status == "failed" or (run.status == "rejected" and run.finished_at ~= nil) then done = done + 1 end
+            local finished = run.status == "succeeded" or run.status == "failed" or (run.status == "rejected" and run.finished_at ~= nil)
+            if (status and run.status == status) or (not status and finished) then done = done + 1 end
         end
         if done >= count then return rows end
         if time.now():after(deadline) then error("memory runs did not finish: " .. tostring(#rows) .. " runs") end
