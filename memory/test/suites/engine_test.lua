@@ -27,6 +27,64 @@ local function define_tests()
     test.describe("memory knowledge base engine", function()
         test.before_each(function() fixture.script.reset() end)
 
+        for _, source in ipairs({ "tool", "owner" }) do
+            for _, inferred in ipairs({ "capture", "reflection" }) do
+                for _, cardinality in ipairs({ "single", "multi" }) do
+                    test.it(source .. " interpretation precedes " .. inferred .. " of the same event for a " .. cardinality .. " key", function()
+                        local user = fixture.user()
+                        local id = fixture.memory(user)
+                        fixture.remember(user, id, {
+                            fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "statement", nil, cardinality),
+                        }, "explicit", { source = source, explicit = true })
+                        fixture.settle(user, id)
+                        local before = #fixture.script.requests("structured_output")
+                        local result = fixture.remember(user, id, {
+                            fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement", nil, cardinality),
+                        }, "inferred", { source = inferred })
+                        test.eq(result.stats.noop, 1)
+                        test.eq(result.stats.added, 0)
+                        test.eq(result.stats.judged, 0)
+                        test.eq(#fixture.script.requests("structured_output"), before)
+                        fixture.settle(user, id)
+                        local current = fixture.items(user, id, { statuses = { "current" } })
+                        test.eq(#current, 1)
+                        test.eq(current[1].value, "Berlin")
+                        test.eq(current[1].source, source)
+                        test.eq(#fixture.items(user, id), 1)
+                    end)
+                end
+            end
+        end
+
+        test.it("reconciles other keys and later events after an explicit interpretation", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "statement"),
+            }, "explicit", { source = "tool", explicit = true })
+            fixture.settle(user, id)
+            fixture.verdict("ADD", {})
+            local other = fixture.remember(user, id, {
+                fixture.candidate("preference", "diet", "vegan", "The user is vegan.", "statement"),
+            }, "other-key")
+            test.eq(other.stats.added, 1)
+            test.eq(other.stats.noop, 0)
+            fixture.settle(user, id)
+            local first = fixture.values(fixture.items(user, id, { statuses = { "current" } }))["Berlin"]
+            fixture.verdict("SUPERSEDE", { first.id })
+            local later = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Oslo", "The user moves to Oslo.", "later-statement"),
+            }, "later-event")
+            test.eq(later.stats.superseded, 1)
+            test.eq(later.stats.judged, 1)
+            test.eq(later.stats.noop, 0)
+            fixture.settle(user, id)
+            local current = fixture.values(fixture.items(user, id, { statuses = { "current" } }))
+            test.not_nil(current["Oslo"])
+            test.not_nil(current["vegan"])
+            test.is_nil(current["Berlin"])
+        end)
+
         test.it("supersedes a single attribute under its canonical target key and forgets every version", function()
             local user = fixture.user()
             local id = fixture.memory(user)
