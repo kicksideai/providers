@@ -112,7 +112,7 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
         return nil, types.invalid("each plan goal holds one state")
     end
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
-    local key, key_err = types.topic_key(fields.key, fields.content, fields.value)
+    local key, key_err = types.topic_key(fields.key, fields.content, fields.value, fields.kind)
     if key_err then return nil, key_err end
     if not types.CARDINALITY_SET[fields.cardinality] then return nil, types.invalid("unknown cardinality: " .. tostring(fields.cardinality)) end
     local established, cardinality_err = self:cardinality_of(scope_key, key :: string)

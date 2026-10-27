@@ -270,7 +270,7 @@ local function candidate_reason(item: any, typed: boolean?): string?
     if item.confidence ~= nil and (type(item.confidence) ~= "number" or item.confidence ~= item.confidence
         or item.confidence < 0 or item.confidence > 1) then return "confidence" end
     if item.valid_at ~= nil and item.valid_at ~= "" and not types.utc(item.valid_at) then return "time" end
-    local _, key_err = types.topic_key(item.key, item.content, item.value)
+    local _, key_err = types.topic_key(item.key, item.content, item.value, item.kind)
     if key_err then return "topic_key" end
     return nil
 end

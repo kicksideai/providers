@@ -44,7 +44,7 @@ function M.remember(args: any): (any?, error?)
     if owner == "" then return tool_error("remember requires a signed-in user"), nil end
     local value = input.value
     if value == nil then return tool_error("value is required"), nil end
-    local key, key_err = types.topic_key(input.key, content, value)
+    local key, key_err = types.topic_key(input.key, content, value, kind)
     if key_err then return tool_error(key_err), nil end
     local idempotency, hash_err = types.digest({ "tool.remember", owner, key, value, content })
     if hash_err then return nil, hash_err end

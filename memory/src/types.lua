@@ -159,7 +159,7 @@ function M.bounded_span(span: { any }): { any }
     return out
 end
 
-function M.topic_key(value: any, content: string, claim_value: any?): (string?, error?)
+function M.topic_key(value: any, content: string, claim_value: any?, kind: string?): (string?, error?)
     local key = M.normalize_key(value)
     if #key == 0 or #key > 64 or not key:match("^[a-z][a-z0-9_]*$") then
         return nil, M.invalid("a topic key of up to 64 letters, digits and underscores is required")
@@ -182,7 +182,14 @@ function M.topic_key(value: any, content: string, claim_value: any?): (string?, 
     if claim_value ~= nil then
         local _, encode_err = json.encode(claim_value)
         if encode_err then return nil, M.invalid("memory value must be JSON", { cause = tostring(encode_err) }) end
-        if type(claim_value) ~= "table" and copied(tostring(claim_value)) then
+        local function copied_leaf(leaf: any): boolean
+            if type(leaf) == "table" then
+                for _, child in pairs(leaf) do if copied_leaf(child) then return true end end
+                return false
+            end
+            return leaf ~= nil and copied(tostring(leaf))
+        end
+        if kind ~= M.KIND.PLAN and copied_leaf(claim_value) then
             return nil, M.invalid("topic key must not contain the memory value")
         end
     end

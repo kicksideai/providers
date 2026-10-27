@@ -70,7 +70,7 @@ function M.create(component_id: string, fields: any): (any?, error?)
     if content == "" then return nil, types.invalid("memory content is required") end
     local value = fields.value
     if value == nil then return nil, types.invalid("memory value is required") end
-    local key, key_err = types.topic_key(fields.key, content, value)
+    local key, key_err = types.topic_key(fields.key, content, value, kind)
     if key_err then return nil, key_err end
     local vector, vector_err = vector_for(component_id, content)
     if vector_err then return nil, vector_err end
