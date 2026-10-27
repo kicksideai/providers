@@ -47,6 +47,42 @@ local function define_tests()
             test.is_true(next_at:before(time.now():add(7 * time.HOUR)), tostring(job.scheduled_at))
         end)
 
+        test.it("erases a reflected lesson when one of its source attributes is forgotten", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "work_schedule", "night", "The user works at night.", "work-source", nil, "single"),
+                fixture.candidate("preference", "rest_period", "day", "The user rests during the day.", "rest-source", nil, "single"),
+            }, "reflection-erasure-seed")
+            fixture.settle(user, id)
+            local lesson = fixture.candidate("lesson", "contact_window", "evening",
+                "Send requests in the evening because the user rests during the day.", "")
+            lesson.based_on = { 1, 2 }
+            fixture.script.respond("structured_output", { items = { lesson } })
+            fixture.verdict("ADD", {})
+            local _, wake_err = fixture.op(user, "wake", { component_id = id })
+            test.is_nil(wake_err, tostring(wake_err))
+            local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
+            test.eq(run.status, "succeeded", tostring(run.last_error))
+            fixture.settle(user, id)
+            local lessons = fixture.items(user, id, { kinds = { "lesson" } })
+            test.eq(#lessons, 1)
+            test.eq(lessons[1].status, "current")
+            local erased, err = fixture.op(user, "tool_forget", { input = { key = "rest_period" } },
+                fixture.agent_context(id, "s-" .. user, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.is_true(erased.success, erased.error)
+            fixture.settle(user, id)
+            local source = fixture.items(user, id, { key = "rest_period" })[1]
+            test.eq(source.status, "forgotten")
+            test.is_nil(source.value)
+            test.eq(fixture.items(user, id, { key = "work_schedule" })[1].status, "current")
+            local derived = fixture.op(user, "get", { component_id = id, item_id = lessons[1].id })
+            test.eq(derived.status, "forgotten")
+            test.eq(derived.content, "")
+            test.is_nil(derived.value)
+        end)
+
         test.it("keeps only reflected lessons that draw on at least two memories", function()
             local user = fixture.user()
             local id = fixture.memory(user)
