@@ -27,6 +27,51 @@ local function define_tests()
     test.describe("memory knowledge base engine", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("supersedes a single attribute under its canonical target key and forgets every version", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local first = fixture.create_claim(user, id, "Oslo")
+            fixture.verdict("SUPERSEDE", { first.item_id })
+            local changed = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "residence", "Bergen", "The user moves to Bergen.", "move", nil, "multi"),
+            }, "cross-topic")
+            test.eq(changed.stats.superseded, 1)
+            fixture.settle(user, id)
+            local current = fixture.items(user, id, { statuses = { "current" } })
+            test.eq(#current, 1)
+            test.eq(current[1].key, "home_city")
+            test.eq(current[1].cardinality, "single")
+            local erased, err = fixture.op(user, "tool_forget", { input = { key = "home_city" } }, { memory_id = id })
+            test.is_nil(err, tostring(err))
+            test.is_true(erased.success)
+            fixture.settle(user, id)
+            local versions = fixture.items(user, id)
+            test.eq(#versions, 2)
+            for _, version in ipairs(versions) do
+                test.eq(version.status, "forgotten")
+                test.eq(version.content, "")
+                test.is_nil(version.value)
+            end
+        end)
+
+        test.it("rejects targetless judge actions per candidate and continues the decision", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.create_claim(user, id, "Oslo")
+            for _, action in ipairs({ "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" }) do
+                fixture.verdict(action, {})
+            end
+            fixture.verdict("ADD", {})
+            local candidates = {}
+            for i = 1, 5 do candidates[i] = fixture.candidate("fact", "attribute_" .. tostring(i), "recorded", "An independent attribute.", "source") end
+            local result = fixture.remember(user, id, candidates, "untrusted-judgements")
+            test.eq(result.stats.rejected, 4)
+            test.eq(result.stats.rejected_judge_targets, 4)
+            test.eq(result.stats.added, 1)
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id, { statuses = { "current" } }), 2)
+        end)
+
         test.it("creating a memory through the knowledge control plane provisions its store, ledger projection and consolidation slot", function()
             local user = fixture.user()
             local id = fixture.memory(user)

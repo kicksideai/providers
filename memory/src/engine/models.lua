@@ -549,7 +549,7 @@ function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
     return M.normalize(model, grounded, items, nil, stats)
 end
 
-function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)
+function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }, stats: any?): (any?, error?)
     local ids: { string } = {}
     local known: { [string]: boolean } = {}
     local listing: { any } = {}
@@ -580,21 +580,31 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     if err then return nil, model_error("memory reconcile judge", err) end
     local response_err = response_error(response, "memory reconcile judge", schema)
     if response_err then return nil, response_err end
-    local data = response and response.result
-    if type(data) ~= "table" or type(data.action) ~= "string" or type(data.target_ids) ~= "table" then
-        return nil, types.unavailable("memory reconcile judge returned malformed output")
-    end
+    local data = response.result
+    local reason = nil
+    if type(data.action) ~= "string" or not is_array(data.target_ids) then reason = "shape" end
     local valid_action = false
     for _, action in ipairs(actions) do if action == data.action then valid_action = true end end
-    if not valid_action then return nil, types.unavailable("memory reconcile judge returned an unknown action") end
+    if not reason and not valid_action then reason = "action" end
     local targets: { string } = {}
-    for _, id in ipairs(data.target_ids) do
-        if not known[id] then return nil, types.unavailable("memory reconcile judge returned an unknown memory id") end
-        targets[#targets + 1] = id
+    local seen, single_key = {}, nil
+    if not reason then
+        for _, id in ipairs(data.target_ids) do
+            if not known[id] or seen[id] then reason = "targets"; break end
+            seen[id] = true
+            targets[#targets + 1] = id
+            if data.action == types.ACTION.SUPERSEDE then
+                for _, item in ipairs(neighbors) do
+                    if item.id == id and item.cardinality == types.CARDINALITY.SINGLE then
+                        if single_key and single_key ~= item.key then reason = "identity" end
+                        single_key = item.key
+                    end
+                end
+            end
+        end
+        if (data.action == types.ACTION.ADD) ~= (#targets == 0) then reason = "targets" end
     end
-    if data.action ~= types.ACTION.ADD and #targets == 0 then
-        return nil, types.unavailable("memory reconcile judge returned " .. data.action .. " without targets")
-    end
+    if reason then reject(stats or {}, "judge", reason); return nil, nil end
     return { action = data.action, target_ids = targets }, nil
 end
 

@@ -60,6 +60,14 @@ local function apply(d: any, action: string, scope: any, fields: any, targets: {
         d.stats.noop = d.stats.noop + 1
         return nil
     end
+    if action == types.ACTION.SUPERSEDE then
+        for _, target in ipairs(targets) do
+            if target.cardinality == types.CARDINALITY.SINGLE then
+                fields.key, fields.cardinality = target.key, target.cardinality
+                break
+            end
+        end
+    end
     local item, add_err = d:add(scope, fields)
     if add_err then return add_err end
     if action == types.ACTION.SUPERSEDE then
@@ -79,7 +87,7 @@ local function judge(d: any, opts: Options, fields: any, stated: string?, neighb
         kind = fields.kind, key = fields.key, cardinality = fields.cardinality, value = fields.value,
         content = fields.content, valid_at = fields.valid_at, stated = stated,
         conversation = opts.conversation,
-    }, neighbors, actions)
+    }, neighbors, actions, d.stats)
     if err then return nil, err end
     d.stats.judged = d.stats.judged + 1
     return verdict, nil
@@ -135,8 +143,10 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             else
                 local verdict, err = judge(d, opts, fields, event.text, held :: any, HELD_ACTIONS)
                 if err then return err end
-                local apply_err = apply(d, verdict.action, scope, fields, held :: any, provenance)
-                if apply_err then return apply_err end
+                if verdict then
+                    local apply_err = apply(d, verdict.action, scope, fields, held :: any, provenance)
+                    if apply_err then return apply_err end
+                end
             end
         else
             local near, near_err = items.search(d.component_id, fields.vector, {
@@ -160,10 +170,12 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             else
                 local verdict, err = judge(d, opts, fields, event.text, neighbors, reflection and REFLECTION_ACTIONS or types.ACTIONS)
                 if err then return err end
-                local targets: { any } = {}
-                for _, target_id in ipairs(verdict.target_ids) do targets[#targets + 1] = by_id[target_id] end
-                local apply_err = apply(d, verdict.action, scope, fields, targets, provenance)
-                if apply_err then return apply_err end
+                if verdict then
+                    local targets: { any } = {}
+                    for _, target_id in ipairs(verdict.target_ids) do targets[#targets + 1] = by_id[target_id] end
+                    local apply_err = apply(d, verdict.action, scope, fields, targets, provenance)
+                    if apply_err then return apply_err end
+                end
             end
         end
     end
