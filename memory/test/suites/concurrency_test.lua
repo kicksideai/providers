@@ -28,7 +28,7 @@ local function wait_for_reflections(count: integer, component_id: string)
     local deadline = time.now():add(60 * time.SECOND)
     while #fixture.script.requests("structured_output") < count do
         local db = fixture.db()
-        local jobs, err = db:query("SELECT j.status, j.last_error FROM kickside_job j JOIN kickside_memory_runs r ON r.job_id = CAST(j.id AS TEXT) WHERE r.component_id = $1 AND j.status = 'dead'", { component_id })
+        local jobs, err = db:query("SELECT j.status, j.last_error FROM kickside_job j JOIN kickside_memory_runs r ON r.job_id = j.id WHERE r.component_id = $1 AND j.status = 'dead'", { component_id })
         db:release()
         if err then error(tostring(err)) end
         if jobs and jobs[1] then error("memory job failed before the model barrier: " .. tostring(jobs[1].last_error)) end
