@@ -23,7 +23,7 @@ local function model_error(step: string, err: any): error
     if details.error_type == "model_error" and type(details.raw_content) == "string" then
         local _, decode_err = json.decode(details.raw_content)
         if decode_err then
-            return types.invalid(step .. " returned malformed output", { step = step, code = "model_output_malformed" })
+            return types.unavailable(step .. " returned malformed output", { step = step, code = "model_output_malformed" })
         end
     end
     local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
@@ -42,6 +42,10 @@ function M.is_statement(message: any): boolean
 end
 
 local EXTRACTION_PROMPT = [[You extract personal attributes and actionable goals from new conversation statements.
+
+Treat memory-management requests as instructions about stored memory. Requests to forget,
+delete or stop remembering information establish no personal attribute or actionable
+goal. Extract only separately stated assertions about the person or their work.
 
 First identify requests, intentions and ongoing work. Each request to accomplish a task
 is an open plan from its first statement. A task needs no date, audience, destination,
@@ -222,25 +226,27 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?, coun
     return schema
 end
 
--- Reserve one token per Unicode code point of maximal compact JSON. Constrained
--- decoding emits compact JSON without escaping normal text; punctuation counts too.
+-- Bound compact UTF-8 JSON bytes: each code point uses at most four bytes,
+-- including two-byte quote/backslash and short control escapes. One token per byte
+-- covers byte-level tokenizers. Longer Unicode escapes exhaust the bound visibly
+-- as retryable truncation; the existing job attempt limit owns retries.
 local function output_budget(schema: any, model: string?): (integer?, error?)
     local function size(node: any): integer
         if node.enum then
             local longest = 0
-            for _, value in ipairs(node.enum) do longest = math.max(longest, codepoints(json.encode(value))) end
+            for _, value in ipairs(node.enum) do longest = math.max(longest, #json.encode(value)) end
             return longest
         elseif node.type == "object" then
             local total, count = 2, 0
             for key, child in pairs(node.properties) do
-                total = total + codepoints(json.encode(key)) + 1 + size(child)
+                total = total + #json.encode(key) + 1 + size(child)
                 count = count + 1
             end
             return total + math.max(0, count - 1)
         elseif node.type == "array" then
             return 2 + node.maxItems * size(node.items) + math.max(0, node.maxItems - 1)
         elseif node.type == "string" then
-            return 2 + node.maxLength
+            return 2 + 4 * node.maxLength
         elseif node.type == "number" then
             return 24
         end
@@ -300,10 +306,10 @@ end
 
 local function response_error(response: any, step: string, schema: any): error?
     if response and response.finish_reason == "length" then
-        return types.invalid(step .. " output is truncated", { code = "model_output_truncated", step = step })
+        return types.unavailable(step .. " output is truncated", { code = "model_output_truncated", step = step })
     end
     if not response or type(response.result) ~= "table" or exceeds_bounds(response.result, schema) then
-        return types.invalid(step .. " returned malformed output", { code = "model_output_malformed", step = step })
+        return types.unavailable(step .. " returned malformed output", { code = "model_output_malformed", step = step })
     end
     return nil
 end
@@ -334,7 +340,7 @@ local function read_candidates(response: any, step: string, stats: any, event_id
     if err then return nil, err end
     local data = response.result
     if not is_array(data.items) or (step == "extraction" and not is_array(data.plans)) then
-        return nil, types.invalid("memory " .. step .. " returned malformed output", { code = "model_output_malformed" })
+        return nil, types.unavailable("memory " .. step .. " returned malformed output", { code = "model_output_malformed" })
     end
     local known = {}
     for _, row in ipairs(keys or {}) do known[row.key] = row end
@@ -460,13 +466,13 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     if response_err then return nil, response_err end
     local mappings = response and response.result and response.result.mappings
     if type(mappings) ~= "table" then
-        return nil, types.invalid("memory normalization returned malformed output", { code = "model_output_malformed" })
+        return nil, types.unavailable("memory normalization returned malformed output", { code = "model_output_malformed" })
     end
     local out = {}
     for i, candidate in ipairs(candidates) do
         local parts = mappings[tostring(i)]
         if type(parts) ~= "table" then
-            return nil, types.invalid("memory normalization returned malformed mappings", { code = "model_output_malformed" })
+            return nil, types.unavailable("memory normalization returned malformed mappings", { code = "model_output_malformed" })
         end
         if not is_array(parts) or #parts == 0 or (type(candidate.value) ~= "string" and #parts ~= 1) then
             reject(stats, "normalization", "mapping")

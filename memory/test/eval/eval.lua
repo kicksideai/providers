@@ -73,7 +73,9 @@ local function capture(user: string, memory: string, session: string, messages: 
             fixture.extraction(candidates)
             if seed and i > 1 then
                 for _ = 1, #candidates do fixture.verdict("ADD", {}) end
-            elseif not seed then script_verdict(verdict, candidates[1], seeded) end
+            elseif not seed then
+                for _, candidate in ipairs(candidates) do script_verdict(verdict, candidate, seeded) end
+            end
         end
         fixture.script.release("structured_output")
     end
@@ -128,6 +130,19 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
         return "ERROR", "the pipeline left a scripted model answer unused"
     end
     fixture.settle(user, memory)
+    if not case.reflect then
+        local current = {}
+        for _, item in ipairs(fixture.items(user, memory, { statuses = { "current" } })) do current[item.key] = item end
+        for _, expected in ipairs(case.ideal.follow) do
+            if expected.kind == "plan" then
+                local item = current[expected.key]
+                if not item or item.kind ~= "plan" or item.value.status ~= expected.value.status
+                    or item.value.next_step ~= expected.value.next_step or item.value.details ~= expected.value.details then
+                    return "ERROR", "the expected typed plan state is absent: " .. expected.key
+                end
+            end
+        end
+    end
     local action = case.reflect and (((stats.added or 0) > 0) and "ADD" or "IGNORE") or M.classify(stats)
     return action, json.encode(stats) .. " " .. held(user, memory)
 end

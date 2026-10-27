@@ -7,6 +7,11 @@ local function c(kind: string, key: string, value: any, content: string, event_i
     return { kind = kind, key = key, cardinality = cardinality, value = value, content = content, event_id = event_id, valid_at = "", confidence = 0.9 }
 end
 
+local function goal(key: string, details: string, event_id: string, next_step: string?): any
+    return c("plan", key, { status = "open", next_step = next_step or "", details = details },
+        "The user requests " .. details .. ".", event_id)
+end
+
 local function lesson(candidate: any, based_on: { integer }): any
     candidate.based_on = based_on
     return candidate
@@ -78,17 +83,19 @@ return {
         ideal = { follow = { c("fact", "allergy", "peanuts", "The user is allergic to peanuts.", "f1") } } },
     { name = "preference inside a request", expect = "ADD",
         follow = { u("f1", "Find me a quiet hotel in Lisbon - I can't sleep anywhere noisy.") },
-        ideal = { follow = { c("preference", "hotel_noise", "quiet", "The user needs quiet hotels; they cannot sleep anywhere noisy.", "f1") } } },
+        ideal = { follow = { c("preference", "hotel_noise", "quiet", "The user needs quiet hotels; they cannot sleep anywhere noisy.", "f1"),
+            goal("hotel_search", "a quiet hotel in Lisbon", "f1") } } },
     { name = "travel preference (demo)", expect = "ADD",
         follow = { u("f1", "Plan me a long weekend somewhere warm in May. I'd rather take the train."),
             a("f2", "Great, Sam! For a warm long weekend in May by train from Paris, consider the South of France.") },
-        ideal = { follow = { c("preference", "transport", "train", "The user prefers travelling by train.", "f1") } } },
+        ideal = { follow = { c("preference", "transport", "train", "The user prefers travelling by train.", "f1"),
+            goal("warm_weekend", "a warm long weekend in May by train", "f1") } } },
 
-    { name = "question about memory (demo)", expect = "IGNORE",
+    { name = "question with an actionable request", expect = "ADD",
         seed = SAM,
         follow = { u("f1", "Hi again! Where will I be leaving from, and what should I keep in mind about food? One short trip idea please."),
             a("f2", "You'll be leaving from Paris. Since you're vegetarian, look for vegetarian-friendly places.") },
-        ideal = { seed = SAM_IDEAL, follow = {} } },
+        ideal = { seed = SAM_IDEAL, follow = { goal("trip_idea", "one short trip idea", "f1") }, verdict = "ADD" } },
     { name = "recall question (demo)", expect = "IGNORE",
         seed = SAM,
         follow = { u("f1", "Hi, where do I live and what do I eat?"), a("f2", "You live in Paris and you're vegetarian.") },
@@ -101,12 +108,19 @@ return {
         follow = { u("f1", "Can you look up trains from Berlin to Munich on Friday morning?") },
         ideal = { follow = { c("plan", "rail_booking", { status = "open", next_step = "Compare train options",
             details = "Berlin to Munich on Friday morning" }, "The user needs train options from Berlin to Munich on Friday morning.", "f1") } } },
-    { name = "task chatter", expect = "IGNORE",
+    { name = "scheduled price check", expect = "ADD",
         follow = { u("f1", "Ok let's go with the second option and check the prices tomorrow.") },
-        ideal = { follow = {} } },
-    { name = "trip idea request (demo)", expect = "IGNORE",
+        ideal = { follow = { goal("price_check", "the second option with prices checked tomorrow", "f1", "Check prices tomorrow") } } },
+    { name = "trip idea request", expect = "ADD",
         follow = { u("f1", "One short trip idea please.") },
-        ideal = { follow = {} } },
+        ideal = { follow = { goal("trip_idea", "one short trip idea", "f1") } } },
+
+    { name = "memory erasure request", expect = "IGNORE",
+        follow = { u("f1", "Forget my dietary preferences.") }, ideal = { follow = {} } },
+    { name = "memory deletion request", expect = "IGNORE",
+        follow = { u("f1", "Delete what you remember about my work.") }, ideal = { follow = {} } },
+    { name = "stop remembering request", expect = "IGNORE",
+        follow = { u("f1", "Stop remembering my commute.") }, ideal = { follow = {} } },
 
     { name = "vague recollection (demo)", expect = "IGNORE",
         follow = { u("f1", "i forogt where i was recently"), a("f2", "Do you mean where you recently traveled?"), u("f3", "yeah travelled") },
