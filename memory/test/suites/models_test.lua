@@ -40,6 +40,43 @@ local function define_tests()
     test.describe("bounded untrusted memory model output", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("offers relations only within compatible kind families in both directions", function()
+            local user = fixture.user()
+            local kinds = { "fact", "preference", "profile_slot", "skill", "plan", "lesson" }
+            for _, kind in ipairs(kinds) do
+                local neighbors, relations = {}, {}
+                for i, other in ipairs(kinds) do
+                    neighbors[i] = { id = tostring(i), kind = "profile_slot", key = "topic_" .. tostring(i), kind = other, cardinality = "single" }
+                    relations[i] = "unrelated"
+                end
+                fixture.relations(relations)
+                local _, err = fixture.op(user, "model_step", { step = "judge", candidate = { kind = kind },
+                    items = neighbors, actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" } })
+                test.is_nil(err, tostring(err))
+                local schemas = fixture.script.requests("structured_output")
+                for i, other in ipairs(kinds) do
+                    local compatible = kind == other or (kind ~= "plan" and kind ~= "lesson" and other ~= "plan" and other ~= "lesson")
+                    test.eq(table.concat(schemas[#schemas].properties.relations.properties[tostring(i)].enum, ","),
+                        compatible and "same,updates,rephrases,contradicts,unrelated" or "unrelated", kind .. "/" .. other)
+                end
+            end
+        end)
+
+        test.it("rejects each non-unrelated relation across kind boundaries", function()
+            local user = fixture.user()
+            for _, kind in ipairs({ "plan", "lesson" }) do
+                for _, relation in ipairs({ "same", "updates", "rephrases", "contradicts" }) do
+                    fixture.relations({ relation })
+                    local result, err = fixture.op(user, "model_step", { step = "judge", candidate = { kind = "fact" },
+                        items = { { kind = kind, id = "neighbor", key = "goal", cardinality = "single" } },
+                        actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" } })
+                    test.is_nil(result)
+                    test.not_nil(err)
+                    test.eq(err:details().code, "model_output_malformed")
+                end
+            end
+        end)
+
         test.it("directs extraction to omit memory-management requests while retaining personal assertions", function()
             local user = fixture.user()
             fixture.extraction({})
@@ -382,7 +419,7 @@ local function define_tests()
                 for i = first, #relations do
                     local number = tostring(i - first + 1)
                     values[number] = relations[i]
-                    neighbors[#neighbors + 1] = { id = "n" .. number, key = "home_city", cardinality = "single" }
+                    neighbors[#neighbors + 1] = { id = "n" .. number, kind = "profile_slot", key = "home_city", cardinality = "single" }
                 end
                 fixture.script.respond("structured_output", { relations = values, reason = "test" })
                 local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("home_city", "Oslo"),
@@ -410,9 +447,9 @@ local function define_tests()
                 fixture.relations(example.values)
                 local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("home_city", "Oslo"),
                     actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" }, items = {
-                        { id = "a", key = "home_city", cardinality = "single" },
-                        { id = "b", key = "home_city", cardinality = "single" },
-                        { id = "c", key = "home_city", cardinality = "single" },
+                        { id = "a", kind = "profile_slot", key = "home_city", cardinality = "single" },
+                        { id = "b", kind = "profile_slot", key = "home_city", cardinality = "single" },
+                        { id = "c", kind = "profile_slot", key = "home_city", cardinality = "single" },
                     } })
                 test.is_nil(err, tostring(err))
                 test.eq(result.items.action, example.action)
@@ -426,9 +463,9 @@ local function define_tests()
                 fixture.script.respond("structured_output", { relations = { ["1"] = relation, ["2"] = relation, ["3"] = relation }, reason = "test" })
                 local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("residence", "Oslo"),
                     actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" }, items = {
-                        { id = "a", key = "home_city", cardinality = "single" },
-                        { id = "b", key = "occupation", cardinality = "single" },
-                        { id = "c", key = "home_city", cardinality = "single" },
+                        { id = "a", kind = "profile_slot", key = "home_city", cardinality = "single" },
+                        { id = "b", kind = "profile_slot", key = "occupation", cardinality = "single" },
+                        { id = "c", kind = "profile_slot", key = "home_city", cardinality = "single" },
                     } })
                 test.is_nil(err, tostring(err))
                 test.eq(table.concat(result.items.target_ids, ","), relation == "updates" and "a,c" or "a,b,c")
@@ -443,7 +480,7 @@ local function define_tests()
             }) do
                 fixture.script.respond("structured_output", { relations = { ["1"] = "same" }, reason = "test" })
                 local result, err = fixture.op(user, "model_step", { step = "judge", actions = example.actions,
-                    candidate = candidate("home_city", "Oslo"), items = { { id = "a", key = "home_city", cardinality = "single" } } })
+                    candidate = candidate("home_city", "Oslo"), items = { { id = "a", kind = "profile_slot", key = "home_city", cardinality = "single" } } })
                 test.is_nil(err, tostring(err))
                 test.eq(result.items.action, "NOOP")
                 local schemas = fixture.script.requests("structured_output")
@@ -456,7 +493,7 @@ local function define_tests()
             for _, relations in ipairs({ true, { ["1"] = 1 }, {}, { ["1"] = "same", ["2"] = "same" }, { ["1"] = "unknown" }, { ["1"] = "updates" } }) do
                 fixture.script.respond("structured_output", { relations = relations, reason = "test" })
                 local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("home_city", "Oslo"),
-                    actions = { "ADD", "NOOP" }, items = { { id = "a", key = "home_city", cardinality = "single" } } })
+                    actions = { "ADD", "NOOP" }, items = { { id = "a", kind = "profile_slot", key = "home_city", cardinality = "single" } } })
                 test.is_nil(result)
                 test.not_nil(err)
                 test.eq(err:details().code, "model_output_malformed")

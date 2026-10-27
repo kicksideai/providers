@@ -7,6 +7,20 @@ local function define_tests()
     test.describe("memory model normalization", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("rejects lesson mappings onto attribute keys and attribute mappings onto lesson keys", function()
+            local user = fixture.user()
+            for _, kinds in ipairs({ { "lesson", "profile_slot" }, { "fact", "lesson" } }) do
+                local candidate = fixture.candidate(kinds[1], "guidance", "evening", "Contact in the evening.")
+                fixture.normalization({ candidate })
+                local result, err = fixture.op(user, "normalize", { candidates = { candidate }, keys = {
+                    { key = "guidance", kind = kinds[2], cardinality = "multi" },
+                } })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_invalid_normalization_kind")
+            end
+        end)
+
         test.it("extracts scalar attributes and goals through independently typed collections", function()
             local user = fixture.user()
             local attribute = fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement")

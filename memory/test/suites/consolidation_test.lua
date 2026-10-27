@@ -59,7 +59,7 @@ local function define_tests()
             test.eq(runs[1].stats.added, 1)
             local judged = fixture.script.requests("structured_output")
             local judge_schema = judged[#judged]
-            test.eq(table.concat(judge_schema.properties.relations.properties["1"].enum, ","), "same,unrelated")
+            test.eq(table.concat(judge_schema.properties.relations.properties["1"].enum, ","), "unrelated")
             fixture.settle(user, id)
             local lessons = fixture.items(user, id, { kinds = { "lesson" } })
             test.eq(#lessons, 1)

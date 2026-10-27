@@ -104,6 +104,31 @@ function Decision:cardinality_of(scope_key: string, key: string): (string?, erro
     return items.key_cardinality(self.component_id, scope_key, key)
 end
 
+function Decision:check_key_kind(scope_key: string, key: string, kind: string): error?
+    local rows, err = self:rows({ scope_keys = { scope_key }, key = key }, function(state: any): boolean
+        return state.scope_key == scope_key and state.key == key
+    end, { types.STATUS.CURRENT, types.STATUS.CONFLICT, types.STATUS.SUPERSEDED, types.STATUS.ARCHIVED, types.STATUS.FORGOTTEN })
+    if err then return err end
+    for _, row in ipairs(rows :: any) do
+        if not types.compatible_kinds(kind, row.kind) then return types.invalid("memory key kind is incompatible") end
+    end
+    return nil
+end
+
+function Decision:check_provenance(item: any, provenance: { any }): error?
+    for _, ref in ipairs(provenance) do
+        if ref.host_kind == "item" then
+            if item.kind ~= types.KIND.LESSON or ref.host_id == item.id then
+                return types.invalid("item provenance requires a lesson and a distinct source item")
+            end
+            local source, err = self:get(ref.host_id)
+            if err then return err end
+            if not source then return types.invalid("item provenance source does not exist") end
+        end
+    end
+    return nil
+end
+
 type Scope = { scope_family: string, scope_id: string }
 
 function Decision:add(scope: Scope, fields: Fields): (any?, error?)
@@ -115,6 +140,8 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
     local key, key_err = types.topic_key(fields.key, fields.content, fields.value, fields.kind)
     if key_err then return nil, key_err end
+    local kind_err = self:check_key_kind(scope_key, key :: string, fields.kind)
+    if kind_err then return nil, kind_err end
     if not types.CARDINALITY_SET[fields.cardinality] then return nil, types.invalid("unknown cardinality: " .. tostring(fields.cardinality)) end
     local established, cardinality_err = self:cardinality_of(scope_key, key :: string)
     if cardinality_err then return nil, cardinality_err end
@@ -134,6 +161,8 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
         content_hash = content_hash, status = types.STATUS.CURRENT, valid_at = fields.valid_at, priority = fields.priority or 0,
         source = self.source, run_id = fields.run_id,
     }
+    local provenance_err = self:check_provenance(item, fields.provenance or {})
+    if provenance_err then return nil, provenance_err end
     self:emit(types.EVENT.ITEM_ADDED, {
         item_id = item_id, claim_id = claim_id, content_hash = content_hash, kind = fields.kind, key_id = key_id,
         cardinality = fields.cardinality, scope_family = scope.scope_family, scope_id = scope.scope_id,
@@ -151,6 +180,8 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
 end
 
 function Decision:seen(item: any, provenance: { any }): error?
+    local provenance_err = self:check_provenance(item, provenance)
+    if provenance_err then return provenance_err end
     for _, ref in ipairs(provenance) do
         local known, err = items.has_provenance(self.component_id, item.id, ref)
         if err then return err end

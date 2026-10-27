@@ -68,6 +68,11 @@ local function explicitly_interpreted(d: any, held: { any }, provenance: { any }
 end
 
 local function apply(d: any, action: string, scope: any, fields: any, targets: { any }, provenance: { any }): error?
+    for _, target in ipairs(targets) do
+        if not types.compatible_kinds(fields.kind, target.kind) then
+            return types.invalid("reconcile target kind is incompatible")
+        end
+    end
     if action == types.ACTION.NOOP then
         for _, target in ipairs(targets) do
             local seen_err = d:seen(target, provenance)
@@ -122,6 +127,8 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
 
     for index, candidate in ipairs(candidates) do
         local key = types.normalize_key(candidate.key)
+        local kind_err = d:check_key_kind(scope_key, key, candidate.kind)
+        if kind_err then return kind_err end
         local value = candidate.value
         if type(value) == "string" then value = types.trim(value) end
         local event = opts.events and opts.events[types.trim(candidate.event_id)] or {}

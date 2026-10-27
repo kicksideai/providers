@@ -130,6 +130,13 @@ function M.normalize_key(value: any): string
     return text
 end
 
+function M.compatible_kinds(left: string, right: string): boolean
+    if not M.KIND_SET[left] or not M.KIND_SET[right] then return false end
+    if left == M.KIND.PLAN or right == M.KIND.PLAN then return left == right end
+    if left == M.KIND.LESSON or right == M.KIND.LESSON then return left == right end
+    return true
+end
+
 function M.default_cardinality(kind: string): string
     return kind == M.KIND.PLAN and M.CARDINALITY.SINGLE or M.CARDINALITY.MULTI
 end

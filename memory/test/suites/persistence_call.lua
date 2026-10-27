@@ -13,7 +13,20 @@ local measured_db = require("measured_db")
 local runs = require("memory_runs")
 
 local function call(a: any): (any?, error?)
-    if a.op == "check_cost" then
+    if a.op == "record_provenance" then
+        return writer.write(a.component_id, "refs:" .. (a.item_id or "new"), { source = "reflection" }, function(d: any): (any?, error?)
+            local refs = { { host_kind = "item", host_id = a.source_id, event_id = "" } }
+            if a.item_id then
+                local item, err = d:get(a.item_id)
+                if err then return nil, err end
+                return true, d:seen(item, refs)
+            end
+            return d:add({ scope_family = "owner", scope_id = a.user }, {
+                kind = "fact", key = "contact_guidance", cardinality = "multi", value = "evening",
+                content = "Contact in the evening.", valid_at = d.now, provenance = refs,
+            })
+        end)
+    elseif a.op == "check_cost" then
         local d = decision.new(a.component_id, "check-cost", "owner", a.user)
         for i = 1, a.count do
             local _, err = d:add({ scope_family = "owner", scope_id = a.user }, {

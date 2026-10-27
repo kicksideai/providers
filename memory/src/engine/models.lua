@@ -449,8 +449,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     for i, candidate in ipairs(candidates) do
         local kinds = {}
         for _, kind in ipairs(CANDIDATE_KINDS) do
-            if (kind == types.KIND.PLAN) == (candidate.kind == types.KIND.PLAN)
-                and (candidate.kind ~= types.KIND.LESSON or kind == types.KIND.LESSON) then
+            if types.compatible_kinds(kind, candidate.kind) then
                 kinds[#kinds + 1] = kind
             end
         end
@@ -513,9 +512,8 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
                     normalized.content = mapping.content
                 end
                 reason = candidate_reason(normalized, type(candidate.value) ~= "string")
-                if not reason and (((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN))
-                    or (existing and ((existing.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)))
-                    or (candidate.kind == types.KIND.LESSON and mapping.kind ~= types.KIND.LESSON)) then reason = "kind" end
+                if not reason and (not types.compatible_kinds(mapping.kind, candidate.kind)
+                    or (existing and not types.compatible_kinds(existing.kind, mapping.kind))) then reason = "kind" end
             end
             if reason then return nil, validation_error("normalization", reason) end
             normalized.content = types.trim(normalized.content)
@@ -592,7 +590,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     for index, item in ipairs(neighbors) do
         local number = tostring(index)
         required[#required + 1] = number
-        properties[number] = enum_string(allowed)
+        properties[number] = enum_string(types.compatible_kinds(candidate.kind, item.kind) and allowed or { "unrelated" })
         listing[number] = { id = item.id, kind = item.kind, key = item.key, cardinality = item.cardinality,
             value = item.value, content = item.content, valid_at = item.valid_at }
     end

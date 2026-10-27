@@ -34,6 +34,8 @@ end
 
 local function assert_claim(d: any, scope: any, fields: any, replaces: { any }): (any?, error?)
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
+    local kind_err = d:check_key_kind(scope_key, fields.key, fields.kind)
+    if kind_err then return nil, kind_err end
     local claim_id, claim_err = types.claim_id(d.component_id, scope_key, fields.key, fields.value)
     if claim_err then return nil, claim_err end
     local live, live_err = d:claimed(scope_key, claim_id :: string, { types.STATUS.CURRENT })

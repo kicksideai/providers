@@ -27,6 +27,99 @@ local function define_tests()
     test.describe("memory knowledge base engine", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("rejects reverse and self item provenance at both decision recording paths", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "work_hours", "night", "The user works at night.", "work"),
+                fixture.candidate("preference", "rest_hours", "day", "The user rests during the day.", "rest"),
+            }, "provenance-seed")
+            fixture.settle(user, id)
+            local sources = fixture.items(user, id)
+            local lesson = fixture.candidate("lesson", "contact_window", "evening", "Contact outside work and rest hours.", "")
+            lesson.source_ids = { sources[1].id, sources[2].id }
+            fixture.relations({ "unrelated", "unrelated" })
+            local derived = fixture.remember(user, id, { lesson }, "valid-derivation", { source = "reflection" })
+            fixture.settle(user, id)
+            for _, entry in ipairs({
+                { item_id = sources[1].id, source_id = sources[2].id },
+                { item_id = derived.item_ids[1], source_id = derived.item_ids[1] },
+            }) do
+                local result, err = fixture.persistence_op(user, "record_provenance", {
+                    component_id = id, item_id = entry.item_id, source_id = entry.source_id,
+                })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:message(), "item provenance requires a lesson and a distinct source item")
+            end
+            local result, err = fixture.persistence_op(user, "record_provenance", {
+                component_id = id, user = user, source_id = sources[1].id,
+            })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:message(), "item provenance requires a lesson and a distinct source item")
+            local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = sources[1].id })
+            test.is_nil(forget_err, tostring(forget_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = derived.item_ids[1] }).status, "forgotten")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = sources[2].id }).status, "current")
+        end)
+
+        test.it("rejects cross-kind keys before claim reuse explicit updates and historical reuse", function()
+            local user = fixture.user()
+            for _, status in ipairs({ "current", "archived", "forgotten" }) do
+                for _, same in ipairs({ true, false }) do
+                    local id = fixture.memory(user)
+                    local seeded = fixture.remember(user, id, {
+                        fixture.candidate("profile_slot", "contact_time", "evening", "Contact in the evening.", "seed"),
+                    }, "boundary-seed")
+                    fixture.settle(user, id)
+                    if status ~= "current" then
+                        local _, err = fixture.op(user, status == "archived" and "archive" or "forget", { component_id = id, item_id = seeded.item_ids[1] })
+                        test.is_nil(err, tostring(err))
+                        fixture.settle(user, id)
+                    end
+                    local lesson = fixture.candidate("lesson", "contact_time", same and "evening" or "morning", "A contact lesson.", "")
+                    lesson.source_ids = { seeded.item_ids[1] }
+                    for _, source in ipairs({ "capture", "reflection", "tool" }) do
+                        local result, err = fixture.op(user, "remember", { candidates = { lesson }, idempotency = "boundary-" .. source,
+                            opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast",
+                                scope_family = "owner", scope_id = user, source = source, explicit = true } })
+                        test.is_nil(result)
+                        test.not_nil(err)
+                    end
+                    local result, err = fixture.op(user, "create", { component_id = id, fields = {
+                        kind = "lesson", scope_family = "owner", key = "contact_time", cardinality = "single",
+                        value = lesson.value, content = lesson.content,
+                    } })
+                    test.is_nil(result)
+                    test.not_nil(err)
+                    fixture.settle(user, id)
+                    test.eq(#fixture.items(user, id), 1)
+                    local refs = fixture.op(user, "provenance", { component_id = id, item_id = seeded.item_ids[1] })
+                    for _, ref in ipairs(refs) do test.is_true(ref.host_kind ~= "item") end
+                end
+            end
+        end)
+
+        test.it("keeps a date fact separate from a typed plan beside it", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local state = { status = "open", next_step = "Prepare materials", details = "Community workshop" }
+            local seeded = fixture.remember(user, id, { fixture.candidate("plan", "workshop", state, "Organize a workshop.", "seed") }, "plan-seed")
+            fixture.settle(user, id)
+            fixture.relations({ "unrelated" })
+            fixture.remember(user, id, { fixture.candidate("fact", "workshop_date", "March 14", "The workshop date is March 14.", "date") }, "date-fact")
+            fixture.settle(user, id)
+            local plan = fixture.op(user, "get", { component_id = id, item_id = seeded.item_ids[1] })
+            test.eq(plan.status, "current")
+            test.eq(plan.kind, "plan")
+            test.eq(plan.value.details, state.details)
+            test.eq(fixture.items(user, id, { key = "workshop_date" })[1].value, "March 14")
+            local requests = fixture.script.requests("structured_output")
+            test.eq(table.concat(requests[#requests].properties.relations.properties["1"].enum, ","), "unrelated")
+        end)
+
         for _, source in ipairs({ "tool", "owner" }) do
             for _, inferred in ipairs({ "capture", "reflection" }) do
                 for _, cardinality in ipairs({ "single", "multi" }) do
