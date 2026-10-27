@@ -67,6 +67,7 @@ function M.remember(args: any): (any?, error?)
             embedding_model = (store :: any).embedding_model, judge_model = (store :: any).effective.judge_model,
             scope_family = types.SCOPE.OWNER, scope_id = owner, explicit = true,
             host_kind = host_kind ~= "" and host_kind or nil, host_id = host_id,
+            events = statement and { [statement.id] = { at = statement.created_at, text = statement.text } } or nil,
         })
         return nil, err
     end)

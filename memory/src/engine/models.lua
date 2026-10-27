@@ -88,7 +88,10 @@ Each item has:
   and details (the requested outcome plus known decisions and constraints).
 - content: one self-contained third-person sentence about this attribute or goal.
 - event_id: the new user, tool or document message id supplying the evidence.
-- valid_at: RFC3339 time when the statement says the value became true, otherwise empty.
+- valid_at: RFC3339 time when a personal attribute became true as stated by the person,
+  otherwise empty. A plan version takes the time of the statement that updates it;
+  leave valid_at empty for plans. Event dates, schedules and deadlines are goal content
+  in value.details or value.next_step, never the plan's effective time.
 - confidence: a number from 0 to 1.
 
 Return scalar attributes in items and goals in plans. Both arrays are required.

@@ -128,10 +128,12 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
         local provenance = provenance_of(opts, candidate)
         local established, card_err = d:cardinality_of(scope_key, key)
         if card_err then return card_err end
+        local valid_at = event.at or d.now
+        if candidate.kind ~= types.KIND.PLAN then valid_at = types.utc(candidate.valid_at) or valid_at end
         local fields = {
             kind = candidate.kind, key = key, value = value, content = candidate.content,
             cardinality = established or candidate.cardinality or types.default_cardinality(candidate.kind),
-            valid_at = types.utc(candidate.valid_at) or event.at or d.now,
+            valid_at = valid_at,
             confidence = candidate.confidence, provenance = provenance, vector = (embedded :: any)[index], run_id = opts.run_id,
         }
         local claim_id, claim_err = types.claim_id(d.component_id, scope_key, key, value)
