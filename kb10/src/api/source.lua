@@ -4,7 +4,7 @@ local component = require("component")
 local http_errors = require("http_errors")
 local node_store = require("node_store")
 local kc = require("kc")
-local upload_tokens = require("upload_tokens")
+local uploads = require("uploads")
 
 
 local function reply_json(res: any, status: any, payload: any)
@@ -91,25 +91,19 @@ local function handler()
         return
     end
 
-    local token, token_err = upload_tokens.pack_read({
-        upload_id = upload_id,
+    local url, delivery_err = uploads.delivery_url(upload_id, {
         audience = "kb.source",
         expires_in = 300,
     })
-    if not token then
-        reply_json(res, http.STATUS.INTERNAL_ERROR, { success = false, error = "failed to mint upload read token: " .. tostring(token_err) })
+    if not url then
+        reply_json(res, http.STATUS.INTERNAL_ERROR, { success = false, error = "failed to obtain upload delivery URL: " .. tostring(delivery_err) })
         return
     end
 
-    -- Hand back the tokened raw URL as JSON rather than a 302: the proxy/XHR client
-    -- the renderer uses does not follow redirects (and Authorization is not re-sent
-    -- across them). The reader fetches /source, then loads the bytes from
-    -- /uploads/{id}/raw?token=. The token bridges KB-read access to an upload the
-    -- reader may not directly own; /raw streams the bytes.
     local fname = meta.original_filename or meta.filename or node_id
     reply_json(res, http.STATUS.OK, {
         success = true,
-        url = "/api/v1/uploads/" .. upload_id .. "/raw?token=" .. token,
+        url = url,
         filename = type(fname) == "string" and fname or "",
         content_type = type(meta.original_mime_type) == "string" and meta.original_mime_type
             or (type(meta.source_mime) == "string" and meta.source_mime or ""),

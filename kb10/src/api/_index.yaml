@@ -226,7 +226,7 @@ entries:
       component: kickside.component:component
       node_store: kickside.kb10.persist:node_store
       kc: kickside.kb10:types
-      upload_tokens: kickside.uploads.persist:upload_tokens
+      uploads: kickside.uploads:uploads
     method: handler
 
   - name: source.endpoint
