@@ -404,7 +404,8 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
                 local reason = nil
                 local normalized = {}
                 for k, v in pairs(candidate) do normalized[k] = v end
-                if type(mapping) ~= "table" or not types.CARDINALITY_SET[mapping.cardinality] then reason = "shape"
+                if type(mapping) ~= "table" or type(mapping.key) ~= "string"
+                    or not types.CARDINALITY_SET[mapping.cardinality] then reason = "shape"
                 else
                     local mapped_key = types.normalize_key(mapping.key)
                     local existing = known[mapped_key]

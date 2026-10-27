@@ -102,6 +102,22 @@ local function define_tests()
             test.eq(result.stats.rejected_extraction_shape, 1)
         end)
 
+        test.it("rejects non-string mapping keys before canonicalizing them", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { mappings = { ["1"] = {
+                { kind = "profile_slot", cardinality = "single", key = {}, value = "Oslo", content = "Lives in Oslo." },
+                { kind = "profile_slot", cardinality = "single", key = true, value = "Oslo", content = "Lives in Oslo." },
+                { kind = "profile_slot", cardinality = "single", key = 123, value = "Oslo", content = "Lives in Oslo." },
+                { kind = "profile_slot", cardinality = "single", key = "home_city", value = "Oslo", content = "Lives in Oslo." },
+            } } })
+            local result, err = fixture.op(user, "model_step", { candidates = { candidate("home_city", "Oslo") } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 1)
+            test.eq(result.items[1].key, "home_city")
+            test.eq(result.stats.rejected, 3)
+            test.eq(result.stats.rejected_normalization_shape, 3)
+        end)
+
         test.it("keeps valid mapping parts and candidates when others violate topic rules", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { mappings = {
