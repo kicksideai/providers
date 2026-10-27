@@ -24,7 +24,24 @@ local function define_tests()
             local seeded, seed_err = fixture.persistence_op(user, "seed", { component_id = id, user = user, count = 201, same_value = true })
             test.is_nil(seed_err, tostring(seed_err))
             fixture.settle(user, id)
+            local other = fixture.memory(user)
+            local unrelated = fixture.create_claim(user, other, "Bergen")
             local db = fixture.db()
+            for _, seed in ipairs({
+                { [[WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM sequence WHERE n < 10000)
+                    INSERT INTO kickside_memory_run_sources (component_id, run_id, event_id)
+                    SELECT $1, $2, 'other-event-' || CAST(n AS TEXT) FROM sequence]], "consolidate:" .. other },
+                { [[WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM sequence WHERE n < 10000)
+                    INSERT INTO kickside_memory_provenance (component_id, item_id, host_kind, host_id, event_id, recorded_at)
+                    SELECT $1, $2, 'session', 'other-session', 'other-event-' || CAST(n AS TEXT), '2026-01-01T00:00:00Z' FROM sequence]], unrelated.item_id },
+            }) do
+                local _, seed_err = db:execute(seed[1], { other, seed[2] })
+                test.is_nil(seed_err, tostring(seed_err))
+            end
+            for _, statement in ipairs({ "ANALYZE kickside_memory_run_sources", "ANALYZE kickside_memory_provenance" }) do
+                local _, analyze_err = db:execute(statement)
+                test.is_nil(analyze_err, tostring(analyze_err))
+            end
             for i = 1, 20 do
                 local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
                     (id, component_id, run_type, status, input, created_at)
