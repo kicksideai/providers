@@ -4,7 +4,6 @@ import { onBeforeUnmount, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import IconButton from './IconButton.vue'
 
-// Right-docked drawer (ui-kit kx-drawer). A scrim click or Escape closes it.
 const props = defineProps<{ open: boolean; title: string; icon: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 

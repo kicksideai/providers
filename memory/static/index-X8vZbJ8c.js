@@ -1,4 +1,4 @@
-import { B as a, c as s, f as r } from "./types-BgQdoNlH.js";
+import { B as a, c as s, f as r } from "./types-BfEeI96r.js";
 import { openBlock as c, createElementBlock as g, mergeProps as o, createElementVNode as d, renderSlot as h } from "vue";
 var u = `
     .p-toggleswitch {
@@ -272,4 +272,4 @@ f.render = B;
 export {
   f as s
 };
-//# sourceMappingURL=index-DTqhJDJU.js.map
+//# sourceMappingURL=index-X8vZbJ8c.js.map

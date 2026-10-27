@@ -6,11 +6,9 @@ import { KIND_META, relativeTime, sourceLabel, topicLabel } from './format'
 import type { ConflictGroup, MemoryItem } from './types'
 import { usePaged, type Memory } from './useMemory'
 
-// Memories that contradict each other, one card per group. Keeping one makes the
-// others earlier versions; agents see an open group as unresolved alternatives.
 const props = defineProps<{ memory: Memory }>()
 
-const groups = usePaged<ConflictGroup>(() => (props.memory.kbId.value ? `${props.memory.base.value}/conflicts` : null), 'groups', props.memory.revision)
+const groups = usePaged<ConflictGroup>(() => (props.memory.memoryId.value ? `${props.memory.base.value}/conflicts` : null), 'groups', props.memory.revision)
 
 function keep(group: ConflictGroup, winner: MemoryItem) {
   const target = `${props.memory.base.value}/conflicts/${encodeURIComponent(group.group_id)}/resolve`

@@ -2,10 +2,6 @@
 version: "1.0"
 namespace: app.llm
 
-# Deterministic model provider for the memory suites. Vectors are hashed bags
-# of words; structured outputs and generations are scripted per test through
-# the app_llm_script table, and an unscripted call is a provider error.
-
 entries:
   - name: script
     kind: library.lua

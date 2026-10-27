@@ -163,7 +163,7 @@ local function define_tests()
         test.it("rejects normalization that maps a goal onto a profile attribute", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "seed") }, "typed-normalization-seed")
+            fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "seed") }, "normalization-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
             fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
@@ -179,7 +179,6 @@ local function define_tests()
             test.eq(#rows, 1)
             test.eq(rows[1].value, "Berlin")
         end)
-
 
         test.it("pins open goals across conversations and retains completed and expired goals for search", function()
             local user = fixture.user()
@@ -629,8 +628,7 @@ local function define_tests()
             test.eq(#fixture.items(user, id), 1)
         end)
 
-
-        test.it("resolves an agent explicitly selecting the typed Memory trait", function()
+        test.it("resolves an agent explicitly selecting the Memory trait", function()
             local user = fixture.user()
             local memory = fixture.memory(user)
             local trait = "kickside.memory:memory"

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-# Typed ledger events of a memory knowledge base thread.
 version: '1.0'
 namespace: kickside.memory.events
 entries:
@@ -89,7 +88,7 @@ entries:
   kind: registry.entry
   meta:
     type: kickside.core.threads.event
-    comment: An item's presentation (text, priority) changes; its claim does not. The new text is the payload staged under payload_id.
+    comment: An item's text and priority change within its claim, using the payload staged under payload_id.
   schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object
@@ -196,7 +195,7 @@ entries:
   kind: registry.entry
   meta:
     type: kickside.core.threads.event
-    comment: An item is erased - its text, value, vector, provenance and the captured spans that stated it. It cannot be restored.
+    comment: Erases an item, its text, value, vector, provenance and captured source spans.
   schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object
@@ -257,7 +256,7 @@ entries:
   kind: registry.entry
   meta:
     type: kickside.core.threads.event
-    comment: A consolidation run finished.
+    comment: Records completion of a consolidation run.
   schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object

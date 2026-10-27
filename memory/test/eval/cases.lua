@@ -1,15 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Capture and reconcile eval cases. A capture case captures `seed` (when
--- given) in one session and `follow` in a second; `expect` is what the second
--- capture should do: ADD a new memory, DEDUPE (keep or merge with an existing
--- one), SUPERSEDE (update), CONFLICT, or IGNORE (nothing worth remembering).
--- A reflect case captures its `seed` spans and then consolidates; `expect` is
--- ADD when reflection should derive a new lesson and IGNORE when anything it
--- could say would only restate what is stored.
--- `ideal` holds the answers a correct model gives, for the scripted run: the
--- extraction of each capture, the reflection, and a verdict that targets the
--- memories the seed produced. Several follow-ups are verbatim user turns from
--- demo conversations.
 
 local function u(id: string, text: string): any return { id = id, role = "user", content = text } end
 local function a(id: string, text: string): any return { id = id, role = "assistant", content = text } end
@@ -31,7 +20,6 @@ local SAM_IDEAL = {
 }
 
 return {
-    -- Duplicates and restatements
     { name = "duplicate name", expect = "DEDUPE",
         seed = { u("s1", "Hi, I'm Sam.") },
         follow = { u("f1", "You can call me Sam, that's my preferred name.") },
@@ -47,7 +35,6 @@ return {
         follow = { u("f1", "Like I said, I don't eat meat.") },
         ideal = { seed = SAM_IDEAL, follow = { c("preference", "diet", "vegetarian", "The user is vegetarian.", "f1") } } },
 
-    -- Corrections
     { name = "city move (demo)", expect = "SUPERSEDE",
         seed = SAM,
         follow = { u("f1", "Quick update: I moved to Berlin last month, so I'll be leaving from Berlin now.") },
@@ -67,7 +54,6 @@ return {
         ideal = { seed = { c("profile_slot", "occupation", "nurse at St. Mary's", "The user works as a nurse at St. Mary's.", "s1") },
             follow = { c("profile_slot", "occupation", "paramedic with the city ambulance service", "The user is a paramedic with the city ambulance service.", "f1") }, verdict = "SUPERSEDE" } },
 
-    -- Real contradictions
     { name = "birth date contradiction (demo)", expect = "CONFLICT",
         seed = { u("s1", "For bookings: my passport says I was born on 3 March 1990.") },
         follow = { u("f1", "My airline profile says I was born on 5 March 1990, and honestly I don't know which date is right.") },
@@ -79,7 +65,6 @@ return {
         ideal = { seed = { c("fact", "cat_name", "Biscuit", "The user's cat is called Biscuit.", "s1") },
             follow = { c("fact", "cat_name", "Pepper", "The user's cat is called Pepper.", "f1") }, verdict = "CONFLICT" } },
 
-    -- New durable facts
     { name = "new fact", expect = "ADD",
         seed = { u("s1", "I live in Paris.") },
         follow = { u("f1", "I have two kids, Mia and Leo.") },
@@ -99,7 +84,6 @@ return {
             a("f2", "Great, Sam! For a warm long weekend in May by train from Paris, consider the South of France.") },
         ideal = { follow = { c("preference", "transport", "train", "The user prefers travelling by train.", "f1") } } },
 
-    -- Requests, questions and task chatter
     { name = "question about memory (demo)", expect = "IGNORE",
         seed = SAM,
         follow = { u("f1", "Hi again! Where will I be leaving from, and what should I keep in mind about food? One short trip idea please."),
@@ -124,7 +108,6 @@ return {
         follow = { u("f1", "One short trip idea please.") },
         ideal = { follow = {} } },
 
-    -- Trivial or contentless statements
     { name = "vague recollection (demo)", expect = "IGNORE",
         follow = { u("f1", "i forogt where i was recently"), a("f2", "Do you mean where you recently traveled?"), u("f3", "yeah travelled") },
         ideal = { follow = {} } },
@@ -150,7 +133,6 @@ return {
         follow = { u("f1", "Sounds good."), a("f2", "You told me you live in Rome and love opera, so I booked La Scala.") },
         ideal = { follow = {} } },
 
-    -- Reflection
     { name = "reflection restating facts (demo)", expect = "IGNORE", reflect = true,
         seed = { u("s1", "I've gone vegan."), u("s2", "For bookings: my passport says I was born on 3 March 1990."), u("s3", "I have two kids, Mia and Leo.") },
         ideal = { seed = {

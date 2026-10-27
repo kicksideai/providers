@@ -6,9 +6,6 @@ import ConfigFields from './ConfigFields.vue'
 import ModelPicker from './ModelPicker.vue'
 import { isRecord, parseConfig, type ConfigSchema } from './types'
 
-// The memory engine's pane of the knowledge base create/edit dialog. The
-// embedding model is fixed when the memory is created; every other setting is
-// rendered from the engine's config_schema and sent back as config.
 interface CreateContext {
   embedding_model?: string
   config?: Record<string, unknown> & { config_schema?: ConfigSchema }

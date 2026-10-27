@@ -1,7 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Deferred memory work: one row per derive, consolidation or re-embed run with
--- its frozen requester identity, input, outcome and failure reason. Capture
--- cursors advance when the derive result commits to the ledger.
 
 local sql = require("sql")
 local json = require("json")
@@ -70,7 +67,6 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
     return { created = true }, nil
 end
 
--- Run creation and queue enrollment are one write under the component fence.
 function M.schedule(run: RunInput, params: any, expected: string?): (any?, error?)
     local scheduled, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any, error?)
         if expected ~= nil then
@@ -118,8 +114,6 @@ function M.cursor(component_id: string, host_kind: string, host_id: string): (an
     end)
 end
 
--- Pins the rendered owner slice only while every source item remains current
--- with the version and text that was rendered.
 function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, selected: { any }): (any?, error?)
     return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
         local item_ids: { string } = {}
@@ -170,14 +164,6 @@ function M.list(component_id: string, run_type: string?, limit: integer): (any?,
     end)
 end
 
--- Claims a run for the executing job. The job lease already makes one
--- execution exclusive, so a run left running or failed by an earlier attempt of
--- the same job is claimable again. A succeeded run is claimable only when
--- `repeatable` (a consolidation slot runs once per cadence).
--- Claims a run for an attempt: { claimed, cycle }. `cycle` is the start of the
--- run's current cycle, kept by a retry of a failed or interrupted attempt and
--- renewed when a scheduled run or a finished repeatable run starts again, so
--- an attempt's writes are keyed by the cycle they belong to.
 function M.claim(run_id: string, repeatable: boolean): (any?, error?)
     return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
         local S = types.RUN_STATUS

@@ -1,5 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Connection and transaction helpers for the memory read model on target_db.
 
 local sql = require("sql")
 local registry = require("registry")
@@ -22,7 +21,6 @@ function M.db_id(): (string?, error?)
     return db_id, nil
 end
 
--- A pooled connection, whether it is SQLite, and the database id.
 function M.open(): (any?, boolean, string?, error?)
     local db_id, id_err = M.db_id()
     if id_err then return nil, false, nil, id_err end
@@ -36,7 +34,6 @@ function M.open(): (any?, boolean, string?, error?)
     return db, db_type == sql.type.SQLITE, db_id, nil
 end
 
--- Runs fn(db, sqlite) on a pooled connection and releases it.
 function M.read(fn: (any, boolean) -> (any, error?)): (any, error?)
     local db, sqlite, _, err = M.open()
     if err then return nil, err end
@@ -45,9 +42,6 @@ function M.read(fn: (any, boolean) -> (any, error?)): (any, error?)
     return result, fn_err
 end
 
--- Runs fn(tx, sqlite) in one transaction. When component_id is given, the
--- component existence fence runs first, so a write to a deleted or deleting
--- memory commits nothing.
 function M.write(component_id: string?, fn: (any, boolean) -> (any, error?)): (any, error?)
     local db, sqlite, db_id, err = M.open()
     if err then return nil, err end

@@ -1,10 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Model calls of the memory engine: candidate extraction from a captured span,
--- the closed-set reconcile judge, reflection over stored items, vectors, and
--- the working summary a checkpoint hands back to its host. Every failure is a
--- typed error that keeps a transient provider's kind and records a
--- deterministic provider failure as an internal memory failure; malformed
--- model output is never read as "nothing to remember".
 
 local llm = require("llm")
 local json = require("json")
@@ -13,9 +7,6 @@ local error_envelope = require("error_envelope")
 
 local M = {}
 
--- A model request is an implementation detail of memory. Only transient provider
--- failures remain retryable in the provider's vocabulary; every other provider
--- failure is an internal memory failure that retains its diagnostic cause.
 local TRANSIENT_KINDS = {
     [errors.UNAVAILABLE] = true,
     [errors.TIMEOUT] = true,
@@ -36,8 +27,6 @@ local function model_error(step: string, err: any): error
     })
 end
 
--- Span roles that state something: memories cite one of these messages.
--- Assistant text is context only and is shown without an id.
 local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
 local EXTRACTION_PROMPT = [[You extract durable memory about the user from a conversation span.
@@ -147,7 +136,6 @@ local function messages(system: string, user: string): { any }
     }
 end
 
--- Kinds a model may propose; identity and rules are set by people.
 local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PROFILE_SLOT, types.KIND.SKILL, types.KIND.LESSON, types.KIND.PLAN }
 
 local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
@@ -212,7 +200,6 @@ local function read_candidates(response: any, step: string): (any?, error?)
     return out, nil
 end
 
--- Lists the keys a person's memories already use, grouped by kind.
 local function key_listing(keys: { any }): string
     local lines: { string } = {}
     local kind, names = nil, {}
@@ -230,9 +217,6 @@ local function key_listing(keys: { any }): string
     return table.concat(lines, "\n")
 end
 
--- span: { { id, role, text, created_at } }; keys: the { kind, key } pairs the
--- person's memories use. A span in which nobody states anything yields no
--- candidates without a model call.
 function M.conversation(span: { any }, context: { any }?): string
     local lines: { string } = {}
     for _, message in ipairs(context or {}) do
@@ -242,7 +226,6 @@ function M.conversation(span: { any }, context: { any }?): string
         if STATEMENT_ROLES[message.role] then
             lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
         else
-            -- Context lines carry no id: nothing can cite them.
             lines[#lines + 1] = string.format("(%s, context only) %s", message.role, message.text)
         end
     end
@@ -333,10 +316,6 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     return out, nil
 end
 
--- items: { { id, kind, key, content } }
--- Reflection may only propose lessons, each drawing on at least two of the
--- listed memories; a lesson that leans on one memory restates it and is dropped
--- here, whatever the model says.
 local REFLECTION_MIN_SOURCES = 2
 
 function M.reflect(model: string, items: { any }): (any?, error?)
@@ -367,8 +346,6 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     return grounded, nil
 end
 
--- Returns { action, target_ids } over the stable ids of `neighbors`, choosing
--- among `actions`.
 function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)
     local ids: { string } = {}
     local known: { [string]: boolean } = {}

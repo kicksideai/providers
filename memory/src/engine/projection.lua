@@ -1,11 +1,9 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Ledger projection of a memory knowledge base. Folds typed memory events into
--- the read model, schedules derive runs for content ingested through the
--- knowledge control plane, and publishes the memory's counts as public meta.
 
 local component = require("component")
 local types = require("types")
 local items = require("memory_items")
+local fold = require("memory_fold")
 local jobs = require("memory_jobs")
 
 local M = {}
@@ -37,7 +35,7 @@ function M.run(input: any): (any?, error?)
         end
     end
     if #ledger_events > 0 then
-        local _, fold_err = items.fold(component_id, ledger_events)
+        local _, fold_err = fold.fold(component_id, ledger_events)
         if fold_err then return nil, fold_err end
     end
     local counts, count_err = items.counts(component_id)

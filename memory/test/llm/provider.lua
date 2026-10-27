@@ -1,6 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Deterministic provider: hashed bag-of-words vectors, scripted structured
--- output and generation.
 
 local hash = require("hash")
 local script = require("script")
@@ -31,8 +29,6 @@ local function embed(args: any): (any, any)
     return { success = true, result = { embeddings = out }, tokens = { prompt_tokens = 1, total_tokens = 1 } }
 end
 
--- Scripted failures preserve the dependency classification. The standard
--- transport failures are transient; every other scripted kind is deterministic.
 local function failed(failure: string, kind: string?, retryable: boolean?): error
     local failure_kind = kind or errors.UNAVAILABLE
     local transient = failure_kind == errors.UNAVAILABLE or failure_kind == errors.TIMEOUT or failure_kind == errors.RATE_LIMITED

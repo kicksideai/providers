@@ -1,7 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Test run_context binding over an app_history table: the selectors the memory
--- runtime uses (window, since_id, since_checkpoint) with the session event
--- shape { id, role, content, metadata, created_at }.
 
 local sql = require("sql")
 local json = require("json")
@@ -21,7 +18,6 @@ function M.ensure()
     if err then error(tostring(err)) end
 end
 
--- Appends messages { id, role, content, metadata?, created_at? } to a host.
 function M.record(host_id: string, messages: { any })
     M.ensure()
     local conn = db()

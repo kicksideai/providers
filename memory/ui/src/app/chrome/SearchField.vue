@@ -2,7 +2,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 
-// Search input with a leading icon and a clear button (ui-kit kx-search).
 defineProps<{ modelValue: string; placeholder: string; label: string }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 </script>

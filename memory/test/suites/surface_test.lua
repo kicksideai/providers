@@ -149,7 +149,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local function seed(key: string, n: integer)
-                local _, err = fixture.call_as(user, "app.suites:rework_call", {
+                local _, err = fixture.call_as(user, "app.suites:persistence_call", {
                     op = "seed", component_id = id, user = user, count = n, conflict = true, key = key, idempotency = key, content = key == "first_topic" and "Synthetic evidence." or "Distant evidence.",
                 })
                 test.is_nil(err, tostring(err))

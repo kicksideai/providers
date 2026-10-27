@@ -2,7 +2,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 
-// Square glyph button (ui-kit kx-iconbtn) for rail and toolbar actions.
 withDefaults(defineProps<{
   icon: string
   label: string

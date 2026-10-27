@@ -1,6 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Scripted model responses for the memory suites, kept in app_llm_script so
--- every function frame sees the same queue.
 
 local sql = require("sql")
 local json = require("json")
@@ -50,8 +48,6 @@ end
 function M.respond(method: string, response: any) push(method, response, nil) end
 function M.fail(method: string, failure: string, kind: string?, retryable: boolean?) push(method, nil, failure, kind, retryable) end
 
--- Holds a provider method after it records its request. Tests release the
--- named hold once the concurrent operation has reached that boundary.
 function M.hold(method: string)
     push(BARRIER_PREFIX .. method, true, nil)
 end
@@ -64,8 +60,6 @@ function M.release(method: string)
     if err then error(tostring(err)) end
 end
 
--- Waits for a named hold to be released. The request is already recorded when
--- this starts, so a test can observe requests(method) before releasing it.
 function M.await_release(method: string): string?
     local deadline = time.now():add(BARRIER_WAIT_SECONDS * time.SECOND)
     while true do
@@ -79,7 +73,6 @@ function M.await_release(method: string): string?
     end
 end
 
--- Next scripted answer for a method: (response, failure, failure kind, retryable).
 function M.take(method: string): (any, string?, string?, boolean?)
     M.ensure()
     local conn = db()
@@ -96,7 +89,6 @@ function M.take(method: string): (any, string?, string?, boolean?)
     return json.decode(rows[1].response), nil, nil, nil
 end
 
--- Records the schema and messages of a structured_output call.
 function M.record(method: string, schema: any, messages: any)
     M.ensure()
     local conn = db()
@@ -107,7 +99,6 @@ function M.record(method: string, schema: any, messages: any)
     conn:release()
 end
 
--- Schemas of the recorded calls of a method, oldest first.
 function M.requests(method: string): { any }
     M.ensure()
     local conn = db()
@@ -118,7 +109,6 @@ function M.requests(method: string): { any }
     return out
 end
 
--- { system, user } texts of the recorded calls of a method, oldest first.
 function M.prompts(method: string): { any }
     M.ensure()
     local conn = db()

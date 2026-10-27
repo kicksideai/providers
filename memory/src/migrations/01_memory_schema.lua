@@ -1,12 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Memory storage. The ledger holds structure only; memory text and typed
--- values live in kickside_memory_payloads, committed with the event that adds
--- the item and erased on forget. kickside_memory_items is the projection of the
--- ledger with a searchable copy of each payload, so a rebuild restores
--- structure from the ledger and text from the payloads. kickside_memory_keys
--- holds each key's cardinality per scope, set by the first item of the key. kickside_memory_runs and
--- kickside_memory_cursors hold the frozen identity and progress of deferred
--- capture work.
 
 local function run(db: any, statements: { string })
     for _, statement in ipairs(statements) do

@@ -1,7 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Shared fixture for the memory suites: seeded users, calls under a user's
--- actor, memory knowledge bases created through the knowledge control plane,
--- and the scripted model provider.
 
 local sql = require("sql")
 local contract = require("contract")
@@ -17,7 +14,6 @@ local M = { script = script, history = history }
 
 local RUN_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.suites:history_binding" }
 
--- Lifecycle payload of a session host.
 function M.payload(phase: string, session_id: string, agent_id: string, extra: any?): any
     local host = { kind = "session", session_id = session_id }
     local payload = {
@@ -28,7 +24,6 @@ function M.payload(phase: string, session_id: string, agent_id: string, extra: a
     return payload
 end
 
--- Context an agent step carries: trait context plus the agent_run pointer.
 function M.agent_context(memory_id: string, session_id: string, agent_id: string, extra: any?): any
     local host = { kind = "session", session_id = session_id }
     local context = {
@@ -39,8 +34,6 @@ function M.agent_context(memory_id: string, session_id: string, agent_id: string
     return context
 end
 
--- Waits for the memory's runs of a type to reach a terminal status; returns
--- them newest first.
 function M.wait_runs(user_id: string, component_id: string, run_type: string, count: integer): { any }
     local deadline = time.now():add(60 * time.SECOND)
     while true do
@@ -55,7 +48,6 @@ function M.wait_runs(user_id: string, component_id: string, run_type: string, co
     end
 end
 
--- Waits for a job to reach a status.
 function M.wait_job(job_id: string, status: string): any
     local deadline = time.now():add(60 * time.SECOND)
     while true do
@@ -104,20 +96,16 @@ local function scope(): any
     return security.named_scope("wippy.security:process")
 end
 
--- Calls a function entry as the user, with an optional context.
 function M.call_as(user_id: string, fn_id: string, args: any, context: any?): (any, any)
     local executor = funcs.new():with_actor(security.new_actor(user_id, {})):with_scope(scope())
     if context then executor = executor:with_context(context) end
     return executor:call(fn_id, args)
 end
 
--- Runs a named memory operation (see app.suites:memory_call) as the user.
 function M.op(user_id: string, op: string, args: any, context: any?): (any, any)
     return M.call_as(user_id, "app.suites:memory_call", { op = op, args = args }, context)
 end
 
--- Starts a memory operation in a separate function frame. Concurrency tests
--- await the returned command so they exercise the real write transaction.
 function M.async_op(user_id: string, op: string, args: any, context: any?): (any?, error?)
     local executor = funcs.new():with_actor(security.new_actor(user_id, {})):with_scope(scope())
     if context then executor = executor:with_context(context) end
@@ -134,8 +122,6 @@ function M.await(command: any): (any?, error?)
     return payload:data(), nil
 end
 
--- Creates a memory knowledge base owned by the user through the knowledge
--- control plane.
 function M.try_memory(user_id: string, config: any?, embedding_model: string?): (string?, any)
     local def, err = contract.get("kickside.knowledge:knowledge_bases")
     if err then return nil, err end
@@ -154,8 +140,6 @@ function M.memory(user_id: string, config: any?, embedding_model: string?): stri
     return id
 end
 
--- Deletes the memory knowledge base through the knowledge control plane, which
--- tears the component down through the memory's deletable cleanup.
 function M.delete_memory(user_id: string, component_id: string): (any, any)
     local def, err = contract.get("kickside.knowledge:knowledge_bases")
     if err then return nil, err end
@@ -164,7 +148,6 @@ function M.delete_memory(user_id: string, component_id: string): (any, any)
     return inst:delete({ component_id = component_id })
 end
 
--- Reconcile options for owner-scoped writes of a user.
 local function opts(component_id: string, user_id: string, extra: any?): any
     local opts = {
         component_id = component_id, embedding_model = "test-embed", judge_model = "test-fast",
@@ -174,7 +157,6 @@ local function opts(component_id: string, user_id: string, extra: any?): any
     return opts
 end
 
--- Writes candidates through the reconcile path; a failed write fails the test.
 function M.remember(user_id: string, component_id: string, candidates: { any }, idempotency: string, extra: any?): (any, any)
     local result, err = M.op(user_id, "remember", { candidates = candidates, opts = opts(component_id, user_id, extra), idempotency = idempotency })
     if err then error("remember failed: " .. tostring(err)) end
@@ -215,12 +197,33 @@ function M.verdict(action: string, target_ids: { string })
     script.respond("structured_output", { action = action, target_ids = target_ids, reason = "test" })
 end
 
--- A candidate as extraction returns it. Profile slots and preferences hold one
--- value unless `cardinality` says otherwise.
 function M.candidate(kind: string, key: string, value: any, content: string, event_id: string?, valid_at: string?, cardinality: string?): any
     local default = (kind == "profile_slot" or kind == "preference" or kind == "plan") and "single" or "multi"
     return { kind = kind, key = key, cardinality = cardinality or default, value = value, content = content,
         event_id = event_id or "", valid_at = valid_at or "", confidence = 0.9 }
+end
+
+function M.persistence_op(user: string, name: string, args: any): (any, any)
+    args.op = name
+    return M.call_as(user, "app.suites:persistence_call", args)
+end
+
+function M.count_rows(table_name: string, id: string): number
+    local db = M.db()
+    local rows, err = db:query("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id })
+    db:release()
+    if err then error(tostring(err)) end
+    return tonumber(rows[1].n) or 0
+end
+
+function M.create_claim(user: string, id: string, value: any, cardinality: string?): any
+    local result, err = M.op(user, "create", { component_id = id, fields = {
+        kind = "fact", scope_family = "owner", key = "home_city", value = value, content = "The current city is " .. tostring(value) .. ".",
+        cardinality = cardinality or "single",
+    } })
+    if err then error(tostring(err)) end
+    M.settle(user, id)
+    return result
 end
 
 return M

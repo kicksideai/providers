@@ -13,10 +13,6 @@ import MemoryRail from './MemoryRail.vue'
 import { parseConfig, type MemoryItem } from './types'
 import { useMemory } from './useMemory'
 
-// The memory knowledge base page, laid out like the other knowledge bases: the
-// memory list in a rail and the open memory, the conflicts or the activity in
-// the reader. Settings live in the knowledge base's Edit dialog. `route` deep
-// links a memory; opening one reports it through `navigate`.
 const props = useProps<{ config?: unknown }>()
 const emit = useEvents<{ navigate: string }>()
 const context = computed(() => parseConfig(props.value.config))
@@ -37,7 +33,7 @@ watch(() => context.value.route, (route) => {
     view.value = 'item'
   }
 })
-watch(memory.kbId, () => { selectedId.value = ''; view.value = 'item' })
+watch(memory.memoryId, () => { selectedId.value = ''; view.value = 'item' })
 
 function open(id: string) {
   view.value = 'item'

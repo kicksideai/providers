@@ -8,18 +8,14 @@
 @import "@kickside/ui-kit/kx-tag.css";
 @import "@kickside/ui-kit/spin.css";
 
-/* Tailwind base: the theme's PrimeVue CSS is @apply-based and assumes preflight. */
+/* The theme's PrimeVue rules use Tailwind preflight. */
 @tailwind base;
 
-/* Memory elements: the trait settings, the create pane and the memory page. The
-   page layout, controls and overlays are ui-kit; what follows is the memory's
-   own rows, reader, history and forms. */
 :host { display: block; height: 100%; min-height: 0; color: var(--p-text-color); font: 13px/1.45 var(--kx-font-body); }
 :host > div { height: 100%; min-height: 0; }
 *, *::before, *::after { box-sizing: border-box; }
 
-/* ── Forms (trait settings, create pane, add drawer) ─────────────────────── */
-.mm-stack, .mm-trait, .mm-form { display: grid; gap: 16px; align-content: start; }
+.mm-trait, .mm-form { display: grid; gap: 16px; align-content: start; }
 .mm-field { display: grid; gap: 6px; min-width: 0; }
 .mm-label { font-weight: 600; }
 .mm-hint { display: inline-flex; align-items: flex-start; gap: 6px; color: var(--p-text-muted-color); font-size: 12px; line-height: 1.45; }
@@ -35,7 +31,6 @@
 .mm-suggest-chip:hover { color: var(--p-primary-color); border-color: var(--p-primary-color); }
 .mm-muted { color: var(--p-text-muted-color); font-size: 12px; }
 
-/* ── Memory picker (trait settings) ──────────────────────────────────────── */
 .mm-choices {
   display: grid; max-height: 280px; overflow-y: auto; padding: 4px;
   border: 1px solid var(--p-content-border-color); border-radius: var(--kx-radius-14);
@@ -55,7 +50,6 @@
 .mm-choice-empty { display: flex; align-items: center; gap: 8px; padding: 14px 10px; font-size: 12.5px; color: var(--p-text-muted-color); }
 .mm-choice-empty svg { width: 15px; height: 15px; }
 
-/* ── Memory page ─────────────────────────────────────────────────────────── */
 .mm-page { height: 100%; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .mm-page-note { margin: 12px 16px 0; }
 .mm-rail-tools { display: grid; gap: 8px; padding: 10px; }
@@ -102,7 +96,6 @@
 .mm-skel-line:first-child { height: 26px; width: 70%; }
 @keyframes mm-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 
-/* ── Reader ──────────────────────────────────────────────────────────────── */
 .mm-main { max-width: none; }
 .mm-empty { margin: auto 0; }
 .mm-reader { display: grid; gap: 26px; max-width: var(--kx-reading-measure); }
@@ -141,7 +134,6 @@
 .mm-sources li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
 .mm-sources svg { width: 15px; height: 15px; color: var(--p-text-muted-color); }
 
-/* ── Conflicts and activity ──────────────────────────────────────────────── */
 .mm-view-head { display: grid; gap: 4px; max-width: var(--kx-reading-measure); }
 .mm-view-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 18px; font-weight: 700; }
 .mm-view-title svg { width: 20px; height: 20px; color: var(--p-primary-color); }
@@ -163,7 +155,6 @@
 .mm-run-t { font-weight: 600; }
 .mm-run-err { font-size: 12px; color: var(--p-danger-600, var(--p-danger-500)); overflow-wrap: anywhere; }
 
-/* ── Settings sections (create and edit dialog) ──────────────────────────── */
 .mm-sections { display: grid; gap: 22px; }
 .mm-section { display: grid; gap: 10px; }
 .mm-section + .mm-section { padding-top: 18px; border-top: 1px solid var(--p-content-border-color); }

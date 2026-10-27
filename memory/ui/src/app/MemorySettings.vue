@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useEvents, useProps } from '@wippy-fe/webcomponent-vue'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -9,10 +9,6 @@ import { api } from '@wippy-fe/proxy'
 import { errorText, isRecord, parseConfig, type MemoryEvents } from './types'
 import { usePaged } from './useMemory'
 
-// Memory capability on an agent: the one memory it remembers into and recalls
-// from, and whether it records conversations there. Models, budgets and cadence
-// belong to the memory itself. The editor mounts the trait context as `config`
-// and takes edits back through `config-changed`.
 const CARRIED_KEYS = ['read_enabled', 'recall_limit']
 
 interface MemoryChoice { id: string; name: string; description?: string; item_count?: number }
@@ -40,9 +36,6 @@ watch(() => props.value.config, (raw) => {
 
 const revision = ref(0)
 const choices = usePaged<MemoryChoice>(() => `/api/v1/memory?limit=20${debounced.value ? `&q=${encodeURIComponent(debounced.value)}` : ''}`, 'items', revision)
-// The attached memory, read through the knowledge API so a memory that is not
-// in the current search still shows by name; anything but a Memory knowledge
-// base counts as missing.
 const current = ref<MemoryChoice | null>(null)
 const resolving = ref(false)
 const resolveError = ref('')

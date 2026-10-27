@@ -22,7 +22,11 @@ entries:
       memory_writer: kickside.memory.engine:writer
       memory_reconcile: kickside.memory.engine:reconcile
       memory_models: kickside.memory.engine:models
-      runtime: kickside.memory.agent:runtime
+      agent_context: kickside.memory.agent:context
+      agent_capture: kickside.memory.agent:capture
+      agent_prompt: kickside.memory.agent:prompt
+      agent_recall: kickside.memory.agent:recall
+      agent_tools: kickside.memory.agent:tools
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
       memory_ledger: kickside.memory.engine:ledger
@@ -132,9 +136,9 @@ entries:
       session: kickside.users:session
       user_groups_repo: kickside.users.persist:user_groups_repo
 
-  - name: rework_call
+  - name: persistence_call
     kind: function.lua
-    source: file://rework_call.lua
+    source: file://persistence_call.lua
     method: call
     modules: [sql]
     imports:
@@ -143,17 +147,32 @@ entries:
       measured_db: app.suites:measured_db
       memory_writer: kickside.memory.engine:writer
       memory_items: kickside.memory.persist:items
+      memory_payloads: kickside.memory.persist:payloads
+      memory_fold: kickside.memory.persist:fold
       memory_models: kickside.memory.engine:models
       search_index: kickside.search_index:index
       types: kickside.memory:types
 
-  - name: rework_test
+  - name: erasure_test
     kind: function.lua
     meta:
       type: test
-      suite: memory_rework
+      suite: memory_erasure
       timeout: 300s
-    source: file://rework_test.lua
+    source: file://erasure_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: search_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_search
+      timeout: 300s
+    source: file://search_test.lua
     method: run
     modules: [json]
     imports:

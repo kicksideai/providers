@@ -5,10 +5,6 @@ import { Icon } from '@iconify/vue'
 import ConfigField from './ConfigField.vue'
 import type { ConfigSchema, SchemaField } from './types'
 
-// The engine's config_schema as a form, one titled section per field
-// `section`, in field order. The schema is the single declaration of memory
-// settings; the sections only say how they read. A `before-<section>` slot
-// puts a field the schema does not hold at the start of that section.
 const props = defineProps<{ schema: ConfigSchema; modelValue: Record<string, unknown> }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: Record<string, unknown>): void }>()
 

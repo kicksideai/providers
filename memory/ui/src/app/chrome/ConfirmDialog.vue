@@ -4,8 +4,6 @@ import { onBeforeUnmount, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import IconButton from './IconButton.vue'
 
-// Centered confirm (ui-kit kx-modal). The default slot explains what happens;
-// `busy` locks both buttons while the action runs.
 const props = withDefaults(defineProps<{
   open: boolean
   title: string

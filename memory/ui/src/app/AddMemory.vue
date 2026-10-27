@@ -13,10 +13,6 @@ import { eventDetail, type MemoryKind } from './types'
 import { usePaged, type Memory } from './useMemory'
 import { useWidget } from './useWidget'
 
-// Adds an identity, rule, skill or lesson for one agent. Identity and rules join
-// that agent's instructions; skills and lessons are recalled when relevant. The
-// topic names what the memory is about and is suggested from the topics this
-// memory already uses.
 const props = defineProps<{ memory: Memory }>()
 const emit = defineEmits<{ (e: 'added', id: string | null): void }>()
 
@@ -39,7 +35,7 @@ const topicError = computed(() => (topic.value && !isCanonicalTopicKey(topicKey.
 const ready = computed(() => !!agent.value && isCanonicalTopicKey(topicKey.value) && !!text.value.trim())
 
 const topics = usePaged<{ key: string; cardinality: 'single' | 'multi'; current_count: number }>(
-  () => (props.memory.kbId.value ? `${props.memory.base.value}/topics?scope_family=agent&kind=${kind.value}` : null),
+  () => (props.memory.memoryId.value ? `${props.memory.base.value}/topics?scope_family=agent&kind=${kind.value}` : null),
   'topics', props.memory.revision)
 const suggestions = computed(() => topics.rows.value.map((t) => t.key).filter((key) => key !== topicKey.value).slice(0, 8))
 

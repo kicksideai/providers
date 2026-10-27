@@ -8,9 +8,6 @@ import { GROUPS, KIND_META, relativeTime, topicLabel, type KindGroup } from './f
 import type { MemoryItem, MemoryStatus } from './types'
 import { usePaged, type Memory } from './useMemory'
 
-// The memory list in the page rail: a search box, a status switch and the
-// memories grouped into agent instructions, skills and lessons, and what is
-// known about people. Selecting a row hands its id to the page.
 const props = defineProps<{ memory: Memory; selectedId: string }>()
 const emit = defineEmits<{ (e: 'select', item: MemoryItem): void; (e: 'filtered'): void }>()
 
@@ -29,13 +26,12 @@ watch(query, (q) => {
 })
 
 const list = usePaged<MemoryItem>(() => {
-  if (!props.memory.kbId.value) return null
+  if (!props.memory.memoryId.value) return null
   const params = new URLSearchParams({ status: status.value, limit: '100' })
   if (debounced.value) params.set('q', debounced.value)
   return `${props.memory.base.value}/items?${params.toString()}`
 }, 'items', props.memory.revision)
 
-// A new search or status shows a different set, so the open memory closes.
 watch([status, debounced], () => emit('filtered'))
 
 const closed = ref<Record<KindGroup, boolean>>({ instructions: false, knowhow: false, plans: false, people: false })

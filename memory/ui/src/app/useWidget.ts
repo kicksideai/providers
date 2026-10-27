@@ -3,8 +3,6 @@ import { onMounted, ref } from 'vue'
 import { loadByTagName } from '@wippy-fe/proxy'
 import { errorText } from './types'
 
-// Loads a shared web component by tag. A widget that cannot load is reported
-// through `failed`, never replaced by a local control.
 export function useWidget(tag: string) {
   const ready = ref(!!customElements.get(tag))
   const failed = ref('')

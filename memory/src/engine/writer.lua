@@ -1,11 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- The one write path for typed memory. Every writer (capture, tools,
--- reflection, owner operations) settles the read model at the ledger head,
--- decides on that state through a decision (engine/decision), stages the new
--- payloads and vectors, and appends the decision's structure-only events at
--- that head. A refused append leaves nothing staged behind.
 
-local items = require("memory_items")
+local payloads = require("memory_payloads")
 local ledger = require("memory_ledger")
 local decision = require("memory_decision")
 local db = require("memory_db")
@@ -17,15 +12,11 @@ type WriteOptions = {
     source: string,
     actor: string?,
     deadline: string?,
-    -- Appended after the decision in the same atomic write.
     extra_events: { any }?,
-    -- Part of the idempotency key, for writes whose meaning depends on the
-    -- state they act on (an explicit Remember repeated after a forget).
     keyed_by_head: boolean?,
 }
 
--- Runs `decide(d)` on the settled state and lands its changes. Returns
--- { result, stats, item_ids, inserted }.
+-- The accepted ledger head and decision invariants share the payload transaction.
 function M.write(component_id: string, idempotency: string, opts: WriteOptions, decide: (any) -> (any?, error?)): (any?, error?)
     local head, head_err = ledger.settled_head(component_id, opts.deadline)
     if head_err then return nil, head_err end
@@ -57,7 +48,7 @@ function M.write(component_id: string, idempotency: string, opts: WriteOptions, 
                 for _, entry in ipairs(d.staged) do
                     if references[entry.payload_id] then staged[#staged + 1] = entry end
                 end
-                local stage_err = items.stage_tx(tx, component_id, staged)
+                local stage_err = payloads.stage_tx(tx, component_id, staged)
                 if stage_err then return nil, stage_err end
             end
             return accepted, nil

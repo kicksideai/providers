@@ -4,12 +4,8 @@ import { api, on } from '@wippy-fe/proxy'
 import { useHostVisibilityRefresh } from '@wippy-fe/webcomponent-vue'
 import { errorText, pageOf, type MemoryStatusView } from './types'
 
-// State of one memory for its page: status (config, counts, runs), refreshed
-// when the memory's component changes or the page returns to view. `revision`
-// moves on every refresh so paged views reload with it. Writes go through `act`,
-// which reports a failure and refreshes after success.
-export function useMemory(kbId: Ref<string>) {
-  const base = computed(() => `/api/v1/memory/${encodeURIComponent(kbId.value)}`)
+export function useMemory(memoryId: Ref<string>) {
+  const base = computed(() => `/api/v1/memory/${encodeURIComponent(memoryId.value)}`)
   const status = ref<MemoryStatusView | null>(null)
   const error = ref('')
   const busy = ref(false)
@@ -17,7 +13,7 @@ export function useMemory(kbId: Ref<string>) {
 
   let generation = 0
   async function refresh() {
-    if (!kbId.value) return
+    if (!memoryId.value) return
     const current = ++generation
     try {
       const { data } = await api.get(`${base.value}/status`)
@@ -45,7 +41,7 @@ export function useMemory(kbId: Ref<string>) {
   }
 
   let unsubscribe: (() => void) | null = null
-  watch(kbId, (id) => {
+  watch(memoryId, (id) => {
     if (unsubscribe) unsubscribe()
     unsubscribe = null
     status.value = null
@@ -57,15 +53,11 @@ export function useMemory(kbId: Ref<string>) {
   onUnmounted(() => { if (unsubscribe) unsubscribe() })
   useHostVisibilityRefresh(refresh)
 
-  return { kbId, base, status, error, busy, revision, act }
+  return { memoryId, base, status, error, busy, revision, act }
 }
 
 export type Memory = ReturnType<typeof useMemory>
 
-// A paged list from one endpoint. `url` returns the request for the current
-// filters (null while there is nothing to load); a change of url or of
-// `revision` reloads from the first page, and a response that arrives after a
-// newer request is dropped, so rows always match the filters on screen.
 export function usePaged<T>(url: () => string | null, field: string, revision: Ref<number>) {
   const rows = ref<T[]>([]) as Ref<T[]>
   const next = ref<number | null>(null)
@@ -108,7 +100,6 @@ export function usePaged<T>(url: () => string | null, field: string, revision: R
 
 const STATUS_SEVERITY: Record<string, string> = { current: 'success', conflict: 'warn', failed: 'danger', archived: 'secondary' }
 
-// PrimeVue Tag severity for an item or run status.
 export function severity(status: string): string {
   return STATUS_SEVERITY[status] || 'secondary'
 }

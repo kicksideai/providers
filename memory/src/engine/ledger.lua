@@ -1,8 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- The memory ledger: typed events on the memory knowledge base's own thread
--- (thread_id == component_id). Writers read the head, let the read-model
--- projection catch up to it, decide, and append with an expected head, so a
--- decision made on a stale read model never lands.
 
 local contract = require("contract")
 local security = require("security")
@@ -16,7 +12,6 @@ local M = {}
 
 local THREADS_CONTRACT = "kickside.core:threads"
 
--- Seconds a writer waits for the read model to reach the ledger head.
 local CATCH_UP_SECONDS = 60
 
 local function threads(): (any?, error?)
@@ -39,14 +34,12 @@ local function head_of(inst: any, component_id: string): (integer?, error?)
     return math.floor(tonumber((thread :: any).event_count) or 0) :: integer, nil
 end
 
--- Current ledger head (event count) of a memory.
 function M.head(component_id: string): (integer?, error?)
     local inst, err = threads()
     if err then return nil, err end
     return head_of(inst, component_id)
 end
 
--- Head after the read model caught up with it: the state a decision is made on.
 function M.settled_head(component_id: string, deadline: string?): (integer?, error?)
     local inst, err = threads()
     if err then return nil, err end
@@ -63,11 +56,6 @@ end
 
 type LedgerEvent = { type: string, body: any }
 
--- Appends typed events at the expected head inside the caller's transaction,
--- so the payloads the events reference commit with them or not at all.
--- `idempotency` names the decision; an exact replay matches the stored events.
--- A moved head is a retryable conflict: the caller decides again on the newer
--- state.
 function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, expected_head: integer, idempotency: string): (any?, error?)
     local writes: { any } = {}
     for index, event in ipairs(events) do
@@ -88,8 +76,6 @@ function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, exp
     return result, nil
 end
 
--- Tells the scheduler and retention about events a committed transaction
--- appended.
 function M.appended(component_id: string): error?
     local _, notify_err = retention_notifier.notify({ kind = "events_appended", thread_id = component_id })
     if notify_err then return notify_err end

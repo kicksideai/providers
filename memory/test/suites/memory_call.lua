@@ -1,12 +1,14 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Dispatches a named memory operation in the caller's frame, so suites can act
--- as a specific user.
 
 local ops = require("memory_ops")
 local writer = require("memory_writer")
 local reconcile = require("memory_reconcile")
 local models = require("memory_models")
-local runtime = require("runtime")
+local context = require("agent_context")
+local capture = require("agent_capture")
+local prompt = require("agent_prompt")
+local recall = require("agent_recall")
+local tools = require("agent_tools")
 local items = require("memory_items")
 local runs = require("memory_runs")
 local ledger = require("memory_ledger")
@@ -50,7 +52,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return (written :: any).result, nil
     end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
-    apply = function(a: any) return runtime.apply(a.payload) end,
+    apply = function(a: any) return capture.apply(a.payload) end,
     store = function(a: any): (any, any)
         local def, def_err = contract.get("kickside.knowledge:kb_store_lifecycle")
         if def_err then return nil, def_err end
@@ -60,16 +62,16 @@ local OPS: { [string]: (any) -> (any, any) } = {
     end,
     compile = function(a: any) return agent_compiler.compile(a.spec) end,
     resolve_memory = function(a: any)
-        local id, _, err = runtime.memory({ context = a.context }, component.ACCESS.READ)
+        local id, _, err = context.memory({ context = a.context }, component.ACCESS.READ)
         return id, err
     end,
-    checkpoint = function(a: any) return runtime.create(a.payload) end,
-    recall = function(a: any) return runtime.recall(a.input) end,
-    build = function(a: any) return runtime.build(nil, a.context) end,
-    prompt = function(_a: any) return runtime.prompt() end,
-    tool_remember = function(a: any) return runtime.remember(a.input) end,
-    tool_search = function(a: any) return runtime.search(a.input) end,
-    tool_forget = function(a: any) return runtime.forget(a.input) end,
+    checkpoint = function(a: any) return capture.create(a.payload) end,
+    recall = function(a: any) return recall.recall(a.input) end,
+    build = function(a: any) return prompt.build(nil, a.context) end,
+    prompt = function(_a: any) return prompt.prompt() end,
+    tool_remember = function(a: any) return tools.remember(a.input) end,
+    tool_search = function(a: any) return tools.search(a.input) end,
+    tool_forget = function(a: any) return tools.forget(a.input) end,
     list = function(a: any) return items.list(a.component_id, a.filter or {}) end,
     get = function(a: any) return items.get(a.component_id, a.item_id) end,
     provenance = function(a: any) return items.provenance(a.component_id, a.item_id) end,
@@ -114,7 +116,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
     end,
     classify = function(a: any): (any, any)
         local cause: any = "plain failure"
-        if a.typed then cause = errors.new({ kind = errors.INVALID, message = "bad input" }) end
+        if a.classified then cause = errors.new({ kind = errors.INVALID, message = "bad input" }) end
         local err = types.failed("dependency failed", cause)
         return { kind = err:kind(), retryable = err:retryable(), invalid = errors.INVALID, internal = errors.INTERNAL }, nil
     end,

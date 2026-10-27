@@ -1,9 +1,9 @@
 import { openBlock as s, createElementBlock as u, mergeProps as N, createBlock as P, resolveDynamicComponent as _e, createCommentVNode as k, renderSlot as W, createElementVNode as a, toDisplayString as m, defineComponent as M, computed as I, Fragment as B, createVNode as v, unref as l, createTextVNode as _, renderList as R, normalizeClass as E, resolveDirective as xe, withDirectives as me, resolveComponent as Se, createSlots as Ce, withCtx as q, ref as A, watch as D, withModifiers as oe, onBeforeUnmount as be, Transition as pe, vShow as Le } from "vue";
 import { Icon as f } from "@iconify/vue";
 import { api as J, define as Te } from "@wippy-fe/proxy";
-import { B as ae, d as Ae, f as le, c as ve, s as ue, k as te, g as Q, h as Be, i as H, e as Ie, u as Ve, a as Oe, b as Pe, m as Ee } from "./types-BgQdoNlH.js";
-import { s as ge, u as ie, _ as ze, a as Re } from "./useMemory-D2I9oK1I.js";
-import { R as ye, u as Ke, d as Ne, b as De, e as fe } from "./useWidget-BINhrfjq.js";
+import { B as ae, d as Ae, f as le, c as ve, s as ue, k as te, g as Q, h as Be, i as H, e as Ie, u as Ve, a as Oe, b as Pe, m as Ee } from "./types-BfEeI96r.js";
+import { s as ge, u as ie, _ as ze, a as Re } from "./useMemory-MxwcGGOw.js";
+import { R as ye, u as Ke, d as Ne, b as De, e as fe } from "./useWidget-DMiTxrj1.js";
 var Me = `
     .p-tag {
         display: inline-flex;
@@ -873,7 +873,7 @@ const Vt = { class: "mm-field" }, Ot = { class: "mm-hint" }, Pt = { class: "mm-f
       { value: "skill", label: "Skill", hint: "Something the agent knows how to do. Recalled when relevant." },
       { value: "lesson", label: "Lesson", hint: "Experience worth reusing. Recalled when relevant." }
     ], o = A("rule"), i = A(""), d = A(""), $ = A(""), g = Ke("wc-agent-picker"), L = I(() => r.find((O) => O.value === o.value)?.hint || ""), V = I(() => It(d.value)), z = I(() => d.value && !ce(V.value) ? "Use a short topic of letters, digits and spaces." : ""), S = I(() => !!i.value && ce(V.value) && !!$.value.trim()), T = ie(
-      () => n.memory.kbId.value ? `${n.memory.base.value}/topics?scope_family=agent&kind=${o.value}` : null,
+      () => n.memory.memoryId.value ? `${n.memory.base.value}/topics?scope_family=agent&kind=${o.value}` : null,
       "topics",
       n.memory.revision
     ), p = I(() => T.rows.value.map((O) => O.key).filter((O) => O !== V.value).slice(0, 8));
@@ -1013,7 +1013,7 @@ const Vt = { class: "mm-field" }, Ot = { class: "mm-hint" }, Pt = { class: "mm-f
     memory: {}
   },
   setup(e) {
-    const t = e, n = ie(() => t.memory.kbId.value ? `${t.memory.base.value}/conflicts` : null, "groups", t.memory.revision);
+    const t = e, n = ie(() => t.memory.memoryId.value ? `${t.memory.base.value}/conflicts` : null, "groups", t.memory.revision);
     function c(r, o) {
       const i = `${t.memory.base.value}/conflicts/${encodeURIComponent(r.group_id)}/resolve`;
       t.memory.act(() => J.post(i, { winner_id: o.id }));
@@ -1596,7 +1596,7 @@ const Vt = { class: "mm-field" }, Ot = { class: "mm-hint" }, Pt = { class: "mm-f
       }, 250);
     });
     const g = ie(() => {
-      if (!n.memory.kbId.value) return null;
+      if (!n.memory.memoryId.value) return null;
       const S = new URLSearchParams({ status: o.value, limit: "100" });
       return d.value && S.set("q", d.value), `${n.memory.base.value}/items?${S.toString()}`;
     }, "items", n.memory.revision);
@@ -1714,7 +1714,7 @@ const Vt = { class: "mm-field" }, Ot = { class: "mm-hint" }, Pt = { class: "mm-f
     const t = Ve(), n = Oe(), c = I(() => Pe(t.value.config)), r = Re(I(() => String(c.value.kb_id || ""))), o = A("item"), i = A(String(c.value.route || "")), d = A(!1), $ = I(() => r.status.value?.counts.current), g = I(() => r.status.value?.counts.conflict_groups || 0), L = I(() => (r.status.value?.runs || []).filter((p) => p.status === "failed").length);
     D(() => c.value.route, (p) => {
       typeof p == "string" && p && p !== i.value && (i.value = p, o.value = "item");
-    }), D(r.kbId, () => {
+    }), D(r.memoryId, () => {
       i.value = "", o.value = "item";
     });
     function V(p) {

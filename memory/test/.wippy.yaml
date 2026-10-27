@@ -8,6 +8,8 @@ vars:
   pg_password: kickside
 override:
   kickside.memory.persist:items:imports.memory_db: app.suites:measured_db
+  kickside.memory.persist:payloads:imports.memory_db: app.suites:measured_db
+  kickside.memory.persist:fold:imports.memory_db: app.suites:measured_db
 profiles:
   postgres:
     override:

@@ -2,24 +2,71 @@
 version: "1.0"
 namespace: kickside.memory.agent
 entries:
-  - name: runtime
+  - name: context
     kind: library.lua
-    meta:
-      name: runtime
-      comment: Agent memory runtime - capture, pinned soul, recall, checkpoint and memory tools.
-    source: file://runtime.lua
-    modules: &runtime_modules [ctx, contract, security]
-    imports: &runtime_imports
+    source: file://context.lua
+    modules: [ctx]
+    imports:
       component: kickside.component:component
       types: kickside.memory:types
       memory_config: kickside.memory:config
       memory_stores: kickside.memory.persist:stores
+
+  - name: history
+    kind: library.lua
+    source: file://history.lua
+    modules: [contract]
+    imports:
+      types: kickside.memory:types
+
+  - name: prompt
+    kind: library.lua
+    source: file://prompt.lua
+    modules: &prompt_modules [ctx]
+    imports: &prompt_imports
+      component: kickside.component:component
+      types: kickside.memory:types
+      agent_context: kickside.memory.agent:context
       memory_items: kickside.memory.persist:items
+      memory_runs: kickside.memory.persist:runs
+      memory_ledger: kickside.memory.engine:ledger
+
+  - name: capture
+    kind: library.lua
+    source: file://capture.lua
+    modules: &capture_modules []
+    imports: &capture_imports
+      component: kickside.component:component
+      types: kickside.memory:types
+      agent_context: kickside.memory.agent:context
+      agent_history: kickside.memory.agent:history
+      agent_prompt: kickside.memory.agent:prompt
       memory_runs: kickside.memory.persist:runs
       memory_jobs: kickside.memory.engine:jobs
       memory_models: kickside.memory.engine:models
+
+  - name: recall
+    kind: library.lua
+    source: file://recall.lua
+    modules: &recall_modules [ctx]
+    imports: &recall_imports
+      component: kickside.component:component
+      types: kickside.memory:types
+      agent_context: kickside.memory.agent:context
+      memory_recall: kickside.memory.engine:recall
+
+  - name: tools
+    kind: library.lua
+    source: file://tools.lua
+    modules: &tools_modules [ctx]
+    imports: &tools_imports
+      component: kickside.component:component
+      types: kickside.memory:types
+      agent_context: kickside.memory.agent:context
+      agent_history: kickside.memory.agent:history
+      memory_items: kickside.memory.persist:items
+      memory_models: kickside.memory.engine:models
       memory_writer: kickside.memory.engine:writer
-      memory_ledger: kickside.memory.engine:ledger
       memory_ops: kickside.memory.engine:ops
       memory_recall: kickside.memory.engine:recall
       memory_reconcile: kickside.memory.engine:reconcile
@@ -27,37 +74,38 @@ entries:
   - name: memory_provider_recall
     kind: function.lua
     meta:
-      comment: wippy.agent:memory recall - scoped hybrid recall of current memories, skipping previously injected ids. Called by the agent runtime each step, not by the model.
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+      comment: Scoped hybrid recall of current memories for each agent step.
+    source: file://recall.lua
+    modules: *recall_modules
+    imports: *recall_imports
     method: recall
 
   - name: list_memory_targets
     kind: function.lua
     meta:
       comment: Lists the memory knowledge bases the caller can read, for the agent memory picker.
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+    source: file://targets.lua
+    modules: [contract, security]
+    imports:
+      types: kickside.memory:types
     method: list_targets
 
   - name: memory_build
     kind: function.lua
     meta:
       comment: Trait build function - contributes the agent's identity, rules, skills and lessons to the compiled prompt.
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+    source: file://prompt.lua
+    modules: *prompt_modules
+    imports: *prompt_imports
     method: build
 
   - name: memory_prompt
     kind: function.lua
     meta:
-      comment: Trait prompt function - the owner profile and preferences pinned when the agent activated in this host.
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+      comment: Owner profile and preferences pinned for the active host.
+    source: file://prompt.lua
+    modules: *prompt_modules
+    imports: *prompt_imports
     method: prompt
 
   - name: remember_tool
@@ -83,9 +131,9 @@ entries:
         }
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_ids": {"type": "array", "items": {"type": "string"}}, "outcome": {"type": "object"}}, "required": ["success"]}
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+    source: file://tools.lua
+    modules: *tools_modules
+    imports: *tools_imports
     method: remember
 
   - name: forget_tool
@@ -100,9 +148,9 @@ entries:
         {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_id": {"type": "string"}}, "required": ["success"]}
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+    source: file://tools.lua
+    modules: *tools_modules
+    imports: *tools_imports
     method: forget
 
   - name: memory_binding
@@ -129,16 +177,16 @@ entries:
 
   - name: lifecycle
     kind: function.lua
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+    source: file://capture.lua
+    modules: *capture_modules
+    imports: *capture_imports
     method: apply
 
   - name: checkpoint
     kind: function.lua
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+    source: file://capture.lua
+    modules: *capture_modules
+    imports: *capture_imports
     method: create
 
   - name: search_tool
@@ -153,9 +201,9 @@ entries:
         {"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"cursor":{"type":"string"},"fields":{"type":"array","items":{"type":"string"}}},"required":["query"]}
       output_schema: |
         {"type":"object","properties":{"success":{"type":"boolean"},"error":{"type":"string"},"query":{"type":"string"},"count":{"type":"integer"},"items":{"type":"array","items":{"type":"object"}},"alternatives":{"type":"array","items":{"type":"object"}},"next_cursor":{"type":"string"},"note":{"type":"string"}},"required":["success"]}
-    source: file://runtime.lua
-    modules: *runtime_modules
-    imports: *runtime_imports
+    source: file://tools.lua
+    modules: *tools_modules
+    imports: *tools_imports
     method: search
 
   - name: lifecycle_binding

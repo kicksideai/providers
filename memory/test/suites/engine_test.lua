@@ -469,6 +469,88 @@ local function define_tests()
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id), 0)
         end)
+        test.it("requires owner topic keys, rejects rewritten content and preserves false claims", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local fields = { kind = "fact", scope_family = "owner", content = "The access code is Kestrel-42.", value = "Kestrel-42" }
+            local _, missing = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(missing)
+            fields.key = "the_access_code_is_kestrel_42"
+            local _, rewritten = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(rewritten)
+            fields.key = "access_code_kestrel_42"
+            local _, encoded = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(encoded)
+            fields.key = "access_code_kestrel42"
+            local _, compact = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(compact)
+            fields.key = "access_code_12345"
+            fields.content = "The access code is 12345."
+            fields.value = 12345
+            local _, number_key = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(number_key)
+            fields.key = "access_code_code_12345"
+            fields.value = { code = 12345 }
+            local _, object_key = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(object_key)
+            fields.key = "notification_false"
+            fields.content = "The user disables notifications."
+            fields.value = false
+            local _, boolean_key = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(boolean_key)
+            fields.key = "notification_setting"
+            fields.content = "The user disables notifications."
+            fields.value = false
+            local added, err = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.is_nil(err, tostring(err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = added.item_id }).value, false)
+        end)
+
+        test.it("validates structured leaves and permits short topic values", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local _, err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "access_code_kestrel42",
+                value = { code = "Kestrel-42", enabled = true }, content = "The access code is configured.",
+            } })
+            test.not_nil(err)
+            local added, short_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "rating", value = "A", content = "The rating is A.",
+            } })
+            test.is_nil(short_err, tostring(short_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = added.item_id }).value, "A")
+            local team, team_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "team", value = "tea", content = "The team serves tea.",
+            } })
+            test.is_nil(team_err, tostring(team_err))
+            test.not_nil(team)
+            for _, key in ipairs({ "a", "rating_a" }) do
+                local _, copied = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "fact", scope_family = "owner", key = key, value = "A", content = "The rating is A.",
+                } })
+                test.not_nil(copied)
+            end
+            fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
+            fixture.settle(user, id)
+            test.is_true(json.encode(fixture.op(user, "ledger", { component_id = id })):find("kestrel", 1, true) == nil)
+            for _, stored in ipairs(fixture.op(user, "stored_text", { component_id = id })) do
+                test.is_true(stored:lower():find("kestrel", 1, true) == nil)
+            end
+        end)
+
+        test.it("judges same-key multi candidates inside one decision", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.verdict("ADD", {})
+            local written = fixture.remember(user, id, {
+                fixture.candidate("fact", "pets", "cat", "The user has a cat."),
+                fixture.candidate("fact", "pets", "feline", "The user has a feline."),
+            }, "same-key")
+            test.eq(written.stats.judged, 1)
+            test.eq(written.stats.added, 2)
+        end)
     end)
 end
 

@@ -1,20 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- One decision on a memory: the item transitions every writer shares. Capture,
--- tools, reflection and owner operations all build their change here, after
--- the writer settled the read model at the ledger head, so the same state
--- rules apply whoever decides:
---
--- - an item is a claim (a typed value of a canonical key in a scope) at one
---   occurrence; a recurring claim is a new item with its own valid_at;
--- - a single-valued key holds at most one current value per scope, whatever
---   kind labels its items;
--- - a conflict group is always complete: contesting any member contests the
---   whole group;
--- - an archived item can be restored; a forgotten one is erased.
---
--- The decision collects ledger events (structure only), the payloads and
--- vectors the writer commits with them, and an overlay of the
--- states it changed, so later steps of the same decision see earlier ones.
 
 local types = require("types")
 local items = require("memory_items")
@@ -40,6 +24,7 @@ type Fields = {
 local Decision = {}
 Decision.__index = Decision
 
+-- The overlay makes each transition visible to subsequent steps of the same decision.
 function M.new(component_id: string, key: string, source: string, actor: string?): any
     return setmetatable({
         component_id = component_id,
@@ -64,7 +49,6 @@ function Decision:emit(event_type: string, body: any)
     self.events[#self.events + 1] = { type = event_type, body = body }
 end
 
--- The state of an item as this decision sees it.
 function Decision:get(item_id: string): (any?, error?)
     if self.overlay[item_id] then return self.overlay[item_id], nil end
     return items.get(self.component_id, item_id)
@@ -78,8 +62,6 @@ function Decision:set(item: any, fields: { [string]: any })
     self.touched_keys[item.scope_key .. "\0" .. item.key] = { scope_key = item.scope_key, key = item.key, cardinality = item.cardinality }
 end
 
--- Rows of a filter merged with this decision's overlay, keeping only live ones
--- unless `statuses` is given.
 function Decision:rows(filter: any, matches: (any) -> boolean, statuses: { string }?): ({ any }?, error?)
     local listed, err = items.all(self.component_id, {
         scope_keys = filter.scope_keys, key = filter.key, claim_ids = filter.claim_ids, conflict_groups = filter.conflict_groups,
@@ -102,21 +84,18 @@ function Decision:rows(filter: any, matches: (any) -> boolean, statuses: { strin
     return out, nil
 end
 
--- Live items of a key in a scope.
 function Decision:held(scope_key: string, key: string): ({ any }?, error?)
     return self:rows({ scope_keys = { scope_key }, key = key }, function(state: any): boolean
         return state.scope_key == scope_key and state.key == key
     end)
 end
 
--- Items of a claim in a scope, in any of the given statuses.
 function Decision:claimed(scope_key: string, claim_id: string, statuses: { string }): ({ any }?, error?)
     return self:rows({ scope_keys = { scope_key }, claim_ids = { claim_id } }, function(state: any): boolean
         return state.scope_key == scope_key and state.claim_id == claim_id
     end, statuses)
 end
 
--- The cardinality a key already has in a scope, or nil for a new key.
 function Decision:cardinality_of(scope_key: string, key: string): (string?, error?)
     for _, state in pairs(self.overlay) do
         if state.scope_key == scope_key and state.key == key then return state.cardinality, nil end
@@ -126,8 +105,6 @@ end
 
 type Scope = { scope_family: string, scope_id: string }
 
--- A new item for a claim, with its payload staged and its structure on the
--- ledger. The caller decides what it replaces.
 function Decision:add(scope: Scope, fields: Fields): (any?, error?)
     local value_err = types.validate_value(fields.kind, fields.value)
     if value_err then return nil, value_err end
@@ -172,8 +149,6 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
     return self.overlay[item_id :: string], nil
 end
 
--- Records that an item was seen again in host records it has no provenance
--- for yet.
 function Decision:seen(item: any, provenance: { any }): error?
     for _, ref in ipairs(provenance) do
         local known, err = items.has_provenance(self.component_id, item.id, ref)
@@ -187,8 +162,6 @@ function Decision:seen(item: any, provenance: { any }): error?
     return nil
 end
 
--- `successor` replaces `targets`. An older successor (by valid_at) than the
--- newest target is history instead: it is recorded as replaced by that target.
 function Decision:supersede(targets: { any }, successor: any, resolved_group: string?): error?
     local newest = nil
     for _, target in ipairs(targets) do
@@ -203,7 +176,6 @@ function Decision:supersede(targets: { any }, successor: any, resolved_group: st
     return self:replace(targets, successor, resolved_group)
 end
 
--- Applies a replacement chosen by an owner or the temporal evidence policy.
 function Decision:replace(targets: { any }, successor: any, resolved_group: string?): error?
     local contested: { any } = {}
     for _, target in ipairs(targets) do
@@ -221,7 +193,6 @@ function Decision:replace(targets: { any }, successor: any, resolved_group: stri
     return self:inherit_conflict(contested, successor)
 end
 
--- Complete group membership merged with this decision's transitions.
 function Decision:members(groups: { string }): ({ any }?, error?)
     local persisted, err = items.group_members(self.component_id, groups)
     if err then return nil, err end
@@ -248,7 +219,6 @@ function Decision:inherit_conflict(targets: { any }, successor: any): error?
     if #groups == 0 then return nil end
     local members, err = self:members(groups)
     if err then return err end
-    -- The successor replaces a member of an existing group.
     local state = {}
     for k, v in pairs(successor) do state[k] = v end
     state.conflict_group = groups[1]
@@ -256,7 +226,6 @@ function Decision:inherit_conflict(targets: { any }, successor: any): error?
     return self:conflict(members)
 end
 
--- `into` replaces `targets` as the same memory phrased better.
 function Decision:merge(targets: { any }, into: any): error?
     local ids: { string } = {}
     for _, target in ipairs(targets) do
@@ -271,8 +240,6 @@ function Decision:merge(targets: { any }, into: any): error?
     return self:inherit_conflict(targets, into)
 end
 
--- Contests `contested` against each other. Any member already in a conflict
--- group brings its whole group, so the result is one complete group.
 function Decision:conflict(contested: { any }): error?
     local members: { [string]: any } = {}
     local groups: { string } = {}
@@ -314,14 +281,12 @@ function Decision:conflict(contested: { any }): error?
     return nil
 end
 
--- Reusing a live claim still applies any replacement and new provenance.
 function Decision:reuse(item: any, provenance: { any }, replaces: { any }): error?
     local seen_err = self:seen(item, provenance)
     if seen_err then return seen_err end
     return self:merge(replaces, item)
 end
 
--- New presentation (text, priority) for an item whose claim does not change.
 function Decision:revise(item: any, content: string, priority: number?, vector: { number }?): error?
     local content_hash, hash_err = types.content_hash(self.component_id, content, item.value)
     if hash_err then return hash_err end
@@ -340,8 +305,6 @@ function Decision:archive(item: any)
     self.stats.archived = self.stats.archived + 1
 end
 
--- Makes an archived or contested item current again; on a single-valued key it
--- replaces the value held meanwhile.
 function Decision:restore(item: any): error?
     self:emit(types.EVENT.ITEM_RESTORED, { item_id = item.id, actor = self.actor })
     self:set(item, { status = types.STATUS.CURRENT, conflict_group = false, superseded_by = false })
@@ -358,8 +321,6 @@ function Decision:restore(item: any): error?
     return nil
 end
 
--- Erases every item of the claim: its text, value, vector, provenance and the
--- captured spans that stated it.
 function Decision:forget(item: any): error?
     local versions, err = items.lineage(self.component_id, item)
     if err then return err end
@@ -371,7 +332,6 @@ function Decision:forget(item: any): error?
     return nil
 end
 
--- The single-value invariant over every key this decision touched.
 function Decision:check(tx: any): error?
     for _, touched in pairs(self.touched_keys) do
         local cardinality = touched.cardinality
@@ -393,6 +353,5 @@ function Decision:check(tx: any): error?
     end
     return nil
 end
-
 
 return M

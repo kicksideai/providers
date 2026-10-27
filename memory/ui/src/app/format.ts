@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import type { MemoryItem, MemoryKind } from './types'
 
-// How each kind reads on the page: its label, icon and the rail section it
-// belongs to. Kind is presentation only; identity is the topic key.
 export type KindGroup = 'instructions' | 'knowhow' | 'plans' | 'people'
 
 export const KIND_META: Record<MemoryKind, { label: string; icon: string; group: KindGroup }> = {
@@ -23,7 +21,6 @@ export const GROUPS: { id: KindGroup; title: string; icon: string }[] = [
   { id: 'people', title: 'About people', icon: 'tabler:users' },
 ]
 
-// "home_city" reads as "Home city".
 export function topicLabel(key: string): string {
   const words = key.replace(/[_\-.]+/g, ' ').trim()
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key

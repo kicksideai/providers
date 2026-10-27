@@ -1,6 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Shared vocabulary of the memory engine: item kinds, scopes, statuses, ledger
--- event types, run types, and the small value helpers every layer uses.
 
 local time = require("time")
 local json = require("json")
@@ -9,7 +7,7 @@ local security = require("security")
 
 local M = {}
 
-M.KB_TYPE = "memory"
+M.STORE_TYPE = "memory"
 M.THREAD_KIND = "kickside.memory.ledger"
 M.SOURCE = "kickside.memory"
 M.EMBEDDING_DIMENSIONS = 512
@@ -30,15 +28,11 @@ M.SCOPE = {
     OWNER = "owner",
 }
 
--- How many current values a key holds in one scope. Kind is a presentation
--- label; cardinality and the canonical key decide uniqueness.
 M.CARDINALITY = {
     SINGLE = "single",
     MULTI = "multi",
 }
 
--- archived is reversible; forgotten is an erase: the item keeps its place in
--- the history but no text, value, vector or provenance.
 M.STATUS = {
     CURRENT = "current",
     SUPERSEDED = "superseded",
@@ -111,12 +105,11 @@ function M.now(): string
     return time.now():utc():format(time.RFC3339)
 end
 
--- Normalize an RFC3339 instant to UTC seconds; nil when it does not parse.
+-- SQLite datetime text represents UTC; both database formats normalize to seconds.
 function M.utc(value: any): string?
     if type(value) ~= "string" or value == "" then return nil end
     local text = value
     if text:match("^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d:%d%d") then
-        -- SQLite datetime() text is UTC without a zone designator.
         text = text:sub(1, 10) .. "T" .. text:sub(12, 19) .. "Z"
     end
     local parsed, err = time.parse(time.RFC3339, text)
@@ -124,7 +117,6 @@ function M.utc(value: any): string?
     return parsed:utc():format(time.RFC3339)
 end
 
--- RFC3339 instant `seconds` after now.
 function M.after_seconds(seconds: number): string
     return time.now():add(math.floor(seconds) * time.SECOND):utc():format(time.RFC3339)
 end
@@ -148,8 +140,6 @@ function M.validate_value(kind: string, value: any): error?
     return nil
 end
 
--- One input budget for capture and both ingestion entry points, applied before
--- a run persists the span or offers it to extraction.
 function M.bounded_span(span: { any }): { any }
     local remaining = 24000
     local out: { any } = {}
@@ -167,7 +157,6 @@ function M.bounded_span(span: { any }): { any }
     return out
 end
 
--- Topic identity is independent of the text and value it labels.
 function M.topic_key(value: any, content: string, claim_value: any?): (string?, error?)
     local key = M.normalize_key(value)
     if #key == 0 or #key > 64 or not key:match("^[a-z][a-z0-9_]*$") then
@@ -203,7 +192,6 @@ function M.topic_key(value: any, content: string, claim_value: any?): (string?, 
     return key, nil
 end
 
--- The calling actor's id, or "" without one.
 function M.actor_id(): string
     local actor = security.actor()
     return actor and actor:id() or ""
@@ -213,33 +201,26 @@ function M.scope_key(scope_family: string, scope_id: string): string
     return scope_family .. ":" .. scope_id
 end
 
--- A value as a tagged tuple, so an absent value hashes apart from every
--- present one.
-local function typed(value: any): { any }
+-- The tag distinguishes an absent value from every JSON value in a canonical hash.
+local function value_tuple(value: any): { any }
     if value == nil then return { "none" } end
     return { "value", value }
 end
 
--- Canonical hash of a typed tuple: value types and object keys are kept, so
--- true, "true", 1 and "1" are four different claims.
 function M.digest(parts: any): (string?, error?)
     local digest, err = canonical_json.hash(parts)
     if err then return nil, err end
     return digest, nil
 end
 
--- A claim: one typed value of a key in a scope. The same claim made again is
--- the same claim, whenever and however it is phrased; a text value compares
--- without case or spacing differences.
+-- Repeated string claims share identity after case and whitespace normalization.
 function M.claim_id(component_id: string, scope_key: string, key: string, value: any): (string?, error?)
     if type(value) == "string" then value = (M.trim(value):lower():gsub("%s+", " ")) end
-    return M.digest({ "claim", component_id, scope_key, key, typed(value) })
+    return M.digest({ "claim", component_id, scope_key, key, value_tuple(value) })
 end
 
--- Hash of an item's text and value, kept with the structure so erasure can
--- find every stored copy without the ledger holding the text.
 function M.content_hash(component_id: string, content: string, value: any): (string?, error?)
-    return M.digest({ "content", component_id, content, typed(value) })
+    return M.digest({ "content", component_id, content, value_tuple(value) })
 end
 
 function M.decode_json(value: any): any

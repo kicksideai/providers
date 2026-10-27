@@ -1,8 +1,4 @@
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-# Harness for kickside/memory: host resources (database, processes, routers,
-# permissive test scopes), the knowledge control plane and core platform
-# through kickside/memory's dependency graph, a deterministic model provider,
-# and the memory suites. Harness-only; excluded from publish.
 version: '1.0'
 namespace: app
 entries:
@@ -27,7 +23,7 @@ entries:
   kind: db.sql.sqlite
   foreign_keys: true
   meta:
-    comment: In-memory database for kb10 slice tests.
+    comment: In-memory database for memory tests.
   file: ':memory:'
 - name: uploads
   kind: fs.directory
@@ -70,9 +66,9 @@ entries:
 - name: user
   kind: security.policy
   meta:
-    comment: Permissive scope the kb10 suites run their scoped actors under.
+    comment: Permissive scope for memory test actors.
   groups:
-  - kb_test
+  - memory_test
   - app:user
   policy:
     resources: '*'
@@ -83,7 +79,7 @@ entries:
   meta:
     comment: Permissive administrator scope used by structured lifecycle grants.
   groups:
-  - kb_test_admin
+  - memory_test_admin
   policy:
     resources: '*'
     actions: '*'

@@ -76,7 +76,6 @@ entries:
     meta:
       comment: Hybrid retrieval and group-aware conflict paging over memory items.
 
-  # Host requirements.
   - name: ui_server
     kind: ns.requirement
     meta:
@@ -142,7 +141,6 @@ entries:
     imports:
       types: kickside.memory:types
 
-  # Web components.
   - name: ui_fs
     kind: fs.directory
     meta:
@@ -184,9 +182,6 @@ entries:
       announced: true
       auto_register: true
 
-  # Knowledge-base engine. The component impl binding carries the store
-  # contracts; the descriptor declares the ledger thread, its projection,
-  # configuration and the manage view.
   - name: memory_store
     kind: contract.binding
     meta:
@@ -273,8 +268,6 @@ entries:
       is_graph: false
       thread:
         class: kickside.knowledge.injection
-      # The ledger is the source of truth and the read model is rebuilt from it,
-      # so its events are kept for the lifetime of the memory.
       retention:
         event_days: 36500
       ui:

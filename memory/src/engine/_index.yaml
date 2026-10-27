@@ -2,10 +2,6 @@
 version: "1.0"
 namespace: kickside.memory.engine
 
-# The memory knowledge-base engine: ledger writes, model calls, reconciliation,
-# owner operations, deferred runs, the ledger projection and the contract
-# bindings the knowledge control plane and component service call.
-
 entries:
   - name: ledger
     kind: library.lua
@@ -55,8 +51,8 @@ entries:
       comment: The single typed write path - settle, decide, stage payloads, append structure at the head.
     source: file://writer.lua
     imports:
+      memory_payloads: kickside.memory.persist:payloads
       types: kickside.memory:types
-      memory_items: kickside.memory.persist:items
       memory_ledger: kickside.memory.engine:ledger
       memory_decision: kickside.memory.engine:decision
       memory_db: kickside.memory.persist:db
@@ -91,6 +87,7 @@ entries:
     source: file://jobs.lua
     modules: [uuid]
     imports: &jobs_imports
+      memory_payloads: kickside.memory.persist:payloads
       types: kickside.memory:types
       memory_config: kickside.memory:config
       memory_ledger: kickside.memory.engine:ledger
@@ -128,12 +125,12 @@ entries:
     source: file://projection.lua
     method: run
     imports:
+      memory_fold: kickside.memory.persist:fold
       component: kickside.component:component
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
       memory_jobs: kickside.memory.engine:jobs
 
-  # Deferred workers. Each re-admits the identity its run record holds.
   - name: derive_worker
     kind: function.lua
     meta: { comment: Derive job - started by capture (trait lifecycle phases and checkpoint) and by content ingested into the memory; re-admits the run identity. }
@@ -188,7 +185,6 @@ entries:
     method: reembed_authorized
     imports: *jobs_imports
 
-  # Contract methods.
   - { name: create_store, kind: function.lua, meta: { comment: kb_store_lifecycle create_store }, source: file://bindings.lua, method: create_store, modules: *binding_modules, imports: *binding_imports }
   - { name: get_store, kind: function.lua, meta: { comment: kb_store_lifecycle get_store }, source: file://bindings.lua, method: get_store, modules: *binding_modules, imports: *binding_imports }
   - { name: update_config, kind: function.lua, meta: { comment: kb_store_lifecycle update_config }, source: file://bindings.lua, method: update_config, modules: *binding_modules, imports: *binding_imports }

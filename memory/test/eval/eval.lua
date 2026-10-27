@@ -1,10 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Capture and reconcile eval: runs each case on a fresh memory, through an
--- optional seed capture and then a follow-up capture or a consolidation,
--- classifies what that last run did, and scores precision and recall per
--- action. A scripted target
--- answers every model call with the case's ideal answers; a live target names
--- real models and leaves the answers to them.
 
 local registry = require("registry")
 local json = require("json")
@@ -18,9 +12,6 @@ M.ACTIONS = { "ADD", "DEDUPE", "SUPERSEDE", "CONFLICT", "IGNORE" }
 local SEED_AT = "2026-10-01T10:00:00Z"
 local FOLLOW_AT = "2026-10-08T10:00:00Z"
 
--- Target of a run, from the meta of app.eval:target: extraction_model,
--- judge_model, embedding_model, answers ("scripted" or "live"), and user_id
--- to run as an existing user.
 function M.target(): any
     local entry, err = registry.get("app.eval:target")
     if err or type(entry) ~= "table" then error("eval target missing: " .. tostring(err)) end
@@ -29,7 +20,6 @@ function M.target(): any
     return target
 end
 
--- The action a derive run took, from its stats.
 function M.classify(stats: any): string
     if (stats.conflicted or 0) > 0 then return "CONFLICT" end
     if (stats.superseded or 0) > 0 then return "SUPERSEDE" end
@@ -50,7 +40,6 @@ local function stamp(messages: { any }, at: string): { any }
     return out
 end
 
--- Captures messages in a session and returns the derive run of that session.
 local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer): (any?, string?)
     fixture.history.record(session, stamp(messages, at))
     local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
@@ -66,8 +55,6 @@ local function capture(user: string, memory: string, session: string, messages: 
     return nil, "no derive run for session " .. session
 end
 
--- Scripts a verdict for the ideal follow-up: it targets the seeded memories of
--- the same key, or every seeded memory when none shares it.
 local function script_verdict(verdict: string?, candidate: any?, seeded: { any })
     if not verdict then return end
     if verdict == "ADD" then fixture.verdict("ADD", {}); return end
@@ -87,8 +74,6 @@ local function held(user: string, memory: string): string
     return table.concat(out, "; ")
 end
 
--- Runs a case's seed capture and its follow-up capture or consolidation; a
--- failed run is the case's outcome.
 local function outcome(case: any, target: any, user: string, memory: string): (string, string)
     local session = "eval-" .. memory .. "-"
     local derived = 0
@@ -136,7 +121,6 @@ local function run_case(case: any, target: any): any
     return { case = case.name, expected = case.expect, actual = actual, detail = detail }
 end
 
--- Precision and recall per action over case rows.
 function M.score(rows: { any }): { [string]: any }
     local out = {}
     for _, action in ipairs(M.ACTIONS) do

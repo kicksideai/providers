@@ -2,11 +2,12 @@
 local writer = require("memory_writer")
 local ledger = require("memory_ledger")
 local items = require("memory_items")
+local fold = require("memory_fold")
+local payloads = require("memory_payloads")
 local models = require("memory_models")
 local types = require("types")
 local sql = require("sql")
 local index = require("search_index")
-local measured_items = items
 local measured_db = require("measured_db")
 local runs = require("memory_runs")
 
@@ -47,7 +48,7 @@ local function call(a: any): (any?, error?)
         local item, err = items.get(a.component_id, a.item_id)
         if err then return nil, err end
         measured_db.reset()
-        local lineage, lineage_err = measured_items.lineage(a.component_id, item)
+        local lineage, lineage_err = items.lineage(a.component_id, item)
         if lineage_err then return nil, lineage_err end
         local lineage_queries = #measured_db.statements()
         local db = assert(sql.get("app:db"))
@@ -63,7 +64,7 @@ local function call(a: any): (any?, error?)
         for _, row in ipairs(lineage) do
             events[#events + 1] = { type = types.EVENT.ITEM_FORGOTTEN, seq = a.seq, body = { item_id = row.id } }
         end
-        local _, fold_err = measured_items.fold(a.component_id, events)
+        local _, fold_err = fold.fold(a.component_id, events)
         if fold_err then return nil, fold_err end
         local scans = 0
         for _, statement in ipairs(measured_db.statements()) do
@@ -83,7 +84,7 @@ local function call(a: any): (any?, error?)
         if db_err then return nil, db_err end
         local tx, tx_err = db:begin()
         if tx_err then db:release(); return nil, tx_err end
-        local stage_err = items.stage_tx(tx, a.component_id, { { payload_id = payload_id, owner_item_id = item.id,
+        local stage_err = payloads.stage_tx(tx, a.component_id, { { payload_id = payload_id, owner_item_id = item.id,
             content = content, value = item.value, content_hash = hash :: string, vector = vector } })
         if stage_err then tx:rollback(); db:release(); return nil, stage_err end
         local _, commit_err = tx:commit()
@@ -95,9 +96,9 @@ local function call(a: any): (any?, error?)
             db = assert(sql.get("app:db"))
             local staged = assert(db:query("SELECT content_hash FROM kickside_memory_embeddings WHERE item_id = $1", { item.id }))
             db:release()
-            local stale, stale_err = items.set_embedding(a.component_id, item.id, vector, item.content_hash)
+            local stale, stale_err = payloads.set_embedding(a.component_id, item.id, vector, item.content_hash)
             if stale_err then return nil, stale_err end
-            local _, fold_err = items.fold(a.component_id, { event })
+            local _, fold_err = fold.fold(a.component_id, { event })
             if fold_err then return nil, fold_err end
             db = assert(sql.get("app:db"))
             local folded = assert(db:query("SELECT content_hash FROM kickside_memory_embeddings WHERE item_id = $1", { item.id }))
@@ -105,21 +106,21 @@ local function call(a: any): (any?, error?)
             return { stale_written = stale, staged_hash = staged[1].content_hash, original_hash = item.content_hash,
                 vector_hash = folded[1].content_hash, item = items.get(a.component_id, item.id) }, nil
         end
-        local _, fold_err = items.fold(a.component_id, { event })
+        local _, fold_err = fold.fold(a.component_id, { event })
         if fold_err then return nil, fold_err end
         local revised_hash, revised_hash_err = types.content_hash(a.component_id, "newestword", item.value)
         if revised_hash_err then return nil, revised_hash_err end
         db = assert(sql.get("app:db"))
         tx = assert(db:begin())
-        local latest_err = items.stage_tx(tx, a.component_id, { { payload_id = payload_id .. ":new", owner_item_id = item.id,
+        local latest_err = payloads.stage_tx(tx, a.component_id, { { payload_id = payload_id .. ":latest", owner_item_id = item.id,
             content = "newestword", value = item.value, content_hash = revised_hash :: string, vector = vector } })
         if latest_err then tx:rollback(); db:release(); return nil, latest_err end
         local _, latest_commit_err = tx:commit()
         db:release()
         if latest_commit_err then return nil, latest_commit_err end
         local latest = { type = types.EVENT.ITEM_REVISED, seq = item.last_seq + 2,
-            body = { item_id = item.id, payload_id = payload_id .. ":new", content_hash = revised_hash } }
-        local _, latest_fold_err = items.fold(a.component_id, { latest, event, latest, event })
+            body = { item_id = item.id, payload_id = payload_id .. ":latest", content_hash = revised_hash } }
+        local _, latest_fold_err = fold.fold(a.component_id, { latest, event, latest, event })
         return true, latest_fold_err
     elseif a.op == "lexical" then
         local db, err = sql.get("app:db")
@@ -185,7 +186,7 @@ local function call(a: any): (any?, error?)
     elseif a.op == "reembed" then
         local vectors, err = models.embed("test-embed", { a.content })
         if err then return nil, err end
-        return items.set_embedding(a.component_id, a.item_id, vectors[1], a.content_hash)
+        return payloads.set_embedding(a.component_id, a.item_id, vectors[1], a.content_hash)
     elseif a.op == "replay" then
         local db, err = sql.get("app:db")
         if err then return nil, err end
@@ -200,7 +201,7 @@ local function call(a: any): (any?, error?)
         end
         db:release()
         for _, row in ipairs(rows) do row.body = types.decode_json(row.body) end
-        return items.fold(a.component_id, rows)
+        return fold.fold(a.component_id, rows)
     end
     return nil, errors.new({ kind = errors.INVALID, message = "unknown regression operation" })
 end

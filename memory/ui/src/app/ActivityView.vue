@@ -7,8 +7,6 @@ import { fullTime, relativeTime } from './format'
 import type { MemoryRun } from './types'
 import { severity, type Memory } from './useMemory'
 
-// Recent capture, consolidation and re-embedding runs, newest first, with what
-// each changed and why a failed one failed.
 const props = defineProps<{ memory: Memory }>()
 const runs = computed<MemoryRun[]>(() => props.memory.status.value?.runs || [])
 

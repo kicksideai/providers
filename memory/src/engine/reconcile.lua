@@ -1,18 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Reconciliation of candidate memories (capture, tools, reflection) into one
--- decision. A candidate is a claim: a typed value of a canonical key in a scope.
---
--- - The claim already current: seen again (provenance only).
--- - A claim the person had forgotten: not learned again from capture or
---   reflection.
--- - A single-valued key holding another value: the candidate relates to that
---   value only. An explicit statement (a Remember call) replaces it; capture
---   asks the judge whether it replaces, merges with, restates or contests it.
---   Reflection never touches a held value.
--- - Otherwise the nearest live items of the scope reach the judge, which picks
---   one relationship from a closed action set over their stable ids.
---
--- Which value wins a supersession is decided by event time in the decision.
 
 local types = require("types")
 local items = require("memory_items")
@@ -38,12 +24,9 @@ type Options = {
     judge_model: string,
     scope_family: string,
     scope_id: string,
-    -- The candidate states the person's own explicit request (Remember), so it
-    -- replaces a held single value without a judge.
     explicit: boolean?,
     host_kind: string?,
     host_id: string?,
-    -- Span messages candidates cite, by id: when it was said and its text.
     events: { [string]: { at: string?, text: string? } }?,
     run_id: string?,
     conversation: string?,
@@ -51,11 +34,8 @@ type Options = {
 
 local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
 
--- Reflection derives new memories from what people said; it never replaces,
--- merges or contests their own statements.
 local REFLECTION_ACTIONS = { types.ACTION.ADD, types.ACTION.NOOP }
 
--- Relationships a candidate can have with the value a single-valued key holds.
 local HELD_ACTIONS = { types.ACTION.SUPERSEDE, types.ACTION.MERGE, types.ACTION.NOOP, types.ACTION.CONFLICT }
 
 local function provenance_of(opts: Options, candidate: Candidate): { any }
@@ -64,7 +44,6 @@ local function provenance_of(opts: Options, candidate: Candidate): { any }
     return { { host_kind = opts.host_kind, host_id = opts.host_id or "", event_id = event_id } }
 end
 
--- Applies a judged (or decided) action between a new candidate and `targets`.
 local function apply(d: any, action: string, scope: any, fields: any, targets: { any }, provenance: { any }): error?
     if action == types.ACTION.NOOP then
         for _, target in ipairs(targets) do
@@ -98,7 +77,6 @@ local function judge(d: any, opts: Options, fields: any, stated: string?, neighb
     return verdict, nil
 end
 
--- Reconciles `candidates` into decision `d`.
 function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
     if #candidates == 0 then return nil end
     local texts: { string } = {}

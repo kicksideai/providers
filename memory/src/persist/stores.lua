@@ -1,7 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- One row per memory knowledge base: kb_type, embedding model and the
--- validated engine configuration. Also owns the bounded purge of every row a
--- memory keeps.
 
 local json = require("json")
 local db = require("memory_db")
@@ -10,8 +7,6 @@ local index = require("search_index")
 
 local M = {}
 
--- Item ids removed per purge page; a page removes their provenance, vectors and
--- full-text rows in the same transaction.
 local PURGE_PAGE = 200
 
 local function decode_row(row: any): any
@@ -56,9 +51,6 @@ function M.update_config(component_id: string, config: any): (any?, error?)
     end)
 end
 
--- Removes one page of the memory's rows. Returns { done, removed }: done is
--- true once no item, payload, provenance, vector, key, cursor, run or store row
--- is left.
 function M.purge_page(component_id: string): (any?, error?)
     return db.write(nil, function(tx: any, sqlite: boolean): (any, error?)
         local rows, err = tx:query("SELECT id FROM kickside_memory_items WHERE component_id = $1 ORDER BY id LIMIT $2",

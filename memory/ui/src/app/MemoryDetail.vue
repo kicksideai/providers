@@ -10,10 +10,6 @@ import { KIND_META, aboutLabel, fullTime, relativeTime, sourceLabel, topicLabel 
 import { errorText, isRecord, type MemoryItem, type Provenance } from './types'
 import { severity, type Memory } from './useMemory'
 
-// One memory in the reader: what it says, whom it is about, when it held and
-// how it was learned, its version history and the conversations it came from.
-// The detail, its history and every action are bound to the same item id, and a
-// response for an earlier selection is dropped.
 const props = defineProps<{ memory: Memory; itemId: string }>()
 const emit = defineEmits<{ (e: 'replaced', id: string): void; (e: 'gone'): void }>()
 
@@ -38,7 +34,6 @@ async function load(offset = 0) {
     if (current !== generation || !isRecord(data)) return
     if (!offset) {
       const loaded = isRecord(data.item) ? (data.item as unknown as MemoryItem) : null
-      // A forgotten memory keeps only an erased record; there is nothing to show.
       if (!loaded || loaded.status === 'forgotten') {
         emit('gone')
         return

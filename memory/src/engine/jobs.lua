@@ -1,8 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Deferred memory work. Every run is a kickside_memory_runs row that holds the
--- requester's frozen identity, its input and its outcome; the job carries only
--- the run id. Workers re-admit the identity, claim the run, do the work and
--- close the run as succeeded or failed with the reason.
 
 local uuid = require("uuid")
 local types = require("types")
@@ -10,6 +6,7 @@ local config = require("memory_config")
 local runs = require("memory_runs")
 local stores = require("memory_stores")
 local items = require("memory_items")
+local payloads = require("memory_payloads")
 local models = require("memory_models")
 local writer = require("memory_writer")
 local ledger = require("memory_ledger")
@@ -33,7 +30,6 @@ local AUTHORIZED = {
 
 local DERIVE_ATTEMPTS = 3
 local REEMBED_PAGE = 64
--- Most keys an extraction is offered for reuse.
 local KEY_LIMIT = 200
 
 local function frozen_identity(): (any?, any?, error?)
@@ -59,8 +55,6 @@ local function enrollment(run: any, identity: any, run_type: string, extra: any)
     return params
 end
 
--- A derive run over a span, under the caller's frozen identity; its id is
--- stable for ingested content and unique for each host capture.
 local function new_derive_run(run_id: string, component_id: string, host_kind: string, host_id: string, agent_id: string?,
     from_event_id: string, to_event_id: string, span: { any }, context: { any }?): (any?, any?, error?)
     local identity, row, id_err = frozen_identity()
@@ -85,8 +79,6 @@ type Capture = {
     context: { any }?,
 }
 
--- Schedules one capture of the unconsumed span while the host has no active derive.
--- Each capture has its own run identity; failed runs remain visible.
 function M.capture(capture: Capture): (any?, error?)
     local run, identity, err = new_derive_run(uuid.v7(), capture.component_id, capture.host_kind, capture.host_id, capture.agent_id,
         capture.from_event_id, capture.to_event_id, capture.span, capture.context)
@@ -94,7 +86,6 @@ function M.capture(capture: Capture): (any?, error?)
     return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }), capture.from_event_id)
 end
 
--- Schedules a derive run over ingested content (no capture cursor).
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
     local run_id, hash_err = types.digest({ "derive", component_id, "content", source_event_id })
     if hash_err then return nil, hash_err end
@@ -103,8 +94,6 @@ function M.ingest(component_id: string, source_event_id: string, span: { any }):
     return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }))
 end
 
--- The consolidation slot of a memory: one stable run and job that re-arms on
--- the configured cadence. Scheduling again returns the standing slot.
 function M.arm_consolidation(component_id: string, interval_hours: number): (any?, error?)
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, id_err end
@@ -118,7 +107,6 @@ function M.arm_consolidation(component_id: string, interval_hours: number): (any
     }))
 end
 
--- Brings the consolidation slot forward to now.
 function M.wake_consolidation(component_id: string): (any?, error?)
     local run, err = runs.get("consolidate:" .. component_id)
     if err then return nil, err end
@@ -146,14 +134,12 @@ local function retryable(err: any): boolean
     return type(err) == "userdata" and err:retryable()
 end
 
--- Closes the run as failed and answers the job: a retryable error is raised so
--- the queue retries it; any other failure is a deterministic job error.
+-- Queue diagnostics retain classification independently of erasable input.
 local function fail(run_id: string, err: any): any
     local message, encode_err = types.failure(err)
     if encode_err then error(encode_err) end
     local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message)
     if close_err then error(close_err) end
-    -- Queue diagnostics outlive erasable input, so they carry classification only.
     local diagnostic = message
     if retryable(err) then
         local failure = types.decode_json(message)
@@ -177,8 +163,6 @@ local function load_run(value: any, run_type: string): (any?, any?)
     return run, nil
 end
 
--- The queue frame is a worker, not the requester: re-admit the run's identity
--- before doing its work.
 local function admit(value: any, run_type: string): any
     local run, refusal = load_run(value, run_type)
     if refusal then return refusal end
@@ -193,8 +177,6 @@ local function admit(value: any, run_type: string): any
     return outcome
 end
 
--- Claims the run for this attempt and records the cycle it belongs to on
--- `run.cycle`; answers the job outcome when the attempt does not proceed.
 local function claim(run: any, repeatable: boolean): any?
     local claimed, err = runs.claim(run.id, repeatable)
     if err then return fail(run.id, err) end
@@ -335,7 +317,7 @@ function M.reembed_authorized(value: any): any
         local vectors, embed_err = models.embed(store.embedding_model, texts)
         if embed_err then return fail(run.id, embed_err) end
         for i, row in ipairs(page :: any) do
-            local _, vector_err = items.set_embedding(run.component_id, row.id, (vectors :: any)[i], row.content_hash)
+            local _, vector_err = payloads.set_embedding(run.component_id, row.id, (vectors :: any)[i], row.content_hash)
             if vector_err then return fail(run.id, vector_err) end
             embedded = embedded + 1
             after = row.id

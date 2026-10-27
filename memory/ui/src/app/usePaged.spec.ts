@@ -56,13 +56,13 @@ describe('usePaged', () => {
 
   it('reloads from the first page when the revision moves', async () => {
     let n = 0
-    respond = () => Promise.resolve({ data: { items: [{ id: `v${++n}` }] } })
+    respond = () => Promise.resolve({ data: { items: [{ id: `row-${++n}` }] } })
     const revision = ref(0)
     const list = usePaged<{ id: string }>(() => '/items', 'items', revision)
     await flush()
     revision.value++
     await flush()
-    expect(list.rows.value.map((r) => r.id)).toEqual(['v2'])
+    expect(list.rows.value.map((r) => r.id)).toEqual(['row-2'])
   })
 
   it('reports a failed load instead of showing an empty list', async () => {

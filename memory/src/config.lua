@@ -1,7 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Memory engine configuration. The engine descriptor's default_config and
--- config_schema are the single declaration; this library merges stored values
--- over the defaults and validates every write against the schema.
 
 local registry = require("registry")
 local types = require("types")
@@ -59,8 +56,6 @@ local function check_value(key: string, spec: any, value: any): error?
     return nil
 end
 
--- Validates `config` against the engine schema. Unknown keys are refused, so
--- a typo cannot silently fall back to a default.
 function M.validate(config: any): error?
     if config == nil then return nil end
     if type(config) ~= "table" then return types.invalid("config must be an object") end
@@ -76,7 +71,6 @@ function M.validate(config: any): error?
     return nil
 end
 
--- Effective configuration: stored values over engine defaults.
 function M.effective(stored: any): (any?, error?)
     local merged, err = M.defaults()
     if err then return nil, err end

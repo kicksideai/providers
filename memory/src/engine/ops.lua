@@ -1,8 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Explicit operations on a memory by a person with WRITE access: add or edit
--- items, resolve a conflict group, archive and restore, forget. Each runs as
--- one decision through the settled-head writer, under the same state rules as
--- capture: owner authority skips the judge, never the rules.
 
 local types = require("types")
 local items = require("memory_items")
@@ -35,8 +31,6 @@ local function load(d: any, item_id: string): (any?, error?)
     return item, nil
 end
 
--- Reuses a current claim while applying replacements; otherwise adds a new
--- occurrence that replaces the values held by a single-valued key.
 local function assert_claim(d: any, scope: any, fields: any, replaces: { any }): (any?, error?)
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
     local claim_id, claim_err = types.claim_id(d.component_id, scope_key, fields.key, fields.value)
@@ -65,7 +59,6 @@ local function assert_claim(d: any, scope: any, fields: any, replaces: { any }):
     return { item_id = (item :: any).id }, nil
 end
 
--- Adds an item. Owner-scoped items always belong to the caller.
 function M.create(component_id: string, fields: any): (any?, error?)
     local kind = types.trim(fields.kind)
     local scope_family = types.trim(fields.scope_family)
@@ -97,9 +90,6 @@ function M.create(component_id: string, fields: any): (any?, error?)
     end)
 end
 
--- Edits an item. A new value (or new text of an item whose value is its text)
--- is a new version replacing it; new text or priority alone is a revision of
--- the same claim.
 function M.edit(component_id: string, item_id: string, fields: any): (any?, error?)
     local content = fields.content ~= nil and types.trim(fields.content) or nil
     if content == "" then return nil, types.invalid("memory content is required") end
@@ -137,7 +127,6 @@ function M.edit(component_id: string, item_id: string, fields: any): (any?, erro
     end)
 end
 
--- Keeps `winner_id` current and supersedes every other member of the group.
 function M.resolve_conflict(component_id: string, group_id: string, winner_id: string): (any?, error?)
     return owner_write(component_id, "owner.resolve:" .. group_id .. ":" .. winner_id, function(d: any): (any?, error?)
         local members, err = items.group_members(component_id, { types.trim(group_id) })
@@ -156,7 +145,6 @@ function M.resolve_conflict(component_id: string, group_id: string, winner_id: s
     end)
 end
 
--- Hides an item from recall and the prompt; it can be restored.
 function M.archive(component_id: string, item_id: string): (any?, error?)
     return owner_write(component_id, "owner.archive:" .. item_id, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
@@ -170,7 +158,6 @@ function M.archive(component_id: string, item_id: string): (any?, error?)
     end)
 end
 
--- Brings an archived item back.
 function M.restore(component_id: string, item_id: string): (any?, error?)
     return owner_write(component_id, "owner.restore:" .. item_id, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
@@ -182,8 +169,6 @@ function M.restore(component_id: string, item_id: string): (any?, error?)
     end)
 end
 
--- Erases the item's claim: every version's text, value, vector and provenance,
--- and the captured spans that stated it. It cannot be restored.
 function M.forget(component_id: string, item_id: string): (any?, error?)
     return owner_write(component_id, "owner.forget:" .. item_id, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
