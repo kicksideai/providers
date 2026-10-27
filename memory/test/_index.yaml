@@ -59,8 +59,7 @@ entries:
 - name: api_public
   kind: http.router
   meta:
-    comment: Separate router for wippy/views to avoid colliding views' /components/by-tag/{tag} with the component module's /components/{id}/access
-      on /api.
+    comment: Public router for views; component routes use the authenticated API router.
     server: gateway
   prefix: /public
 - name: user
