@@ -25,7 +25,8 @@ end
 
 local function add_provenance_tx(tx: any, component_id: string, item_id: string, refs: any, recorded_at: string): error?
     for _, ref in ipairs(type(refs) == "table" and refs or {}) do
-        if type(ref) == "table" and types.trim(ref.event_id) ~= "" then
+        if type(ref) == "table" and (types.trim(ref.event_id) ~= "" or
+            (ref.host_kind == "item" and types.trim(ref.host_id) ~= "")) then
             local _, err = tx:execute(
                 PROVENANCE_INSERT .. "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
                 { item_id, component_id, types.trim(ref.host_kind), types.trim(ref.host_id), types.trim(ref.event_id), recorded_at })

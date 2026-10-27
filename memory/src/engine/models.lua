@@ -338,12 +338,20 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     local grounded: { any } = {}
     for _, candidate in ipairs(candidates :: any) do
         local sources: { [integer]: boolean } = {}
+        local source_ids: { string } = {}
         local count = 0
         for _, number in ipairs(type(candidate.based_on) == "table" and candidate.based_on or {}) do
             local n = math.floor(tonumber(number) or 0)
-            if items[n] and not sources[n] then sources[n] = true; count = count + 1 end
+            if items[n] and not sources[n] then
+                sources[n] = true
+                count = count + 1
+                source_ids[#source_ids + 1] = items[n].id
+            end
         end
-        if candidate.kind == types.KIND.LESSON and count >= REFLECTION_MIN_SOURCES then grounded[#grounded + 1] = candidate end
+        if candidate.kind == types.KIND.LESSON and count >= REFLECTION_MIN_SOURCES then
+            candidate.source_ids = source_ids
+            grounded[#grounded + 1] = candidate
+        end
     end
     return grounded, nil
 end

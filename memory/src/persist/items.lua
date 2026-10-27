@@ -142,6 +142,16 @@ function M.lineage(component_id: string, item: any): (any?, error?)
     end)
 end
 
+function M.derived(component_id: string, source_id: string): (any?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local rows, err = conn:query(SELECT .. " WHERE component_id = $1 AND id IN (" ..
+            "SELECT item_id FROM kickside_memory_provenance WHERE component_id = $1 AND host_kind = 'item' AND host_id = $2) ORDER BY id",
+            { component_id, source_id })
+        if err then return nil, types.failed("memory derivation read failed", err) end
+        return decode_all(rows), nil
+    end)
+end
+
 function M.keys(component_id: string, scope_key: string, limit: integer): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(

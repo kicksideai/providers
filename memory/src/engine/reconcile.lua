@@ -15,6 +15,7 @@ type Candidate = {
     value: any,
     content: string,
     event_id: string?,
+    source_ids: { string }?,
     valid_at: string?,
     confidence: number?,
 }
@@ -40,8 +41,14 @@ local HELD_ACTIONS = { types.ACTION.SUPERSEDE, types.ACTION.MERGE, types.ACTION.
 
 local function provenance_of(opts: Options, candidate: Candidate): { any }
     local event_id = types.trim(candidate.event_id)
-    if event_id == "" or not opts.host_kind then return {} end
-    return { { host_kind = opts.host_kind, host_id = opts.host_id or "", event_id = event_id } }
+    local refs: { any } = {}
+    if event_id ~= "" and opts.host_kind then
+        refs[#refs + 1] = { host_kind = opts.host_kind, host_id = opts.host_id or "", event_id = event_id }
+    end
+    for _, source_id in ipairs(candidate.source_ids or {}) do
+        refs[#refs + 1] = { host_kind = "item", host_id = source_id, event_id = "" }
+    end
+    return refs
 end
 
 local function apply(d: any, action: string, scope: any, fields: any, targets: { any }, provenance: { any }): error?

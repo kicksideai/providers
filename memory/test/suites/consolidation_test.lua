@@ -83,6 +83,88 @@ local function define_tests()
             test.is_nil(derived.value)
         end)
 
+        test.it("erases derived memories transitively across source versions while retaining independent lessons", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "work_schedule", "night", "The user works at night.", "work-source"),
+                fixture.candidate("preference", "rest_period", "day", "The user rests during the day.", "rest-source"),
+                fixture.candidate("preference", "contact_channel", "email", "The user prefers email.", "channel-source"),
+            }, "transitive-seed")
+            fixture.settle(user, id)
+            local previous_cycle = nil
+            local function reflect(lessons, source_keys)
+                local current = fixture.items(user, id, { statuses = { "current" } })
+                local numbers = {}
+                for n, item in ipairs(current) do numbers[item.key] = n end
+                for i, lesson in ipairs(lessons) do
+                    lesson.based_on = {}
+                    for _, key in ipairs(source_keys[i]) do
+                        test.not_nil(numbers[key], key)
+                        lesson.based_on[#lesson.based_on + 1] = numbers[key]
+                    end
+                end
+                fixture.script.respond("structured_output", { items = lessons })
+                for _, lesson in ipairs(lessons) do
+                    if not numbers[lesson.key] then fixture.verdict("ADD", {}) end
+                end
+                local _, err = fixture.op(user, "wake", { component_id = id })
+                test.is_nil(err, tostring(err))
+                local deadline = time.now():add(60 * time.SECOND)
+                local run
+                repeat
+                    run = fixture.op(user, "run", { run_id = "consolidate:" .. id })
+                    if run.started_at ~= previous_cycle and (run.status == "succeeded" or run.status == "failed") then break end
+                    if time.now():after(deadline) then error("consolidation cycle does not finish") end
+                    time.sleep(100 * time.MILLISECOND)
+                until false
+                previous_cycle = run.started_at
+                fixture.wait_job(run.job_id, "pending")
+                time.sleep(1100 * time.MILLISECOND)
+                test.eq(run.status, "succeeded", tostring(run.last_error))
+                fixture.settle(user, id)
+            end
+            reflect({
+                fixture.candidate("lesson", "contact_window", "evening", "Send requests in the evening, outside the rest period.", ""),
+                fixture.candidate("lesson", "work_channel", "email", "Send work requests by email.", ""),
+            }, { { "work_schedule", "rest_period" }, { "work_schedule", "contact_channel" } })
+            reflect({ fixture.candidate("lesson", "request_delivery", "evening email", "Send requests by email in the evening.", "") },
+                { { "contact_window", "contact_channel" } })
+            reflect({ fixture.candidate("lesson", "contact_window", "evening", "Send requests in the evening, outside the rest period.", "") },
+                { { "request_delivery", "contact_channel" } })
+            local source = fixture.items(user, id, { key = "rest_period" })[1]
+            local first = fixture.items(user, id, { key = "contact_window" })[1]
+            local refs = fixture.op(user, "provenance", { component_id = id, item_id = first.id })
+            test.eq(#refs, 4)
+            for _, ref in ipairs(refs) do test.eq(ref.host_kind, "item"); test.eq(ref.event_id, "") end
+            local last = fixture.items(user, id, { key = "request_delivery" })[1]
+            local independent = fixture.items(user, id, { key = "work_channel" })[1]
+            fixture.remember(user, id, {
+                fixture.candidate("preference", "rest_period", "morning", "The user now rests in the morning.", "rest-change"),
+            }, "transitive-update", { explicit = true })
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = source.id }).status, "superseded")
+            local erased, err = fixture.op(user, "tool_forget", { input = { key = "rest_period" } },
+                fixture.agent_context(id, "s-" .. user, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.is_true(erased.success, erased.error)
+            fixture.settle(user, id)
+            for _, item in ipairs({ source, first, last }) do
+                local row = fixture.op(user, "get", { component_id = id, item_id = item.id })
+                test.eq(row.status, "forgotten", item.key)
+                test.eq(row.content, "")
+                test.is_nil(row.value)
+                test.eq(#fixture.op(user, "provenance", { component_id = id, item_id = item.id }), 0)
+            end
+            for _, key in ipairs({ "work_schedule", "contact_channel", "work_channel" }) do
+                local row = fixture.items(user, id, { key = key })[1]
+                test.eq(row.status, "current", key)
+            end
+            local retained = fixture.op(user, "get", { component_id = id, item_id = independent.id })
+            test.eq(retained.content, independent.content)
+            test.eq(retained.value, independent.value)
+        end)
+
         test.it("keeps only reflected lessons that draw on at least two memories", function()
             local user = fixture.user()
             local id = fixture.memory(user)
