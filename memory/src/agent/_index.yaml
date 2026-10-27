@@ -60,7 +60,7 @@ entries:
     imports: *runtime_imports
     method: prompt
 
-  - name: memory_remember_tool
+  - name: remember_tool
     kind: function.lua
     meta:
       type: tool
@@ -88,14 +88,14 @@ entries:
     imports: *runtime_imports
     method: remember
 
-  - name: memory_forget_tool
+  - name: forget_tool
     kind: function.lua
     meta:
       type: tool
       mcp: { required_scopes: [state.write] }
       title: Forget Memory
       llm_alias: ForgetMemory
-      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Never use this for a correction, changed value or update; use Remember to supersede the earlier value. Requires an item id from SearchMemory and verifies the latest user request before erasing."
+      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Never use this for a correction, changed value or update; use Remember to supersede the earlier value. Requires an item id from SearchMemory."
       input_schema: |
         {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
       output_schema: |
@@ -126,3 +126,48 @@ entries:
       order: 20
       implementation_id: kickside.memory.agent:memory_binding
       list_targets: kickside.memory.agent:list_memory_targets
+
+  - name: lifecycle
+    kind: function.lua
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: apply
+
+  - name: checkpoint
+    kind: function.lua
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: create
+
+  - name: search_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp: { required_scopes: [state.read] }
+      title: Search Memory
+      llm_alias: SearchMemory
+      llm_description: Search the selected memory for the user's facts, preferences and goals. Returns item ids, content and unresolved alternatives. Pass next_cursor with the same query for more results.
+      input_schema: |
+        {"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"cursor":{"type":"string"},"fields":{"type":"array","items":{"type":"string"}}},"required":["query"]}
+      output_schema: |
+        {"type":"object","properties":{"success":{"type":"boolean"},"error":{"type":"string"},"query":{"type":"string"},"count":{"type":"integer"},"items":{"type":"array","items":{"type":"object"}},"alternatives":{"type":"array","items":{"type":"object"}},"next_cursor":{"type":"string"},"note":{"type":"string"}},"required":["success"]}
+    source: file://runtime.lua
+    modules: *runtime_modules
+    imports: *runtime_imports
+    method: search
+
+  - name: lifecycle_binding
+    kind: contract.binding
+    contracts:
+      - contract: wippy.agent:lifecycle
+        methods:
+          apply: kickside.memory.agent:lifecycle
+
+  - name: checkpoint_binding
+    kind: contract.binding
+    contracts:
+      - contract: wippy.agent:checkpoint
+        methods:
+          create: kickside.memory.agent:checkpoint

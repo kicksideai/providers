@@ -14,11 +14,9 @@ class MemoryPackageTest(unittest.TestCase):
         for file in ["Makefile", ".github/workflows/ci.yml"]:
             self.assertNotIn("memory-kb", (ROOT / file).read_text())
 
-    def test_published_trait_owns_the_typed_engine(self):
+    def test_memory_trait_owns_the_engine(self):
         index = (ROOT / "memory/src/_index.yaml").read_text()
-        for name in ["knowledge_based_memory", "runtime", "runtime_lifecycle", "runtime_checkpoint",
-                     "memory_recall_tool", "lifecycle_binding", "checkpoint_binding",
-                     "knowledge_memory_component", "ui_fs", "ui_static"]:
+        for name in ["memory", "memory_store", "memory_settings", "ui_fs", "ui_static"]:
             self.assertIn("- name: " + name + "\n", index)
         self.assertIn("memory_id:", index)
         self.assertIn("after_persist", index)

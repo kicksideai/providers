@@ -30,7 +30,7 @@ local function define_tests()
         test.it("creating a memory through the knowledge control plane provisions its store, ledger projection and consolidation slot", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local store = rows("SELECT kb_type, embedding_model FROM kickside_memory_kb_stores WHERE component_id = $1", { id })
+            local store = rows("SELECT kb_type, embedding_model FROM kickside_memory_stores WHERE component_id = $1", { id })
             test.eq(#store, 1)
             test.eq(store[1].kb_type, "memory")
             test.eq(store[1].embedding_model, "test-embed")
@@ -38,7 +38,7 @@ local function define_tests()
             local kinds = {}
             for _, row in ipairs(projections) do kinds[row.kind] = true end
             test.is_true(kinds["kickside.memory.ledger"] == true, json.encode(projections))
-            local slot = rows("SELECT run_type, job_id FROM kickside_memory_kb_runs WHERE id = $1", { "consolidate:" .. id })
+            local slot = rows("SELECT run_type, job_id FROM kickside_memory_runs WHERE id = $1", { "consolidate:" .. id })
             test.eq(#slot, 1)
             test.is_true(type(slot[1].job_id) == "string" and slot[1].job_id ~= "")
             local job = rows("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { slot[1].job_id })
@@ -67,7 +67,7 @@ local function define_tests()
             local _, type_err = fixture.try_memory(user, { capture_conversation = "yes" })
             test.not_nil(type_err)
             local id = fixture.memory(user, { recall_max_items = 7, judge_model = "test-fast" })
-            local store = rows("SELECT config FROM kickside_memory_kb_stores WHERE component_id = $1", { id })
+            local store = rows("SELECT config FROM kickside_memory_stores WHERE component_id = $1", { id })
             test.eq(json.decode(store[1].config).recall_max_items, 7)
         end)
 
@@ -269,7 +269,7 @@ local function define_tests()
             test.eq(again.stats.added, 0)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id, { kinds = { "preference" } }), 1)
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_kb_provenance WHERE item_id = $1", { first.item_ids[1] }), 2)
+            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { first.item_ids[1] }), 2)
 
             local head = rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count
             local replay, replay_err = fixture.remember(user, id, { tea }, "r1")
@@ -437,12 +437,12 @@ local function define_tests()
                 fixture.candidate("fact", "b", "two", "Fact two.", "m2"),
             }, "d1")
             fixture.settle(user, id)
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_kb_items WHERE component_id = $1", { id }), 2)
+            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1", { id }), 2)
             local result, err = fixture.delete_memory(user, id)
             test.is_nil(err, tostring(err))
             test.is_true(result.deleted == true, json.encode(result))
-            for _, table_name in ipairs({ "kickside_memory_kb_items", "kickside_memory_kb_payloads", "kickside_memory_kb_keys", "kickside_memory_kb_provenance", "kickside_memory_kb_embeddings",
-                "kickside_memory_kb_cursors", "kickside_memory_kb_run_sources", "kickside_memory_kb_runs", "kickside_memory_kb_stores" }) do
+            for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_payloads", "kickside_memory_keys", "kickside_memory_provenance", "kickside_memory_embeddings",
+                "kickside_memory_cursors", "kickside_memory_run_sources", "kickside_memory_runs", "kickside_memory_stores" }) do
                 test.eq(count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
             end
             test.eq(count("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id = $1", { id }), 0)

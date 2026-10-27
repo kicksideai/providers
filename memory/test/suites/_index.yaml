@@ -138,10 +138,8 @@ entries:
     method: call
     modules: [sql]
     imports:
+      memory_runs: kickside.memory.persist:runs
       measured_db: app.suites:measured_db
-      source_migration: kickside.memory.migrations:02_run_sources_implementation
-      embedding_migration: kickside.memory.migrations:03_payload_embeddings_implementation
-      diagnostic_migration: kickside.memory.migrations:04_run_diagnostics_implementation
       memory_writer: kickside.memory.engine:writer
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
@@ -179,17 +177,3 @@ entries:
     source: file://measured_db.lua
     imports:
       memory_db: kickside.memory.persist:db
-
-  - name: legacy_document
-    kind: contract.binding
-    meta: {comment: Document-backed queryable KB fixture; no typed Memory store exists.}
-    contracts:
-      - contract: kickside.contract:queryable
-        context_required: [component_id]
-        methods:
-          query: app.suites:legacy_document_query
-  - name: legacy_document_query
-    kind: function.lua
-    source: file://legacy_document.lua
-    method: query
-    modules: [ctx]

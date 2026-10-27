@@ -8,13 +8,7 @@ local function op(user: string, name: string, args: any): (any, any)
     return fixture.call_as(user, "app.suites:rework_call", args)
 end
 
-local function upgrade_diagnostics(user: string, id: string)
-    for i = 1, 2 do
-        local result, err = op(user, "migrate_diagnostics", { id = "diagnostics:" .. id .. ":" .. tostring(i) })
-        test.is_nil(err, tostring(err))
-        test.eq(result.status, "complete", json.encode(result))
-    end
-end
+local DIAGNOSTIC = json.encode({ kind = errors.INTERNAL, code = errors.INTERNAL, explanation = "memory extraction failed", retryable = false })
 
 local function count(table_name: string, id: string): number
     local db = fixture.db()
@@ -84,7 +78,7 @@ local function define_tests()
             fixture.settle(user, id)
             local db = fixture.db()
             for i = 1, 20 do
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_kb_runs
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
                     (id, component_id, run_type, status, input, created_at)
                     VALUES ($1, $2, 'derive', 'failed', $3, '2026-01-01T00:00:00Z')]],
                     { "cost:" .. id .. ":" .. tostring(i), id, json.encode({ span = { { id = tostring(i), text = "shared" } } }) })
@@ -98,8 +92,8 @@ local function define_tests()
             test.eq(result.run_scans, 0)
             test.eq(result.run_rows, 0)
             if result.sqlite then
-                test.is_true(result.plan:find("idx_kickside_memory_kb_items_claim", 1, true) ~= nil, result.plan)
-                test.is_true(result.plan:find("idx_kickside_memory_kb_items_successor", 1, true) ~= nil, result.plan)
+                test.is_true(result.plan:find("idx_kickside_memory_items_claim", 1, true) ~= nil, result.plan)
+                test.is_true(result.plan:find("idx_kickside_memory_items_successor", 1, true) ~= nil, result.plan)
             end
         end)
 
@@ -152,7 +146,7 @@ local function define_tests()
                 local run_id = "unrelated:" .. id
                 local input = { owner_id = user, span = { { id = "independent-message", role = "user", text = case.text } } }
                 local db = fixture.db()
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_kb_runs
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
                     (id, component_id, run_type, status, input, created_at)
                     VALUES ($1, $2, 'derive', 'scheduled', $3, '2026-01-01T00:00:00Z')]],
                     { run_id, id, json.encode(input) })
@@ -189,12 +183,12 @@ local function define_tests()
             local run_id = "classified:" .. id
             local diagnostic = json.encode({ kind = errors.TIMEOUT, code = errors.TIMEOUT, explanation = "memory extraction failed", retryable = true })
             local db = fixture.db()
-            local _, insert_err = db:execute([[INSERT INTO kickside_memory_kb_runs (id, component_id, run_type, status, input, last_error, created_at)
+            local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at)
                 VALUES ($1, $2, 'derive', 'failed', $3, $4, '2026-01-01T00:00:00Z')]],
                 { run_id, id, json.encode({ span = { { id = "source", role = "user", text = "A private setting." } } }), diagnostic })
             db:release()
             test.is_nil(insert_err, tostring(insert_err))
-            op(user, "backfill_sources", { id = "classified-sources:" .. id })
+            op(user, "enroll_sources", { run_id = run_id })
             local _, err = fixture.op(user, "forget", { component_id = id, item_id = seeded.item_ids[1] })
             test.is_nil(err, tostring(err))
             fixture.settle(user, id)
@@ -205,24 +199,24 @@ local function define_tests()
             test.eq(json.decode(run.last_error).explanation, "memory extraction failed")
         end)
 
-        test.it("backfills pending source ownership idempotently without changing existing input", function()
+        test.it("enrolls span and context source ownership without changing run input", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local run_id = "existing-pending:" .. id
+            local run_id = "pending:" .. id
             local input = { span = { { id = "current-source", role = "user", text = "An ongoing goal." } },
                 context = { { id = "prior-source", role = "assistant", text = "What is the next step?" } } }
             local db = fixture.db()
-            local _, insert_err = db:execute([[INSERT INTO kickside_memory_kb_runs (id, component_id, run_type, status, input, created_at)
+            local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, created_at)
                 VALUES ($1, $2, 'derive', 'scheduled', $3, '2026-01-01T00:00:00Z')]], { run_id, id, json.encode(input) })
             db:release()
             test.is_nil(insert_err, tostring(insert_err))
             for i = 1, 2 do
-                local result, err = op(user, "backfill_sources", { id = "source-migration:" .. id .. ":" .. tostring(i) })
+                local result, err = op(user, "enroll_sources", { run_id = run_id })
                 test.is_nil(err, tostring(err))
-                test.eq(result.status, "complete", json.encode(result))
+                test.is_true(result)
             end
             db = fixture.db()
-            local sources, sources_err = db:query("SELECT event_id FROM kickside_memory_kb_run_sources WHERE component_id = $1 AND run_id = $2 ORDER BY event_id", { id, run_id })
+            local sources, sources_err = db:query("SELECT event_id FROM kickside_memory_run_sources WHERE component_id = $1 AND run_id = $2 ORDER BY event_id", { id, run_id })
             db:release()
             test.is_nil(sources_err, tostring(sources_err))
             test.eq(#sources, 2)
@@ -231,7 +225,7 @@ local function define_tests()
             test.eq(json.encode(fixture.op(user, "run", { run_id = run_id }).input), (json.encode(input)))
         end)
 
-        test.it("erases source-owned numeric boolean and structured input and diagnostics", function()
+        test.it("erases source-owned numeric boolean and structured input while retaining diagnostics", function()
             local user = fixture.user()
             for _, case in ipairs({
                 { value = 12345, mention = "12345" },
@@ -245,26 +239,25 @@ local function define_tests()
                 test.is_nil(err, tostring(err))
                 fixture.settle(user, id)
                 local db = fixture.db()
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_kb_runs
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
                     (id, component_id, run_type, status, input, last_error, created_at)
                     VALUES ($1, $2, 'derive', 'failed', $3, $4, '2026-01-01T00:00:00Z')]],
                     { "retained:" .. id, id, json.encode({ span = { { id = "uncited", text = "The setting is " .. case.mention } } }),
-                        "Provider rejected " .. case.mention })
+                        DIAGNOSTIC })
                 db:release()
                 test.is_nil(insert_err, tostring(insert_err))
                 fixture.remember(user, id, { fixture.candidate("fact", "setting", case.value, "The setting is configured.", "uncited") }, "source-link")
                 fixture.settle(user, id)
-                local migrated, migrate_err = op(user, "backfill_sources", { id = "backfill:" .. id })
-                test.is_nil(migrate_err, tostring(migrate_err))
-                test.eq(migrated.status, "complete", json.encode(migrated))
-                upgrade_diagnostics(user, id)
+                local _, sources_err = op(user, "enroll_sources", { run_id = "retained:" .. id })
+                test.is_nil(sources_err, tostring(sources_err))
+
                 local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
                 test.is_nil(forget_err, tostring(forget_err))
                 fixture.settle(user, id)
                 local run = fixture.op(user, "run", { run_id = "retained:" .. id })
                 test.is_nil(run.input.span)
                 test.not_nil(run.last_error)
-                test.eq(json.decode(run.last_error).code, "legacy_failure")
+                test.eq(json.decode(run.last_error).code, errors.INTERNAL)
             end
         end)
 
@@ -279,10 +272,10 @@ local function define_tests()
                 fixture.settle(user, id)
                 local run_id = "repeat:" .. id
                 local db = fixture.db()
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_kb_runs
+                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
                     (id, component_id, run_type, status, input, last_error, created_at)
-                    VALUES ($1, $2, 'derive', 'failed', $3, 'Repeated evidence failed', '2026-01-01T00:00:00Z')]],
-                    { run_id, id, json.encode({ span = { { id = "repeat-message", text = "It stays unchanged." } } }) })
+                    VALUES ($1, $2, 'derive', 'failed', $3, $4, '2026-01-01T00:00:00Z')]],
+                    { run_id, id, json.encode({ span = { { id = "repeat-message", text = "It stays unchanged." } } }), DIAGNOSTIC })
                 db:release()
                 test.is_nil(insert_err, tostring(insert_err))
                 local repeated, repeat_err = fixture.remember(user, id, { {
@@ -292,17 +285,16 @@ local function define_tests()
                 test.is_nil(repeat_err, tostring(repeat_err))
                 test.eq(repeated.stats.noop, 1)
                 fixture.settle(user, id)
-                local migrated, migrate_err = op(user, "backfill_sources", { id = "repeat-backfill:" .. id })
-                test.is_nil(migrate_err, tostring(migrate_err))
-                test.eq(migrated.status, "complete", json.encode(migrated))
-                upgrade_diagnostics(user, id)
+                local _, sources_err = op(user, "enroll_sources", { run_id = run_id })
+                test.is_nil(sources_err, tostring(sources_err))
+
                 local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
                 test.is_nil(forget_err, tostring(forget_err))
                 fixture.settle(user, id)
                 local run = fixture.op(user, "run", { run_id = run_id })
                 test.is_nil(run.input.span)
                 test.not_nil(run.last_error)
-                test.eq(json.decode(run.last_error).code, "legacy_failure")
+                test.eq(json.decode(run.last_error).code, errors.INTERNAL)
             end
         end)
 
@@ -317,22 +309,13 @@ local function define_tests()
             test.eq(result.item.content, "Revised presentation.")
         end)
 
-        test.it("backfills existing embeddings idempotently and preserves search and replay", function()
+        test.it("stores embeddings with payloads and preserves search through replay", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local added = create(user, id, "Paris")
             fixture.settle(user, id)
             local db = fixture.db()
-            local _, clear_err = db:execute("UPDATE kickside_memory_kb_payloads SET embedding = NULL WHERE component_id = $1", { id })
-            db:release()
-            test.is_nil(clear_err, tostring(clear_err))
-            for i = 1, 2 do
-                local result, err = op(user, "backfill_embeddings", { id = "embedding-migration:" .. id .. ":" .. tostring(i) })
-                test.is_nil(err, tostring(err))
-                test.eq(result.status, "complete", json.encode(result))
-            end
-            db = fixture.db()
-            local payloads, read_err = db:query("SELECT embedding, content_hash FROM kickside_memory_kb_payloads WHERE component_id = $1 AND item_id = $2", { id, added.item_id })
+            local payloads, read_err = db:query("SELECT embedding, content_hash FROM kickside_memory_payloads WHERE component_id = $1 AND item_id = $2", { id, added.item_id })
             db:release()
             test.is_nil(read_err, tostring(read_err))
             test.eq(#json.decode(payloads[1].embedding), 512)
@@ -363,8 +346,8 @@ local function define_tests()
             local id = fixture.memory(user)
             local _, err = op(user, "append_race", { component_id = id, user = user })
             test.not_nil(err)
-            test.eq(count("kickside_memory_kb_payloads", id), 0)
-            test.eq(count("kickside_memory_kb_embeddings", id), 0)
+            test.eq(count("kickside_memory_payloads", id), 0)
+            test.eq(count("kickside_memory_embeddings", id), 0)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id), 0)
         end)
@@ -380,14 +363,14 @@ local function define_tests()
             local duplicate, duplicate_err = op(user, "seed", { component_id = id, user = user, count = 1 })
             test.is_nil(duplicate_err, tostring(duplicate_err))
             test.eq(duplicate.inserted, 0)
-            test.eq(count("kickside_memory_kb_payloads", id), 0)
-            test.eq(count("kickside_memory_kb_embeddings", id), 0)
+            test.eq(count("kickside_memory_payloads", id), 0)
+            test.eq(count("kickside_memory_embeddings", id), 0)
             local extended, extended_err = op(user, "seed", { component_id = id, user = user, count = 2 })
             test.is_nil(extended_err, tostring(extended_err))
             test.eq(extended.inserted, 1)
             fixture.settle(user, id)
-            test.eq(count("kickside_memory_kb_payloads", id), 1)
-            test.eq(count("kickside_memory_kb_embeddings", id), 1)
+            test.eq(count("kickside_memory_payloads", id), 1)
+            test.eq(count("kickside_memory_embeddings", id), 1)
             test.eq(fixture.op(user, "get", { component_id = id, item_id = seeded.item_ids[1] }).status, "forgotten")
         end)
 
@@ -403,7 +386,7 @@ local function define_tests()
             local _, replay_err = op(user, "replay", { component_id = id })
             test.is_nil(replay_err, tostring(replay_err))
             test.eq(json.encode(fixture.items(user, id)), (json.encode(before)))
-            test.eq(count("kickside_memory_kb_payloads", id), 2)
+            test.eq(count("kickside_memory_payloads", id), 2)
             fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
             fixture.settle(user, id)
             local erased = fixture.items(user, id)
@@ -441,18 +424,17 @@ local function define_tests()
             test.is_nil(add_err, tostring(add_err))
             fixture.settle(user, id)
             local db = fixture.db()
-            local _, insert_err = db:execute("INSERT INTO kickside_memory_kb_runs (id, component_id, run_type, status, input, last_error, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", {
+            local _, insert_err = db:execute("INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", {
                 "retained-" .. id, id, "derive", "failed", json.encode({ span = { { id = "uncited", text = "Another mention: Kestrel-42", role = "user" } } }),
-                "Cannot extract Kestrel-42", "2026-01-01T00:00:00Z",
+                DIAGNOSTIC, "2026-01-01T00:00:00Z",
             })
             db:release()
             test.is_nil(insert_err, tostring(insert_err))
             fixture.remember(user, id, { fixture.candidate("fact", "access_code", "Kestrel-42", "The access code is Kestrel-42.", "uncited") }, "source-link")
             fixture.settle(user, id)
-            local migrated, migrate_err = op(user, "backfill_sources", { id = "backfill:" .. id })
-            test.is_nil(migrate_err, tostring(migrate_err))
-            test.eq(migrated.status, "complete", json.encode(migrated))
-            upgrade_diagnostics(user, id)
+            local _, sources_err = op(user, "enroll_sources", { run_id = "retained-" .. id })
+            test.is_nil(sources_err, tostring(sources_err))
+
             local _, err = fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
             test.is_nil(err, tostring(err))
             fixture.settle(user, id)
@@ -460,25 +442,25 @@ local function define_tests()
             test.is_nil(json.encode(stored):find("Kestrel", 1, true), json.encode(stored))
             local found = fixture.op(user, "query", { request = { query = "Kestrel-42", limit = 10 } }, { component_id = id })
             test.eq(found.count, 0)
-            test.eq(count("kickside_memory_kb_embeddings", id), 0)
-            test.eq(count("kickside_memory_kb_payloads", id), 0)
+            test.eq(count("kickside_memory_embeddings", id), 0)
+            test.eq(count("kickside_memory_payloads", id), 0)
             db = fixture.db()
             local rows, fts_err = db:query(db:type() == "sqlite" and
-                "SELECT COUNT(*) AS n FROM kickside_memory_kb_fts WHERE item_id = $1" or
-                "SELECT COUNT(*) AS n FROM kickside_memory_kb_items WHERE id = $1 AND search_vector <> ''::tsvector", { added.item_id })
+                "SELECT COUNT(*) AS n FROM kickside_memory_fts WHERE item_id = $1" or
+                "SELECT COUNT(*) AS n FROM kickside_memory_items WHERE id = $1 AND search_vector <> ''::tsvector", { added.item_id })
             db:release()
             test.is_nil(fts_err, tostring(fts_err))
             test.eq(tonumber(rows[1].n), 0)
         end)
 
-        test.it("erases the owning run input and error without depending on a cited event", function()
+        test.it("erases the owning run input without depending on a cited event", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local run_id = "input-owner-" .. id
             local db = fixture.db()
-            local _, insert_err = db:execute("INSERT INTO kickside_memory_kb_runs (id, component_id, run_type, status, input, last_error, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", {
+            local _, insert_err = db:execute("INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", {
                 run_id, id, "derive", "failed", json.encode({ span = { { id = "uncited", role = "user", text = "Opaque input" } } }),
-                "Opaque error", "2026-01-01T00:00:00Z",
+                DIAGNOSTIC, "2026-01-01T00:00:00Z",
             })
             db:release()
             test.is_nil(insert_err, tostring(insert_err))
@@ -486,13 +468,13 @@ local function define_tests()
             fixture.settle(user, id)
             local item = fixture.op(user, "get", { component_id = id, item_id = added.item_ids[1] })
             test.eq(item.run_id, run_id)
-            upgrade_diagnostics(user, id)
+
             local _, err = fixture.op(user, "forget", { component_id = id, item_id = item.id })
             test.is_nil(err, tostring(err))
             fixture.settle(user, id)
             local run = fixture.op(user, "run", { run_id = run_id })
             test.not_nil(run.last_error)
-            test.eq(json.decode(run.last_error).code, "legacy_failure")
+            test.eq(json.decode(run.last_error).code, errors.INTERNAL)
             test.is_nil(run.input.span)
         end)
 
@@ -514,8 +496,8 @@ local function define_tests()
             fixture.settle(user, id)
             test.eq(fixture.op(user, "get", { component_id = id, item_id = first.item_id }).status, "forgotten")
             test.eq(fixture.op(user, "get", { component_id = id, item_id = independent.item_id }).status, "current")
-            test.eq(count("kickside_memory_kb_payloads", id), 1)
-            test.eq(count("kickside_memory_kb_embeddings", id), 1)
+            test.eq(count("kickside_memory_payloads", id), 1)
+            test.eq(count("kickside_memory_embeddings", id), 1)
         end)
 
         test.it("forgets more than 200 occurrences and expands conflicts past 200 members", function()
@@ -527,8 +509,8 @@ local function define_tests()
             local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = seeded.item_ids[1] })
             test.is_nil(forget_err, tostring(forget_err))
             fixture.settle(user, id)
-            test.eq(count("kickside_memory_kb_payloads", id), 0)
-            test.eq(count("kickside_memory_kb_embeddings", id), 0)
+            test.eq(count("kickside_memory_payloads", id), 0)
+            test.eq(count("kickside_memory_embeddings", id), 0)
             test.eq(#fixture.items(user, id, { statuses = { "forgotten" }, limit = 300 }), 201)
 
             local group_id = fixture.memory(user)
@@ -551,7 +533,7 @@ local function define_tests()
                 kind = "fact", scope_family = "owner", key = "home_city", value = "Berlin", content = "The user lives in Berlin.", cardinality = "multi",
             } })
             test.not_nil(err)
-            test.eq(count("kickside_memory_kb_keys", id), 1)
+            test.eq(count("kickside_memory_keys", id), 1)
         end)
 
         test.it("restores an older archived single value with owner authority", function()
@@ -614,7 +596,7 @@ local function define_tests()
             local erased, erase_err = op(user, "reembed", { component_id = id, item_id = first.item_id, content = before.content, content_hash = before.content_hash })
             test.is_nil(erase_err, tostring(erase_err))
             test.eq(erased, false)
-            test.eq(count("kickside_memory_kb_embeddings", id), 0)
+            test.eq(count("kickside_memory_embeddings", id), 0)
         end)
     end)
 end

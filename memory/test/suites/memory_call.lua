@@ -89,11 +89,11 @@ local OPS: { [string]: (any) -> (any, any) } = {
         if db_err then return nil, db_err end
         local out = {}
         for _, statement in ipairs({
-            "SELECT content, value AS extra FROM kickside_memory_kb_items WHERE component_id = $1",
-            "SELECT key AS content, cardinality AS extra FROM kickside_memory_kb_keys WHERE component_id = $1",
-            "SELECT content, value AS extra FROM kickside_memory_kb_payloads WHERE component_id = $1",
-            "SELECT input AS content, last_error AS extra FROM kickside_memory_kb_runs WHERE component_id = $1",
-            "SELECT pinned_prompt AS content, pinned_ids AS extra FROM kickside_memory_kb_cursors WHERE component_id = $1",
+            "SELECT content, value AS extra FROM kickside_memory_items WHERE component_id = $1",
+            "SELECT key AS content, cardinality AS extra FROM kickside_memory_keys WHERE component_id = $1",
+            "SELECT content, value AS extra FROM kickside_memory_payloads WHERE component_id = $1",
+            "SELECT input AS content, last_error AS extra FROM kickside_memory_runs WHERE component_id = $1",
+            "SELECT pinned_prompt AS content, pinned_ids AS extra FROM kickside_memory_cursors WHERE component_id = $1",
         }) do
             local rows, err = db:query(statement, { a.component_id })
             if err then db:release(); return nil, err end
@@ -101,6 +101,16 @@ local OPS: { [string]: (any) -> (any, any) } = {
         end
         db:release()
         return out, nil
+    end,
+    diagnostics = function(_a: any): (any, any)
+        local details = { marker = "unchanged" }
+        local cause = errors.new({ kind = errors.TIMEOUT, retryable = true, message = "Private span text", details = details })
+        local invalid = types.invalid("invalid request", details)
+        local unavailable = types.unavailable("service unavailable", details)
+        local failed = types.failed("dependency failed", cause)
+        return { details = details, cause_details = cause:details(),
+            invalid_details = invalid:details(), unavailable_details = unavailable:details(), failed_details = failed:details(),
+            failure = types.decode_json(types.failure(failed)), failed_message = failed:message() }, nil
     end,
     classify = function(a: any): (any, any)
         local cause: any = "plain failure"
@@ -113,7 +123,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
         local db, db_err = sql.get("app:db")
         if db_err then return nil, db_err end
         local rows, query_err = db:query(
-            "SELECT pinned_ids FROM kickside_memory_kb_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3",
+            "SELECT pinned_ids FROM kickside_memory_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3",
             { a.component_id, a.host_kind, a.host_id })
         db:release()
         if query_err then return nil, query_err end

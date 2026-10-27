@@ -42,7 +42,7 @@ local function define_tests()
             local gateway = assert(registry.get("app:gateway"))
             local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
             for _, surface in ipairs({
-                {id = "kickside.memory:knowledge_memory_component", base = "kickside-memory"},
+                {id = "kickside.memory:memory_settings", base = "kickside-memory"},
                 {id = "kickside.memory:memory_create_view", base = "kickside-memory"},
                 {id = "kickside.memory:memory_view", base = "kickside-memory"},
             }) do

@@ -53,7 +53,7 @@ local function setting(payload: any, name: string): any
     return nil
 end
 
--- memory_id selects typed storage; kb_ids selects provider-backed documents.
+-- The trait selects one memory store.
 function M.memory(payload: any, access: integer): (string?, any?, error?)
     local id = types.trim(setting(payload, "memory_id"))
     if id == "" then return nil, nil, types.invalid("the Memory capability has no memory selected") end
@@ -148,6 +148,7 @@ local function gate(events: { any }, cfg: any): { any }
     return span
 end
 
+-- Tool context supplies host references, not the current user input.
 local function latest_statement(run: any): (any?, error?)
     if type(run) ~= "table" or type(run.run_context) ~= "table" then return nil, nil end
     local recent, err = history(run, { mode = "window", last = FIRST_CAPTURE_WINDOW })
@@ -162,7 +163,7 @@ end
 
 -- Captures the host's history since its cursor (through `to_event_id` when
 -- given) into the memory. Both capture paths go through here; the cursor
--- moves under compare-and-set, so a span is captured once.
+-- advances only when its derive commits successfully.
 local function capture(payload: any, to_event_id: string?): (any?, error?)
     if setting(payload, "write_enabled") == false then return { captured = false, reason = "capture_disabled" }, nil end
     local memory_id, store, store_err = M.memory(payload, component.ACCESS.WRITE)
@@ -479,10 +480,12 @@ end
 
 -- build_func_id: contributes the agent-scoped soul to the compiled prompt.
 function M.build(_prompt: any, context: any): (any?, error?)
-    if types.trim(setting({ context = context }, "memory_id")) == "" then return {}, nil end
+    if types.trim(setting({ context = context }, "memory_id")) == "" then
+        return nil, types.invalid("the Memory capability has no memory selected")
+    end
     local tools = {
-        { id = "kickside.memory.agent:memory_remember_tool" },
-        { id = "kickside.memory.agent:memory_forget_tool" },
+        { id = "kickside.memory.agent:remember_tool" },
+        { id = "kickside.memory.agent:forget_tool" },
     }
     local agent_id = types.trim(type(context) == "table" and context.agent_id or ctx.get("agent_id"))
     if agent_id == "" then return { tools = tools }, nil end
@@ -493,7 +496,9 @@ end
 
 -- prompt_func_id: the pinned owner slice.
 function M.prompt(): (string?, error?)
-    if types.trim(setting({}, "memory_id")) == "" then return "", nil end
+    if types.trim(setting({}, "memory_id")) == "" then
+        return nil, types.invalid("the Memory capability has no memory selected")
+    end
     return owner_prompt({})
 end
 
@@ -565,7 +570,7 @@ function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     local item_id = types.trim(input.item_id)
     if item_id == "" then return tool_error("item_id is required"), nil end
-    local memory_id, store, refusal = writable()
+    local memory_id, _, refusal = writable()
     if refusal then return refusal, nil end
     local item, item_err = items.get(memory_id :: string, item_id)
     if item_err then return nil, item_err end
@@ -573,16 +578,6 @@ function M.forget(args: any): (any?, error?)
     if (item :: any).scope_key ~= types.scope_key(types.SCOPE.OWNER, types.actor_id()) then
         return tool_error("only your own memories can be forgotten here"), nil
     end
-    local run = ctx.get("agent_run")
-    if type(run) ~= "table" or type(run.run_context) ~= "table" then
-        return tool_error("ForgetMemory requires the user's explicit erasure request; corrections use Remember"), nil
-    end
-    local statement, statement_err = latest_statement(run)
-    if statement_err then return nil, statement_err end
-    if not statement then return tool_error("ForgetMemory requires the user's explicit erasure request; corrections use Remember"), nil end
-    local permitted, intent_err = models.forget_requested((store :: any).effective.judge_model, statement.text, item)
-    if intent_err then return nil, intent_err end
-    if not permitted then return tool_error("This is not an explicit erasure request. Use Remember to supersede a corrected value."), nil end
     local forgotten, forget_err = ops.forget(memory_id :: string, item_id)
     if forget_err then return nil, forget_err end
     return { success = true, memory_id = memory_id, item_id = (forgotten :: any).item_id }, nil
@@ -613,7 +608,7 @@ function M.search(args: any): (any?, error?)
     for i = offset + 1, math.min(offset + limit, #(rows :: any)) do
         local row = (rows :: any)[i]
         local out: { [string]: any } = {
-            id = row.id, kb_id = memory_id, node_type = row.kind, score = row.similarity, source = row.source,
+            id = row.id, memory_id = memory_id, node_type = row.kind, score = row.similarity, source = row.source,
             created_at = row.recorded_at, content = row.content,
         }
         for _, name in ipairs(fields) do

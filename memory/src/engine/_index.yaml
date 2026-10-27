@@ -89,9 +89,11 @@ entries:
     meta:
       comment: Scheduling and execution of derive, consolidation and re-embed runs.
     source: file://jobs.lua
+    modules: [uuid]
     imports: &jobs_imports
       types: kickside.memory:types
       memory_config: kickside.memory:config
+      memory_ledger: kickside.memory.engine:ledger
       memory_runs: kickside.memory.persist:runs
       memory_stores: kickside.memory.persist:stores
       memory_items: kickside.memory.persist:items
@@ -111,6 +113,7 @@ entries:
     imports: &binding_imports
       types: kickside.memory:types
       memory_config: kickside.memory:config
+      memory_ledger: kickside.memory.engine:ledger
       memory_stores: kickside.memory.persist:stores
       memory_recall: kickside.memory.engine:recall
       memory_runs: kickside.memory.persist:runs
@@ -136,6 +139,7 @@ entries:
     kind: function.lua
     meta: { comment: Derive job - started by capture (trait lifecycle phases and checkpoint) and by content ingested into the memory; re-admits the run identity. }
     source: file://jobs.lua
+    modules: [uuid]
     method: derive_run
     imports: *jobs_imports
     security:
@@ -145,6 +149,7 @@ entries:
     kind: function.lua
     meta: { comment: Derive run in the requester's frame - extract, reconcile, append. }
     source: file://jobs.lua
+    modules: [uuid]
     method: derive_authorized
     imports: *jobs_imports
 
@@ -152,6 +157,7 @@ entries:
     kind: function.lua
     meta: { comment: Consolidation slot job - armed when the memory is created, re-armed on its cadence, brought forward by deactivate and resummarize; re-admits the run identity. }
     source: file://jobs.lua
+    modules: [uuid]
     method: consolidate_run
     imports: *jobs_imports
     security:
@@ -161,6 +167,7 @@ entries:
     kind: function.lua
     meta: { comment: Consolidation run in the owner's frame - reflect and reconcile; re-arms on the cadence. }
     source: file://jobs.lua
+    modules: [uuid]
     method: consolidate_authorized
     imports: *jobs_imports
 
@@ -168,6 +175,7 @@ entries:
     kind: function.lua
     meta: { comment: Re-embed job - started by the maintainable schedule_reembed method; re-admits the run identity. }
     source: file://jobs.lua
+    modules: [uuid]
     method: reembed_run
     imports: *jobs_imports
     security:
@@ -177,6 +185,7 @@ entries:
     kind: function.lua
     meta: { comment: Re-embed run in the requester's frame. }
     source: file://jobs.lua
+    modules: [uuid]
     method: reembed_authorized
     imports: *jobs_imports
 

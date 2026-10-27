@@ -20,21 +20,21 @@ export default defineConfig({
     emptyOutDir: true,
     lib: {
       // Three elements ship from this package: the Memory trait settings
-      // (knowledge_memory.js), the memory engine's create pane (memory_create.js)
+      // (memory_settings.js), the memory engine's create pane (memory_create.js)
       // and the memory knowledge base page (index.js). Entry keys are the
       // served filenames the registry entry points name.
       entry: {
-        knowledge_memory: resolve(__dirname, 'src/index.ts'),
+        memory_settings: resolve(__dirname, 'src/index.ts'),
         memory_create: resolve(__dirname, 'src/create.ts'),
         index: resolve(__dirname, 'src/manage.ts'),
       },
-      name: 'KicksideKnowledgeMemory',
+      name: 'KicksideMemorySettings',
       formats: ['es'],
     },
     rollupOptions: {
       preserveEntrySignatures: false,
       input: {
-        knowledge_memory: resolve(__dirname, 'src/index.ts'),
+        memory_settings: resolve(__dirname, 'src/index.ts'),
         memory_create: resolve(__dirname, 'src/create.ts'),
         index: resolve(__dirname, 'src/manage.ts'),
       },

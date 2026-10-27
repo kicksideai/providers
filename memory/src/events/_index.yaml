@@ -30,7 +30,7 @@ entries:
         - skill
         - lesson
         - plan
-      key:
+      key_id:
         type: string
       cardinality:
         type: string
@@ -68,6 +68,8 @@ entries:
           - host_kind
           - host_id
           - event_id
+      run_id:
+        type: string
       confidence:
         type: number
       priority:
@@ -77,7 +79,7 @@ entries:
     - claim_id
     - content_hash
     - kind
-    - key
+    - key_id
     - cardinality
     - scope_family
     - scope_id
@@ -242,11 +244,14 @@ entries:
         type: string
       agent_id:
         type: string
+      from_event_id:
+        type: string
       last_event_id:
         type: string
     required:
     - host_kind
     - host_id
+    - from_event_id
     - last_event_id
 - name: consolidation.completed
   kind: registry.entry

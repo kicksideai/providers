@@ -15,7 +15,7 @@ local function measured(conn: any): any
         query = function(_self: any, statement: string, params: any): (any?, error?)
             statements[#statements + 1] = statement
             local rows, err = conn:query(statement, params)
-            if statement:find("SELECT id, input, last_error FROM kickside_memory_kb_runs", 1, true) then run_rows = run_rows + #(rows or {}) end
+            if statement:find("SELECT id, input, last_error FROM kickside_memory_runs", 1, true) then run_rows = run_rows + #(rows or {}) end
             return rows, err
         end,
         execute = function(_self: any, statement: string, params: any): (any?, error?)

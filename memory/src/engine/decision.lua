@@ -141,6 +141,8 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
     local established, cardinality_err = self:cardinality_of(scope_key, key :: string)
     if cardinality_err then return nil, cardinality_err end
     if established and established ~= fields.cardinality then return nil, types.invalid("memory key cardinality cannot change") end
+    local key_id, topic_err = types.digest({ "key", self.component_id, scope_key, key })
+    if topic_err then return nil, topic_err end
     local claim_id, claim_err = types.claim_id(self.component_id, scope_key, key, fields.value)
     if claim_err then return nil, claim_err end
     local content_hash, hash_err = types.content_hash(self.component_id, fields.content, fields.value)
@@ -155,12 +157,13 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
         source = self.source, run_id = fields.run_id,
     }
     self:emit(types.EVENT.ITEM_ADDED, {
-        item_id = item_id, claim_id = claim_id, content_hash = content_hash, kind = fields.kind, key = key,
+        item_id = item_id, claim_id = claim_id, content_hash = content_hash, kind = fields.kind, key_id = key_id,
         cardinality = fields.cardinality, scope_family = scope.scope_family, scope_id = scope.scope_id,
         valid_at = fields.valid_at, source = self.source, provenance = fields.provenance or {},
         confidence = fields.confidence, priority = fields.priority or 0, run_id = fields.run_id,
     })
     self.staged[#self.staged + 1] = {
+        key_id = key_id, scope_key = scope_key, key = key, cardinality = fields.cardinality,
         payload_id = item_id, owner_item_id = item_id, content = fields.content, value = fields.value, content_hash = content_hash, vector = fields.vector,
     }
     self.added[#self.added + 1] = item_id

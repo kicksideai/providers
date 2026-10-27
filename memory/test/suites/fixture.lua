@@ -154,18 +154,6 @@ function M.memory(user_id: string, config: any?, embedding_model: string?): stri
     return id
 end
 
--- A knowledge-base component without a memory store, standing for a document
--- knowledge base an earlier release of the trait wrote digests into.
-function M.plain_component(user_id: string): string
-    local def = contract.get("kickside.component:component_service")
-    local svc = def:with_actor(security.new_actor(user_id, {})):with_scope(scope()):open()
-    local id = uuid.v4()
-    local result, err = svc:register({ component_id = id, impl_id = "app.suites:legacy_document",
-        meta = { title = "digests", class = "knowledge_base", kb_type = "document" } })
-    if err or not result.success then error("register failed: " .. tostring(err or result.error)) end
-    return id
-end
-
 -- Deletes the memory knowledge base through the knowledge control plane, which
 -- tears the component down through the memory's deletable cleanup.
 function M.delete_memory(user_id: string, component_id: string): (any, any)

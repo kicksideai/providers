@@ -129,7 +129,7 @@ function M.list_memories()
     local more = false
     while true do
         local rows, err = component.query({
-            impl_ids = { "kickside.memory:memory_kb" }, include = { meta = true }, access_mask = component.ACCESS.READ,
+            impl_ids = { "kickside.memory:memory_store" }, include = { meta = true }, access_mask = component.ACCESS.READ,
             text = query, order_by = { field = "created_at", direction = "DESC" }, limit = MAX_PAGE, offset = scanned,
         })
         if err then return fail(res, err) end

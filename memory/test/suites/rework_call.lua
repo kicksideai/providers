@@ -7,20 +7,21 @@ local sql = require("sql")
 local index = require("search_index")
 local measured_items = items
 local measured_db = require("measured_db")
-local source_migration = require("source_migration")
-local embedding_migration = require("embedding_migration")
-local diagnostic_migration = require("diagnostic_migration")
+local runs = require("memory_runs")
 
 local function call(a: any): (any?, error?)
-    if a.op == "backfill_sources" or a.op == "backfill_embeddings" or a.op == "migrate_diagnostics" then
-        local db, err = sql.get("app:db")
-        if err then return nil, err end
-        local migrate = source_migration
-        if a.op == "backfill_embeddings" then migrate = embedding_migration end
-        if a.op == "migrate_diagnostics" then migrate = diagnostic_migration end
-        local result = migrate({ db = db, db_type = db:type(), id = a.id })
+    if a.op == "enroll_sources" then
+        local run, read_err = runs.get(a.run_id)
+        if read_err then return nil, read_err end
+        local db, db_err = sql.get("app:db")
+        if db_err then return nil, db_err end
+        local tx, tx_err = db:begin()
+        if tx_err then db:release(); return nil, tx_err end
+        local err = runs.sources_tx(tx, run)
+        if err then tx:rollback(); db:release(); return nil, err end
+        local _, commit_err = tx:commit()
         db:release()
-        return result, nil
+        return true, commit_err
     elseif a.op == "seed" then
         local vectors, err = models.embed("test-embed", { a.content or "Synthetic evidence." })
         if err then return nil, err end
@@ -65,7 +66,7 @@ local function call(a: any): (any?, error?)
         if fold_err then return nil, fold_err end
         local scans = 0
         for _, statement in ipairs(measured_db.statements()) do
-            if statement:find("SELECT id, input, last_error FROM kickside_memory_kb_runs", 1, true) then scans = scans + 1 end
+            if statement:find("SELECT id, input, last_error FROM kickside_memory_runs", 1, true) then scans = scans + 1 end
         end
         return { run_scans = scans, run_rows = measured_db.run_rows(), lineage_queries = lineage_queries, erased = #lineage, sqlite = sqlite, plan = plan }, nil
     elseif a.op == "revision_race" or a.op == "revision_redelivery" then
@@ -91,14 +92,14 @@ local function call(a: any): (any?, error?)
             body = { item_id = item.id, payload_id = payload_id, content_hash = hash } }
         if a.op == "revision_race" then
             db = assert(sql.get("app:db"))
-            local staged = assert(db:query("SELECT content_hash FROM kickside_memory_kb_embeddings WHERE item_id = $1", { item.id }))
+            local staged = assert(db:query("SELECT content_hash FROM kickside_memory_embeddings WHERE item_id = $1", { item.id }))
             db:release()
             local stale, stale_err = items.set_embedding(a.component_id, item.id, vector, item.content_hash)
             if stale_err then return nil, stale_err end
             local _, fold_err = items.fold(a.component_id, { event })
             if fold_err then return nil, fold_err end
             db = assert(sql.get("app:db"))
-            local folded = assert(db:query("SELECT content_hash FROM kickside_memory_kb_embeddings WHERE item_id = $1", { item.id }))
+            local folded = assert(db:query("SELECT content_hash FROM kickside_memory_embeddings WHERE item_id = $1", { item.id }))
             db:release()
             return { stale_written = stale, staged_hash = staged[1].content_hash, original_hash = item.content_hash,
                 vector_hash = folded[1].content_hash, item = items.get(a.component_id, item.id) }, nil
@@ -123,8 +124,8 @@ local function call(a: any): (any?, error?)
         local db, err = sql.get("app:db")
         if err then return nil, err end
         local rows, search_err = index.lexical_search(db, {
-            vectors = "kickside_memory_kb_embeddings", vector_key = "item_id", rows = "kickside_memory_kb_items", row_key = "id",
-            partition = "component_id", columns = { "content" }, fts = "kickside_memory_kb_fts", fts_key = "item_id", tsvector = "search_vector",
+            vectors = "kickside_memory_embeddings", vector_key = "item_id", rows = "kickside_memory_items", row_key = "id",
+            partition = "component_id", columns = { "content" }, fts = "kickside_memory_fts", fts_key = "item_id", tsvector = "search_vector",
         }, a.query, { partition = a.component_id, limit = 10 })
         db:release()
         return rows, search_err
@@ -167,9 +168,8 @@ local function call(a: any): (any?, error?)
         local rows, query_err = db:query("SELECT seq, type, body, created_at FROM kickside_event WHERE thread_id = $1 ORDER BY seq", { a.component_id })
         if query_err then db:release(); return nil, query_err end
         for _, statement in ipairs({
-            "DELETE FROM kickside_memory_kb_provenance WHERE component_id = $1",
-            "DELETE FROM kickside_memory_kb_keys WHERE component_id = $1",
-            "DELETE FROM kickside_memory_kb_items WHERE component_id = $1",
+            "DELETE FROM kickside_memory_provenance WHERE component_id = $1",
+            "DELETE FROM kickside_memory_items WHERE component_id = $1",
         }) do
             local _, del_err = db:execute(statement, { a.component_id })
             if del_err then db:release(); return nil, del_err end

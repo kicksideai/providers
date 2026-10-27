@@ -18,6 +18,76 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("records one content-free failure message without changing supplied details", function()
+            local result, err = fixture.op(fixture.user(), "diagnostics", {})
+            test.is_nil(err, tostring(err))
+            for _, details in ipairs({ result.details, result.cause_details, result.invalid_details,
+                result.unavailable_details, result.failed_details }) do
+                test.is_nil(details.memory_explanation)
+                test.eq(details.marker, "unchanged")
+            end
+            test.eq(result.failed_message, "dependency failed")
+            test.eq(result.failure.explanation, "dependency failed")
+            test.eq(result.failure.kind, errors.TIMEOUT)
+            test.is_true(result.failure.retryable)
+            test.is_nil((json.encode(result.failure):find("Private span text", 1, true)))
+        end)
+
+        test.it("keeps failed capture spans unconsumed for the next capture", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "failed-span", role = "user", content = "I prefer aisle seats." } })
+            fixture.script.fail("structured_output", "provider rejects aisle seats", errors.INVALID)
+            local first = apply(user, "before_step", id, session, "agent-a")
+            local failed = fixture.wait_runs(user, id, "derive", 1)[1]
+            fixture.wait_job(failed.job_id, "dead")
+            test.eq(failed.status, "failed")
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+            test.is_true(cursor == nil or cursor.last_event_id == "")
+            fixture.extraction({ fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "failed-span") })
+            local second = apply(user, "before_step", id, session, "agent-a")
+            test.is_true(second.metadata.capture.captured)
+            test.is_true(first.metadata.capture.run_id ~= second.metadata.capture.run_id)
+            fixture.wait_runs(user, id, "derive", 2)
+            fixture.settle(user, id)
+            test.eq(fixture.items(user, id)[1].value, "aisle")
+            local retained = fixture.op(user, "run", { run_id = failed.id })
+            test.eq(retained.status, "failed")
+            test.eq(json.decode(retained.last_error).explanation, "memory extraction failed")
+            cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+            test.eq(cursor.last_event_id, "failed-span")
+        end)
+
+        test.it("retains an exhausted transient failure and captures its source after recovery", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "seat-request", role = "user", content = "I prefer aisle seats." } })
+            for i = 1, 3 do fixture.script.fail("structured_output", "Rejected private span text", errors.TIMEOUT) end
+            local applied, err = apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(err, tostring(err))
+            local failed = fixture.wait_runs(user, id, "derive", 1)[1]
+            local job = fixture.wait_job(failed.job_id, "dead")
+            test.eq(job.attempts, 3)
+            failed = fixture.op(user, "run", { run_id = failed.id })
+            local diagnostic = json.decode(failed.last_error)
+            test.eq(diagnostic.kind, errors.TIMEOUT)
+            test.eq(diagnostic.explanation, "memory extraction failed")
+            test.is_nil((failed.last_error:find("private span text", 1, true)))
+            fixture.history.record(session, { { id = "continue", role = "user", content = "Let us continue." } })
+            fixture.extraction({ fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "seat-request") })
+            local recovered, recovery_err = apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(recovery_err, tostring(recovery_err))
+            test.is_true(recovered.metadata.capture.captured)
+            fixture.wait_runs(user, id, "derive", 2)
+            fixture.settle(user, id)
+            test.eq(fixture.items(user, id)[1].value, "aisle")
+            local retained = fixture.op(user, "run", { run_id = applied.metadata.capture.run_id })
+            test.eq(retained.status, "failed")
+            test.eq(retained.last_error, failed.last_error)
+        end)
+
         test.it("extracts scalar attributes and goals through independently typed collections", function()
             local user = fixture.user()
             local attribute = fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement")
@@ -103,27 +173,13 @@ local function define_tests()
             local runs = fixture.wait_runs(user, id, "derive", 1)
             test.eq(runs[1].status, "failed")
             fixture.wait_job(runs[1].job_id, "dead")
-            test.eq(json.decode(runs[1].last_error).explanation, "memory normalization maps incompatible item kinds")
+            test.eq(json.decode(runs[1].last_error).explanation, "memory normalization maps different item kinds")
             fixture.settle(user, id)
             local rows = fixture.items(user, id)
             test.eq(#rows, 1)
             test.eq(rows[1].value, "Berlin")
         end)
 
-        test.it("refuses erasure when the person's latest statement is a correction", function()
-            local user = fixture.user()
-            local id = fixture.memory(user)
-            local seed = fixture.remember(user, id, { fixture.candidate("profile_slot", "diet", "vegetarian", "The user is vegetarian.", "seed") }, "correction-seed")
-            fixture.settle(user, id)
-            local session = "s-" .. user
-            fixture.history.record(session, { { id = "correction", role = "user", content = "I'm vegan now." } })
-            fixture.script.respond("structured_output", { intent = "correct" })
-            local result, err = fixture.op(user, "tool_forget", { input = { item_id = seed.item_ids[1] } }, fixture.agent_context(id, session, "agent-a"))
-            test.is_nil(err, tostring(err))
-            test.eq(result.success, false)
-            fixture.settle(user, id)
-            test.eq(fixture.op(user, "get", { component_id = id, item_id = seed.item_ids[1] }).status, "current")
-        end)
 
         test.it("pins open goals across conversations and retains completed and expired goals for search", function()
             local user = fixture.user()
@@ -143,7 +199,7 @@ local function define_tests()
             local expired = plan("old_goal", "open", "an old project")
             fixture.settle(user, id)
             local db = fixture.db()
-            local _, update_err = db:execute("UPDATE kickside_memory_kb_items SET recorded_at = $1 WHERE id = $2", { "2020-01-01T00:00:00Z", expired.item_id })
+            local _, update_err = db:execute("UPDATE kickside_memory_items SET recorded_at = $1 WHERE id = $2", { "2020-01-01T00:00:00Z", expired.item_id })
             db:release()
             test.is_nil(update_err, tostring(update_err))
             local session = "s-" .. user
@@ -416,6 +472,8 @@ local function define_tests()
             test.is_true(persisted.metadata.capture.captured)
             local again = apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p2" } })
             test.eq(again.metadata.capture.captured, false)
+            fixture.wait_runs(user, id, "derive", 1)
+            fixture.settle(user, id)
             local step = apply(user, "before_step", id, session, "agent-a")
             test.eq(step.metadata.capture.captured, false)
             test.eq(step.metadata.capture.reason, "no_new_history")
@@ -424,6 +482,8 @@ local function define_tests()
             fixture.verdict("ADD", {})
             local next_step = apply(user, "before_step", id, session, "agent-a")
             test.is_true(next_step.metadata.capture.captured)
+            fixture.wait_runs(user, id, "derive", 2)
+            fixture.settle(user, id)
             local stale = apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p3" } })
             test.eq(stale.metadata.capture.reason, "already_captured")
             local runs = fixture.wait_runs(user, id, "derive", 2)
@@ -545,7 +605,6 @@ local function define_tests()
             local denied = fixture.op(user, "tool_forget", { input = { item_id = other_id } }, context)
             test.eq(denied.success, false)
             fixture.history.record(session, { { id = "forget-dog", role = "user", content = "Forget my dog's name." } })
-            fixture.script.respond("structured_output", { intent = "erase" })
             local forgotten = fixture.op(user, "tool_forget", { input = { item_id = stored.item_ids[1] } }, context)
             test.is_true(forgotten.success)
         end)
@@ -570,55 +629,13 @@ local function define_tests()
             test.eq(#fixture.items(user, id), 1)
         end)
 
-        test.it("preserves a saved document-backed agent and recalls both old KBs through the public runtime", function()
-            local user = fixture.user()
-            local first, second = fixture.plain_component(user), fixture.plain_component(user)
-            local trait = "kickside.memory:knowledge_based_memory"
-            local saved = {kb_ids = {first, second}, write_kb_id = second, read_enabled = true,
-                write_enabled = false, recall_limit = 5, recall_max_chars = 4000,
-                recall_prompt = "Saved recall guidance", checkpoint_model = "test-fast",
-                checkpoint_prompt = "Saved checkpoint guidance", checkpoint_temperature = 0.1,
-                checkpoint_max_tokens = 321, checkpoint_source_max_chars = 20000}
-            local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
-                name = "saved document memory", model = "test-fast", traits = {trait}, trait_contexts = {[trait] = saved}})
-            test.is_nil(create_err, tostring(create_err))
-            local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func", {
-                agent_id = "user_agent:" .. created.component_id})
-            test.is_nil(resolve_err, tostring(resolve_err))
-            local context
-            for _, spec in ipairs(agent.traits or {}) do if spec.id == trait then context = spec.context end end
-            test.not_nil(context)
-            local actual_json, actual_err = json.encode(context)
-            local expected_json, expected_err = json.encode(saved)
-            test.is_nil(actual_err, tostring(actual_err))
-            test.is_nil(expected_err, tostring(expected_err))
-            test.eq(actual_json, expected_json)
-            local found, search_err = fixture.call_as(user, "kickside.memory:memory_recall_tool", {
-                query = "saved knowledge", limit = 5}, context)
-            test.is_nil(search_err, tostring(search_err))
-            test.is_true(found.success)
-            test.eq(found.count, 2)
-            local sources = {}
-            for _, item in ipairs(found.items) do sources[item.kb_id] = true end
-            test.is_true(sources[first])
-            test.is_true(sources[second])
-            local payload = fixture.payload("activate", "legacy-session", "legacy-agent", {recall_query = "saved knowledge"})
-            local activated, activate_err = fixture.call_as(user, "kickside.memory:runtime_lifecycle", payload, context)
-            test.is_nil(activate_err, tostring(activate_err))
-            test.eq(activated.metadata.kb_count, 2)
-            test.is_true(activated.messages[1].content:find("Saved recall guidance", 1, true) ~= nil)
-            local db = fixture.db()
-            local rows = db:query("SELECT component_id FROM kickside_memory_kb_stores WHERE component_id IN ($1,$2)", {first, second})
-            db:release()
-            test.eq(#rows, 0, "legacy execution must not create or require typed Memory stores")
-        end)
 
         test.it("resolves an agent explicitly selecting the typed Memory trait", function()
             local user = fixture.user()
             local memory = fixture.memory(user)
-            local trait = "kickside.memory:knowledge_based_memory"
+            local trait = "kickside.memory:memory"
             local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
-                name = "published shape", model = "test-fast", traits = { trait },
+                name = "memory agent", model = "test-fast", traits = { trait },
                 trait_contexts = { [trait] = {
                     memory_id = memory, read_enabled = true, write_enabled = true, recall_limit = 5,
                 } },
@@ -688,52 +705,26 @@ local function define_tests()
             local memory = fixture.memory(user)
             local compiled, err = fixture.op(user, "compile", { spec = {
                 id = "agent-compiled", name = "compiled", prompt = "You plan trips.", model = "test-fast",
-                traits = { { id = "kickside.memory:knowledge_based_memory", context = { memory_id = memory } } },
+                traits = { { id = "kickside.memory:memory", context = { memory_id = memory } } },
             } })
             test.is_nil(err, tostring(err))
             local text = json.encode(compiled)
-            test.is_true(text:find("kickside.memory:lifecycle_binding", 1, true) ~= nil, text)
+            test.is_true(text:find("kickside.memory.agent:lifecycle_binding", 1, true) ~= nil, text)
             test.is_true(text:find("after_persist", 1, true) ~= nil, text)
-            test.is_true(text:find("kickside.memory:checkpoint_binding", 1, true) ~= nil, text)
+            test.is_true(text:find("kickside.memory.agent:checkpoint_binding", 1, true) ~= nil, text)
         end)
 
-        test.it("contributes typed write tools only when typed storage is selected", function()
+        test.it("requires a selected memory for compilation, prompt and tools", function()
             local user = fixture.user()
-            local memory = fixture.memory(user)
-            for _, selected in ipairs({ false, true }) do
-                local context = selected and { memory_id = memory } or { kb_ids = { fixture.plain_component(user) } }
-                local compiled, err = fixture.op(user, "compile", { spec = {
-                    id = "agent-tools", model = "test-fast",
-                    traits = { { id = "kickside.memory:knowledge_based_memory", context = context } },
-                } })
-                test.is_nil(err, tostring(err))
-                local text = json.encode(compiled)
-                for _, tool in ipairs({ "memory_remember_tool", "memory_forget_tool" }) do
-                    test.eq(text:find(tool, 1, true) ~= nil, selected, text)
-                end
-            end
-        end)
-
-        test.it("requires an explicit typed Memory selection without reinterpreting legacy KB settings", function()
-            local user = fixture.user()
-            local id = fixture.memory(user)
-            local document = fixture.plain_component(user)
-            fixture.remember(user, id, { fixture.candidate("fact", "pet", "cat", "The user has a cat.", "m1") }, "l1")
-            fixture.settle(user, id)
-            local function search(context: any): any
-                return fixture.op(user, "tool_search", { input = { query = "cat" } }, context)
-            end
-            test.is_false(search({ write_kb_id = id }).success)
-            test.is_false(search({ kb_ids = { id, document } }).success)
-            test.eq(search({ memory_id = id, kb_ids = { document } }).count, 1)
-            local legacy_document = search({ kb_ids = { document, id } })
-            test.eq(legacy_document.success, false)
-            test.is_true(legacy_document.error:find("no memory selected", 1, true) ~= nil, legacy_document.error)
-            local unset = search({})
-            test.eq(unset.success, false)
-            test.is_true(unset.error:find("no memory selected", 1, true) ~= nil, unset.error)
-            local _, capture_err = fixture.op(user, "apply", { payload = fixture.payload("before_step", "s-legacy", "agent-a") },
-                { kb_ids = { document } })
+            local _, compile_err = fixture.op(user, "build", { context = {} })
+            test.not_nil(compile_err)
+            test.is_true(tostring(compile_err):find("no memory selected", 1, true) ~= nil)
+            local _, prompt_err = fixture.op(user, "prompt", {})
+            test.not_nil(prompt_err)
+            local unset = fixture.op(user, "tool_search", { input = { query = "cat" } }, {})
+            test.is_false(unset.success)
+            test.is_true(unset.error:find("no memory selected", 1, true) ~= nil)
+            local _, capture_err = fixture.op(user, "apply", { payload = fixture.payload("before_step", "session", "agent-a") }, {})
             test.not_nil(capture_err)
         end)
 

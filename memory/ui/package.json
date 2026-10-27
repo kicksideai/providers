@@ -19,7 +19,7 @@
     "@wippy-fe/theme": "*",
     "@wippy-fe/webcomponent-core": "*",
     "@wippy-fe/webcomponent-vue": "*",
-    "primevue": "4.5.5"
+    "primevue": "^4.5.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
@@ -41,7 +41,7 @@
     "vue": "^3.5.0"
   },
   "wippy": {
-    "tagName": "kickside-knowledge-memory",
+    "tagName": "kickside-memory-settings",
     "type": "component",
     "props": {
       "type": "object",
