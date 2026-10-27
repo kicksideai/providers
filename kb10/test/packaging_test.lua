@@ -21,7 +21,8 @@ local REQUIRED_DEPENDENCIES = {
     -- The maintainable binding implements a contract knowledge defines from
     -- 0.1.46; the floor makes that requirement part of the graph.
     ["kickside.kb10:dep.kickside.knowledge"] = { "kickside/knowledge", "*" },
-    ["kickside.kb10:dep.kickside.uploads"] = { "kickside/uploads", "*" },
+    -- Original delivery requires the storage-aware API introduced in 0.3.2.
+    ["kickside.kb10:dep.kickside.uploads"] = { "kickside/uploads", ">=0.3.2" },
     ["kickside.kb10:dep.wippy.agent"] = { "wippy/agent", "*" },
     ["kickside.kb10:dep.wippy.dataflow"] = { "wippy/dataflow", "*" },
     ["kickside.kb10:dep.wippy.llm"] = { "wippy/llm", "*" },
