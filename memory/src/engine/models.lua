@@ -99,34 +99,29 @@ Return {"items": [], "plans": []} only when no attributes or actionable goals ar
 
 local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of the same person.
 
-Choose exactly one action:
-- ADD: the new memory covers a distinct attribute, independent value or goal.
-- NOOP: an existing memory already says the same thing, even under another kind or key.
-- SUPERSEDE: the new memory updates or corrects the same attribute or goal. A direct
+Return one relation for every numbered existing memory:
+- unrelated: the new memory covers a distinct attribute, independent value or goal.
+- same: the existing memory already says it, even under another kind or key.
+- updates: the new memory updates or corrects the same attribute or goal. A direct
   statement that a single-valued attribute changed replaces its earlier value.
   Joining, leaving, moving, switching, starting or stopping states a change, even
   without an explicit correction or a reference to the previous value.
-  The new value must be a value of the target's own attribute; a value of a related attribute
-  is ADD, never a replacement of the target.
-- MERGE: the memories express the same claim and the new wording is more complete.
-- CONFLICT: the claims contradict each other with no basis to select one, such as
-  uncertainty expressed by the person or disagreement between sources. Different
-  values before and after an explicitly stated change are not a contradiction.
+  The new value must belong to the existing memory's own attribute; a value of a
+  related attribute is unrelated, never an update.
+- rephrases: the memories express the same claim and the new wording is more complete.
+- contradicts: the claims conflict with no basis to select one, such as uncertainty
+  expressed by the person or disagreement between sources. Different values before
+  and after an explicitly stated change are updates, not contradictions.
 
+Use only the relations allowed by each numbered property's enum.
 new_memory.stated is the original statement when available. Read it in conversation
 context. An answer about a task supplies that task's detail; it never changes a stable
-personal attribute. Hypotheticals do not establish attributes either. Choose NOOP for
-a candidate that mistakes either for a personal attribute. A stable attribute changes
-only through a direct assertion about it. Plans for the same goal update by SUPERSEDE
-as their details or next step progress. Different attributes or goals remain separate.
+personal attribute. Hypotheticals do not establish attributes either. A stable attribute
+changes only through a direct assertion about it. Plans for the same goal update as
+their details or next step progress. Different attributes or goals remain separate.
 Compare the attribute named by each key and its typed value, not incidental mentions
 in content. Independently changeable attributes do not conflict merely because they
 mention the same entity. A value and the time when it changes are separate attributes.
-
-target_ids contains only existing ids from the supplied list. ADD requires an empty
-array. Every other action requires at least one target that has the chosen relationship
-to the new memory. NOOP requires an existing memory that already covers the claim;
-an independent attribute is ADD, even when its content mentions a related entity.
 Decide the relationship from the statements; do not infer an update from record order.]]
 
 local NORMALIZATION_PROMPT = [[Normalize candidate memories into independently changeable attributes before reconciliation.
@@ -295,12 +290,18 @@ function M.extraction_capacity(model: string, span: { any }?): (integer?, error?
 end
 
 local function exceeds_bounds(value: any, schema: any): boolean
+    if schema.enum then
+        for _, option in ipairs(schema.enum) do if value == option then return false end end
+        return true
+    end
+    if schema.type == "object" and type(value) ~= "table" then return true end
     if type(value) == "string" and schema.maxLength then
         return codepoints(value) > schema.maxLength
     elseif type(value) == "table" and schema.type == "array" then
         if #value > schema.maxItems then return true end
         for _, item in ipairs(value) do if exceeds_bounds(item, schema.items) then return true end end
     elseif type(value) == "table" and schema.type == "object" then
+        for _, key in ipairs(schema.required or {}) do if value[key] == nil then return true end end
         for key, child in pairs(value) do
             local property = schema.properties[key]
             if not property or exceeds_bounds(child, property) then return true end
@@ -567,25 +568,38 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     return M.normalize(model, grounded, items, nil)
 end
 
+-- First matching relation wins. An update selects the first updated single-valued
+-- key and keeps only that key's single-valued targets, preserving attribute identity.
+local RELATION_ACTIONS = {
+    { relation = "same", action = types.ACTION.NOOP },
+    { relation = "updates", action = types.ACTION.SUPERSEDE },
+    { relation = "rephrases", action = types.ACTION.MERGE },
+    { relation = "contradicts", action = types.ACTION.CONFLICT },
+    { relation = "unrelated", action = types.ACTION.ADD },
+}
+
 function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)
-    local ids: { string } = {}
-    local known: { [string]: boolean } = {}
-    local listing: { any } = {}
-    for _, item in ipairs(neighbors) do
-        ids[#ids + 1] = item.id
-        known[item.id] = true
-        listing[#listing + 1] = { id = item.id, kind = item.kind, key = item.key, cardinality = item.cardinality,
+    local allowed: { string } = {}
+    for _, choice in ipairs(RELATION_ACTIONS) do
+        for _, action in ipairs(actions) do
+            if choice.action == action then allowed[#allowed + 1] = choice.relation end
+        end
+    end
+    local required: { string } = {}
+    local properties, listing = {}, {}
+    for index, item in ipairs(neighbors) do
+        local number = tostring(index)
+        required[#required + 1] = number
+        properties[number] = enum_string(allowed)
+        listing[number] = { id = item.id, kind = item.kind, key = item.key, cardinality = item.cardinality,
             value = item.value, content = item.content, valid_at = item.valid_at }
     end
-    local allows_add = false
-    for _, action in ipairs(actions) do if action == types.ACTION.ADD then allows_add = true end end
     local schema = {
         type = "object",
         additionalProperties = false,
-        required = { "action", "target_ids", "reason" },
+        required = { "relations", "reason" },
         properties = {
-            action = enum_string(actions),
-            target_ids = { type = "array", minItems = allows_add and 0 or 1, maxItems = #ids, items = enum_string(ids) },
+            relations = { type = "object", additionalProperties = false, required = required, properties = properties },
             reason = bounded_string(LIMITS.reason),
         },
     }
@@ -600,32 +614,29 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     if err then return nil, model_error("memory reconcile judge", err) end
     local response_err = response_error(response, "memory reconcile judge", schema)
     if response_err then return nil, response_err end
-    local data = response.result
-    local reason = nil
-    if type(data.action) ~= "string" or not is_array(data.target_ids) then reason = "shape" end
-    local valid_action = false
-    for _, action in ipairs(actions) do if action == data.action then valid_action = true end end
-    if not reason and not valid_action then reason = "action" end
-    local targets: { string } = {}
-    local seen, single_key = {}, nil
-    if not reason then
-        for _, id in ipairs(data.target_ids) do
-            if not known[id] or seen[id] then reason = "targets"; break end
-            seen[id] = true
-            targets[#targets + 1] = id
-            if data.action == types.ACTION.SUPERSEDE then
-                for _, item in ipairs(neighbors) do
-                    if item.id == id and item.cardinality == types.CARDINALITY.SINGLE then
-                        if single_key and single_key ~= item.key then reason = "identity" end
-                        single_key = item.key
-                    end
+    local relations = response.result.relations
+    for _, choice in ipairs(RELATION_ACTIONS) do
+        local targets: { string } = {}
+        local single_key = nil
+        if choice.action == types.ACTION.SUPERSEDE then
+            for index, item in ipairs(neighbors) do
+                if relations[tostring(index)] == choice.relation and item.cardinality == types.CARDINALITY.SINGLE then
+                    single_key = item.key
+                    break
                 end
             end
         end
-        if (data.action == types.ACTION.ADD) ~= (#targets == 0) then reason = "targets" end
+        for index, item in ipairs(neighbors) do
+            if relations[tostring(index)] == choice.relation and
+                (choice.action ~= types.ACTION.SUPERSEDE or item.cardinality ~= types.CARDINALITY.SINGLE or item.key == single_key) then
+                targets[#targets + 1] = item.id
+            end
+        end
+        if #targets > 0 then
+            return { action = choice.action, target_ids = choice.action == types.ACTION.ADD and {} or targets }, nil
+        end
     end
-    if reason then return nil, validation_error("judge", reason) end
-    return { action = data.action, target_ids = targets }, nil
+    return { action = types.ACTION.ADD, target_ids = {} }, nil
 end
 
 function M.embed(model: string, texts: { string }): (any?, error?)

@@ -33,8 +33,7 @@ local function render(rows: { any }, heading: string, max_chars: integer): (stri
     local selected: { any } = {}
     local used = #heading
     for _, row in ipairs(rows) do
-        local text = row.content
-        if row.kind == types.KIND.PLAN then text = row.content .. " Next step: " .. row.value.next_step end
+        local text = types.render_content(row)
         if (row.kind == types.KIND.PROFILE_SLOT or row.kind == types.KIND.PREFERENCE) and type(row.value) == "string" then
             local label = row.key:gsub("_", " ")
             text = label:sub(1, 1):upper() .. label:sub(2) .. " [" .. row.key .. "]: " .. row.value

@@ -43,11 +43,12 @@ function M.recall(input: any): (any?, error?)
     local memories: { any } = {}
     local used = 0
     for _, row in ipairs(rows :: any) do
-        if used + #row.content > max_length then break end
-        used = used + #row.content
+        local content = types.render_content(row)
+        if used + #content > max_length then break end
+        used = used + #content
         memories[#memories + 1] = {
             id = row.id,
-            content = row.content,
+            content = content,
             metadata = { type = row.kind, source = types.SOURCE, created_at = row.recorded_at, valid_at = row.valid_at },
         }
     end

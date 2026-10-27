@@ -134,6 +134,11 @@ function M.default_cardinality(kind: string): string
     return kind == M.KIND.PLAN and M.CARDINALITY.SINGLE or M.CARDINALITY.MULTI
 end
 
+function M.render_content(row: any): string
+    if row.kind ~= M.KIND.PLAN then return row.content end
+    return row.content .. " Details: " .. row.value.details .. " Next step: " .. row.value.next_step .. " Status: " .. row.value.status .. "."
+end
+
 function M.validate_value(kind: string, value: any): error?
     if kind ~= M.KIND.PLAN then return nil end
     if type(value) ~= "table" or (value.status ~= "open" and value.status ~= "done")
