@@ -268,6 +268,13 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             key = { type = "string" }, kind = { type = "string", enum = kinds },
             cardinality = { type = "string", enum = { "single", "multi" } },
         }
+        local excluded_keys = {}
+        for _, row in ipairs(keys) do
+            if (row.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN) then
+                excluded_keys[#excluded_keys + 1] = row.key
+            end
+        end
+        if #excluded_keys > 0 then mapping_properties.key["not"] = { enum = excluded_keys } end
         local mapping_required = { "key", "kind", "cardinality" }
         local mappings: any = { type = "array", minItems = 1 }
         if type(candidate.value) == "string" then

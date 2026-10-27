@@ -402,6 +402,21 @@ local function define_tests()
             end
         end)
 
+        test.it("allows new attribute topics while excluding existing goal topics from normalization", function()
+            local user = fixture.user()
+            local lesson = fixture.candidate("lesson", "travel_help", "accessible routes", "Suggest accessible routes.")
+            fixture.normalization({ lesson })
+            local result, err = fixture.op(user, "normalize", { candidates = { lesson }, keys = {
+                { key = "travel_help", kind = "plan", cardinality = "single" },
+                { key = "mobility", kind = "profile_slot", cardinality = "single" },
+            } })
+            test.not_nil(err)
+            test.is_nil(result)
+            local schema = fixture.script.requests("structured_output")[1].properties.mappings.properties["1"].items.properties.key
+            test.not_nil(schema["not"], "The model must not select an existing goal as an attribute topic")
+            test.eq(table.concat(schema["not"].enum, ","), "travel_help")
+        end)
+
         test.it("normalizes typed values without asking for a discarded string substitute", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { mappings = {
