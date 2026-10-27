@@ -186,7 +186,6 @@ function Re(t) {
 }
 const Ke = {
   capture: "learned in conversation",
-  tool: "saved by the agent",
   reflection: "from consolidation",
   owner: "added by a person"
 };

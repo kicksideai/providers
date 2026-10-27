@@ -27,7 +27,6 @@ type Options = {
     judge_model: string,
     scope_family: string,
     scope_id: string,
-    explicit: boolean?,
     host_kind: string?,
     host_id: string?,
     events: { [string]: { at: string?, text: string? } }?,
@@ -54,7 +53,7 @@ end
 local function explicitly_interpreted(d: any, held: { any }, provenance: { any }): (boolean?, error?)
     if d.source ~= types.ITEM_SOURCE.CAPTURE and d.source ~= types.ITEM_SOURCE.REFLECTION then return false, nil end
     for _, item in ipairs(held) do
-        if item.source == types.ITEM_SOURCE.TOOL or item.source == types.ITEM_SOURCE.OWNER then
+        if item.source == types.ITEM_SOURCE.OWNER then
             for _, ref in ipairs(provenance) do
                 if ref.event_id ~= "" then
                     local known, err = items.has_provenance(d.component_id, item.id, ref)
@@ -129,7 +128,6 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
     local scope = { scope_family = opts.scope_family, scope_id = opts.scope_id }
     local scope_key = types.scope_key(opts.scope_family, opts.scope_id)
     local reflection = d.source == types.ITEM_SOURCE.REFLECTION
-    local curated = d.source == types.ITEM_SOURCE.TOOL or d.source == types.ITEM_SOURCE.OWNER
 
     for index, candidate in ipairs(candidates) do
         local key = types.normalize_key(candidate.key)
@@ -173,7 +171,7 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             local seen_err = d:reuse((live :: any)[1], provenance, {})
             if seen_err then return seen_err end
             d.stats.noop = d.stats.noop + 1
-        elseif #(erased :: any) > 0 and not opts.explicit then
+        elseif #(erased :: any) > 0 then
             d.stats.suppressed = d.stats.suppressed + 1
         elseif fields.cardinality == types.CARDINALITY.SINGLE and #(held :: any) > 0 then
             if reflection then
@@ -182,9 +180,6 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
                 local err = apply(d, types.ACTION.SUPERSEDE, scope, fields, held :: any, provenance)
                 if err then return err end
             end
-        elseif curated then
-            local _, add_err = d:add(scope, fields)
-            if add_err then return add_err end
         else
             local compatible = {}
             for kind in pairs(types.KIND_SET) do

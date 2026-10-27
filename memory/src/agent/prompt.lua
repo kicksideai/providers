@@ -103,7 +103,6 @@ function M.build(_prompt: any, trait_context: any): (any?, error?)
         return nil, types.invalid("the Memory capability has no memory selected")
     end
     local tools = {
-        { id = "kickside.memory.agent:remember_tool" },
         { id = "kickside.memory.agent:forget_tool" },
     }
     local agent_id = types.trim(type(trait_context) == "table" and trait_context.agent_id or ctx.get("agent_id"))

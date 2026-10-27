@@ -131,10 +131,10 @@ local function define_tests()
                     end
                     local lesson = fixture.candidate("lesson", "contact_time", same and "evening" or "morning", "A contact lesson.", "")
                     lesson.source_ids = { seeded.item_ids[1] }
-                    for _, source in ipairs({ "capture", "reflection", "tool" }) do
+                    for _, source in ipairs({ "capture", "reflection", "owner" }) do
                         local result, err = fixture.op(user, "remember", { candidates = { lesson }, idempotency = "boundary-" .. source,
                             opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast",
-                                scope_family = "owner", scope_id = user, source = source, explicit = true } })
+                                scope_family = "owner", scope_id = user, source = source } })
                         test.is_nil(result)
                         test.not_nil(err)
                     end
@@ -229,7 +229,7 @@ local function define_tests()
             end)
         end
 
-        for _, source in ipairs({ "tool", "owner" }) do
+        for _, source in ipairs({ "owner" }) do
             for _, inferred in ipairs({ "capture", "reflection" }) do
                 for _, cardinality in ipairs({ "single", "multi" }) do
                     test.it(source .. " interpretation precedes " .. inferred .. " of the same event for a " .. cardinality .. " key", function()
@@ -237,7 +237,7 @@ local function define_tests()
                         local id = fixture.memory(user)
                         fixture.remember(user, id, {
                             fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "statement", nil, cardinality),
-                        }, "explicit", { source = source, explicit = true })
+                        }, "explicit", { source = source })
                         fixture.settle(user, id)
                         local before = #fixture.script.requests("structured_output")
                         local result = fixture.remember(user, id, {
@@ -263,7 +263,7 @@ local function define_tests()
             local id = fixture.memory(user)
             fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "statement"),
-            }, "explicit", { source = "tool", explicit = true })
+            }, "explicit", { source = "owner" })
             fixture.settle(user, id)
             local other = fixture.remember(user, id, {
                 fixture.candidate("preference", "diet", "vegan", "The user is vegan.", "statement"),

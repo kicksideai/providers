@@ -55,9 +55,10 @@ local function define_tests()
             local embeddings = #fixture.script.requests("embed")
             local input = { kind = "profile_slot", key = "contact_method", cardinality = "single", value = "email", content = "Contacts by email." }
             
-            local result, err = fixture.op(user, "tool_remember", { input = input }, fixture.agent_context(id, session, "agent-a"))
+            input.scope_family = "owner"
+            local result, err = fixture.op(user, "create", { component_id = id, fields = input })
             test.is_nil(err, tostring(err))
-            test.is_true(result.success, result.error)
+            test.not_nil(result.item_id)
             test.eq(#fixture.script.requests("structured_output") - before, expected[5])
             test.eq(#fixture.script.requests("embed") - embeddings, 1)
             fixture.settle(user, id)

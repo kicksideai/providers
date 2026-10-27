@@ -15,7 +15,7 @@ local function define_tests()
                 fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
                 fixture.candidate("fact", "work_location", "remote", "The user works remotely.", "location-source"),
                 fixture.candidate("fact", "contact_channel", "email", "The user reads email.", "channel-source"),
-            }, "reflection-topics", { source = "owner", explicit = true })
+            }, "reflection-topics", { source = "owner" })
             fixture.settle(user, id)
             local lesson = fixture.candidate("lesson", "contact_evening", "evening", "Contact the user in the evening.", "")
             lesson.based_on = { 1, 2 }
@@ -119,7 +119,7 @@ local function define_tests()
                 fixture.candidate("preference", "rest_period", "day", "The user rests during the day.", "rest-source"),
                 fixture.candidate("preference", "contact_channel", "email", "The user prefers email.", "channel-source"),
                 fixture.candidate("fact", "work_location", "remote", "The user works remotely.", "location-source"),
-            }, "transitive-seed", { source = "owner", explicit = true })
+            }, "transitive-seed", { source = "owner" })
             fixture.settle(user, id)
             local previous_cycle = nil
             local function reflect(lessons, source_keys)
@@ -179,7 +179,7 @@ local function define_tests()
             local independent = fixture.items(user, id, { key = "work_channel" })[1]
             fixture.remember(user, id, {
                 fixture.candidate("preference", "rest_period", "morning", "The user now rests in the morning.", "rest-change"),
-            }, "transitive-update", { explicit = true })
+            }, "transitive-update", { source = "owner" })
             fixture.settle(user, id)
             test.eq(fixture.op(user, "get", { component_id = id, item_id = source.id }).status, "superseded")
             local erased, err = fixture.op(user, "tool_forget", { input = { key = "rest_period" } },
@@ -211,7 +211,7 @@ local function define_tests()
                 fixture.candidate("preference", "transport", "train", "The user prefers trains over flights.", "r2"),
                 fixture.candidate("fact", "travel_window", "summer", "The user travels in summer.", "r3"),
                 fixture.candidate("fact", "trip_duration", "week", "The user takes week-long trips.", "r4"),
-            }, "reflect-seed", { source = "owner", explicit = true })
+            }, "reflect-seed", { source = "owner" })
             fixture.settle(user, id)
             local one = fixture.candidate("lesson", "vegan_food", "plan vegan food", "Plan vegan food for the user.", "")
             one.based_on = { 1 }

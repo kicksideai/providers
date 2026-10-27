@@ -58,7 +58,7 @@ local function define_tests()
             end
         end)
 
-        test.it("commits tool Remember while derive is deciding and reextracts against the accepted head", function()
+        test.it("commits an owner write while derive is deciding and reextracts against the accepted head", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
@@ -70,11 +70,12 @@ local function define_tests()
                 fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))
             wait_for_reflections(1, id)
-            local remembered, remember_err = fixture.op(user, "tool_remember", { input = {
+            local created, create_err = fixture.op(user, "create", { component_id = id, fields = {
+                scope_family = "owner",
                 key = "employer", kind = "profile_slot", cardinality = "single", value = "Northstar", content = "Employer: Northstar.",
             } }, fixture.agent_context(id, session, "agent-a"))
-            test.is_nil(remember_err, tostring(remember_err))
-            test.is_true(remembered.success)
+            test.is_nil(create_err, tostring(create_err))
+            test.not_nil(created.item_id)
             fixture.settle(user, id)
             fixture.extraction({ role })
             fixture.script.release("extraction")

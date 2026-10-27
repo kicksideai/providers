@@ -45,7 +45,6 @@ M.STATUS = {
 
 M.ITEM_SOURCE = {
     CAPTURE = "capture",
-    TOOL = "tool",
     REFLECTION = "reflection",
     OWNER = "owner",
 }

@@ -303,17 +303,16 @@ local function define_tests()
         test.it("holds one current value of a single-valued key across kinds and writers, versioned by key", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local session = "s-" .. user
             local created = fixture.op(user, "create", { component_id = id, fields = {
                 kind = "profile_slot", scope_family = "owner", key = "diet", value = "vegetarian", content = "The user is vegetarian.",
                 cardinality = "single",
             } })
             test.not_nil(created)
             fixture.settle(user, id)
-            local stored = fixture.op(user, "tool_remember", { input = {
-                content = "The user is vegan.", kind = "preference", key = "diet", value = "vegan",
-            } }, fixture.agent_context(id, session, "agent-a"))
-            test.is_true(stored.success, json.encode(stored))
+            local stored = fixture.remember(user, id, {
+                fixture.candidate("preference", "diet", "vegan", "The user is vegan.", "diet-change"),
+            }, "diet-change")
+            test.eq(stored.stats.superseded, 1)
             fixture.settle(user, id)
             local rows = key_rows(user, id, "diet")
             local current = by_status(rows, "current")
@@ -411,15 +410,13 @@ local function define_tests()
             test.eq(#found.alternatives[1].options, 2)
         end)
 
-        test.it("refuses Remember and ForgetMemory when the agent's memory is read-only", function()
+        test.it("refuses ForgetMemory when the agent's memory is read-only", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             fixture.remember(user, id, { fixture.candidate("fact", "plant", "fern", "The user keeps a fern.", "w1") }, "ro-1")
             fixture.settle(user, id)
             local item = fixture.items(user, id, { key = "plant" })[1]
             local context = fixture.agent_context(id, "s-" .. user, "agent-a", { write_enabled = false })
-            local stored = fixture.op(user, "tool_remember", { input = { content = "The user likes tea.", key = "drink", value = "tea" } }, context)
-            test.eq(stored.success, false)
             local forgotten = fixture.op(user, "tool_forget", { input = { key = item.key, value = item.value } }, context)
             test.eq(forgotten.success, false)
             fixture.settle(user, id)
@@ -438,25 +435,6 @@ local function define_tests()
             test.eq(refused.success, false)
             fixture.settle(user, id)
             test.eq(fixture.op(user, "get", { component_id = id, item_id = rule.item_id }).status, "current")
-        end)
-
-        test.it("learns an explicitly remembered claim again after it was forgotten", function()
-            local user = fixture.user()
-            local id = fixture.memory(user)
-            local context = fixture.agent_context(id, "s-" .. user, "agent-a")
-            local input = { content = "The user's bike is red.", key = "bike_color", value = "red" }
-            local first = fixture.op(user, "tool_remember", { input = input }, context)
-            fixture.settle(user, id)
-            fixture.history.record("s-" .. user, { { id = "forget-bike", role = "user", content = "Forget my bike color." } })
-            local forgotten = fixture.op(user, "tool_forget", { input = { key = input.key, value = input.value } }, context)
-            test.is_true(forgotten.success, forgotten.error)
-            fixture.settle(user, id)
-            local again = fixture.op(user, "tool_remember", { input = input }, context)
-            test.is_true(again.success, json.encode(again))
-            fixture.settle(user, id)
-            local current = fixture.items(user, id, { key = "bike_color", statuses = { "current" } })
-            test.eq(#current, 1)
-            test.eq(current[1].content, "The user's bike is red.")
         end)
 
         test.it("keeps a dependency error's own kind and retry flag", function()

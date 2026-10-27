@@ -69,17 +69,4 @@ function M.span(events: { any }, cfg: any): { any }
     return span
 end
 
--- Tool context supplies host references; history supplies the user statement and provenance.
-function M.latest_statement(run: any): (any?, error?)
-    if type(run) ~= "table" or type(run.run_context) ~= "table" then return nil, nil end
-    local recent, err = M.read(run, { mode = "window", last = M.FIRST_CAPTURE_WINDOW })
-    if err then return nil, err end
-    local statement = nil
-    for _, event in ipairs((recent :: any).events) do
-        local entry = M.span_entry(event, { capture_conversation = true })
-        if entry and entry.role == "user" then statement = entry end
-    end
-    return statement, nil
-end
-
 return M

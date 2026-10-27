@@ -16,8 +16,8 @@ This module owns:
   `kickside.memory:maintainable` schedules consolidation and re-embedding.
 - `kickside.memory:memory` is the agent trait. It requires `memory_id` and uses
   `kickside.memory:memory_settings`. Its memory binding is
-  `kickside.memory.agent:memory_binding`; the tools are `search_tool`,
-  `remember_tool` and `forget_tool` in `kickside.memory.agent`.
+  `kickside.memory.agent:memory_binding`; the tools are `search_tool`
+  and `forget_tool` in `kickside.memory.agent`.
 
 ## Storage and capture
 
@@ -36,7 +36,7 @@ scopes; re-embedding conditionally replaces payload vectors under the accepted i
 Invalid structured model output fails the whole call with a retryable,
 content-free `model_output_invalid_<step>_<reason>` code. No partial candidates
 commit. The existing job attempt limit retries failed derive attempts; an exhausted
-run stays `failed` without advancing capture. Remember returns the model error.
+run stays `failed` without advancing capture.
 
 A source event above the derive input byte bound has its own run with a
 `source_too_large` rejection, byte size and bound recorded at enrollment.

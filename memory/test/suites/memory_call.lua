@@ -104,7 +104,6 @@ local OPS: { [string]: (any) -> (any, any) } = {
     recall = function(a: any) return recall.recall(a.input) end,
     build = function(a: any) return prompt.build(nil, a.context) end,
     prompt = function(_a: any) return prompt.prompt() end,
-    tool_remember = function(a: any) return tools.remember(a.input) end,
     tool_search = function(a: any) return tools.search(a.input) end,
     tool_forget = function(a: any) return tools.forget(a.input) end,
     list = function(a: any) return items.list(a.component_id, a.filter or {}) end,

@@ -2,15 +2,11 @@
 
 local ctx = require("ctx")
 local component = require("component")
-local canonical_json = require("canonical_json")
 local types = require("types")
 local context = require("agent_context")
-local history = require("agent_history")
 local items = require("memory_items")
-local writer = require("memory_writer")
 local ops = require("memory_ops")
 local recall = require("memory_recall")
-local reconcile = require("memory_reconcile")
 
 local M = {}
 
@@ -20,62 +16,13 @@ local function tool_error(err: any): any
     return { success = false, error = tostring(err) }
 end
 
-local function writable(): (string?, any?, any?)
-    if context.setting({}, "write_enabled") == false then return nil, nil, tool_error("this agent's memory is read-only") end
-    local memory_id, store, err = context.memory({}, component.ACCESS.WRITE)
-    if err then return nil, nil, tool_error(err) end
-    return memory_id, store, nil
-end
-
-function M.remember(args: any): (any?, error?)
-    local input = type(args) == "table" and args or {}
-    local content = types.trim(input.content)
-    if content == "" then return tool_error("content is required"), nil end
-    local kind = types.trim(input.kind)
-    if kind == "" then kind = types.KIND.FACT end
-    if not types.KIND_SET[kind] or kind == types.KIND.IDENTITY or kind == types.KIND.RULE then
-        return tool_error("kind must be one of " .. table.concat(types.MEMORY_KINDS, ", ")), nil
-    end
-    local cardinality = types.trim(input.cardinality)
-    if cardinality ~= "" and not types.CARDINALITY_SET[cardinality] then return tool_error("cardinality must be single or multi"), nil end
-    local memory_id, store, refusal = writable()
-    if refusal then return refusal, nil end
-    local owner = types.actor_id()
-    if owner == "" then return tool_error("remember requires a signed-in user"), nil end
-    local value = input.value
-    if value == nil then return tool_error("value is required"), nil end
-    local key, key_err = types.topic_key(input.key, content, value, kind)
-    if key_err then return tool_error(key_err), nil end
-    local idempotency, hash_err = canonical_json.hash({ "tool.remember", owner, key, value, content })
-    if hash_err then return nil, hash_err end
-    local run = ctx.get("agent_run")
-    local host_kind, host_id = context.host_ref(type(run) == "table" and run.host or nil)
-    local statement, statement_err = history.latest_statement(run)
-    if statement_err then return nil, statement_err end
-    local written, write_err = writer.write(memory_id :: string, idempotency :: string, {
-        source = types.ITEM_SOURCE.TOOL, actor = owner, keyed_by_head = true,
-    }, function(d: any): (any?, error?)
-        local err = reconcile.decide(d, {
-            { kind = kind, key = key, cardinality = cardinality ~= "" and cardinality or nil, value = value, content = content,
-                valid_at = input.valid_at or (statement and statement.created_at), event_id = statement and statement.id, confidence = 1 },
-        }, {
-            embedding_model = (store :: any).embedding_model, judge_model = (store :: any).effective.judge_model,
-            scope_family = types.SCOPE.OWNER, scope_id = owner, explicit = true,
-            host_kind = host_kind ~= "" and host_kind or nil, host_id = host_id,
-            events = statement and { [statement.id] = { at = statement.created_at, text = statement.text } } or nil,
-        })
-        return nil, err
-    end)
-    if write_err then return nil, write_err end
-    return { success = true, memory_id = memory_id, item_ids = (written :: any).item_ids, outcome = (written :: any).stats }, nil
-end
-
 function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     local key = types.trim(input.key)
     if key == "" then return tool_error("key is required"), nil end
-    local memory_id, _, refusal = writable()
-    if refusal then return refusal, nil end
+    if context.setting({}, "write_enabled") == false then return tool_error("this agent's memory is read-only"), nil end
+    local memory_id, _, memory_err = context.memory({}, component.ACCESS.WRITE)
+    if memory_err then return tool_error(memory_err), nil end
     if types.actor_id() == "" then return tool_error("forget requires a signed-in user"), nil end
     local forgotten, forget_err = ops.forget_key(memory_id :: string, key, input.value)
     if forget_err then

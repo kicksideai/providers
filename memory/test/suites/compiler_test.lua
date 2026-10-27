@@ -86,9 +86,11 @@ local function define_tests()
             test.not_nil(stepped.response.memory_recall, json.encode(stepped.response))
             test.eq(stepped.response.memory_recall.memory_ids[1], fact.item_id)
             test.not_nil(stepped.compiled.tools.SearchMemory, json.encode(stepped.compiled.tools))
-            test.not_nil(stepped.compiled.tools.Remember, "Remember tool")
+            local tool_count = 0
+            for _ in pairs(stepped.compiled.tools) do tool_count = tool_count + 1 end
+            test.eq(tool_count, 2, json.encode(stepped.compiled.tools))
             test.not_nil(stepped.compiled.tools.ForgetMemory, "ForgetMemory tool")
-            fixture.history.record(session, { { id = "trait-capture", role = "user", content = "I prefer aisle seats." } })
+            fixture.history.record(session, { { id = "trait-capture", role = "user", content = "Remember that I prefer aisle seats." } })
             fixture.extraction({ fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "trait-capture") })
             fixture.relations({ "unrelated" })
             local captured, capture_err = fixture.op(user, "trait_agent", {

@@ -49,7 +49,6 @@ entries:
         type: string
         enum:
         - capture
-        - tool
         - reflection
         - owner
       provenance:

@@ -17,7 +17,7 @@ export interface MemoryItem {
   invalid_at?: string | null
   recorded_at: string
   superseded_by?: string | null
-  source: 'capture' | 'tool' | 'reflection' | 'owner'
+  source: 'capture' | 'reflection' | 'owner'
 }
 
 export interface Provenance { host_kind: string; host_id: string; event_id: string; recorded_at?: string }

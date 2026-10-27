@@ -32,7 +32,6 @@ export function aboutLabel(item: Pick<MemoryItem, 'scope_family'>): string {
 
 const SOURCE_LABEL: Record<MemoryItem['source'], string> = {
   capture: 'learned in conversation',
-  tool: 'saved by the agent',
   reflection: 'from consolidation',
   owner: 'added by a person',
 }

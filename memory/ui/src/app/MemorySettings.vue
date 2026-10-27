@@ -79,7 +79,7 @@ function pick(choice: MemoryChoice): void {
   <div v-else class="mm-trait">
     <div class="mm-field">
       <span id="trait_memory" class="mm-label">Memory</span>
-      <span class="mm-hint">The agent remembers into this memory and recalls from it. Models, limits and cadence are set on the memory.</span>
+      <span class="mm-hint">Memory learns from conversations automatically and supplies recall. Models, limits and cadence are set on the memory.</span>
       <div v-if="resolveError" class="kx-notice error">
         <Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ resolveError }}</span>
       </div>
@@ -109,10 +109,10 @@ function pick(choice: MemoryChoice): void {
     </div>
     <div class="mm-toggle">
       <span class="mm-field">
-        <span class="mm-label">Remember conversations</span>
+        <span class="mm-label">Learn from conversations</span>
         <span class="mm-hint">Off keeps the memory read-only for this agent: it recalls but learns nothing new.</span>
       </span>
-      <ToggleSwitch v-model="capture" aria-label="Remember conversations" @update:model-value="publish" />
+      <ToggleSwitch v-model="capture" aria-label="Learn from conversations" @update:model-value="publish" />
     </div>
   </div>
 </template>

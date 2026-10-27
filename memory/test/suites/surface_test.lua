@@ -6,7 +6,6 @@ local http_client = require("http_client")
 local registry = require("registry")
 local session = require("session")
 local groups = require("user_groups_repo")
-local types = require("types")
 
 local function live_for_key(user: string, component_id: string, key: string): { any }
     return fixture.items(user, component_id, { key = key, statuses = { "current", "conflict" } })
@@ -99,24 +98,16 @@ local function define_tests()
         end)
         test.before_each(function() fixture.script.reset() end)
 
-        test.it("assigns conversation learning to capture and reserves Remember for explicit requests", function()
-            local tool = registry.get("kickside.memory.agent:remember_tool").meta.llm_description
+        test.it("assigns conversation learning only to automatic capture", function()
             local trait = registry.get("kickside.memory:memory").data.prompt
-            test.is_true(tool:find("explicitly asks", 1, true) ~= nil, tool)
-            test.is_true(trait:find("explicitly asks", 1, true) ~= nil, trait)
-            test.is_true(trait:find("Background capture learns", 1, true) ~= nil, trait)
-            test.is_true(tool:find("supersession preserves earlier versions", 1, true) ~= nil, tool)
-            test.is_true(tool:find("Ordinary corrections and goal progress belong to background capture", 1, true) ~= nil, tool)
+            test.is_true(trait:find("Memory learns from the conversation automatically", 1, true) ~= nil, trait)
+            test.is_true(trait:find("Use SearchMemory to look things up", 1, true) ~= nil, trait)
+            test.is_true(trait:find("Use ForgetMemory only when the user asks to forget", 1, true) ~= nil, trait)
             local forget = registry.get("kickside.memory.agent:forget_tool").meta.llm_description
-            test.is_true(forget:find("explicitly asks to remember", 1, true) ~= nil, forget)
+            test.is_true(forget:find("only when the user explicitly asks to forget", 1, true) ~= nil, forget)
         end)
 
         test.it("publishes the same typed tool contracts that the runtime implements", function()
-            local remember = json.decode(registry.get("kickside.memory.agent:remember_tool").meta.input_schema)
-            test.eq(json.encode(remember.properties.kind.enum), (json.encode(types.MEMORY_KINDS)))
-            local required = {}
-            for _, name in ipairs(remember.required) do required[name] = true end
-            test.is_true(required.value)
             local forget = json.decode(registry.get("kickside.memory.agent:forget_tool").meta.input_schema)
             test.eq(forget.required[1], "key")
             test.is_nil(forget.properties.item_id)
@@ -275,32 +266,6 @@ local function define_tests()
             test.is_true(first.alternatives[1].group_id ~= second.alternatives[1].group_id)
             test.is_nil(second.next_cursor)
             test.eq(#first.alternatives[1].options + #second.alternatives[1].options, 62)
-        end)
-
-        test.it("requires Remember to name a topic and retains a false value", function()
-            local user = fixture.user()
-            local component_id = fixture.memory(user)
-            local context = fixture.agent_context(component_id, "surface-" .. user, "agent-a")
-
-            local missing = fixture.op(user, "tool_remember", { input = {
-                content = "The user enables notifications.", value = true,
-            } }, context)
-            test.eq(missing.success, false)
-
-            local content_key = fixture.op(user, "tool_remember", { input = {
-                content = "The user enables notifications.", key = "The user enables notifications.", value = true,
-            } }, context)
-            test.eq(content_key.success, false)
-
-            fixture.normalization({ { key = "notification_setting", value = false } })
-            local stored = fixture.op(user, "tool_remember", { input = {
-                content = "The user disables notifications.", key = "notification_setting", value = false,
-            } }, context)
-            test.eq(stored.success, true, json.encode(stored))
-            fixture.settle(user, component_id)
-            local rows = live_for_key(user, component_id, "notification_setting")
-            test.eq(#rows, 1)
-            test.eq(rows[1].value, false)
         end)
 
         test.it("returns each authorized member of an unresolved alternative group when the search page holds one group", function()
