@@ -31,7 +31,7 @@ A capture records its span and source ownership in a derive run. Its cursor
 advances through `capture.advanced` only after the derive commits. An active
 job owns that host's unconsumed span. A failed run remains visible; the next
 capture includes the unconsumed history. Consolidation reflects across owner
-scopes; re-embedding updates accepted item vectors through the shared writer.
+scopes; re-embedding conditionally replaces payload vectors under the accepted item lock and content hash.
 
 ## Boundary
 

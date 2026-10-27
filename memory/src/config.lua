@@ -13,21 +13,24 @@ local function descriptor(): (any?, error?)
     if err or type(entry) ~= "table" then
         return nil, types.internal("memory engine descriptor is unavailable: " .. tostring(err))
     end
-    return (entry :: any).meta or {}, nil
+    local meta = (entry :: any).meta
+    local meta_err = M.validate_descriptor(meta)
+    if meta_err then return nil, meta_err end
+    return meta, nil
 end
 
 function M.defaults(): (any?, error?)
     local meta, err = descriptor()
     if err then return nil, err end
     local out = {}
-    for key, value in pairs((meta :: any).default_config or {}) do out[key] = value end
+    for key, value in pairs((meta :: any).default_config) do out[key] = value end
     return out, nil
 end
 
 function M.schema(): (any?, error?)
     local meta, err = descriptor()
     if err then return nil, err end
-    return (meta :: any).config_schema or {}, nil
+    return (meta :: any).config_schema, nil
 end
 
 local function check_value(key: string, spec: any, value: any): error?
@@ -57,12 +60,36 @@ local function check_value(key: string, spec: any, value: any): error?
     return nil
 end
 
+function M.validate_descriptor(meta: any): error?
+    if type(meta) ~= "table" then return types.internal("memory engine descriptor metadata is required") end
+    if type(meta.default_config) ~= "table" or next(meta.default_config) == nil then
+        return types.internal("memory engine descriptor default_config must be a nonempty object")
+    end
+    local schema = meta.config_schema
+    if type(schema) ~= "table" or schema.type ~= "object" or type(schema.properties) ~= "table" or next(schema.properties) == nil then
+        return types.internal("memory engine descriptor config_schema requires object properties")
+    end
+    local supported = { string = true, number = true, integer = true, boolean = true }
+    for key, spec in pairs(schema.properties) do
+        if type(key) ~= "string" or type(spec) ~= "table" or not supported[spec.type] or meta.default_config[key] == nil then
+            return types.internal("memory engine descriptor has an invalid property or missing default: " .. tostring(key))
+        end
+    end
+    for key, value in pairs(meta.default_config) do
+        local spec = schema.properties[key]
+        if not spec or check_value(key, spec, value) then
+            return types.internal("memory engine descriptor has an invalid default: " .. tostring(key))
+        end
+    end
+    return nil
+end
+
 function M.validate(config: any): error?
     if config == nil then config = {} end
     if type(config) ~= "table" then return types.invalid("config must be an object") end
     local schema, err = M.schema()
     if err then return err end
-    local properties = (schema :: any).properties or {}
+    local properties = (schema :: any).properties
     for key, value in pairs(config) do
         local spec = properties[key]
         if type(spec) ~= "table" then return types.invalid("config." .. tostring(key) .. " is not a memory setting") end

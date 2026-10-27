@@ -79,6 +79,7 @@ async function add() {
       <InputText id="add_topic" v-model="topic" placeholder="e.g. response style" :invalid="!!topicError" autocomplete="off" />
       <span v-if="topicError" class="mm-hint mm-hint-err">{{ topicError }}</span>
       <span v-else class="mm-hint">What this is about, not what it says. A topic that already exists gets a new version.</span>
+      <Message v-if="topics.error.value" severity="error" size="small">{{ topics.error.value }}</Message>
       <div v-if="suggestions.length" class="mm-suggest" aria-label="Topics in use">
         <button v-for="key in suggestions" :key="key" type="button" class="mm-suggest-chip" @click="topic = topicLabel(key)">{{ topicLabel(key) }}</button>
       </div>

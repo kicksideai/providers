@@ -20,12 +20,18 @@ const configError = ref('')
 const ctx = ref<CreateContext>({})
 watch(() => props.value.config, (raw) => {
   try {
-    ctx.value = parseConfig(raw) as CreateContext
+    const next = parseConfig(raw)
+    const supplied = isRecord(next.config) ? next.config.config_schema : undefined
+    if (!isRecord(supplied) || supplied.type !== 'object' || !isRecord(supplied.properties)
+      || !Object.keys(supplied.properties).length || Object.values(supplied.properties).some((field) => !isRecord(field) || !['string', 'integer', 'number', 'boolean'].includes(String(field.type)))) {
+      throw new Error('Memory create schema must supply object properties')
+    }
+    ctx.value = next as CreateContext
     configError.value = ''
   } catch (err) { configError.value = errorText(err) }
 }, { immediate: true })
 const isEdit = computed(() => !!ctx.value.edit)
-const schema = computed<ConfigSchema>(() => (isRecord(ctx.value.config?.config_schema) ? ctx.value.config?.config_schema : {}) as ConfigSchema)
+const schema = computed(() => ctx.value.config!.config_schema!)
 
 const embeddingModel = ref('class:embed')
 const values = ref<Record<string, unknown>>({})

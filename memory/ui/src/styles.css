@@ -55,7 +55,7 @@
 .mm-page-note { margin: 12px 16px 0; }
 .mm-rail-tools { display: grid; gap: 8px; padding: 10px; }
 .mm-views { display: flex; }
-.mm-views :deep(.p-togglebutton), .mm-views .p-togglebutton { flex: 1; }
+.mm-views .p-togglebutton { flex: 1; }
 .mm-rail-note { margin: 6px 4px; }
 .mm-rail-empty { padding: 24px 12px; text-align: center; font-size: 12.5px; line-height: 1.5; color: var(--kx-text-faint); }
 .mm-more { margin: 8px 4px 0; width: calc(100% - 8px); justify-content: center; }

@@ -1,7 +1,7 @@
 import { defineComponent as $, openBlock as h, createElementBlock as y, createVNode as b, unref as g, createElementVNode as C, createCommentVNode as E, ref as i, watch as V, computed as S, onUnmounted as T } from "vue";
 import { Icon as x } from "@iconify/vue";
 import { api as w, on as N } from "@wippy-fe/proxy";
-import { x as R, e as p, X as U } from "./types-B7VilOFV.js";
+import { x as R, e as p, X as U } from "./types-cXMhssjU.js";
 const B = { class: "kx-search" }, P = ["value", "placeholder", "aria-label"], M = /* @__PURE__ */ $({
   __name: "SearchField",
   props: {
@@ -120,4 +120,4 @@ export {
   Y as s,
   X as u
 };
-//# sourceMappingURL=useMemory-C3qy8kGk.js.map
+//# sourceMappingURL=useMemory-BkOJCZoy.js.map

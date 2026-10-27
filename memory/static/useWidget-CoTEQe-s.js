@@ -1,5 +1,5 @@
 import { mergeProps as S, openBlock as k, createElementBlock as O, createElementVNode as ce, resolveComponent as ve, resolveDirective as be, createBlock as R, Transition as he, withCtx as ye, renderSlot as V, normalizeClass as $e, resolveDynamicComponent as xe, createCommentVNode as N, withDirectives as we, ref as X, onMounted as Se } from "vue";
-import { B as P, d as pe, l as me, F as _e, y as ke, z as Pe, N as Y, A as W, D as j, E as H, G as K, H as Z, J as Te, P as B, K as Oe, Q as je, O as F, T as ee, R as ne, t as ze, C as Ce, V as Ie, W as Ae, U as Ee, c as Le, f as Q, e as De } from "./types-B7VilOFV.js";
+import { B as P, d as pe, l as me, F as _e, y as ke, z as Pe, N as Y, A as W, D as j, E as H, G as K, H as Z, J as Te, P as B, K as Oe, Q as je, O as F, T as ee, R as ne, t as ze, C as Ce, V as Ie, W as Ae, U as Ee, c as Le, f as Q, e as De } from "./types-cXMhssjU.js";
 import { loadByTagName as Ve } from "@wippy-fe/proxy";
 var M = {};
 function Be(n = "pui_id_") {
@@ -1620,4 +1620,4 @@ export {
   He as s,
   nt as u
 };
-//# sourceMappingURL=useWidget-SFloqZkE.js.map
+//# sourceMappingURL=useWidget-CoTEQe-s.js.map
