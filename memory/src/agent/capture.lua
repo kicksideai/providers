@@ -96,7 +96,7 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     if capacity_err then return nil, capacity_err end
     local captures: { any } = {}
     local part: { any } = {}
-    local count, prior_context = 0, context_window(entries)
+    local count, size, prior_context = 0, 0, context_window(entries)
     local function append(to_id: string)
         captures[#captures + 1] = {
             component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
@@ -104,11 +104,15 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
             to_event_id = to_id, span = part, context = prior_context,
         }
         from = to_id
-        part, count, prior_context = {}, 0, context_window(entries)
+        part, count, size, prior_context = {}, 0, 0, context_window(entries)
     end
     for _, entry in ipairs(span) do
-        if models.is_statement(entry) and count == maximum then append(part[#part].id) end
+        if #entry.text > jobs.INPUT_BYTES then return nil, types.invalid("memory source event exceeds 24000 bytes") end
+        if #part > 0 and (size + #entry.text > jobs.INPUT_BYTES or (models.is_statement(entry) and count == maximum)) then
+            append(part[#part].id)
+        end
         part[#part + 1] = entry
+        size = size + #entry.text
         entries[#entries + 1] = entry
         if models.is_statement(entry) then count = count + 1 end
     end

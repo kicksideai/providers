@@ -9,9 +9,12 @@ local M = {}
 
 local PURGE_PAGE = 200
 
-local function decode_row(row: any): any
-    row.config = types.decode_json(row.config) or {}
-    return row
+local function decode_row(row: any): (any?, error?)
+    local config, config_err = types.decode_json(row.config)
+    if config_err then return nil, config_err end
+    if type(config) ~= "table" then return nil, types.internal("memory config must be a JSON object") end
+    row.config = config
+    return row, nil
 end
 
 function M.create(component_id: string, kb_type: string, embedding_model: string, config: any): (any?, error?)
@@ -37,7 +40,7 @@ function M.get(component_id: string): (any?, error?)
             { component_id })
         if err then return nil, types.failed("memory store read failed", err) end
         if not rows or #rows == 0 then return nil, types.not_found("memory store not found for component " .. component_id) end
-        return decode_row(rows[1]), nil
+        return decode_row(rows[1])
     end)
 end
 

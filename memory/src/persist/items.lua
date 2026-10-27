@@ -26,26 +26,34 @@ local SEARCH_SPEC = {
 
 local SELECT = "SELECT id, " .. table.concat(COLUMNS, ", ") .. " FROM kickside_memory_items"
 
-local function decode(row: any): any
-    row.value = types.decode_json(row.value)
+local function decode(row: any): (any?, error?)
+    if row.value ~= nil then
+        local value, err = types.decode_json(row.value)
+        if err then return nil, err end
+        row.value = value
+    end
     row.version = tonumber(row.version) or 0
     row.priority = tonumber(row.priority) or 0
     row.last_seq = tonumber(row.last_seq) or 0
     if row.confidence ~= nil then row.confidence = tonumber(row.confidence) end
-    return row
+    return row, nil
 end
 
-local function decode_all(rows: any): { any }
+local function decode_all(rows: any): (any?, error?)
     local out: { any } = {}
-    for _, row in ipairs(rows or {}) do out[#out + 1] = decode(row) end
-    return out
+    for _, row in ipairs(rows or {}) do
+        local decoded, err = decode(row)
+        if err then return nil, err end
+        out[#out + 1] = decoded
+    end
+    return out, nil
 end
 
 function M.get_tx(tx: any, component_id: string, item_id: string): (any?, error?)
     local rows, err = tx:query(SELECT .. " WHERE component_id = $1 AND id = $2", { component_id, item_id })
     if err then return nil, types.failed("memory item read failed", err) end
     if not rows or #rows == 0 then return nil, nil end
-    return decode(rows[1]), nil
+    return decode(rows[1])
 end
 
 function M.get(component_id: string, item_id: string): (any?, error?)
@@ -94,7 +102,7 @@ function M.list(component_id: string, filter: ListFilter): (any?, error?)
         local rows, err = conn:query(SELECT .. " WHERE " .. table.concat(where, " AND ") ..
             " ORDER BY kind, priority DESC, key, version DESC, id LIMIT $" .. (#params - 1) .. " OFFSET $" .. #params, params)
         if err then return nil, types.failed("memory item list failed", err) end
-        return decode_all(rows), nil
+        return decode_all(rows)
     end)
 end
 
@@ -122,11 +130,29 @@ function M.key_cardinality(component_id: string, scope_key: string, key: string)
     end)
 end
 
-function M.count_current(tx: any, component_id: string, scope_key: string, key: string): (number?, error?)
-    local rows, err = tx:query("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND key = $3 AND status = $4",
-        { component_id, scope_key, key, types.STATUS.CURRENT })
-    if err then return nil, types.failed("memory current count failed", err) end
-    return tonumber(rows[1].n), nil
+function M.invariant_snapshot(tx: any, component_id: string, keys: { any }, ids: { string }): (any?, error?)
+    local counts, statuses = {}, {}
+    local page_size = 100
+    for first = 1, #keys, page_size do
+        local params, matches = { component_id, types.STATUS.CURRENT }, {}
+        for i = first, math.min(first + page_size - 1, #keys) do
+            matches[#matches + 1] = "(scope_key = $" .. (#params + 1) .. " AND key = $" .. (#params + 2) .. ")"
+            params[#params + 1] = keys[i].scope_key
+            params[#params + 1] = keys[i].key
+        end
+        local rows, err = tx:query("SELECT scope_key, key, COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1 AND status = $2 AND (" ..
+            table.concat(matches, " OR ") .. ") GROUP BY scope_key, key", params)
+        if err then return nil, types.failed("memory invariant counts read failed", err) end
+        for _, row in ipairs(rows) do counts[row.scope_key .. "\0" .. row.key] = tonumber(row.n) end
+    end
+    for first = 1, #ids, page_size do
+        local params = { component_id }
+        for i = first, math.min(first + page_size - 1, #ids) do params[#params + 1] = ids[i] end
+        local rows, err = tx:query("SELECT id, status FROM kickside_memory_items WHERE component_id = $1 AND id IN (" .. index.placeholders(#params - 1, 2) .. ")", params)
+        if err then return nil, types.failed("memory invariant originals read failed", err) end
+        for _, row in ipairs(rows) do statuses[row.id] = row.status end
+    end
+    return { counts = counts, statuses = statuses }, nil
 end
 
 function M.lineage(component_id: string, item: any): (any?, error?)
@@ -138,7 +164,7 @@ function M.lineage(component_id: string, item: any): (any?, error?)
             SELECT .. " WHERE component_id = $1 AND scope_key = $3 AND claim_id IN (SELECT claim_id FROM lineage) ORDER BY id",
             { component_id, item.id, item.scope_key })
         if err then return nil, types.failed("memory lineage read failed", err) end
-        return decode_all(rows), nil
+        return decode_all(rows)
     end)
 end
 
@@ -148,7 +174,7 @@ function M.derived(component_id: string, source_id: string): (any?, error?)
             "SELECT item_id FROM kickside_memory_provenance WHERE component_id = $1 AND host_kind = 'item' AND host_id = $2) ORDER BY id",
             { component_id, source_id })
         if err then return nil, types.failed("memory derivation read failed", err) end
-        return decode_all(rows), nil
+        return decode_all(rows)
     end)
 end
 
@@ -159,8 +185,7 @@ function M.keys(component_id: string, scope_key: string, limit: integer): (any?,
             "ORDER BY kind, key LIMIT $5",
             { component_id, scope_key, types.STATUS.CURRENT, types.STATUS.CONFLICT, limit })
         if err then return nil, types.failed("memory key read failed", err) end
-        for _, row in ipairs(rows or {}) do row.value = types.decode_json(row.value) end
-        return rows or {}, nil
+        return decode_all(rows)
     end)
 end
 
@@ -209,7 +234,7 @@ function M.group_members(component_id: string, groups: { string }, scope_keys: {
         end
         local rows, err = conn:query(SELECT .. where .. " ORDER BY conflict_group, id", params)
         if err then return nil, types.failed("memory conflict member read failed", err) end
-        return decode_all(rows), nil
+        return decode_all(rows)
     end)
 end
 
@@ -271,7 +296,7 @@ function M.search(component_id: string, vector: { number }, filter: SearchFilter
             partition = component_id, limit = filter.limit or 10, filters = filters, query_text = filter.query_text, group_by = filter.group_by,
         })
         if err then return nil, types.failed("memory search failed", err) end
-        return decode_all(rows), nil
+        return decode_all(rows)
     end)
 end
 

@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
 local uuid = require("uuid")
+local canonical_json = require("canonical_json")
 local types = require("types")
 local config = require("memory_config")
 local runs = require("memory_runs")
@@ -15,7 +16,7 @@ local component = require("component")
 local jobs = require("jobs")
 local execution_identity = require("execution_identity")
 
-local M = {}
+local M = { INPUT_BYTES = 24000 }
 
 local JOB = {
     derive = "kickside.memory.engine:derive_worker",
@@ -57,13 +58,16 @@ end
 
 local function new_derive_run(run_id: string, component_id: string, host_kind: string, host_id: string, agent_id: string?,
     from_event_id: string, to_event_id: string, span: { any }, context: { any }?): (any?, any?, error?)
+    local size = 0
+    for _, message in ipairs(span) do size = size + #(message.text or "") end
+    if size > M.INPUT_BYTES then return nil, nil, types.invalid("memory derive input exceeds 24000 bytes") end
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, nil, id_err end
     return {
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
         host_kind = host_kind, host_id = host_id, agent_id = agent_id,
         from_event_id = from_event_id, to_event_id = to_event_id,
-        input = { span = types.bounded_span(span), context = context, owner_id = (identity :: any).principal.id },
+        input = { span = span, context = context, owner_id = (identity :: any).principal.id },
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }, identity, nil
 end
@@ -94,7 +98,7 @@ function M.capture(capture: Capture, following: { Capture }?): (any?, error?)
 end
 
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
-    local run_id, hash_err = types.digest({ "derive", component_id, "content", source_event_id })
+    local run_id, hash_err = canonical_json.hash({ "derive", component_id, "content", source_event_id })
     if hash_err then return nil, hash_err end
     local run, identity, err = new_derive_run(run_id :: string, component_id, "content", component_id, nil, source_event_id, source_event_id, span)
     if err then return nil, err end
@@ -128,7 +132,7 @@ end
 function M.schedule_reembed(component_id: string): (any?, error?)
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, id_err end
-    local run_id, hash_err = types.digest({ "reembed", component_id, types.now() })
+    local run_id, hash_err = canonical_json.hash({ "reembed", component_id, types.now() })
     if hash_err then return nil, hash_err end
     local run = {
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.REEMBED, input = {},
@@ -149,7 +153,8 @@ local function fail(run_id: string, err: any, stats: any?): any
     if close_err then error(close_err) end
     local diagnostic = message
     if retryable(err) then
-        local failure = types.decode_json(message)
+        local failure, decode_err = types.decode_json(message)
+        if decode_err then error(decode_err) end
         error(errors.new({ kind = err:kind(), retryable = true, message = err:message(),
             details = { cause_kind = failure.code } }))
     end

@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
+local canonical_json = require("canonical_json")
 local types = require("types")
 local items = require("memory_items")
 
@@ -118,14 +119,14 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
     local established, cardinality_err = self:cardinality_of(scope_key, key :: string)
     if cardinality_err then return nil, cardinality_err end
     if established and established ~= fields.cardinality then return nil, types.invalid("memory key cardinality cannot change") end
-    local key_id, topic_err = types.digest({ "key", self.component_id, scope_key, key })
+    local key_id, topic_err = canonical_json.hash({ "key", self.component_id, scope_key, key })
     if topic_err then return nil, topic_err end
     local claim_id, claim_err = types.claim_id(self.component_id, scope_key, key, fields.value)
     if claim_err then return nil, claim_err end
     local content_hash, hash_err = types.content_hash(self.component_id, fields.content, fields.value)
     if hash_err then return nil, hash_err end
     self.sequence = self.sequence + 1
-    local item_id, id_err = types.digest({ "item", claim_id :: string, self.key, self.sequence })
+    local item_id, id_err = canonical_json.hash({ "item", claim_id :: string, self.key, self.sequence })
     if id_err then return nil, id_err end
     local item = {
         id = item_id, claim_id = claim_id, kind = fields.kind, scope_family = scope.scope_family, scope_id = scope.scope_id,
@@ -271,7 +272,7 @@ function Decision:conflict(contested: { any }): error?
     table.sort(groups)
     local group_id = groups[1]
     if not group_id then
-        local digest, digest_err = types.digest({ "conflict", self.component_id, ids })
+        local digest, digest_err = canonical_json.hash({ "conflict", self.component_id, ids })
         if digest_err then return digest_err end
         group_id = digest
     end
@@ -290,7 +291,7 @@ end
 function Decision:revise(item: any, content: string, priority: number?, vector: { number }?): error?
     local content_hash, hash_err = types.content_hash(self.component_id, content, item.value)
     if hash_err then return hash_err end
-    local payload_id, id_err = types.digest({ "revision", item.id, self.key })
+    local payload_id, id_err = canonical_json.hash({ "revision", item.id, self.key })
     if id_err then return id_err end
     self.staged[#self.staged + 1] = { payload_id = payload_id, owner_item_id = item.id, content = content, value = item.value, content_hash = content_hash, vector = vector }
     self:emit(types.EVENT.ITEM_REVISED, { item_id = item.id, payload_id = payload_id, content_hash = content_hash, priority = priority })
@@ -356,23 +357,28 @@ function Decision:forget(item: any): error?
 end
 
 function Decision:check(tx: any): error?
-    for _, touched in pairs(self.touched_keys) do
-        local cardinality = touched.cardinality
-        local counted, err = items.count_current(tx, self.component_id, touched.scope_key, touched.key)
-        if err then return err end
-        local current = counted :: number
-        for id, state in pairs(self.overlay) do
-            if state.scope_key == touched.scope_key and state.key == touched.key then
-                local original, original_err = items.get_tx(tx, self.component_id, id)
-                if original_err then return original_err end
-                if original and original.status == types.STATUS.CURRENT then current = current - 1 end
-                if state.status == types.STATUS.CURRENT then current = current + 1 end
-            end
+    local keys, single, ids = {}, {}, {}
+    for key, touched in pairs(self.touched_keys) do
+        if touched.cardinality == types.CARDINALITY.SINGLE then
+            keys[#keys + 1] = touched
+            single[key] = true
         end
-        local single = cardinality == types.CARDINALITY.SINGLE
-        if single and current > 1 then
-            return types.internal("decision would leave multiple current values of a single-valued key")
-        end
+    end
+    if #keys == 0 then return nil end
+    for id, state in pairs(self.overlay) do
+        if single[state.scope_key .. "\0" .. state.key] then ids[#ids + 1] = id end
+    end
+    local snapshot, err = items.invariant_snapshot(tx, self.component_id, keys, ids)
+    if err then return err end
+    local counts = snapshot.counts
+    for _, id in ipairs(ids) do
+        local state = self.overlay[id]
+        local key = state.scope_key .. "\0" .. state.key
+        local delta = (state.status == types.STATUS.CURRENT and 1 or 0) - (snapshot.statuses[id] == types.STATUS.CURRENT and 1 or 0)
+        counts[key] = (counts[key] or 0) + delta
+    end
+    for _, current in pairs(counts) do
+        if current > 1 then return types.internal("decision would leave multiple current values of a single-valued key") end
     end
     return nil
 end

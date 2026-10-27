@@ -72,6 +72,48 @@ local function define_tests()
             test.eq(#fixture.items(user, id, { statuses = { "current" } }), 2)
         end)
 
+        test.it("reports corrupt stored configuration and retained run JSON instead of empty defaults", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local db = fixture.db()
+            local _, write_err = db:execute("UPDATE kickside_memory_stores SET config = $1 WHERE component_id = $2", { "{", id })
+            db:release()
+            test.is_nil(write_err, tostring(write_err))
+            local store, store_err = fixture.op(user, "store", { component_id = id })
+            test.is_nil(store)
+            test.not_nil(store_err)
+            for _, column in ipairs({ "input", "stats" }) do
+                db = fixture.db()
+                local _, corrupt_err = db:execute("UPDATE kickside_memory_runs SET " .. column .. " = $1 WHERE id = $2", { "{", "consolidate:" .. id })
+                db:release()
+                test.is_nil(corrupt_err, tostring(corrupt_err))
+                local run, run_err = fixture.op(user, "run", { run_id = "consolidate:" .. id })
+                test.is_nil(run)
+                test.not_nil(run_err)
+                local runs, list_err = fixture.op(user, "runs", { component_id = id })
+                test.is_nil(runs)
+                test.not_nil(list_err)
+                db = fixture.db()
+                local _, reset_err = db:execute("UPDATE kickside_memory_runs SET " .. column .. " = '{}' WHERE id = $1", { "consolidate:" .. id })
+                db:release()
+                test.is_nil(reset_err, tostring(reset_err))
+            end
+        end)
+
+        test.it("validates required engine descriptor wiring before applying stored overrides", function()
+            local user = fixture.user()
+            for _, meta in ipairs({ {}, { default_config = {} },
+                { default_config = {}, config_schema = {} },
+                { default_config = {}, config_schema = { type = "object", properties = { bad = false } } },
+                { default_config = {}, config_schema = { type = "object", properties = { capture = { type = "boolean" } } } },
+            }) do
+                local valid, err = fixture.op(user, "descriptor", { meta = meta })
+                test.is_nil(valid)
+                test.not_nil(err)
+                test.is_true(tostring(err):find("descriptor", 1, true) ~= nil)
+            end
+        end)
+
         test.it("creating a memory through the knowledge control plane provisions its store, ledger projection and consolidation slot", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -410,20 +452,17 @@ local function define_tests()
             end
         end)
 
-        test.it("bounds direct ingestion before persistence and extraction", function()
+        test.it("rejects oversized ingestion before enrollment without discarding its suffix", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            fixture.extraction({})
             local result, err = fixture.op(user, "embed_contract", { component_id = id, request = {
                 content = string.rep("x", 30000) .. "tail-marker", title = string.rep("title", 10000),
                 external_id = "large", external_version = "1",
             } })
-            test.is_nil(err, tostring(err))
-            test.is_true(result.success, json.encode(result))
-            local run = fixture.wait_runs(user, id, "derive", 1)[1]
-            test.eq(run.status, "succeeded", tostring(run.last_error))
-            test.is_true(#run.input.span[1].text <= 24000)
-            test.is_true(#fixture.script.prompts("structured_output")[1].user < 25000)
+            test.is_true(err ~= nil or result.success == false)
+            test.is_true(tostring(err or result.error):find("24000", 1, true) ~= nil)
+            test.eq(#fixture.op(user, "runs", { component_id = id, run_type = "derive" }), 0)
+            test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
         test.it("rolls back ingest enrollment on queue failure and schedules the retry", function()

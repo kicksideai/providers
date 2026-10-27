@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
+local canonical_json = require("canonical_json")
 local types = require("types")
 local items = require("memory_items")
 local stores = require("memory_stores")
@@ -74,7 +75,7 @@ function M.create(component_id: string, fields: any): (any?, error?)
     if key_err then return nil, key_err end
     local vector, vector_err = vector_for(component_id, content)
     if vector_err then return nil, vector_err end
-    local idempotency, id_err = types.digest({ "owner.create", scope_family, scope_id, key, value })
+    local idempotency, id_err = canonical_json.hash({ "owner.create", scope_family, scope_id, key, value })
     if id_err then return nil, id_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
         local cardinality = types.trim(fields.cardinality)
@@ -93,7 +94,7 @@ end
 function M.edit(component_id: string, item_id: string, fields: any): (any?, error?)
     local content = fields.content ~= nil and types.trim(fields.content) or nil
     if content == "" then return nil, types.invalid("memory content is required") end
-    local idempotency, id_err = types.digest({ "owner.edit", item_id, content or "", fields.value == nil and "" or fields.value })
+    local idempotency, id_err = canonical_json.hash({ "owner.edit", item_id, content or "", fields.value == nil and "" or fields.value })
     if id_err then return nil, id_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
@@ -200,7 +201,7 @@ function M.forget_key(component_id: string, key: string, value: any): (any?, err
     local owner = types.actor_id()
     if owner == "" then return nil, types.invalid("forget requires a signed-in user") end
     local scope_key = types.scope_key(types.SCOPE.OWNER, owner)
-    local idempotency, hash_err = types.digest({ operation = "owner.forget_key", scope_key = scope_key, key = key, value = value })
+    local idempotency, hash_err = canonical_json.hash({ operation = "owner.forget_key", scope_key = scope_key, key = key, value = value })
     if hash_err then return nil, hash_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
         local rows, read_err = items.all(component_id, { scope_keys = { scope_key }, key = key })

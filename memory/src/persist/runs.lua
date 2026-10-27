@@ -13,10 +13,16 @@ local M = {}
 local SELECT = "SELECT id, component_id, run_type, status, job_id, host_kind, host_id, agent_id, from_event_id, " ..
     "to_event_id, input, stats, last_error, actor_id, actor_context, created_at, started_at, finished_at FROM kickside_memory_runs"
 
-local function decode(row: any): any
-    row.input = types.decode_json(row.input) or {}
-    row.stats = types.decode_json(row.stats) or {}
-    return row
+local function decode(row: any): (any?, error?)
+    local input, input_err = types.decode_json(row.input)
+    if input_err then return nil, input_err end
+    if type(input) ~= "table" then return nil, types.internal("memory input must be a JSON object") end
+    row.input = input
+    local stats, stats_err = types.decode_json(row.stats)
+    if stats_err then return nil, stats_err end
+    if type(stats) ~= "table" then return nil, types.internal("memory stats must be a JSON object") end
+    row.stats = stats
+    return row, nil
 end
 
 type RunInput = {
@@ -154,7 +160,7 @@ function M.get(run_id: string): (any?, error?)
         local rows, err = conn:query(SELECT .. " WHERE id = $1", { run_id })
         if err then return nil, types.failed("memory run read failed", err) end
         if not rows or #rows == 0 then return nil, types.not_found("memory run not found: " .. run_id) end
-        return decode(rows[1]), nil
+        return decode(rows[1])
     end)
 end
 
@@ -169,7 +175,11 @@ function M.list(component_id: string, run_type: string?, limit: integer): (any?,
         end
         if err then return nil, types.failed("memory run list failed", err) end
         local out: { any } = {}
-        for _, row in ipairs(rows or {}) do out[#out + 1] = decode(row) end
+        for _, row in ipairs(rows or {}) do
+            local decoded, decode_err = decode(row)
+            if decode_err then return nil, decode_err end
+            out[#out + 1] = decoded
+        end
         return out, nil
     end)
 end

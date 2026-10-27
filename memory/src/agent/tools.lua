@@ -2,6 +2,7 @@
 
 local ctx = require("ctx")
 local component = require("component")
+local canonical_json = require("canonical_json")
 local types = require("types")
 local context = require("agent_context")
 local history = require("agent_history")
@@ -46,7 +47,7 @@ function M.remember(args: any): (any?, error?)
     if value == nil then return tool_error("value is required"), nil end
     local key, key_err = types.topic_key(input.key, content, value, kind)
     if key_err then return tool_error(key_err), nil end
-    local idempotency, hash_err = types.digest({ "tool.remember", owner, key, value, content })
+    local idempotency, hash_err = canonical_json.hash({ "tool.remember", owner, key, value, content })
     if hash_err then return nil, hash_err end
     local run = ctx.get("agent_run")
     local host_kind, host_id = context.host_ref(type(run) == "table" and run.host or nil)

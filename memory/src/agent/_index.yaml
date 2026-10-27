@@ -59,6 +59,7 @@ entries:
     source: file://tools.lua
     modules: &tools_modules [ctx]
     imports: &tools_imports
+      canonical_json: kickside.contract:canonical_json
       component: kickside.component:component
       types: kickside.memory:types
       agent_context: kickside.memory.agent:context

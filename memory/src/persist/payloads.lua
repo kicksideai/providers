@@ -18,7 +18,11 @@ function M.get_tx(tx: any, component_id: string, payload_id: string): (any?, err
         { component_id, payload_id })
     if err then return nil, types.failed("memory payload read failed", err) end
     if not rows or #rows == 0 then return nil, nil end
-    rows[1].value = types.decode_json(rows[1].value)
+    if rows[1].value ~= nil then
+        local value, decode_err = types.decode_json(rows[1].value)
+        if decode_err then return nil, decode_err end
+        rows[1].value = value
+    end
     return rows[1], nil
 end
 -- Folding and re-embedding serialize vector replacement under the accepted item lock.

@@ -142,23 +142,6 @@ function M.validate_value(kind: string, value: any): error?
     return nil
 end
 
-function M.bounded_span(span: { any }): { any }
-    local remaining = 24000
-    local out: { any } = {}
-    for _, message in ipairs(span) do
-        if remaining == 0 then break end
-        local text = type(message.text) == "string" and message.text:sub(1, remaining) or ""
-        if text ~= "" then
-            local entry: { [string]: any } = {}
-            for k, v in pairs(message) do entry[k] = v end
-            entry.text = text
-            remaining = remaining - #text
-            out[#out + 1] = entry
-        end
-    end
-    return out
-end
-
 function M.topic_key(value: any, content: string, claim_value: any?, kind: string?): (string?, error?)
     local key = M.normalize_key(value)
     if #key == 0 or #key > 64 or not key:match("^[a-z][a-z0-9_]*$") then
@@ -211,28 +194,22 @@ local function value_tuple(value: any): { any }
     return { "value", value }
 end
 
-function M.digest(parts: any): (string?, error?)
-    local digest, err = canonical_json.hash(parts)
-    if err then return nil, err end
-    return digest, nil
-end
-
 -- Repeated string claims share identity after case and whitespace normalization.
 function M.claim_id(component_id: string, scope_key: string, key: string, value: any): (string?, error?)
     if type(value) == "string" then value = (M.trim(value):lower():gsub("%s+", " ")) end
-    return M.digest({ "claim", component_id, scope_key, key, value_tuple(value) })
+    return canonical_json.hash({ "claim", component_id, scope_key, key, value_tuple(value) })
 end
 
 function M.content_hash(component_id: string, content: string, value: any): (string?, error?)
-    return M.digest({ "content", component_id, content, value_tuple(value) })
+    return canonical_json.hash({ "content", component_id, content, value_tuple(value) })
 end
 
-function M.decode_json(value: any): any
-    if type(value) == "table" then return value end
-    if type(value) ~= "string" or value == "" then return nil end
+function M.decode_json(value: any): (any?, error?)
+    if type(value) == "table" then return value, nil end
+    if type(value) ~= "string" then return nil, M.internal("memory JSON value is missing or invalid") end
     local decoded, err = json.decode(value)
-    if err then return nil end
-    return decoded
+    if err then return nil, M.failed("memory JSON decode failed", err) end
+    return decoded, nil
 end
 
 function M.invalid(message: string, details: any?): error

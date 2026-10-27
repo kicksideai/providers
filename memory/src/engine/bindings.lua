@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
 local ctx = require("ctx")
+local canonical_json = require("canonical_json")
 local types = require("types")
 local config = require("memory_config")
 local stores = require("memory_stores")
@@ -114,7 +115,7 @@ function M.embed_content(value: any): (any?, error?)
     if type(content) ~= "string" or types.trim(content) == "" then
         return { success = false, error = "content is required" }, nil
     end
-    local source_event_id, hash_err = types.digest({ operation = "memory.embed_content", component_id = component_id, external_id = req.external_id, external_version = req.external_version, content = content })
+    local source_event_id, hash_err = canonical_json.hash({ operation = "memory.embed_content", component_id = component_id, external_id = req.external_id, external_version = req.external_version, content = content })
     if hash_err then return { success = false, error = "memory ingest failed: " .. tostring(hash_err) }, nil end
     local queued, err = jobs.ingest(component_id :: string, source_event_id :: string, {
         { id = source_event_id, role = "document", text = types.trim(req.title) ~= "" and (types.trim(req.title) .. "\n\n" .. content) or content, created_at = types.now() },
