@@ -18,6 +18,55 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("does not pin or render stored owner memory when reads are disabled", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local host = "read-disabled-" .. user
+            fixture.remember(user, id, {
+                fixture.candidate("preference", "response_style", "concise", "The user prefers concise answers.", "m1"),
+            }, "disabled-read")
+            fixture.settle(user, id)
+            local context = fixture.agent_context(id, host, "agent-a", { read_enabled = false })
+            local activated, err = fixture.op(user, "apply", { payload = fixture.payload("activate", host, "agent-a") }, context)
+            test.is_nil(err, tostring(err))
+            test.is_false(activated.metadata.pinned)
+            test.is_nil(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = host }))
+            local text, prompt_err = fixture.op(user, "prompt", {}, context)
+            test.is_nil(prompt_err, tostring(prompt_err))
+            test.eq(text, "")
+
+            context.read_enabled = true
+            local _, enabled_err = fixture.op(user, "apply", { payload = fixture.payload("activate", host, "agent-a") }, context)
+            test.is_nil(enabled_err, tostring(enabled_err))
+            test.is_true(fixture.op(user, "prompt", {}, context):find("concise answers", 1, true) ~= nil)
+            context.read_enabled = false
+            test.eq(fixture.op(user, "prompt", {}, context), "", "disabling reads also hides an existing pin")
+        end)
+
+        test.it("keeps typed writes available without reading memory into the prompt", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local host = "write-only-" .. user
+            local context = fixture.agent_context(id, host, "agent-a", { read_enabled = false })
+            local built, build_err = fixture.op(user, "build", { context = context }, context)
+            test.is_nil(build_err, tostring(build_err))
+            test.is_nil(built.prompt)
+            test.eq(#built.tools, 2)
+            fixture.history.record(host, { { id = "write-only-message", role = "user", content = "My home city is Oslo." } })
+            fixture.extraction({ fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "write-only-message") })
+            local applied, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", host, "agent-a") }, context)
+            test.is_nil(err, tostring(err))
+            test.is_true(applied.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            fixture.settle(user, id)
+            test.not_nil(values(fixture.items(user, id)).Oslo)
+            local recalled, recall_err = fixture.op(user, "recall", { input = { working_on = "home city" } },
+                { component_id = id, agent_id = "agent-a", read_enabled = false })
+            test.is_nil(recall_err, tostring(recall_err))
+            test.eq(#recalled.memories, 0)
+        end)
+
         test.it("captures the conversation since the cursor before a step, keeping user and assistant text only", function()
             local user = fixture.user()
             local id = fixture.memory(user, { capture_experience = true })

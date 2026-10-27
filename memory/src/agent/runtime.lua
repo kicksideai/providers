@@ -307,6 +307,9 @@ function M.apply(payload: any): (any?, error?)
     if invalid then return nil, invalid end
     local phase = payload.phase
     if phase == "activate" then
+        if setting(payload, "read_enabled") == false then
+            return { messages = {}, metadata = { phase = phase, pinned = false } }, nil
+        end
         local _, err = pin(payload)
         if err then return nil, err end
         return { messages = {}, metadata = { phase = phase, pinned = true } }, nil
@@ -382,6 +385,7 @@ local function recall_query(input: any): string
 end
 
 function M.recall(input: any): (any?, error?)
+    if setting({}, "read_enabled") == false then return { memories = {} }, nil end
     local args = type(input) == "table" and input or {}
     local component_id, store, store_err = M.memory({ context = { memory_id = ctx.get("component_id") } }, component.ACCESS.READ)
     if store_err then return nil, store_err end
@@ -444,6 +448,7 @@ function M.build(_prompt: any, context: any): (any?, error?)
         { id = "kickside.memory.agent:memory_remember_tool" },
         { id = "kickside.memory.agent:memory_forget_tool" },
     }
+    if setting({ context = context }, "read_enabled") == false then return { tools = tools }, nil end
     local agent_id = types.trim(type(context) == "table" and context.agent_id or ctx.get("agent_id"))
     if agent_id == "" then return { tools = tools }, nil end
     local text, err = agent_soul({ context = context }, agent_id)
@@ -453,6 +458,7 @@ end
 
 -- prompt_func_id: the pinned owner slice.
 function M.prompt(): (string?, error?)
+    if setting({}, "read_enabled") == false then return "", nil end
     if types.trim(setting({}, "memory_id")) == "" then return "", nil end
     return owner_prompt({})
 end

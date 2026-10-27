@@ -102,6 +102,7 @@ function applyConfig(cfg: ComponentProps['config']): void {
 function resetToDefaults(): void {
   keptContext.value = {}
   keptCheckpoint.value = {}
+  memoryId.value = ''
   kbIds.value = []
   readEnabled.value = DEFAULTS.read_enabled
   writeEnabled.value = DEFAULTS.write_enabled

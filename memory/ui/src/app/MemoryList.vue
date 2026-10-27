@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { api } from '@wippy-fe/proxy'
 import Button from 'primevue/button'
@@ -26,21 +26,38 @@ const items = ref<MemoryItem[]>([])
 const loading = ref(true)
 const selected = ref<MemoryItem | null>(null)
 const adding = ref(false)
+const nextOffset = ref<number | null>(null)
+let generation = 0
 
-async function load() {
+async function load(append = false) {
+  const offset = append ? nextOffset.value : 0
+  if (offset === null || (append && loading.value)) return
+  const current = ++generation
+  if (!append) {
+    items.value = []
+    nextOffset.value = null
+  }
+  loading.value = true
+  props.memory.error.value = ''
   const query = new URLSearchParams({ limit: '200', status: status.value })
   if (kind.value) query.set('kind', kind.value)
+  if (append) query.set('offset', String(offset))
   try {
     const { data } = await api.get(`${props.memory.base.value}/items?${query.toString()}`)
-    items.value = (isRecord(data) && Array.isArray(data.items) ? data.items : []) as MemoryItem[]
+    if (current !== generation) return
+    const page = (isRecord(data) && Array.isArray(data.items) ? data.items : []) as MemoryItem[]
+    items.value = append ? [...items.value, ...page] : page
+    const next = isRecord(data) ? data.next_offset : undefined
+    nextOffset.value = page.length > 0 && typeof next === 'number' && Number.isInteger(next) && next > offset ? next : null
   } catch (err) {
-    props.memory.error.value = errorText(err)
+    if (current === generation) props.memory.error.value = errorText(err)
   } finally {
-    loading.value = false
+    if (current === generation) loading.value = false
   }
 }
 
-watch([status, kind, props.memory.revision], () => { void load() }, { immediate: true })
+watch([status, kind, props.memory.base, props.memory.revision], () => { void load() }, { immediate: true })
+onUnmounted(() => { generation++ })
 
 function open(item: MemoryItem) {
   adding.value = false
@@ -58,7 +75,7 @@ function open(item: MemoryItem) {
   </div>
   <div class="mm-split" :class="{ solo: !adding && !selected }">
     <div class="mm-panel">
-      <div v-if="loading" class="kx-loading"><Icon icon="tabler:loader-2" class="spin" />Loading memories</div>
+      <div v-if="loading && !items.length" class="kx-loading"><Icon icon="tabler:loader-2" class="spin" />Loading memories</div>
       <div v-else-if="!items.length" class="kx-empty">
         <span class="kx-empty-ico"><Icon icon="tabler:brain" /></span>
         <p class="kx-empty-title">Nothing here yet</p>
@@ -73,6 +90,9 @@ function open(item: MemoryItem) {
           </span>
         </span>
       </button>
+      <div v-if="nextOffset !== null" class="mm-panel-b">
+        <Button label="Load more memories" size="small" severity="secondary" outlined :loading="loading" :disabled="loading" @click="load(true)" />
+      </div>
     </div>
     <AgentRuleForm v-if="adding" :memory="memory" @done="adding = false" />
     <MemoryDetail v-else-if="selected" :memory="memory" :item="selected" @replaced="selected = $event" />

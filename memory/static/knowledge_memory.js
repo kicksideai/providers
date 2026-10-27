@@ -1,7 +1,7 @@
-import { defineComponent as Y, ref as s, computed as U, watch as Z, onMounted as ee, openBlock as d, createElementBlock as u, createElementVNode as t, toDisplayString as te, withDirectives as p, vModelCheckbox as P, createTextVNode as m, vModelText as C } from "vue";
+import { defineComponent as Y, ref as s, computed as U, watch as Z, onMounted as ee, openBlock as u, createElementBlock as p, createElementVNode as t, toDisplayString as te, withDirectives as m, vModelCheckbox as P, createTextVNode as _, vModelText as C } from "vue";
 import "@iconify/vue";
 import { loadByTagName as j, define as oe } from "@wippy-fe/proxy";
-import { u as le, a as ne, m as ae } from "./element-DWmSgOr-.js";
+import { u as le, a as ne, m as ae } from "./element-Cn2qOarc.js";
 function v(a) {
   return a !== null && typeof a == "object" && !Array.isArray(a);
 }
@@ -32,7 +32,7 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
       recall_prompt: "",
       recall_limit: 5,
       recall_max_chars: 4e3
-    }, K = le(), O = ne(), E = s({}), I = s({}), c = s([]), _ = s(""), b = s(o.read_enabled), y = s(o.write_enabled), h = s(String(o.token_threshold)), k = s(o.checkpoint_model), f = s(o.checkpoint_prompt), g = s(o.recall_prompt), w = s(String(o.recall_limit)), x = s(String(o.recall_max_chars)), V = s(!1), D = s(!1), J = U(() => JSON.stringify({ kb_ids: c.value })), F = U(() => k.value || o.checkpoint_model), R = U(
+    }, K = le(), O = ne(), E = s({}), I = s({}), c = s([]), d = s(""), b = s(o.read_enabled), y = s(o.write_enabled), h = s(String(o.token_threshold)), k = s(o.checkpoint_model), f = s(o.checkpoint_prompt), g = s(o.recall_prompt), w = s(String(o.recall_limit)), x = s(String(o.recall_max_chars)), V = s(!1), D = s(!1), J = U(() => JSON.stringify({ kb_ids: c.value })), F = U(() => k.value || o.checkpoint_model), R = U(
       () => c.value.length ? `${c.value.length} selected; the first selected base is the write target.` : "Select a knowledge base to enable recall and optional writes."
     );
     function T(l, e) {
@@ -55,15 +55,15 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
         return;
       if (!v(e)) return;
       const n = v(e.context) ? e.context : {}, i = { ...n, ...e }, L = v(e.agent_options) ? e.agent_options : {}, N = v(L.checkpoint) ? L.checkpoint : {}, { context: De, agent_options: Fe, ...X } = e;
-      E.value = { ...n, ...X }, I.value = { ...N }, _.value = S(i.memory_id) || "", c.value = A(i.kb_ids) ? i.kb_ids : typeof i.kb_id == "string" && i.kb_id ? [i.kb_id] : [], b.value = i.read_enabled !== !1, y.value = i.write_enabled !== !1, k.value = S(i.checkpoint_model) || S(N.model) || o.checkpoint_model, f.value = S(i.checkpoint_prompt) || "", g.value = S(i.recall_prompt) || "", h.value = String(M(N.token_threshold) ?? M(i.token_threshold) ?? o.token_threshold), w.value = String(M(i.recall_limit) || o.recall_limit), x.value = String(M(i.recall_max_chars) || o.recall_max_chars);
+      E.value = { ...n, ...X }, I.value = { ...N }, d.value = S(i.memory_id) || "", c.value = A(i.kb_ids) ? i.kb_ids : typeof i.kb_id == "string" && i.kb_id ? [i.kb_id] : [], b.value = i.read_enabled !== !1, y.value = i.write_enabled !== !1, k.value = S(i.checkpoint_model) || S(N.model) || o.checkpoint_model, f.value = S(i.checkpoint_prompt) || "", g.value = S(i.recall_prompt) || "", h.value = String(M(N.token_threshold) ?? M(i.token_threshold) ?? o.token_threshold), w.value = String(M(i.recall_limit) || o.recall_limit), x.value = String(M(i.recall_max_chars) || o.recall_max_chars);
     }
     function H() {
-      E.value = {}, I.value = {}, c.value = [], b.value = o.read_enabled, y.value = o.write_enabled, h.value = String(o.token_threshold), k.value = o.checkpoint_model, f.value = o.checkpoint_prompt, g.value = o.recall_prompt, w.value = String(o.recall_limit), x.value = String(o.recall_max_chars);
+      E.value = {}, I.value = {}, d.value = "", c.value = [], b.value = o.read_enabled, y.value = o.write_enabled, h.value = String(o.token_threshold), k.value = o.checkpoint_model, f.value = o.checkpoint_prompt, g.value = o.recall_prompt, w.value = String(o.recall_limit), x.value = String(o.recall_max_chars);
     }
     function $() {
       const l = k.value || o.checkpoint_model, e = {
         ...E.value,
-        ..._.value || "memory_id" in E.value ? { memory_id: _.value } : {},
+        ...d.value || "memory_id" in E.value ? { memory_id: d.value } : {},
         kb_ids: [...c.value],
         read_enabled: b.value,
         write_enabled: y.value,
@@ -90,7 +90,7 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
     }
     function q(l) {
       const e = l instanceof CustomEvent ? l.detail : void 0, n = v(e) && A(e.kb_ids) ? e.kb_ids : [];
-      _.value = n.at(-1) || "", r();
+      d.value = n.at(-1) || "", r();
     }
     function z(l) {
       const e = l instanceof CustomEvent ? l.detail : void 0;
@@ -121,13 +121,13 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
       } catch {
         D.value = !0;
       }
-    }), (l, e) => (d(), u("div", ie, [
+    }), (l, e) => (u(), p("div", ie, [
       t("div", se, [
         e[7] || (e[7] = t("span", { id: "typed_memory" }, "Typed memory", -1)),
-        V.value ? (d(), u("span", ce, "The knowledge base picker cannot load.")) : (d(), u("wc-kb-picker", {
+        V.value ? (u(), p("span", ce, "The knowledge base picker cannot load.")) : (u(), p("wc-kb-picker", {
           key: 0,
           "aria-labelledby": "typed_memory",
-          config: JSON.stringify({ kb_ids: _.value ? [_.value] : [] }),
+          config: JSON.stringify({ kb_ids: d.value ? [d.value] : [] }),
           onConfigChanged: q
         }, null, 40, re)),
         e[8] || (e[8] = t("span", { class: "hint" }, "Select a Memory knowledge base for typed capture and recall. Leave empty to use document knowledge bases.", -1))
@@ -135,14 +135,14 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
       t("div", de, [
         e[9] || (e[9] = t("span", { id: "legacy_memory_kbs" }, "Document knowledge bases", -1)),
         t("div", ue, [
-          V.value ? (d(), u("input", {
+          V.value ? (u(), p("input", {
             key: 1,
             "aria-label": "Memory knowledge base ID",
             name: "kb_id_fallback",
             placeholder: "Knowledge base id",
             value: c.value[0] || "",
             onInput: G
-          }, null, 40, me)) : (d(), u("wc-kb-picker", {
+          }, null, 40, me)) : (u(), p("wc-kb-picker", {
             key: 0,
             "aria-labelledby": "legacy_memory_kbs",
             config: J.value,
@@ -153,7 +153,7 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
       ]),
       t("div", ke, [
         t("label", ve, [
-          p(t("input", {
+          m(t("input", {
             name: "read_enabled",
             type: "checkbox",
             "onUpdate:modelValue": e[0] || (e[0] = (n) => b.value = n),
@@ -161,10 +161,10 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
           }, null, 544), [
             [P, b.value]
           ]),
-          e[10] || (e[10] = m(" Inject memory on activation ", -1))
+          e[10] || (e[10] = _(" Inject memory on activation ", -1))
         ]),
         t("label", be, [
-          p(t("input", {
+          m(t("input", {
             name: "write_enabled",
             type: "checkbox",
             "onUpdate:modelValue": e[1] || (e[1] = (n) => y.value = n),
@@ -172,13 +172,13 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
           }, null, 544), [
             [P, y.value]
           ]),
-          e[11] || (e[11] = m(" Persist checkpoints to memory ", -1))
+          e[11] || (e[11] = _(" Persist checkpoints to memory ", -1))
         ])
       ]),
       t("div", ye, [
         t("label", he, [
-          e[12] || (e[12] = m("Checkpoint after tokens ", -1)),
-          p(t("input", {
+          e[12] || (e[12] = _("Checkpoint after tokens ", -1)),
+          m(t("input", {
             name: "token_threshold",
             type: "number",
             min: "200",
@@ -193,14 +193,14 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
         t("div", fe, [
           e[13] || (e[13] = t("span", { id: "legacy_checkpoint_model" }, "Checkpoint model", -1)),
           t("div", ge, [
-            D.value ? (d(), u("input", {
+            D.value ? (u(), p("input", {
               key: 1,
               "aria-label": "Checkpoint model",
               name: "model_fallback",
               placeholder: "class:fast",
               value: F.value,
               onInput: W
-            }, null, 40, xe)) : (d(), u("wc-model-picker", {
+            }, null, 40, xe)) : (u(), p("wc-model-picker", {
               key: 0,
               "aria-labelledby": "legacy_checkpoint_model",
               value: F.value,
@@ -213,8 +213,8 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
         e[18] || (e[18] = t("summary", null, "Advanced", -1)),
         t("div", Ce, [
           t("label", Se, [
-            e[14] || (e[14] = m("Memory write instructions ", -1)),
-            p(t("textarea", {
+            e[14] || (e[14] = _("Memory write instructions ", -1)),
+            m(t("textarea", {
               name: "checkpoint_prompt",
               placeholder: "Store relevant details for future conversations. Do not store literal assistant answers.",
               "onUpdate:modelValue": e[3] || (e[3] = (n) => f.value = n),
@@ -224,8 +224,8 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
             ])
           ]),
           t("label", Me, [
-            e[15] || (e[15] = m("Recall guidance ", -1)),
-            p(t("textarea", {
+            e[15] || (e[15] = _("Recall guidance ", -1)),
+            m(t("textarea", {
               name: "recall_prompt",
               placeholder: "Long-term memory may be incomplete or inaccurate; use it as advisory context.",
               "onUpdate:modelValue": e[4] || (e[4] = (n) => g.value = n),
@@ -237,8 +237,8 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
         ]),
         t("div", Ee, [
           t("label", Ie, [
-            e[16] || (e[16] = m("Recall results ", -1)),
-            p(t("input", {
+            e[16] || (e[16] = _("Recall results ", -1)),
+            m(t("input", {
               name: "recall_limit",
               type: "number",
               min: "1",
@@ -250,8 +250,8 @@ const ie = { class: "km" }, se = { class: "field" }, re = ["config"], ce = {
             ])
           ]),
           t("label", Ve, [
-            e[17] || (e[17] = m("Recall budget ", -1)),
-            p(t("input", {
+            e[17] || (e[17] = _("Recall budget ", -1)),
+            m(t("input", {
               name: "recall_max_chars",
               type: "number",
               min: "500",

@@ -2,6 +2,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick, reactive } from 'vue'
 import LegacyMemory from './knowledge-memory.vue'
 
 const host = vi.hoisted(() => ({ props: {} as { config?: unknown }, emit: vi.fn() }))
@@ -13,6 +14,18 @@ vi.mock('@wippy-fe/proxy', () => ({ loadByTagName: vi.fn().mockResolvedValue(und
 
 describe('published document-backed Memory settings', () => {
   beforeEach(() => { host.emit.mockClear() })
+
+  it('clears the typed target when replacement config cannot be decoded', async () => {
+    host.props = reactive({ config: { memory_id: 'old-memory', kb_ids: ['old-document'] } as unknown })
+    const wrapper = mount(LegacyMemory)
+    host.props.config = '{invalid-json'
+    await nextTick()
+    await wrapper.get('input[name="read_enabled"]').setValue(false)
+    const config = host.emit.mock.calls.at(-1)![1]
+    expect(config.context.kb_ids).toEqual([])
+    expect(config.context.memory_id || '').toBe('')
+    wrapper.unmount()
+  })
 
   it('preserves every saved KB and advanced checkpoint control when a checkbox changes', async () => {
     const context = {

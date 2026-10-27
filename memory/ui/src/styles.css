@@ -15,6 +15,21 @@
 :host > div { height: 100%; min-height: 0; }
 *, *::before, *::after { box-sizing: border-box; }
 
+/* The published document-backed trait keeps its own layout. Scope native
+   controls here so they do not restyle the engine's PrimeVue controls. */
+.km { display: grid; gap: 12px; }
+.km .field { display: grid; gap: 6px; font-weight: 600; }
+.km .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; }
+.km .switches { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.km .check { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+.km input, .km textarea { width: 100%; border: 1px solid var(--p-content-border-color); border-radius: var(--p-form-field-border-radius); padding: 8px 10px; background: var(--p-inputtext-background); color: inherit; font: inherit; }
+.km .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--p-primary-color); }
+.km textarea { min-height: 78px; resize: vertical; }
+.km details { border-top: 1px solid var(--p-content-border-color); padding-top: 10px; }
+.km summary { cursor: pointer; color: var(--p-text-muted-color); font-weight: 600; }
+.km .hint { color: var(--p-text-muted-color); font-size: 12px; font-weight: 400; }
+@media (max-width: 560px) { .km .row { grid-template-columns: 1fr; } }
+
 .mm-stack { display: grid; gap: 14px; align-content: start; }
 .mm-field { display: grid; gap: 6px; }
 .mm-label { font-weight: 600; }
