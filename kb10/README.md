@@ -19,8 +19,9 @@ Bind the knowledge store contract and configure the model and embedding capabili
 
 ## Requirements
 
-Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
-for the contracts declared by the module.
+Use the Wippy runtime pinned by the [repository CI](../.github/workflows/ci.yml)
+when reproducing its validation, and satisfy the module's declared dependency
+minimums.
 The standalone harness uses SQLite and declares a PostgreSQL test profile.
 Frontend development also uses Node.js 22, npm, and Make.
 
