@@ -27,6 +27,25 @@ and public-metadata projections. Knowledge discovers these declarations without
 branching on the engine name. Source materialization uses the descriptor’s
 workers; it does not use a public materializer contract.
 
+## Original document source
+
+`GET /kb10/{id}/nodes/{node_id}/source` is relative to the host's authenticated
+API router. It requires an authenticated actor, KB READ access and a document
+node belonging to the KB's store. The node's `upload_id`, or
+`source_ref.upload_id`, selects its original upload.
+
+The unreleased storage integration calls `uploads.delivery_url` with audience
+`kb.source` and a 300-second expiry. Its successful JSON response keeps
+`success`, `url`, `filename` and `content_type`. A URL can point to signed S3
+content or tokened Uploads raw delivery. Obtain a new source response after the
+URL expires; object-host CORS must permit browser reads.
+
+KB10 requires Uploads >=0.3.2 for this helper; it is absent in 0.3.1. The endpoint
+trusts the node's stored upload reference and does not perform an additional
+upload-component access check. Source ingestion must validate that relationship
+while preserving legitimate shared-KB reads. Do not treat KB READ access as
+permission to attach an arbitrary upload ID.
+
 ## Test
 
 ```

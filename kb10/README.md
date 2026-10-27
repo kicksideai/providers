@@ -19,8 +19,9 @@ Bind the knowledge store contract and configure the model and embedding capabili
 
 ## Requirements
 
-Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
-for the contracts declared by the module.
+Use the Wippy runtime pinned by the [repository CI](../.github/workflows/ci.yml)
+when reproducing its validation, and satisfy the module's declared dependency
+minimums.
 The standalone harness uses SQLite and declares a PostgreSQL test profile.
 Frontend development also uses Node.js 22, npm, and Make.
 
@@ -40,6 +41,20 @@ afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
+
+## Original document delivery (unreleased storage integration)
+
+The source endpoint in this branch delegates original-file URLs to
+`kickside.uploads:uploads.delivery_url`. S3 originals use signed object URLs;
+filesystem originals use tokened raw URLs. KB10 requires Uploads >=0.3.2; the
+helper is absent in 0.3.1. The consumer change remains unreleased in this branch.
+
+The endpoint keeps its existing KB READ check and response fields. It trusts the
+document's stored upload reference; ingestion must preserve a validated source
+relationship. KB access alone does not authorize an arbitrary upload ID.
+
+See the [module reference](src/README.md#original-document-source) for the route,
+expiry and response contract.
 
 ## Retrieval optimization
 
