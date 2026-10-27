@@ -37,6 +37,32 @@ end
 
 local function define_tests()
     test.describe("memory surfaces", function()
+        test.it("exposes oversized source rejections through runs and activity without source text", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { extraction_model = "test-bounded" })
+            local session_id = "s-" .. user
+            local source = string.rep("private-source-", 2000)
+            fixture.history.record(session_id, { { id = "oversized", role = "user", content = source } })
+            local _, err = fixture.apply(user, "before_step", id, session_id, "agent-a")
+            test.is_nil(err, tostring(err))
+            local finished = fixture.wait_runs(user, id, "derive", 1)[1]
+            local response = get_path(user, "/memory/" .. id .. "/status")
+            test.eq(response.status, 200, response.raw)
+            local found = false
+            for _, run in ipairs(response.body.runs) do
+                if run.id == finished.id then
+                    found = true
+                    test.eq(run.status, "rejected")
+                    test.eq(run.stats.rejected_source_too_large, 1)
+                    test.eq(run.stats.source_bytes, #source)
+                    test.is_true(run.last_error:find("source_too_large", 1, true) ~= nil)
+                end
+            end
+            test.is_true(found)
+            test.is_nil((response.raw:find("private-source-", 1, true)))
+            test.eq(#fixture.script.requests("structured_output"), 0)
+        end)
+
         test.it("exposes candidate rejection counts through run activity while valid memories persist", function()
             local user = fixture.user()
             local id = fixture.memory(user)

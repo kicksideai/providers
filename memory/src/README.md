@@ -33,6 +33,13 @@ job owns that host's unconsumed span. A failed run remains visible; the next
 capture includes the unconsumed history. Consolidation reflects across owner
 scopes; re-embedding conditionally replaces payload vectors under the accepted item lock and content hash.
 
+A source event above the derive input byte bound has its own run with a
+`source_too_large` rejection, byte size and bound recorded at enrollment.
+Its text stays out of retained input and subsequent capture context. The
+existing derive job commits its cursor advancement in sequence without a
+model call or retry, then closes the run as `rejected`. Surrounding events
+retain their normal capture and erasure ownership.
+
 ## Boundary
 
 Knowledge owns knowledge-base components and engine discovery. Component ACLs

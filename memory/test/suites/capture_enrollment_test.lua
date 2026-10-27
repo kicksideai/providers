@@ -124,22 +124,134 @@ local function define_tests()
             test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "trailing-evidence")
         end)
 
-        test.it("rejects an oversized source event before enrolling any capture", function()
-            local user = fixture.user()
-            local id = fixture.memory(user, { extraction_model = "test-bounded" })
-            local session = "s-" .. user
-            fixture.history.record(session, {
-                { id = "within-bound", role = "user", content = "A complete statement." },
-                { id = "oversized", role = "user", content = string.rep("x", 24001) },
-            })
-            local result, err = fixture.apply(user, "before_step", id, session, "agent-a")
-            test.is_nil(result)
-            test.not_nil(err)
-            test.is_true(tostring(err):find("24000", 1, true) ~= nil)
-            test.eq(#fixture.op(user, "runs", { component_id = id, run_type = "derive" }), 0)
-            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
-            test.is_true(cursor == nil or cursor.last_event_id == "")
-        end)
+        for _, phase in ipairs({ "before_step", "after_persist", "deactivate", "checkpoint" }) do
+            test.it("records an oversized source rejection and captures surrounding statements for " .. phase, function()
+                local user = fixture.user()
+                local id = fixture.memory(user, { extraction_model = "test-bounded" })
+                local session = "s-" .. user
+                local oversized = string.rep("private-source-", 2000)
+                fixture.history.record(session, {
+                    { id = "first", role = "user", content = "I live in Oslo." },
+                    { id = "oversized", role = "user", content = oversized },
+                    { id = "last", role = "user", content = "I enjoy cycling." },
+                })
+                fixture.script.hold("structured_output")
+                fixture.extraction({ fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "first") })
+                fixture.extraction({ fixture.candidate("fact", "hobby", "cycling", "The user enjoys cycling.", "last") })
+                fixture.verdict("ADD", {})
+                if phase == "deactivate" then fixture.script.respond("structured_output", { items = {} }) end
+                local extra = phase == "after_persist" and { refs = { event_id = "last" } } or nil
+                local applied, err
+                if phase == "checkpoint" then
+                    fixture.script.respond("generate", "Working state.")
+                    applied, err = fixture.op(user, "checkpoint", { payload = fixture.payload(phase, session, "agent-a") }, fixture.agent_context(id, session, "agent-a"))
+                else applied, err = fixture.apply(user, phase, id, session, "agent-a", extra) end
+                local enrolled = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
+                fixture.script.release("structured_output")
+                test.is_nil(err, tostring(err))
+                test.is_true(applied.metadata.capture.captured)
+                test.eq(#enrolled, 3)
+                table.sort(enrolled, function(a, b) return a.id < b.id end)
+                test.eq(enrolled[2].from_event_id, "first")
+                test.eq(enrolled[2].to_event_id, "oversized")
+                test.eq(enrolled[2].status, "rejected")
+                test.is_nil(enrolled[2].finished_at)
+                test.eq(enrolled[2].stats.rejected_source_too_large, 1)
+                test.eq(enrolled[2].stats.source_bytes, #oversized)
+                test.is_true(enrolled[2].last_error:find("source_too_large", 1, true) ~= nil)
+                for _, run in ipairs(enrolled) do test.is_nil((json.encode(run):find("private-source-", 1, true))) end
+                local finished = fixture.wait_runs(user, id, "derive", 3)
+                table.sort(finished, function(a, b) return a.id < b.id end)
+                test.eq(finished[1].status, "succeeded", tostring(finished[1].last_error))
+                test.eq(finished[2].status, "rejected", tostring(finished[2].last_error))
+                test.eq(finished[3].status, "succeeded", tostring(finished[3].last_error))
+                test.eq(finished[2].stats.rejected, 1)
+                test.eq(finished[2].stats.source_bytes, #oversized)
+                test.is_true(finished[2].last_error:find(tostring(finished[2].stats.input_limit_bytes), 1, true) ~= nil)
+                test.eq(fixture.wait_job(finished[2].job_id, "done").attempts, 0)
+                local db = fixture.db()
+                local attempts, attempts_err = db:query("SELECT attempt_no FROM kickside_job_run WHERE job_id = $1", { finished[2].job_id })
+                db:release()
+                test.is_nil(attempts_err, tostring(attempts_err))
+                test.eq(#attempts, 1)
+                test.is_false(fixture.op(user, "claim", { run_id = finished[2].id, repeatable = false }).claimed)
+                if phase == "deactivate" then
+                    local consolidation = fixture.wait_runs(user, id, "consolidate", 1)[1]
+                    test.eq(consolidation.status, "succeeded", tostring(consolidation.last_error))
+                end
+                local requests = fixture.script.requests("structured_output")
+                local extractions, judgments, reflections = 0, 0, 0
+                for _, schema in ipairs(requests) do
+                    if schema.properties.action then judgments = judgments + 1
+                    elseif schema.properties.items.items.properties.based_on then reflections = reflections + 1
+                    else extractions = extractions + 1 end
+                end
+                test.eq(extractions, 2)
+                test.eq(judgments, 1)
+                test.eq(#requests, 3 + reflections)
+                test.is_true(reflections <= (phase == "deactivate" and 1 or 0))
+                test.is_nil((json.encode(fixture.script.prompts("structured_output")):find("private-source-", 1, true)))
+                fixture.settle(user, id)
+                local values = fixture.values(fixture.items(user, id))
+                test.not_nil(values.Oslo)
+                test.not_nil(values.cycling)
+                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "last")
+                local again, again_err = fixture.apply(user, "before_step", id, session, "agent-a")
+                test.is_nil(again_err, tostring(again_err))
+                test.is_false(again.metadata.capture.captured)
+                test.eq(#fixture.op(user, "runs", { component_id = id, run_type = "derive" }), 3)
+                local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = values.Oslo.id })
+                test.is_nil(forget_err, tostring(forget_err))
+                fixture.settle(user, id)
+                test.is_nil(fixture.op(user, "run", { run_id = finished[1].id }).input.span)
+                test.is_nil(fixture.op(user, "run", { run_id = finished[3].id }).input.span)
+                test.eq(fixture.op(user, "run", { run_id = finished[2].id }).stats.rejected_source_too_large, 1)
+            end)
+        end
+
+        for _, layout in ipairs({ "only", "leading", "trailing", "consecutive" }) do
+            test.it("advances past " .. layout .. " oversized events without retaining their context", function()
+                local user = fixture.user()
+                local id = fixture.memory(user, { extraction_model = "test-bounded" })
+                local session = "s-" .. user
+                local oversized = string.rep("é", 14000)
+                local events = {}
+                if layout == "trailing" then events[#events + 1] = { id = "normal", role = "user", content = "A normal statement." } end
+                events[#events + 1] = { id = "oversized", role = "assistant", content = oversized }
+                if layout == "consecutive" then events[#events + 1] = { id = "oversized-again", role = "user", content = oversized } end
+                if layout == "leading" then events[#events + 1] = { id = "normal", role = "user", content = "A normal statement." } end
+                local expected = #events
+                events[#events + 1] = { id = "ignored", role = "system", content = "Host state." }
+                fixture.history.record(session, events)
+                if layout == "leading" or layout == "trailing" then fixture.extraction({}) end
+                local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
+                test.is_nil(err, tostring(err))
+                test.is_true(applied.metadata.capture.captured)
+                local finished = fixture.wait_runs(user, id, "derive", expected)
+                test.eq(#finished, expected)
+                local rejected = 0
+                for _, run in ipairs(finished) do
+                    if run.status == "rejected" then
+                        rejected = rejected + 1
+                        test.eq(run.stats.source_bytes, #oversized)
+                        test.is_nil(run.input.span)
+                        test.is_nil(run.input.context)
+                    else test.eq(run.status, "succeeded", tostring(run.last_error)) end
+                end
+                test.eq(rejected, layout == "consecutive" and 2 or 1)
+                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "ignored")
+                fixture.history.record(session, { { id = "next", role = "user", content = "A later statement." } })
+                fixture.extraction({})
+                local next_capture, next_err = fixture.apply(user, "before_step", id, session, "agent-a")
+                test.is_nil(next_err, tostring(next_err))
+                fixture.wait_runs(user, id, "derive", expected + 1)
+                local next_run = fixture.op(user, "run", { run_id = next_capture.metadata.capture.run_id })
+                test.eq(next_run.status, "succeeded", tostring(next_run.last_error))
+                test.is_nil((json.encode(next_run):find("é", 1, true)))
+                test.is_nil((json.encode(fixture.script.prompts("structured_output")):find("é", 1, true)))
+                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "next")
+            end)
+        end
 
     end)
 end

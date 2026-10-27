@@ -17,7 +17,7 @@ local function context_window(entries: { any }): { any }
     local out = {}
     local remaining = CAPTURE_CONTEXT_MAX_CHARS
     for i = #entries, math.max(1, #entries - CAPTURE_CONTEXT_WINDOW + 1), -1 do
-        if remaining > 0 then
+        if remaining > 0 and #entries[i].text <= jobs.INPUT_BYTES then
             local entry = {}
             for key, value in pairs(entries[i]) do entry[key] = value end
             entry.text = entry.text:sub(-remaining)
@@ -97,26 +97,33 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     local captures: { any } = {}
     local part: { any } = {}
     local count, size, prior_context = 0, 0, context_window(entries)
-    local function append(to_id: string)
+    local function append(to_id: string, rejection: any?)
         captures[#captures + 1] = {
             component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
             agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
             to_event_id = to_id, span = part, context = prior_context,
+            rejection = rejection,
         }
         from = to_id
         part, count, size, prior_context = {}, 0, 0, context_window(entries)
     end
     for _, entry in ipairs(span) do
-        if #entry.text > jobs.INPUT_BYTES then return nil, types.invalid("memory source event exceeds 24000 bytes") end
-        if #part > 0 and (size + #entry.text > jobs.INPUT_BYTES or (models.is_statement(entry) and count == maximum)) then
-            append(part[#part].id)
+        if #entry.text > jobs.INPUT_BYTES then
+            if #part > 0 then append(part[#part].id) end
+            prior_context = {}
+            append(entry.id, { code = "source_too_large", event_id = entry.id, bytes = #entry.text, limit_bytes = jobs.INPUT_BYTES })
+        else
+            if #part > 0 and (size + #entry.text > jobs.INPUT_BYTES or (models.is_statement(entry) and count == maximum)) then
+                append(part[#part].id)
+            end
+            part[#part + 1] = entry
+            size = size + #entry.text
+            entries[#entries + 1] = entry
+            if models.is_statement(entry) then count = count + 1 end
         end
-        part[#part + 1] = entry
-        size = size + #entry.text
-        entries[#entries + 1] = entry
-        if models.is_statement(entry) then count = count + 1 end
     end
-    append(tostring(events[#events].id))
+    if #part > 0 then append(tostring(events[#events].id))
+    else captures[#captures].to_event_id = tostring(events[#events].id) end
     local first: any = table.remove(captures, 1)
     local scheduled, schedule_err = jobs.capture(first, captures)
     if schedule_err then return nil, schedule_err end

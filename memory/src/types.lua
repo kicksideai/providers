@@ -77,6 +77,7 @@ M.RUN_STATUS = {
     RUNNING = "running",
     SUCCEEDED = "succeeded",
     FAILED = "failed",
+    REJECTED = "rejected",
 }
 
 M.ACTION = {

@@ -29,12 +29,15 @@ type RunInput = {
     id: string,
     component_id: string,
     run_type: string,
+    status: string?,
     host_kind: string?,
     host_id: string?,
     agent_id: string?,
     from_event_id: string?,
     to_event_id: string?,
     input: any?,
+    stats: any?,
+    last_error: string?,
     actor_id: string?,
     actor_context: string?,
 }
@@ -63,10 +66,10 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
     end
     local _, err = tx:execute(
         "INSERT INTO kickside_memory_runs (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, " ..
-        "to_event_id, input, stats, actor_id, actor_context, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, '{}', $11, $12, $13)",
-        { run.id, run.component_id, run.run_type, types.RUN_STATUS.SCHEDULED, run.host_kind or "", run.host_id or "",
+        "to_event_id, input, stats, actor_id, actor_context, created_at, last_error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+        { run.id, run.component_id, run.run_type, run.status or types.RUN_STATUS.SCHEDULED, run.host_kind or "", run.host_id or "",
             run.agent_id or "", run.from_event_id or "", run.to_event_id or "", json.encode(run.input or {}),
-            run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now() })
+            json.encode(run.stats or {}), run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now(), run.last_error or sql.NULL })
     if err then return nil, types.failed("memory run insert failed", err) end
     local sources_err = M.sources_tx(tx, run)
     if sources_err then return nil, sources_err end
@@ -189,11 +192,12 @@ function M.claim(run_id: string, repeatable: boolean): (any?, error?)
         local S = types.RUN_STATUS
         local claimable = { S.SCHEDULED, S.RUNNING, S.FAILED }
         if repeatable then claimable[#claimable + 1] = S.SUCCEEDED end
-        local params: { any } = { S.RUNNING, S.SCHEDULED, S.SUCCEEDED, types.now(), run_id }
+        local params: { any } = { S.REJECTED, S.RUNNING, S.SCHEDULED, S.SUCCEEDED, types.now(), run_id }
         for _, status in ipairs(claimable) do params[#params + 1] = status end
-        local result, err = tx:execute("UPDATE kickside_memory_runs SET status = $1, " ..
-            "started_at = CASE WHEN status IN ($2, $3) OR started_at IS NULL THEN $4 ELSE started_at END, " ..
-            "finished_at = NULL, last_error = NULL WHERE id = $5 AND status IN (" .. search_index.placeholders(#claimable, 6) .. ")", params)
+        local result, err = tx:execute("UPDATE kickside_memory_runs SET status = CASE WHEN status = $1 THEN status ELSE $2 END, " ..
+            "started_at = CASE WHEN status IN ($3, $4) OR started_at IS NULL THEN $5 ELSE started_at END, " ..
+            "finished_at = NULL, last_error = CASE WHEN status = $1 THEN last_error ELSE NULL END " ..
+            "WHERE id = $6 AND (status IN (" .. search_index.placeholders(#claimable, 7) .. ") OR (status = $1 AND finished_at IS NULL))", params)
         if err then return nil, types.failed("memory run claim failed", err) end
         if (tonumber(result and (result :: any).rows_affected) or 0) < 1 then return { claimed = false }, nil end
         local rows, read_err = tx:query("SELECT started_at FROM kickside_memory_runs WHERE id = $1", { run_id })

@@ -42,7 +42,7 @@ function M.wait_runs(user_id: string, component_id: string, run_type: string, co
         if read_err then error(tostring(read_err)) end
         local done = 0
         for _, run in ipairs(rows) do
-            if run.status == "succeeded" or run.status == "failed" then done = done + 1 end
+            if run.status == "succeeded" or run.status == "failed" or (run.status == "rejected" and run.finished_at ~= nil) then done = done + 1 end
         end
         if done >= count then return rows end
         if time.now():after(deadline) then error("memory runs did not finish: " .. tostring(#rows) .. " runs") end
