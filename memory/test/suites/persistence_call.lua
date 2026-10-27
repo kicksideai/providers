@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local decision = require("memory_decision")
 local writer = require("memory_writer")
 local ledger = require("memory_ledger")
 local items = require("memory_items")
@@ -12,7 +13,22 @@ local measured_db = require("measured_db")
 local runs = require("memory_runs")
 
 local function call(a: any): (any?, error?)
-    if a.op == "enroll_sources" then
+    if a.op == "check_cost" then
+        local d = decision.new(a.component_id, "check-cost", "owner", a.user)
+        for i = 1, a.count do
+            local _, err = d:add({ scope_family = "owner", scope_id = a.user }, {
+                kind = "fact", key = "attribute_" .. tostring(i), cardinality = a.cardinality,
+                value = "recorded", content = "A recorded attribute.", valid_at = d.now,
+            })
+            if err then return nil, err end
+        end
+        measured_db.reset()
+        local _, check_err = measured_db.write(a.component_id, function(tx: any): (any?, error?)
+            return true, d:check(tx)
+        end)
+        if check_err then return nil, check_err end
+        return { queries = #measured_db.statements() }, nil
+    elseif a.op == "enroll_sources" then
         local run, read_err = runs.get(a.run_id)
         if read_err then return nil, read_err end
         local db, db_err = sql.get("app:db")
@@ -44,6 +60,13 @@ local function call(a: any): (any?, error?)
             end
             return out, nil
         end)
+    elseif a.op == "measure_run_reads" then
+        measured_db.reset()
+        local _, err = measured_db.read(function(conn: any): (any?, error?)
+            return conn:query("SELECT input FROM kickside_memory_runs AS retained WHERE component_id = $1", { a.component_id })
+        end)
+        if err then return nil, err end
+        return { queries = measured_db.run_reads(), rows = measured_db.run_rows() }, nil
     elseif a.op == "erase_cost" then
         local item, err = items.get(a.component_id, a.item_id)
         if err then return nil, err end
@@ -66,11 +89,20 @@ local function call(a: any): (any?, error?)
         end
         local _, fold_err = fold.fold(a.component_id, events)
         if fold_err then return nil, fold_err end
-        local scans = 0
-        for _, statement in ipairs(measured_db.statements()) do
-            if statement:find("SELECT id, input, last_error FROM kickside_memory_runs", 1, true) then scans = scans + 1 end
+        local scans = measured_db.run_reads()
+        local run_rows = measured_db.run_rows()
+        local source_plan = ""
+        db = assert(sql.get("app:db"))
+        for _, record in ipairs(measured_db.records()) do
+            if record.statement:lower():match("^update%s+kickside_memory_runs%s") then
+                local rows, plan_err = db:query((sqlite and "EXPLAIN QUERY PLAN " or "EXPLAIN ") .. record.statement, record.params)
+                if plan_err then db:release(); return nil, plan_err end
+                for _, row in ipairs(rows) do source_plan = source_plan .. tostring(sqlite and row.detail or row["QUERY PLAN"]) .. "\n" end
+            end
         end
-        return { run_scans = scans, run_rows = measured_db.run_rows(), lineage_queries = lineage_queries, erased = #lineage, sqlite = sqlite, plan = plan }, nil
+        db:release()
+        return { run_scans = scans, run_rows = run_rows, lineage_queries = lineage_queries, erased = #lineage,
+            sqlite = sqlite, plan = plan, source_plan = source_plan }, nil
     elseif a.op == "revision_race" or a.op == "revision_redelivery" then
         local item, err = items.get(a.component_id, a.item_id)
         if err then return nil, err end

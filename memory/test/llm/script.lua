@@ -26,16 +26,19 @@ end
 function M.reset()
     M.ensure()
     local conn = db()
-    conn:execute("DELETE FROM app_llm_script")
-    conn:execute("DELETE FROM app_llm_requests")
+    local _, script_err = conn:execute("DELETE FROM app_llm_script")
+    if script_err then conn:release(); error(tostring(script_err)) end
+    local _, requests_err = conn:execute("DELETE FROM app_llm_requests")
+    if requests_err then conn:release(); error(tostring(requests_err)) end
     conn:release()
 end
 
 local function push(method: string, response: any, failure: string?, failure_kind: string?, retryable: boolean?, details: any?)
     M.ensure()
     local conn = db()
-    local rows = conn:query("SELECT COUNT(*) AS n FROM app_llm_script")
-    local seq = (rows and rows[1] and tonumber(rows[1].n) or 0) + 1
+    local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_script")
+    if read_err then conn:release(); error(tostring(read_err)) end
+    local seq = tonumber(rows[1].n) + 1
     local failure_details = failure_kind ~= nil and { kind = failure_kind, details = details } or {}
     if retryable ~= nil then failure_details.retryable = retryable end
     local encoded = response ~= nil and json.encode(response) or (next(failure_details) ~= nil and json.encode(failure_details) or sql.NULL)
@@ -81,48 +84,53 @@ function M.take(method: string): (any, string?, string?, boolean?, string?, any?
     M.ensure()
     local conn = db()
     local rows, err = conn:query("SELECT seq, response, failure FROM app_llm_script WHERE method = $1 ORDER BY seq LIMIT 1", { method })
-    if err then conn:release(); return nil, tostring(err), nil, nil end
+    if err then conn:release(); error(tostring(err)) end
     if not rows or #rows == 0 then conn:release(); return nil, "no scripted " .. method .. " response", nil, nil end
-    conn:execute("DELETE FROM app_llm_script WHERE method = $1 AND seq = $2", { method, rows[1].seq })
+    local _, delete_err = conn:execute("DELETE FROM app_llm_script WHERE method = $1 AND seq = $2", { method, rows[1].seq })
     conn:release()
+    if delete_err then error(tostring(delete_err)) end
     if rows[1].failure and rows[1].failure ~= "" then
         local details = rows[1].response and json.decode(rows[1].response) or {}
         return nil, rows[1].failure, type(details) == "table" and details.kind or nil,
             type(details) == "table" and details.retryable or nil, nil, type(details) == "table" and details.details or nil
     end
-    local response = json.decode(rows[1].response)
+    local response = assert(json.decode(rows[1].response))
     return response.data, nil, nil, nil, response.finish_reason
 end
 
 function M.record(method: string, schema: any, messages: any)
     M.ensure()
     local conn = db()
-    local rows = conn:query("SELECT COUNT(*) AS n FROM app_llm_requests")
-    local seq = (rows and rows[1] and tonumber(rows[1].n) or 0) + 1
-    conn:execute("INSERT INTO app_llm_requests (seq, method, schema, messages) VALUES ($1, $2, $3, $4)",
+    local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_requests")
+    if read_err then conn:release(); error(tostring(read_err)) end
+    local seq = tonumber(rows[1].n) + 1
+    local _, write_err = conn:execute("INSERT INTO app_llm_requests (seq, method, schema, messages) VALUES ($1, $2, $3, $4)",
         { seq, method, schema ~= nil and json.encode(schema) or sql.NULL, json.encode(messages or {}) })
     conn:release()
+    if write_err then error(tostring(write_err)) end
 end
 
 function M.requests(method: string): { any }
     M.ensure()
     local conn = db()
-    local rows = conn:query("SELECT schema FROM app_llm_requests WHERE method = $1 ORDER BY seq", { method }) or {}
+    local rows, read_err = conn:query("SELECT schema FROM app_llm_requests WHERE method = $1 ORDER BY seq", { method })
     conn:release()
+    if read_err then error(tostring(read_err)) end
     local out = {}
-    for _, row in ipairs(rows) do out[#out + 1] = json.decode(row.schema) end
+    for _, row in ipairs(rows) do out[#out + 1] = assert(json.decode(row.schema)) end
     return out
 end
 
 function M.prompts(method: string): { any }
     M.ensure()
     local conn = db()
-    local rows = conn:query("SELECT messages FROM app_llm_requests WHERE method = $1 ORDER BY seq", { method }) or {}
+    local rows, read_err = conn:query("SELECT messages FROM app_llm_requests WHERE method = $1 ORDER BY seq", { method })
     conn:release()
+    if read_err then error(tostring(read_err)) end
     local out = {}
     for _, row in ipairs(rows) do
         local texts = {}
-        for _, message in ipairs(json.decode(row.messages) or {}) do
+        for _, message in ipairs(assert(json.decode(row.messages))) do
             texts[message.role] = message.content and message.content[1] and message.content[1].text or ""
         end
         out[#out + 1] = texts
@@ -133,9 +141,10 @@ end
 function M.pending(method: string): integer
     M.ensure()
     local conn = db()
-    local rows = conn:query("SELECT COUNT(*) AS n FROM app_llm_script WHERE method = $1", { method })
+    local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_script WHERE method = $1", { method })
     conn:release()
-    return rows and rows[1] and tonumber(rows[1].n) or 0
+    if read_err then error(tostring(read_err)) end
+    return tonumber(rows[1].n)
 end
 
 return M

@@ -3,14 +3,6 @@ local test = require("test")
 local fixture = require("fixture")
 local time = require("time")
 
-local function count(table_name: string, component_id: string): number
-    local db = fixture.db()
-    local rows, err = db:query("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { component_id })
-    db:release()
-    if err then error(tostring(err)) end
-    return tonumber(rows[1].n) or 0
-end
-
 local function duplicate_write(user: string, component_id: string): (any?, error?)
     return fixture.async_op(user, "remember", {
         idempotency = "concurrent-identical",
@@ -51,6 +43,20 @@ end
 local function define_tests()
     test.describe("memory concurrency", function()
         test.before_each(function() fixture.script.reset() end)
+
+        test.it("checks single-value write invariants with bounded set queries and skips multi-value keys", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            for _, cardinality in ipairs({ "single", "multi" }) do
+                for _, count in ipairs({ 1, 20, 201 }) do
+                    local measured, err = fixture.persistence_op(user, "check_cost", {
+                        component_id = id, user = user, count = count, cardinality = cardinality,
+                    })
+                    test.is_nil(err, tostring(err))
+                    test.is_true(measured.queries <= (cardinality == "multi" and 0 or 2 * math.ceil(count / 100)), tostring(measured.queries))
+                end
+            end
+        end)
 
         test.it("commits tool Remember while derive is deciding and reextracts against the accepted head", function()
             local user = fixture.user()
@@ -122,8 +128,8 @@ local function define_tests()
             test.not_nil(first_result)
             test.not_nil(second_result)
             fixture.settle(user, component_id)
-            test.eq(count("kickside_memory_payloads", component_id), 1)
-            test.eq(count("kickside_memory_embeddings", component_id), 1)
+            test.eq(fixture.count_rows("kickside_memory_payloads", component_id), 1)
+            test.eq(fixture.count_rows("kickside_memory_embeddings", component_id), 1)
             test.eq(#fixture.items(user, component_id, { statuses = { "current" } }), 1)
         end)
 

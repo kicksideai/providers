@@ -21,13 +21,15 @@ end
 function M.record(host_id: string, messages: { any })
     M.ensure()
     local conn = db()
-    local rows = conn:query("SELECT COUNT(*) AS n FROM app_history WHERE host_id = $1", { host_id })
-    local seq = rows and rows[1] and tonumber(rows[1].n) or 0
+    local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_history WHERE host_id = $1", { host_id })
+    if read_err then conn:release(); error(tostring(read_err)) end
+    local seq = tonumber(rows[1].n)
     for _, message in ipairs(messages) do
         seq = seq + 1
-        conn:execute("INSERT INTO app_history (host_id, seq, id, role, content, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        local _, write_err = conn:execute("INSERT INTO app_history (host_id, seq, id, role, content, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
             { host_id, seq, message.id, message.role, message.content, json.encode(message.metadata or {}),
                 message.created_at or "2026-10-01T10:00:00Z" })
+        if write_err then conn:release(); error(tostring(write_err)) end
     end
     conn:release()
 end
@@ -35,12 +37,13 @@ end
 local function all(host_id: string): { any }
     M.ensure()
     local conn = db()
-    local rows = conn:query("SELECT id, role, content, metadata, created_at FROM app_history WHERE host_id = $1 ORDER BY seq", { host_id }) or {}
+    local rows, read_err = conn:query("SELECT id, role, content, metadata, created_at FROM app_history WHERE host_id = $1 ORDER BY seq", { host_id })
     conn:release()
+    if read_err then error(tostring(read_err)) end
     local out = {}
     for _, row in ipairs(rows) do
         out[#out + 1] = { id = row.id, role = row.role, content = row.content, raw_content = row.content,
-            metadata = json.decode(row.metadata) or {}, created_at = row.created_at }
+            metadata = assert(json.decode(row.metadata)), created_at = row.created_at }
     end
     return out
 end
