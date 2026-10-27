@@ -205,7 +205,7 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             end
             for _, staged in ipairs(d.staged) do
                 local state = d.overlay[staged.owner_item_id]
-                if state and state.scope_key == scope_key and staged.vector
+                if state and state.scope_key == scope_key and state.key == key and staged.vector
                     and types.cosine_similarity(fields.vector, staged.vector) >= threshold then consider(state) end
             end
             for _, row in ipairs(near :: any) do consider(row) end

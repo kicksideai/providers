@@ -15,7 +15,7 @@ local function define_tests()
                 fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
                 fixture.candidate("fact", "work_location", "remote", "The user works remotely.", "location-source"),
                 fixture.candidate("fact", "contact_channel", "email", "The user reads email.", "channel-source"),
-            }, "reflection-topics")
+            }, "reflection-topics", { source = "owner", explicit = true })
             fixture.settle(user, id)
             local lesson = fixture.candidate("lesson", "contact_evening", "evening", "Contact the user in the evening.", "")
             lesson.based_on = { 1, 2 }
@@ -49,7 +49,6 @@ local function define_tests()
             lesson.based_on = { 1, 2 }
             fixture.script.respond("structured_output", { items = { lesson } })
             fixture.normalization({ lesson })
-            fixture.relations({ "unrelated", "unrelated" })
             local woken, err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(err, tostring(err))
             test.is_true(woken.woken)
@@ -58,8 +57,8 @@ local function define_tests()
             test.eq(runs[1].stats.scopes, 1)
             test.eq(runs[1].stats.added, 1)
             local judged = fixture.script.requests("structured_output")
-            local judge_schema = judged[#judged]
-            test.eq(table.concat(judge_schema.properties.relations.properties["1"].enum, ","), "unrelated")
+            test.eq(#judged, 2)
+            test.eq(runs[1].stats.judged, 0)
             fixture.settle(user, id)
             local lessons = fixture.items(user, id, { kinds = { "lesson" } })
             test.eq(#lessons, 1)
@@ -89,7 +88,6 @@ local function define_tests()
             lesson.based_on = { 1, 2 }
             fixture.script.respond("structured_output", { items = { lesson } })
             fixture.normalization({ lesson })
-            fixture.relations({ "unrelated", "unrelated" })
             local _, wake_err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(wake_err, tostring(wake_err))
             local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
@@ -115,13 +113,13 @@ local function define_tests()
 
         test.it("erases derived memories transitively across source versions while retaining independent lessons", function()
             local user = fixture.user()
-            local id = fixture.memory(user)
+            local id = fixture.memory(user, { judge_min_similarity = 0 })
             fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "work_schedule", "night", "The user works at night.", "work-source"),
                 fixture.candidate("preference", "rest_period", "day", "The user rests during the day.", "rest-source"),
                 fixture.candidate("preference", "contact_channel", "email", "The user prefers email.", "channel-source"),
                 fixture.candidate("fact", "work_location", "remote", "The user works remotely.", "location-source"),
-            }, "transitive-seed")
+            }, "transitive-seed", { source = "owner", explicit = true })
             fixture.settle(user, id)
             local previous_cycle = nil
             local function reflect(lessons, source_keys)
@@ -137,11 +135,15 @@ local function define_tests()
                 end
                 fixture.script.respond("structured_output", { items = lessons })
                 fixture.normalization(lessons)
+                local neighbor_count = 0
+                for _, item in ipairs(current) do if item.kind == "lesson" then neighbor_count = neighbor_count + 1 end end
                 for _, lesson in ipairs(lessons) do
                     if not numbers[lesson.key] then
-                        local relations = {}
-                        for _ = 1, math.min(5, #current) do relations[#relations + 1] = "unrelated" end
-                        fixture.relations(relations)
+                        if neighbor_count > 0 then
+                            local relations = {}
+                            for _ = 1, neighbor_count do relations[#relations + 1] = "unrelated" end
+                            fixture.relations(relations)
+                        end
                     end
                 end
                 local _, err = fixture.op(user, "wake", { component_id = id })
@@ -209,7 +211,7 @@ local function define_tests()
                 fixture.candidate("preference", "transport", "train", "The user prefers trains over flights.", "r2"),
                 fixture.candidate("fact", "travel_window", "summer", "The user travels in summer.", "r3"),
                 fixture.candidate("fact", "trip_duration", "week", "The user takes week-long trips.", "r4"),
-            }, "reflect-seed")
+            }, "reflect-seed", { source = "owner", explicit = true })
             fixture.settle(user, id)
             local one = fixture.candidate("lesson", "vegan_food", "plan vegan food", "Plan vegan food for the user.", "")
             one.based_on = { 1 }

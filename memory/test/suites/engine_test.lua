@@ -50,8 +50,8 @@ local function define_tests()
         test.it("adds without judging unrelated or incompatible nearest memories", function()
             local user = fixture.user()
             for _, example in ipairs({
-                { kind = "fact", value = "Rust", content = "Compiles Rust software.", threshold = 0.55 },
-                { kind = "plan", value = { status = "open", next_step = "", details = "Study music" }, content = "Studies music.", threshold = 0 },
+                { kind = "fact", value = "Rust", content = "Compiles Rust software." },
+                { kind = "plan", value = { status = "open", next_step = "", details = "Study music" }, content = "Studies music." },
             }) do
                 local id = fixture.memory(user)
                 fixture.remember(user, id, { fixture.candidate(example.kind, "existing_topic", example.value, example.content) }, "near-seed")

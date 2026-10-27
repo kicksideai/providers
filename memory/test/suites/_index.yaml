@@ -288,3 +288,12 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+
+  - name: model_calls_test
+    kind: function.lua
+    source: file://model_calls_test.lua
+    method: run
+    meta: { type: test, suite: memory_model_calls }
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture

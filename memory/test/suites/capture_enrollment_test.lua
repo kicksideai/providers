@@ -96,7 +96,7 @@ local function define_tests()
 
         test.it("partitions complete source events by input bytes and retains trailing evidence", function()
             local user = fixture.user()
-            local id = fixture.memory(user, { extraction_model = "test-bounded" })
+            local id = fixture.memory(user, { extraction_model = "test-fast" })
             local session = "s-" .. user
             local first, second = string.rep("a", 14000), string.rep("b", 14000)
             fixture.history.record(session, {
@@ -138,7 +138,6 @@ local function define_tests()
                 fixture.script.hold("structured_output")
                 fixture.extraction({ fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "first") })
                 fixture.extraction({ fixture.candidate("fact", "hobby", "cycling", "The user enjoys cycling.", "last") })
-                fixture.relations({ "unrelated" })
                 if phase == "deactivate" then fixture.script.respond("structured_output", { items = {} }) end
                 local extra = phase == "after_persist" and { refs = { event_id = "last" } } or nil
                 local applied, err
@@ -187,8 +186,8 @@ local function define_tests()
                     else extractions = extractions + 1 end
                 end
                 test.eq(extractions, 2)
-                test.eq(judgments, 1)
-                test.eq(#requests, 3 + reflections)
+                test.eq(judgments, 0)
+                test.eq(#requests, 2 + reflections)
                 test.is_true(reflections <= (phase == "deactivate" and 1 or 0))
                 test.is_nil((json.encode(fixture.script.prompts("structured_output")):find("private-source-", 1, true)))
                 fixture.settle(user, id)

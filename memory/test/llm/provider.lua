@@ -22,6 +22,7 @@ local function vector(text: string): { number }
 end
 
 local function embed(args: any): (any, any)
+    script.record("embed", args, {})
     local input = args.input
     if type(input) == "string" then input = { input } end
     local out = {}

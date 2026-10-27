@@ -70,11 +70,15 @@ local function capture(user: string, memory: string, session: string, messages: 
             for _, candidate in ipairs(scripted) do
                 if ids[candidate.event_id] then candidates[#candidates + 1] = candidate end
             end
-            fixture.extraction(candidates)
+            local existing_keys = {}
+            for _, item in ipairs(seeded) do existing_keys[#existing_keys + 1] = item.key end
+            fixture.extraction(candidates, existing_keys)
             if seed and i > 1 then
                 for _ = 1, #candidates do fixture.relations({ "unrelated" }) end
             elseif not seed then
-                for _, candidate in ipairs(candidates) do script_verdict(verdict, candidate, seeded) end
+                for _, candidate in ipairs(candidates) do
+                    if candidate.cardinality ~= "single" then script_verdict(verdict, candidate, seeded) end
+                end
             end
         end
         fixture.script.release("structured_output")
