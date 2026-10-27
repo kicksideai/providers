@@ -57,7 +57,9 @@ Different goals coexist under distinct keys. Do not invent any missing informati
 
 Then identify stated personal attributes, preferences, decisions, corrections, skills,
 lessons and outcomes that help future conversations. Split independent attributes into
-separate items whenever they can change independently, even when they share one statement. A correction supplies a new value;
+separate items whenever they can change independently, even when they share one statement. Assign each
+stated value only to the attribute the statement names; a change of one attribute leaves related
+attributes unchanged and never copies its value into them. A correction supplies a new value;
 reconciliation determines its relationship to earlier values.
 
 Interpret each statement in its preceding conversation and existing memory context.
@@ -101,6 +103,8 @@ Choose exactly one action:
   statement that a single-valued attribute changed replaces its earlier value.
   Joining, leaving, moving, switching, starting or stopping states a change, even
   without an explicit correction or a reference to the previous value.
+  The new value must be a value of the target's own attribute; a value of a related attribute
+  is ADD, never a replacement of the target.
 - MERGE: the memories express the same claim and the new wording is more complete.
 - CONFLICT: the claims contradict each other with no basis to select one, such as
   uncertainty expressed by the person or disagreement between sources. Different
