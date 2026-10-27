@@ -13,6 +13,8 @@ local function define_tests()
             fixture.remember(user, id, {
                 fixture.candidate("fact", "work_schedule", "night", "The user works at night.", "work-source"),
                 fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
+                fixture.candidate("fact", "work_location", "remote", "The user works remotely.", "location-source"),
+                fixture.candidate("fact", "contact_channel", "email", "The user reads email.", "channel-source"),
             }, "reflection-topics")
             fixture.settle(user, id)
             local lesson = fixture.candidate("lesson", "contact_evening", "evening", "Contact the user in the evening.", "")
@@ -122,6 +124,7 @@ local function define_tests()
                 fixture.candidate("profile_slot", "work_schedule", "night", "The user works at night.", "work-source"),
                 fixture.candidate("preference", "rest_period", "day", "The user rests during the day.", "rest-source"),
                 fixture.candidate("preference", "contact_channel", "email", "The user prefers email.", "channel-source"),
+                fixture.candidate("fact", "work_location", "remote", "The user works remotely.", "location-source"),
             }, "transitive-seed")
             fixture.settle(user, id)
             local previous_cycle = nil
@@ -204,6 +207,8 @@ local function define_tests()
             fixture.remember(user, id, {
                 fixture.candidate("fact", "dog_car_rides", "hates long car rides", "The user's dog Pepper hates long car rides.", "r1"),
                 fixture.candidate("preference", "transport", "train", "The user prefers trains over flights.", "r2"),
+                fixture.candidate("fact", "travel_window", "summer", "The user travels in summer.", "r3"),
+                fixture.candidate("fact", "trip_duration", "week", "The user takes week-long trips.", "r4"),
             }, "reflect-seed")
             fixture.settle(user, id)
             local one = fixture.candidate("lesson", "vegan_food", "plan vegan food", "Plan vegan food for the user.", "")

@@ -40,21 +40,6 @@ local function stamp(messages: { any }, at: string): { any }
     return out
 end
 
-local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer): (any?, string?)
-    fixture.history.record(session, stamp(messages, at))
-    local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
-        fixture.agent_context(memory, session, "eval-agent"))
-    if err then return nil, "capture failed: " .. tostring(err) end
-    for _, run in ipairs(fixture.wait_runs(user, memory, "derive", count)) do
-        if run.host_id == session then
-            if run.status ~= "succeeded" then return nil, "derive failed: " .. tostring(run.last_error) end
-            fixture.settle(user, memory)
-            return run, nil
-        end
-    end
-    return nil, "no derive run for session " .. session
-end
-
 local function script_verdict(verdict: string?, candidate: any?, seeded: { any })
     if not verdict then return end
     if verdict == "ADD" then fixture.verdict("ADD", {}); return end
@@ -64,6 +49,43 @@ local function script_verdict(verdict: string?, candidate: any?, seeded: { any }
         if candidate and item.key == candidate.key then same[#same + 1] = item.id end
     end
     fixture.verdict(verdict, #same > 0 and same or all)
+end
+
+local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer,
+    scripted: any?, verdict: string?, seed: boolean?): (any?, string?)
+    fixture.history.record(session, stamp(messages, at))
+    if scripted then fixture.script.hold("structured_output") end
+    local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
+        fixture.agent_context(memory, session, "eval-agent"))
+    if err then return nil, "capture failed: " .. tostring(err) end
+    local enrolled = fixture.op(user, "runs", { component_id = memory, run_type = "derive" })
+    local current = {}
+    for _, run in ipairs(enrolled) do if run.host_id == session then current[#current + 1] = run end end
+    table.sort(current, function(a, b) return a.id < b.id end)
+    if scripted then
+        local seeded = fixture.items(user, memory)
+        for i, run in ipairs(current) do
+            local ids, candidates = {}, {}
+            for _, message in ipairs(run.input.span) do ids[message.id] = true end
+            for _, candidate in ipairs(scripted) do
+                if ids[candidate.event_id] then candidates[#candidates + 1] = candidate end
+            end
+            fixture.extraction(candidates)
+            if seed and i > 1 then
+                for _ = 1, #candidates do fixture.verdict("ADD", {}) end
+            elseif not seed then script_verdict(verdict, candidates[1], seeded) end
+        end
+        fixture.script.release("structured_output")
+    end
+    local stats = {}
+    for _, run in ipairs(fixture.wait_runs(user, memory, "derive", count + #current)) do
+        if run.host_id == session then
+            if run.status ~= "succeeded" then return nil, "derive failed: " .. tostring(run.last_error) end
+            for key, value in pairs(run.stats) do stats[key] = (stats[key] or 0) + value end
+        end
+    end
+    fixture.settle(user, memory)
+    return { stats = stats, count = count + #current }, nil
 end
 
 local function held(user: string, memory: string): string
@@ -79,10 +101,10 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
     local derived = 0
     if target.scripted then fixture.script.reset() end
     if case.seed then
-        if target.scripted then fixture.extraction(case.ideal.seed) end
-        derived = 1
-        local _, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, derived)
+        local seeded, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, derived,
+            target.scripted and case.ideal.seed or nil, nil, true)
         if seed_err then return "ERROR", seed_err end
+        derived = seeded.count
     end
     local stats: any
     if case.reflect then
@@ -97,11 +119,8 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
         if run.status ~= "succeeded" then return "ERROR", "consolidation failed: " .. tostring(run.last_error) end
         stats = run.stats
     else
-        if target.scripted then
-            fixture.extraction(case.ideal.follow)
-            script_verdict(case.ideal.verdict, case.ideal.follow[1], fixture.items(user, memory))
-        end
-        local run, err = capture(user, memory, session .. "2", case.follow, FOLLOW_AT, derived + 1)
+        local run, err = capture(user, memory, session .. "2", case.follow, FOLLOW_AT, derived,
+            target.scripted and case.ideal.follow or nil, case.ideal.verdict)
         if err then return "ERROR", err end
         stats = run.stats
     end
