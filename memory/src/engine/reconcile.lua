@@ -51,6 +51,22 @@ local function provenance_of(opts: Options, candidate: Candidate): { any }
     return refs
 end
 
+local function explicitly_interpreted(d: any, held: { any }, provenance: { any }): (boolean?, error?)
+    if d.source ~= types.ITEM_SOURCE.CAPTURE and d.source ~= types.ITEM_SOURCE.REFLECTION then return false, nil end
+    for _, item in ipairs(held) do
+        if item.source == types.ITEM_SOURCE.TOOL or item.source == types.ITEM_SOURCE.OWNER then
+            for _, ref in ipairs(provenance) do
+                if ref.event_id ~= "" then
+                    local known, err = items.has_provenance(d.component_id, item.id, ref)
+                    if err then return nil, err end
+                    if known then return true, nil end
+                end
+            end
+        end
+    end
+    return false, nil
+end
+
 local function apply(d: any, action: string, scope: any, fields: any, targets: { any }, provenance: { any }): error?
     if action == types.ACTION.NOOP then
         for _, target in ipairs(targets) do
@@ -128,7 +144,12 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
         local held, held_err = d:held(scope_key, key)
         if held_err then return held_err end
 
-        if #(live :: any) > 0 then
+        local interpreted, interpreted_err = explicitly_interpreted(d, held :: any, provenance)
+        if interpreted_err then return interpreted_err end
+
+        if interpreted then
+            d.stats.noop = d.stats.noop + 1
+        elseif #(live :: any) > 0 then
             local seen_err = d:reuse((live :: any)[1], provenance, {})
             if seen_err then return seen_err end
             d.stats.noop = d.stats.noop + 1
