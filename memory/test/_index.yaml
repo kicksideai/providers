@@ -267,6 +267,6 @@ entries:
   meta: {type: test, suite: memory_resources}
   source: file://runtime_test.lua
   method: run
-  modules: [sql, registry]
+  modules: [registry]
   imports:
     test: wippy.test:test

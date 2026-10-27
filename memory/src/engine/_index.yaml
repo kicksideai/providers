@@ -113,7 +113,6 @@ entries:
     imports: &binding_imports
       types: kickside.memory:types
       memory_config: kickside.memory:config
-      memory_ledger: kickside.memory.engine:ledger
       memory_stores: kickside.memory.persist:stores
       memory_recall: kickside.memory.engine:recall
       memory_runs: kickside.memory.persist:runs
