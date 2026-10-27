@@ -131,7 +131,7 @@ local function span_entry(event: any, cfg: any): any?
         return { id = tostring(event.id), role = role, text = text, created_at = event.created_at }
     end
     if role == "function" and cfg.capture_experience == true then
-        local name = types.trim(metadata.function_name or metadata.name)
+        local name = types.trim(metadata.function_name)
         local status = types.trim(metadata.status)
         if name == "" or status == "" then return nil end
         return { id = tostring(event.id), role = "tool", text = "tool " .. name .. " " .. status, created_at = event.created_at }
@@ -467,9 +467,9 @@ function M.list_targets(_input: any): any
     local out: { any } = {}
     for _, row in ipairs(rows or {}) do
         local meta = type(row.meta) == "table" and row.meta or {}
-        local id = row.component_id or row.id
+        local id = row.component_id
         if types.trim(id) ~= "" then
-            out[#out + 1] = { id = id, title = meta.title or row.name or id, name = meta.title or row.name or id,
+            out[#out + 1] = { id = id, title = meta.title, name = meta.title,
                 description = meta.comment or "", kb_type = types.KB_TYPE }
         end
     end
@@ -608,8 +608,8 @@ function M.search(args: any): (any?, error?)
     for i = offset + 1, math.min(offset + limit, #(rows :: any)) do
         local row = (rows :: any)[i]
         local out: { [string]: any } = {
-            id = row.id, memory_id = memory_id, node_type = row.kind, score = row.similarity, source = row.source,
-            created_at = row.recorded_at, content = row.content,
+            id = row.id, memory_id = memory_id, kind = row.kind, score = row.similarity, source = row.source,
+            recorded_at = row.recorded_at, content = row.content,
         }
         for _, name in ipairs(fields) do
             if name == "*" then
