@@ -86,7 +86,7 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
     end
     local stats: any
     if case.reflect then
-        if target.scripted then
+        if target.scripted and #fixture.items(user, memory, { statuses = { "current" } }) >= 2 then
             fixture.script.respond("structured_output", { items = case.ideal.reflection })
             if #case.ideal.reflection > 0 then fixture.normalization(case.ideal.reflection) end
             script_verdict(case.ideal.verdict, nil, {})
