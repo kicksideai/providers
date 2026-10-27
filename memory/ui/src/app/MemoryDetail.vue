@@ -7,7 +7,7 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from './chrome/ConfirmDialog.vue'
 import { KIND_META, aboutLabel, fullTime, relativeTime, sourceLabel, topicLabel } from './format'
-import { errorText, isRecord, type MemoryItem, type Provenance } from './types'
+import { errorText, isRecord, pageOf, type MemoryItem, type Provenance } from './types'
 import { severity, type Memory } from './useMemory'
 
 const props = defineProps<{ memory: Memory; itemId: string }>()
@@ -31,19 +31,20 @@ async function load(offset = 0) {
   const target = url.value
   try {
     const { data } = await api.get(offset ? `${target}?offset=${offset}` : target)
-    if (current !== generation || !isRecord(data)) return
+    if (current !== generation) return
+    if (!isRecord(data) || !isRecord(data.item) || !Array.isArray(data.provenance)) throw new Error('Memory detail response is malformed')
     if (!offset) {
-      const loaded = isRecord(data.item) ? (data.item as unknown as MemoryItem) : null
-      if (!loaded || loaded.status === 'forgotten') {
+      const loaded = data.item as unknown as MemoryItem
+      if (loaded.status === 'forgotten') {
         emit('gone')
         return
       }
       item.value = loaded
-      provenance.value = (Array.isArray(data.provenance) ? data.provenance : []) as Provenance[]
+      provenance.value = data.provenance as Provenance[]
     }
-    const page = (Array.isArray(data.versions) ? data.versions : []) as MemoryItem[]
-    versions.value = offset ? [...versions.value, ...page] : page
-    nextVersions.value = typeof data.next_offset === 'number' ? data.next_offset : null
+    const page = pageOf<MemoryItem>(data, 'versions')
+    versions.value = offset ? [...versions.value, ...page.rows] : page.rows
+    nextVersions.value = page.next
     loadError.value = ''
   } catch (err) {
     if (current !== generation) return
@@ -122,7 +123,7 @@ function sourceOf(ref: Provenance): string {
           <Textarea v-model="editing" auto-resize rows="2" aria-label="Memory text" />
           <div class="mm-edit-acts">
             <button type="button" class="kx-btn kx-btn-primary sm" :disabled="memory.busy.value || !editing.trim()" @click="save">
-              <Icon icon="tabler:check" aria-hidden="true" />Save as new version
+              <Icon icon="tabler:check" aria-hidden="true" />Save text
             </button>
             <button type="button" class="kx-btn kx-btn-ghost sm" @click="editing = null">Cancel</button>
           </div>

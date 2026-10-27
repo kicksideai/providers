@@ -12,6 +12,7 @@ function M.encode_value(value: any): any
     if value == nil then return sql.NULL end
     return json.encode(value)
 end
+
 function M.get_tx(tx: any, component_id: string, payload_id: string): (any?, error?)
     local rows, err = tx:query("SELECT content, value, content_hash, embedding FROM kickside_memory_payloads WHERE component_id = $1 AND item_id = $2",
         { component_id, payload_id })
@@ -66,6 +67,7 @@ function M.stage_tx(tx: any, component_id: string, staged: { Staged }): error?
     end
     return nil
 end
+
 function M.set_embedding(component_id: string, item_id: string, vector: { number }, content_hash: string): (any?, error?)
     return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
         return M.replace_embedding_tx(tx, sqlite, component_id, item_id, index.vector_literal(vector), content_hash)

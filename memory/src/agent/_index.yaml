@@ -34,16 +34,14 @@ entries:
   - name: capture
     kind: library.lua
     source: file://capture.lua
-    modules: &capture_modules []
-    imports: &capture_imports
+    modules: []
+    imports:
       component: kickside.component:component
       types: kickside.memory:types
       agent_context: kickside.memory.agent:context
       agent_history: kickside.memory.agent:history
-      agent_prompt: kickside.memory.agent:prompt
       memory_runs: kickside.memory.persist:runs
       memory_jobs: kickside.memory.engine:jobs
-      memory_models: kickside.memory.engine:models
 
   - name: recall
     kind: library.lua
@@ -110,14 +108,14 @@ entries:
         {
           "type": "object",
           "properties": {
-            "content": {"type": "string", "description": "One self-contained sentence about the user, e.g. 'The user lives in Berlin.'"},
+            "content": {"type": "string", "description": "One self-contained sentence about the user or goal."},
             "kind": {"type": "string", "enum": ["fact", "preference", "profile_slot", "skill", "lesson", "plan"]},
-            "key": {"type": "string", "description": "Required canonical topic key: 1-64 lowercase letters, digits or underscores, beginning with a letter. Name the attribute (for example home_city), never the memory sentence or value."},
-            "value": {"description": "The typed value only, e.g. Berlin or false. A plan uses an object with status (open or done), next_step and details (strings)."},
-            "cardinality": {"type": "string", "enum": ["single", "multi"], "description": "single when the user holds one value of this key at a time (home city, diet); multi when several hold together (allergies). A key the memory already knows keeps its cardinality."},
+            "key": {"type": "string", "description": "Required canonical topic key: 1-64 lowercase letters, digits or underscores, beginning with a letter. Name the attribute, never the memory sentence or value."},
+            "value": {"description": "The typed attribute value only. A plan uses an object with status (open or done), next_step and details (strings)."},
+            "cardinality": {"type": "string", "enum": ["single", "multi"], "description": "single when the user holds one value of this key at a time; multi when several values hold together. A key the memory already knows keeps its cardinality."},
             "valid_at": {"type": "string", "description": "RFC3339 instant the memory became true, when known"}
           },
-          "required": ["content", "key"]
+          "required": ["content", "key", "value"]
         }
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_ids": {"type": "array", "items": {"type": "string"}}, "outcome": {"type": "object"}}, "required": ["success"]}
@@ -133,11 +131,11 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Forget Memory
       llm_alias: ForgetMemory
-      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Never use this for a correction, changed value or update; use Remember to supersede the earlier value. Requires an item id from SearchMemory."
+      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Never use this for a correction, changed value or update; use Remember to supersede the earlier value. Use the canonical key shown in the profile or SearchMemory. For a multi-valued key, supply value to select the value and its versions."
       input_schema: |
-        {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"]}
+        {"type": "object", "additionalProperties": false, "properties": {"key": {"type": "string", "description": "Canonical topic key of your own attribute to erase"}, "value": {"description": "Required for a multi-valued key: the typed value to erase with all its versions"}}, "required": ["key"]}
       output_schema: |
-        {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "item_id": {"type": "string"}}, "required": ["success"]}
+        {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "key": {"type": "string"}, "forgotten": {"type": "integer"}}, "required": ["success"]}
     source: file://tools.lua
     modules: *tools_modules
     imports: *tools_imports
@@ -156,16 +154,26 @@ entries:
 
   - name: lifecycle
     kind: function.lua
-    source: file://capture.lua
-    modules: *capture_modules
-    imports: *capture_imports
+    source: file://lifecycle.lua
+    modules: []
+    imports:
+      types: kickside.memory:types
+      agent_context: kickside.memory.agent:context
+      agent_prompt: kickside.memory.agent:prompt
+      agent_capture: kickside.memory.agent:capture
+      memory_jobs: kickside.memory.engine:jobs
     method: apply
 
   - name: checkpoint
     kind: function.lua
-    source: file://capture.lua
-    modules: *capture_modules
-    imports: *capture_imports
+    source: file://checkpoint.lua
+    modules: []
+    imports:
+      types: kickside.memory:types
+      agent_context: kickside.memory.agent:context
+      agent_history: kickside.memory.agent:history
+      agent_capture: kickside.memory.agent:capture
+      memory_models: kickside.memory.engine:models
     method: create
 
   - name: search_tool
@@ -175,11 +183,11 @@ entries:
       mcp: { required_scopes: [state.read] }
       title: Search Memory
       llm_alias: SearchMemory
-      llm_description: Search the selected memory for the user's facts, preferences and goals. Returns item ids, content and unresolved alternatives. Pass next_cursor with the same query for more results.
+      llm_description: Search the selected memory for the user's facts, preferences and goals. Returns canonical keys, typed values and unresolved alternatives. Pass next_cursor with the same query for more results.
       input_schema: |
-        {"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"cursor":{"type":"string"},"fields":{"type":"array","items":{"type":"string"}}},"required":["query"]}
+        {"type":"object","additionalProperties":false,"properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"cursor":{"type":"string"}},"required":["query"]}
       output_schema: |
-        {"type":"object","properties":{"success":{"type":"boolean"},"error":{"type":"string"},"query":{"type":"string"},"count":{"type":"integer"},"items":{"type":"array","items":{"type":"object"}},"alternatives":{"type":"array","items":{"type":"object"}},"next_cursor":{"type":"string"},"note":{"type":"string"}},"required":["success"]}
+        {"type":"object","properties":{"success":{"type":"boolean"},"error":{"type":"string"},"query":{"type":"string"},"count":{"type":"integer"},"items":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"kind":{"type":"string"},"key":{"type":"string"},"value":{},"content":{"type":"string"},"valid_at":{"type":"string"},"recorded_at":{"type":"string"},"score":{"type":"number"},"source":{"type":"string"}},"required":["id","kind","key","value","content","valid_at","recorded_at","score","source"]}},"alternatives":{"type":"array","items":{"type":"object"}},"next_cursor":{"type":"string"},"note":{"type":"string"}},"required":["success"]}
     source: file://tools.lua
     modules: *tools_modules
     imports: *tools_imports

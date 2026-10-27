@@ -40,12 +40,14 @@ local function decode_all(rows: any): { any }
     for _, row in ipairs(rows or {}) do out[#out + 1] = decode(row) end
     return out
 end
+
 function M.get_tx(tx: any, component_id: string, item_id: string): (any?, error?)
     local rows, err = tx:query(SELECT .. " WHERE component_id = $1 AND id = $2", { component_id, item_id })
     if err then return nil, types.failed("memory item read failed", err) end
     if not rows or #rows == 0 then return nil, nil end
     return decode(rows[1]), nil
 end
+
 function M.get(component_id: string, item_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         return M.get_tx(conn, component_id, item_id)

@@ -31,100 +31,94 @@ local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
 local EXTRACTION_PROMPT = [[You extract durable memory about the user from a conversation span.
 
-Keep only what the user states about themselves, their work and their world that will
-still matter in a later conversation: facts, preferences, decisions, corrections, and
-outcomes of finished work, and ongoing goals or plans. A correction is a new item with the corrected value.
+Keep information the user states that will help in later conversations: attributes,
+preferences, decisions, corrections, outcomes, and ongoing goals. A correction supplies
+a new value; reconciliation determines its relationship to earlier values.
 
-Read preceding context to understand short answers. A trip destination, hypothetical,
-or answer to a question about travel does not change where the person lives. Change a
-single-valued profile attribute only when the person explicitly states that it changes.
+Interpret each statement in its preceding conversation and existing memory context.
+An answer to a question about a task supplies that task's requested detail. It does not
+assert or change a stable personal attribute. Hypothetical statements do not establish
+personal attributes. Update a stable attribute only when the user states that attribute
+or its change directly.
 
-Each item cites the new user statement that supplies its evidence. Interpret that
-statement in its preceding context: an answer to a question supplies the detail the
-question asks for. Context-only lines and existing memories ground the meaning and
-earlier state but are never new citations. A goal update carries forward its known
-details and adds the answer's new detail to both value.details and content; do not
-replace a goal with an empty state or drop newly supplied details. Skip:
-- questions that state no goal or durable information ("where do I live?");
-- task chatter that adds no goal, decision, constraint or next step;
-- statements too vague to act on later ("I've traveled before", "I forgot where I was");
-- greetings, thanks, acknowledgements and small talk;
-- the assistant's suggestions, answers and narration, raw tool output, and anything inside
-  recalled-memory notes - none of these is the user stating anything.
+A request to get something done opens a plan, even when details remain unknown. Keep one
+stable key per goal. A later answer or decision updates that goal's complete state:
+carry forward known details and add the new information to value.details and content.
+Different goals coexist under distinct keys. Mark a plan done on completion or cancellation.
+Do not invent missing details or replace known state with an empty state.
+
+Cite only a new user, tool or document statement that supplies the item's evidence.
+Preceding context and existing memories explain meaning but are not new evidence.
+Assistant suggestions, answers, narration and recalled-memory notes are not statements
+by the user. Raw tool output is not itself a durable claim. Skip questions with no goal
+or durable information, vague statements with no future use, task chatter that adds no
+decision or constraint, greetings, thanks and acknowledgements.
 
 Each item has:
-- kind: fact | preference | profile_slot | skill | lesson | plan
-  (profile_slot = a stable single-valued attribute such as name, home city, employer, role,
-  diet, timezone)
-- key: a short stable topic, e.g. "home_city", "preferred_language", "employer"
-- cardinality: "single" when the person holds one value at a time (name, home city, diet,
-  employer, birth date), "multi" when several hold together (allergies, children, pets)
-- value: only the new value stated, e.g. "Berlin". Never combine an older, different
-  attribute value with the new one; reconciliation decides their relationship. When the
-  user states several simultaneous values, extract separate candidates. Plans use an object with status ("open" or
-  "done"), next_step (last agreed next action), details (decisions and constraints).
-- plan: one record per ongoing goal, with a stable key per goal. Several goals coexist
-  under different keys. Each goal key has cardinality single and updates by supersession.
-  Requests such as "I need to buy tickets" start an open plan; short answers such as a
-  destination update that plan using preceding context. Retain known decisions and details
-  when updating its complete state. Only mark done on completion or cancellation.
-- content: one self-contained sentence in the third person about the user
-- event_id: the id of the user, tool or document message that states it
-- valid_at: when it became true if the span says so (RFC3339), else ""
-- confidence: 0..1
+- kind: fact | preference | profile_slot | skill | lesson | plan.
+  profile_slot is a stable personal attribute with one value at a time.
+- key: a short canonical topic naming the attribute or goal, not its value or sentence.
+  Reuse an existing key naming the same attribute, regardless of phrasing.
+- cardinality: single when only one value holds at a time; multi when independent values
+  can hold simultaneously. Plans have cardinality single under their own goal key.
+- value: the newly stated attribute value alone. Never combine it with an earlier,
+  different value. Extract separate candidates for simultaneous values. A plan uses an
+  object with status (open or done), next_step (the agreed next action, empty if unknown),
+  and details (known decisions and constraints, including the goal itself).
+- content: one self-contained sentence in the third person about the user or goal.
+- event_id: the new user, tool or document message id supplying the evidence.
+- valid_at: when the statement says the value became true (RFC3339), otherwise empty.
+- confidence: a number from 0 to 1.
 
-Return scalar attributes in items and ongoing goals in plans. Both arrays are required;
-return {"items": [], "plans": []} when nothing durable is stated.]]
+Return scalar attributes in items and goals in plans. Both arrays are required.
+Return {"items": [], "plans": []} when nothing durable is stated.]]
 
 local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of the same person.
 
 Choose exactly one action:
-- ADD: the new memory is about something none of the existing memories cover.
+- ADD: the new memory covers a distinct attribute, independent value or goal.
 - NOOP: an existing memory already says the same thing, even under another kind or key.
-- SUPERSEDE: the new memory updates or corrects existing memories about the same thing. A
-  statement that something changed ("I moved", "now", "since", "no longer", "actually") is
-  an update.
-- MERGE: the new memory and existing memories are the same memory phrased differently and the new one is the most complete.
-- CONFLICT: the new memory contradicts existing memories and nothing says which is right:
-  the person says they are unsure, or two sources disagree.
+- SUPERSEDE: the new memory updates or corrects the same attribute or goal. A direct
+  statement of changed state replaces the earlier state.
+- MERGE: the memories express the same claim and the new wording is more complete.
+- CONFLICT: the claims contradict each other with no basis to select one, such as
+  uncertainty expressed by the person or disagreement between sources.
 
-new_memory.stated, when present, is what the person said; it tells an update from a contradiction.
-conversation includes preceding context and the captured span. A destination or hypothetical
-answer never changes a profile attribute. Choose NOOP for such a misinterpreted candidate.
-Only an explicit statement of change can replace a single-valued profile attribute.
-Plans about the same goal update by SUPERSEDE as their details or next step progress.
-Different goals or attributes remain separate.
-target_ids lists the existing memory ids the action applies to (empty for ADD).
-Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
+new_memory.stated is the original statement when available. Read it in conversation
+context. An answer about a task supplies that task's detail; it never changes a stable
+personal attribute. Hypotheticals do not establish attributes either. Choose NOOP for
+a candidate that mistakes either for a personal attribute. A stable attribute changes
+only through a direct assertion about it. Plans for the same goal update by SUPERSEDE
+as their details or next step progress. Different attributes or goals remain separate.
+
+target_ids contains only existing ids from the supplied list, empty for ADD.
+Decide the relationship from the statements; do not infer an update from record order.]]
 
 local NORMALIZATION_PROMPT = [[Normalize candidate memory attributes before reconciliation.
-For every candidate return its canonical key, kind, cardinality and value under its numbered property. Reuse an existing key
-when it names the same attribute, regardless of phrasing or kind (home city and current
-city, diet and dietary preference). Different attributes or distinct goals keep distinct
-keys. Candidates about the same attribute reuse one key within the batch too.
-Use the candidate's key only for an attribute no existing key represents.
-Conversation grounds the new claim. Existing values guide attribute identity, never an
-unstated union of old and new values. Preserve only the newly stated scalar value.
-The value is the attribute value alone, never a sentence about the user: "Pepper", not
-"The user's cat is named Pepper." Preserve typed non-string values; return an empty
-string for their value field. Do not add information or change the meaning.
-Plan goals never map onto profile attributes or other kinds. Each goal has one state
-under its own key. Stable personal attributes use profile_slot and cardinality single,
-even when a caller labels them fact. Independent simultaneous values use multi.]]
 
-local REFLECTION_PROMPT = [[You review a person's numbered memories and derive lessons: concrete
-ways to help this person that no single memory says. A lesson combines at least two
-memories into guidance for acting, e.g. memories "the dog hates long car rides" and "always
-travels with the dog" give "propose rail routes that allow dogs and avoid long car
-transfers".
+For every numbered candidate return its canonical key, kind, cardinality and value.
+Reuse an existing key whenever it names the same attribute, regardless of phrasing or
+kind. Within the batch, candidates for the same attribute also share a key. Use a new
+key only for an attribute or goal no existing key represents. Different attributes and
+distinct goals keep different keys.
 
-Never restate, rephrase or summarise one memory ("as the user is vegan, plan vegan food"),
-never repeat a profile attribute, and never guess beyond what the memories say. Most
-memory sets support no lesson; return {"items": []} then.
+Conversation grounds the new claim. Existing values explain attribute identity but do
+not authorize an unstated union of old and new values. Return the newly stated scalar
+value alone, never a sentence about the user. Preserve typed non-string values; their
+value field is not part of the mapping. Do not add information or alter meaning.
 
-Each lesson has kind "lesson", key (a short stable topic), cardinality "multi", value (the
-guidance in a few words), content (one sentence of guidance), based_on (the numbers of the memories it draws
-on, at least two), event_id "", valid_at "", confidence.]]
+Plans never map onto personal attributes or other kinds. Each goal keeps one complete
+state under its own key. Stable personal attributes use profile_slot and cardinality
+single, even when a caller labels them fact. Independent simultaneous values use multi.]]
+
+local REFLECTION_PROMPT = [[Derive concrete guidance for helping this person from their numbered memories.
+Each lesson must combine at least two memories into guidance that no single memory
+already states. Never restate or summarize one memory, repeat a profile attribute, or
+guess beyond the evidence. Return {"items": []} when no grounded lesson follows.
+
+Each lesson has kind lesson, a short stable key, cardinality multi, value (guidance in a
+few words), content (one sentence of guidance), based_on (at least two distinct memory
+numbers), empty event_id and valid_at, and confidence from 0 to 1.]]
 
 local WORKING_SUMMARY_PROMPT = [[Summarize the conversation so far as working state for continuing it:
 goals, decisions, open questions, constraints and the next step. Be compact and factual.]]
@@ -136,7 +130,7 @@ local function messages(system: string, user: string): { any }
     }
 end
 
-local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PROFILE_SLOT, types.KIND.SKILL, types.KIND.LESSON, types.KIND.PLAN }
+local CANDIDATE_KINDS = types.MEMORY_KINDS
 
 local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
     local event_id: any = { type = "string" }
@@ -273,10 +267,18 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
         for _, kind in ipairs(CANDIDATE_KINDS) do
             if (kind == types.KIND.PLAN) == (candidate.kind == types.KIND.PLAN) then kinds[#kinds + 1] = kind end
         end
-        properties[tostring(i)] = { type = "object", additionalProperties = false, required = { "key", "value", "kind", "cardinality" }, properties = {
-            key = { type = "string", enum = keys_for_candidate }, value = { type = "string" },
+        local mapping_properties = {
+            key = { type = "string", enum = keys_for_candidate },
             kind = { type = "string", enum = kinds }, cardinality = { type = "string", enum = { "single", "multi" } },
-        } }
+        }
+        local mapping_required = { "key", "kind", "cardinality" }
+        if type(candidate.value) == "string" then
+            mapping_properties.value = { type = "string" }
+            mapping_required[#mapping_required + 1] = "value"
+        end
+        properties[tostring(i)] = { type = "object", additionalProperties = false,
+            required = mapping_required, properties = mapping_properties,
+        }
         required[#required + 1] = tostring(i)
     end
     local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
@@ -290,7 +292,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     for i, candidate in ipairs(candidates) do
         local mapping = mappings[tostring(i)]
         if type(mapping) ~= "table" then return nil, types.unavailable("memory normalization returned an invalid mapping") end
-        if not named[mapping.key] or type(mapping.value) ~= "string" then
+        if not named[mapping.key] or (type(candidate.value) == "string" and type(mapping.value) ~= "string") then
             return nil, types.unavailable("memory normalization returned an invalid mapping")
         end
         if not allowed[i][mapping.key] or ((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)) then

@@ -34,7 +34,7 @@ function M.remember(args: any): (any?, error?)
     local kind = types.trim(input.kind)
     if kind == "" then kind = types.KIND.FACT end
     if not types.KIND_SET[kind] or kind == types.KIND.IDENTITY or kind == types.KIND.RULE then
-        return tool_error("kind must be one of fact, preference, profile_slot, skill, lesson, plan"), nil
+        return tool_error("kind must be one of " .. table.concat(types.MEMORY_KINDS, ", ")), nil
     end
     local cardinality = types.trim(input.cardinality)
     if cardinality ~= "" and not types.CARDINALITY_SET[cardinality] then return tool_error("cardinality must be single or multi"), nil end
@@ -43,7 +43,7 @@ function M.remember(args: any): (any?, error?)
     local owner = types.actor_id()
     if owner == "" then return tool_error("remember requires a signed-in user"), nil end
     local value = input.value
-    if value == nil then value = content end
+    if value == nil then return tool_error("value is required"), nil end
     local key, key_err = types.topic_key(input.key, content, value)
     if key_err then return tool_error(key_err), nil end
     local idempotency, hash_err = types.digest({ "tool.remember", owner, key, value, content })
@@ -75,19 +75,19 @@ end
 
 function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
-    local item_id = types.trim(input.item_id)
-    if item_id == "" then return tool_error("item_id is required"), nil end
+    local key = types.trim(input.key)
+    if key == "" then return tool_error("key is required"), nil end
     local memory_id, _, refusal = writable()
     if refusal then return refusal, nil end
-    local item, item_err = items.get(memory_id :: string, item_id)
-    if item_err then return nil, item_err end
-    if not item then return tool_error("memory item not found"), nil end
-    if (item :: any).scope_key ~= types.scope_key(types.SCOPE.OWNER, types.actor_id()) then
-        return tool_error("only your own memories can be forgotten here"), nil
+    if types.actor_id() == "" then return tool_error("forget requires a signed-in user"), nil end
+    local forgotten, forget_err = ops.forget_key(memory_id :: string, key, input.value)
+    if forget_err then
+        if forget_err:kind() == errors.INVALID or forget_err:kind() == errors.NOT_FOUND then
+            return tool_error(forget_err:message()), nil
+        end
+        return nil, forget_err
     end
-    local forgotten, forget_err = ops.forget(memory_id :: string, item_id)
-    if forget_err then return nil, forget_err end
-    return { success = true, memory_id = memory_id, item_id = (forgotten :: any).item_id }, nil
+    return { success = true, memory_id = memory_id, key = key, forgotten = (forgotten :: any).forgotten }, nil
 end
 
 function M.search(args: any): (any?, error?)
@@ -109,21 +109,14 @@ function M.search(args: any): (any?, error?)
         scopes = scopes,
     })
     if search_err then return nil, search_err end
-    local fields = type(input.fields) == "table" and input.fields or {}
     local page: { any } = {}
     for i = offset + 1, math.min(offset + limit, #(rows :: any)) do
         local row = (rows :: any)[i]
         local out: { [string]: any } = {
-            id = row.id, memory_id = memory_id, kind = row.kind, score = row.similarity, source = row.source,
-            recorded_at = row.recorded_at, content = row.content,
+            id = row.id, kind = row.kind, key = row.key, value = row.value,
+            content = row.content, valid_at = row.valid_at, recorded_at = row.recorded_at,
+            score = row.similarity, source = row.source,
         }
-        for _, name in ipairs(fields) do
-            if name == "*" then
-                for k, v in pairs(row) do out[k] = v end
-            else
-                out[name] = row[name]
-            end
-        end
         page[#page + 1] = out
     end
     local contested, contested_err = recall.search({
@@ -147,7 +140,8 @@ function M.search(args: any): (any?, error?)
     for _, row in ipairs(members :: any) do
         local group = groups[row.conflict_group]
         if group then
-        group.options[#group.options + 1] = { id = row.id, content = row.content, valid_at = row.valid_at }
+            group.options[#group.options + 1] = { id = row.id, kind = row.kind, key = row.key, value = row.value,
+                content = row.content, valid_at = row.valid_at, recorded_at = row.recorded_at, source = row.source }
         end
     end
     local result: { [string]: any } = {

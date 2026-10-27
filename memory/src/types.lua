@@ -23,6 +23,8 @@ M.KIND = {
     PLAN = "plan",
 }
 
+M.MEMORY_KINDS = { M.KIND.FACT, M.KIND.PREFERENCE, M.KIND.PROFILE_SLOT, M.KIND.SKILL, M.KIND.LESSON, M.KIND.PLAN }
+
 M.SCOPE = {
     AGENT = "agent",
     OWNER = "owner",

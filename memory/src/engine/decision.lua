@@ -322,12 +322,20 @@ function Decision:restore(item: any): error?
 end
 
 function Decision:forget(item: any): error?
-    local versions, err = items.lineage(self.component_id, item)
+    local versions, err
+    if item.cardinality == types.CARDINALITY.SINGLE then
+        versions, err = items.all(self.component_id, { scope_keys = { item.scope_key }, key = item.key })
+    else
+        versions, err = items.lineage(self.component_id, item)
+    end
     if err then return err end
     for _, version in ipairs(versions :: any) do
-        self:emit(types.EVENT.ITEM_FORGOTTEN, { item_id = version.id, actor = self.actor })
-        self:set(version, { status = types.STATUS.FORGOTTEN, content = "", value = nil, conflict_group = false })
-        self.stats.forgotten = self.stats.forgotten + 1
+        local state = self.overlay[version.id] or version
+        if state.status ~= types.STATUS.FORGOTTEN then
+            self:emit(types.EVENT.ITEM_FORGOTTEN, { item_id = version.id, actor = self.actor })
+            self:set(version, { status = types.STATUS.FORGOTTEN, content = "", value = nil, conflict_group = false })
+            self.stats.forgotten = self.stats.forgotten + 1
+        end
     end
     return nil
 end

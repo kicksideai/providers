@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import ConfigFields from './ConfigFields.vue'
 import ModelPicker from './ModelPicker.vue'
-import { isRecord, parseConfig, type ConfigSchema } from './types'
+import { errorText, isRecord, parseConfig, type ConfigSchema } from './types'
 
 interface CreateContext {
   embedding_model?: string
@@ -16,7 +16,14 @@ interface E { 'config-changed': { embedding_model: string; config: Record<string
 const props = useProps<{ config?: unknown }>()
 const emit = useEvents<E>()
 
-const ctx = computed(() => parseConfig(props.value.config) as CreateContext)
+const configError = ref('')
+const ctx = ref<CreateContext>({})
+watch(() => props.value.config, (raw) => {
+  try {
+    ctx.value = parseConfig(raw) as CreateContext
+    configError.value = ''
+  } catch (err) { configError.value = errorText(err) }
+}, { immediate: true })
 const isEdit = computed(() => !!ctx.value.edit)
 const schema = computed<ConfigSchema>(() => (isRecord(ctx.value.config?.config_schema) ? ctx.value.config?.config_schema : {}) as ConfigSchema)
 
@@ -46,7 +53,8 @@ function onValues(next: Record<string, unknown>) {
 </script>
 
 <template>
-  <ConfigFields :schema="schema" :model-value="values" @update:model-value="onValues">
+  <div v-if="configError" class="kx-notice error">{{ configError }}</div>
+  <ConfigFields v-else :schema="schema" :model-value="values" @update:model-value="onValues">
     <template #before-models>
       <div class="mm-field wide">
         <span id="embedding_label" class="mm-label">Embedding model</span>

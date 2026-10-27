@@ -75,7 +75,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local created, err = fixture.op(user, "create", { component_id = id, fields = {
-                kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", content = "You are Ada, a travel assistant.",
+                kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", value = "You are Ada, a travel assistant.", content = "You are Ada, a travel assistant.",
             } })
             test.is_nil(err, tostring(err))
             fixture.settle(user, id)
@@ -88,14 +88,14 @@ local function define_tests()
             test.eq(item.version, 1)
         end)
 
-        test.it("edits text items as new versions and other items' text as revisions of the same claim", function()
+        test.it("edits values as new versions and presentation text as revisions of the same claim", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local rule = fixture.op(user, "create", { component_id = id, fields = {
-                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", content = "Answer briefly.",
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", value = "Answer briefly.", content = "Answer briefly.",
             } })
             fixture.settle(user, id)
-            local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = rule.item_id, fields = { content = "Answer in bullet points." } })
+            local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = rule.item_id, fields = { value = "Answer in bullet points.", content = "Answer in bullet points." } })
             test.is_nil(edit_err, tostring(edit_err))
             test.is_true(edited.item_id ~= rule.item_id)
             local city = fixture.op(user, "create", { component_id = id, fields = {

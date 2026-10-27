@@ -5,7 +5,7 @@ local writer = require("memory_writer")
 local reconcile = require("memory_reconcile")
 local models = require("memory_models")
 local context = require("agent_context")
-local capture = require("agent_capture")
+local funcs = require("funcs")
 local prompt = require("agent_prompt")
 local recall = require("agent_recall")
 local tools = require("agent_tools")
@@ -55,7 +55,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return (written :: any).result, nil
     end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
-    apply = function(a: any) return capture.apply(a.payload) end,
+    apply = function(a: any) return funcs.call("kickside.memory.agent:lifecycle", a.payload) end,
     store = function(a: any): (any, any)
         local def, def_err = contract.get("kickside.knowledge:kb_store_lifecycle")
         if def_err then return nil, def_err end
@@ -82,7 +82,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
         local id, _, err = context.memory({ context = a.context }, component.ACCESS.READ)
         return id, err
     end,
-    checkpoint = function(a: any) return capture.create(a.payload) end,
+    checkpoint = function(a: any) return funcs.call("kickside.memory.agent:checkpoint", a.payload) end,
     recall = function(a: any) return recall.recall(a.input) end,
     build = function(a: any) return prompt.build(nil, a.context) end,
     prompt = function(_a: any) return prompt.prompt() end,

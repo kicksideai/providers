@@ -55,7 +55,7 @@ local function body_of(req: any): any
     local raw = req:body()
     if type(raw) ~= "string" or raw == "" then return {} end
     local decoded = types.decode_json(raw)
-    if type(decoded) ~= "table" then return nil end
+    if not raw:match("^%s*{") or type(decoded) ~= "table" then return nil end
     return decoded
 end
 

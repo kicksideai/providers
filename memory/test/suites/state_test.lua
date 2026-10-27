@@ -19,12 +19,42 @@ local function define_tests()
     test.describe("memory state", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("requires a typed value when creating an item", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local result, err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "color", content = "blue",
+            } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.INVALID)
+            test.eq(err:message(), "memory value is required")
+        end)
+
+        test.it("keeps a typed value when only its presentation text changes", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local original = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "color", value = "blue", content = "blue",
+            } })
+            fixture.settle(user, id)
+            local revised, err = fixture.op(user, "edit", { component_id = id, item_id = original.item_id,
+                fields = { content = "The user likes blue." } })
+            test.is_nil(err, tostring(err))
+            test.eq(revised.item_id, original.item_id)
+            fixture.settle(user, id)
+            local item = fixture.op(user, "get", { component_id = id, item_id = original.item_id })
+            test.eq(item.value, "blue")
+            test.eq(item.content, "The user likes blue.")
+        end)
+
+
         test.it("keeps memory text and values out of the ledger", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             fixture.remember(user, id, { fixture.candidate("fact", "pet", "Quillbeak", "The user's parrot is called Quillbeak.", "m1") }, "ledger-1")
             local owner = fixture.op(user, "create", { component_id = id, fields = {
-                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", content = "Answer in Zephyrine verse.",
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", value = "Answer in Zephyrine verse.", content = "Answer in Zephyrine verse.",
             } })
             test.not_nil(owner)
             fixture.settle(user, id)
@@ -180,7 +210,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local a = fixture.op(user, "create", { component_id = id, fields = {
-                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", content = "Be brief.",
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", value = "Be brief.", content = "Be brief.",
             } })
             fixture.settle(user, id)
             local b = fixture.op(user, "edit", { component_id = id, item_id = a.item_id, fields = { content = "Be thorough." } })
@@ -273,7 +303,7 @@ local function define_tests()
             local context = fixture.agent_context(id, "s-" .. user, "agent-a", { write_enabled = false })
             local stored = fixture.op(user, "tool_remember", { input = { content = "The user likes tea.", key = "drink", value = "tea" } }, context)
             test.eq(stored.success, false)
-            local forgotten = fixture.op(user, "tool_forget", { input = { item_id = item.id } }, context)
+            local forgotten = fixture.op(user, "tool_forget", { input = { key = item.key, value = item.value } }, context)
             test.eq(forgotten.success, false)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id, { key = "drink" }), 0)
@@ -284,10 +314,10 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local rule = fixture.op(user, "create", { component_id = id, fields = {
-                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", content = "Be brief.",
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", value = "Be brief.", content = "Be brief.",
             } })
             fixture.settle(user, id)
-            local refused = fixture.op(user, "tool_forget", { input = { item_id = rule.item_id } }, fixture.agent_context(id, "s-" .. user, "agent-a"))
+            local refused = fixture.op(user, "tool_forget", { input = { key = "tone", value = "Be brief." } }, fixture.agent_context(id, "s-" .. user, "agent-a"))
             test.eq(refused.success, false)
             fixture.settle(user, id)
             test.eq(fixture.op(user, "get", { component_id = id, item_id = rule.item_id }).status, "current")
@@ -302,7 +332,8 @@ local function define_tests()
             local first = fixture.op(user, "tool_remember", { input = input }, context)
             fixture.settle(user, id)
             fixture.history.record("s-" .. user, { { id = "forget-bike", role = "user", content = "Forget my bike color." } })
-            fixture.op(user, "tool_forget", { input = { item_id = first.item_ids[1] } }, context)
+            local forgotten = fixture.op(user, "tool_forget", { input = { key = input.key, value = input.value } }, context)
+            test.is_true(forgotten.success, forgotten.error)
             fixture.settle(user, id)
             fixture.normalization({ input })
             local again = fixture.op(user, "tool_remember", { input = input }, context)

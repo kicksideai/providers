@@ -20,6 +20,7 @@ function M.payload(phase: string, session_id: string, agent_id: string, extra: a
         phase = phase, host = host, agent = { id = agent_id, model = "test-fast" },
         run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host },
     }
+    if phase == "checkpoint" then payload.options = { model = "class:fast", max_tokens = 1000 } end
     for k, v in pairs(extra or {}) do payload[k] = v end
     return payload
 end

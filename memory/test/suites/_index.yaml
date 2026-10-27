@@ -16,14 +16,13 @@ entries:
     meta: { comment: Runs a named memory operation in the caller's frame. }
     source: file://memory_call.lua
     method: call
-    modules: [contract, security, sql]
+    modules: [contract, security, sql, funcs]
     imports:
       memory_ops: kickside.memory.engine:ops
       memory_writer: kickside.memory.engine:writer
       memory_reconcile: kickside.memory.engine:reconcile
       memory_models: kickside.memory.engine:models
       agent_context: kickside.memory.agent:context
-      agent_capture: kickside.memory.agent:capture
       agent_prompt: kickside.memory.agent:prompt
       agent_recall: kickside.memory.agent:recall
       agent_tools: kickside.memory.agent:tools
@@ -138,6 +137,7 @@ entries:
       fixture: app.suites:fixture
       session: kickside.users:session
       user_groups_repo: kickside.users.persist:user_groups_repo
+      types: kickside.memory:types
 
   - name: persistence_call
     kind: function.lua

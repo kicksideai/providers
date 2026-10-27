@@ -44,7 +44,8 @@ local function structured_output(args: any): (any, any)
     return { success = true, result = { data = response }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }
 end
 
-local function generate(_args: any): (any, any)
+local function generate(args: any): (any, any)
+    script.record("generate", args, args.messages)
     local response, failure, kind, retryable = script.take("generate")
     if failure then return nil, failed(failure, kind, retryable) end
     return { success = true, result = { content = tostring(response) }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }

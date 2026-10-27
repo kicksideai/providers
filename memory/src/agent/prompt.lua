@@ -37,7 +37,7 @@ local function render(rows: { any }, heading: string, max_chars: integer): (stri
         if row.kind == types.KIND.PLAN then text = row.content .. " Next step: " .. row.value.next_step end
         if (row.kind == types.KIND.PROFILE_SLOT or row.kind == types.KIND.PREFERENCE) and type(row.value) == "string" then
             local label = row.key:gsub("_", " ")
-            text = label:sub(1, 1):upper() .. label:sub(2) .. ": " .. row.value
+            text = label:sub(1, 1):upper() .. label:sub(2) .. " [" .. row.key .. "]: " .. row.value
         end
         local line = "- " .. text
         if used + #line + 1 > max_chars then break end

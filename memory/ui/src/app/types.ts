@@ -74,9 +74,12 @@ export function errorText(err: unknown): string {
 }
 
 export function pageOf<T>(data: unknown, field: string): Page<T> {
-  if (!isRecord(data)) return { rows: [], next: null }
-  const rows = Array.isArray(data[field]) ? (data[field] as T[]) : []
-  return { rows, next: typeof data.next_offset === 'number' ? data.next_offset : null }
+  if (!isRecord(data) || !Array.isArray(data[field])) throw new Error(`Memory response is missing ${field}`)
+  const next = data.next_offset
+  if (next !== undefined && (typeof next !== 'number' || !Number.isInteger(next) || next < 0)) {
+    throw new Error('Memory response has an invalid next_offset')
+  }
+  return { rows: data[field] as T[], next: typeof next === 'number' ? next : null }
 }
 
 export interface MemoryContext {
@@ -94,8 +97,8 @@ export function eventDetail(event: Event): Record<string, unknown> {
 }
 
 export function parseConfig(raw: unknown): Record<string, unknown> {
-  if (typeof raw === 'string') {
-    try { raw = JSON.parse(raw) } catch { return {} }
-  }
-  return isRecord(raw) ? raw : {}
+  if (raw === undefined) return {}
+  if (typeof raw === 'string') raw = JSON.parse(raw)
+  if (!isRecord(raw)) throw new Error('Memory configuration must be an object')
+  return raw
 }

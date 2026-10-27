@@ -18,6 +18,171 @@ local function define_tests()
     test.describe("memory agent runtime", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("requires an explicit typed value when remembering", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local result, err = fixture.op(user, "tool_remember", { input = {
+                key = "color", content = "The user likes blue.",
+            } }, fixture.agent_context(id, "s-" .. user, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.is_false(result.success)
+            test.eq(result.error, "value is required")
+            test.eq(#fixture.script.requests("structured_output"), 0)
+        end)
+
+        test.it("searches with a fixed typed shape and never exposes raw row fields", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.op(user, "create", { component_id = id, fields = {
+                kind = "preference", scope_family = "owner", key = "color", value = "blue", content = "The user likes blue.",
+            } })
+            fixture.settle(user, id)
+            local result, err = fixture.op(user, "tool_search", { input = { query = "color blue", fields = { "*", "scope_id" } } },
+                fixture.agent_context(id, "s-" .. user, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.eq(result.count, 1)
+            local expected = { id = true, kind = true, key = true, value = true, content = true,
+                valid_at = true, recorded_at = true, score = true, source = true }
+            for key in pairs(expected) do test.not_nil(result.items[1][key], key) end
+            for key in pairs(result.items[1]) do test.is_true(expected[key] == true, key) end
+            test.eq(result.items[1].key, "color")
+            test.eq(result.items[1].value, "blue")
+        end)
+
+        test.it("forgets every version of a single key in only the caller's scope", function()
+            local user, other = fixture.user(), fixture.user()
+            local id = fixture.memory(user)
+            local first = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "profile_slot", scope_family = "owner", key = "color", cardinality = "single", value = "blue", content = "The user likes blue.",
+            } })
+            fixture.settle(user, id)
+            fixture.op(user, "archive", { component_id = id, item_id = first.item_id })
+            fixture.settle(user, id)
+            fixture.op(user, "create", { component_id = id, fields = {
+                kind = "profile_slot", scope_family = "owner", key = "color", cardinality = "single", value = "green", content = "The user likes green.",
+            } })
+            fixture.remember(user, id, { fixture.candidate("profile_slot", "color", "red", "Another user likes red.", "other-color", nil, "single") }, "other-color", { scope_id = other })
+            fixture.settle(user, id)
+            local result, err = fixture.op(user, "tool_forget", { input = { key = "color" } },
+                fixture.agent_context(id, "s-" .. user, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, result.error)
+            test.eq(result.key, "color")
+            fixture.settle(user, id)
+            local own = 0
+            for _, item in ipairs(fixture.items(user, id, { key = "color" })) do
+                if item.scope_id == user then
+                    own = own + 1
+                    test.eq(item.status, "forgotten")
+                    test.eq(item.content, "")
+                    test.is_nil(item.value)
+                else
+                    test.eq(item.status, "current")
+                    test.eq(item.value, "red")
+                end
+            end
+            test.eq(own, 2)
+            test.not_nil(first.item_id)
+        end)
+
+        test.it("requires a value for a multi key and erases only that value's versions", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local blue = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "preference", scope_family = "owner", key = "colors", cardinality = "multi", value = "blue", content = "The user likes blue.",
+            } })
+            fixture.settle(user, id)
+            fixture.op(user, "edit", { component_id = id, item_id = blue.item_id, fields = { value = "cobalt", content = "The user likes cobalt." } })
+            fixture.op(user, "create", { component_id = id, fields = {
+                kind = "preference", scope_family = "owner", key = "colors", cardinality = "multi", value = false, content = "The setting is false.",
+            } })
+            fixture.settle(user, id)
+            local context = fixture.agent_context(id, "s-" .. user, "agent-a")
+            local missing, missing_err = fixture.op(user, "tool_forget", { input = { key = "colors" } }, context)
+            test.is_nil(missing_err, tostring(missing_err))
+            test.is_false(missing.success)
+            test.is_true(missing.error:find("value is required", 1, true) ~= nil, missing.error)
+            local result, err = fixture.op(user, "tool_forget", { input = { key = "colors", value = "cobalt" } }, context)
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, result.error)
+            fixture.settle(user, id)
+            local erased, kept = 0, 0
+            for _, item in ipairs(fixture.items(user, id, { key = "colors" })) do
+                if item.status == "forgotten" then erased = erased + 1
+                else kept = kept + 1; test.eq(item.value, false) end
+            end
+            test.eq(erased, 2)
+            test.eq(kept, 1)
+            local boolean, boolean_err = fixture.op(user, "tool_forget", { input = { key = "colors", value = false } }, context)
+            test.is_nil(boolean_err, tostring(boolean_err))
+            test.is_true(boolean.success, boolean.error)
+            fixture.settle(user, id)
+            for _, item in ipairs(fixture.items(user, id, { key = "colors" })) do test.eq(item.status, "forgotten") end
+        end)
+
+        test.it("reports existing keys closest to an unknown key without exposing another scope", function()
+            local user, other = fixture.user(), fixture.user()
+            local id = fixture.memory(user)
+            for _, key in ipairs({ "color", "timezone" }) do
+                fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "profile_slot", scope_family = "owner", key = key, value = "configured", content = "A configured attribute.",
+                } })
+            end
+            fixture.remember(user, id, { fixture.candidate("fact", "private_key", "secret", "A private attribute.") }, "private", { scope_id = other })
+            fixture.settle(user, id)
+            local result, err = fixture.op(user, "tool_forget", { input = { key = "colour" } },
+                fixture.agent_context(id, "s-" .. user, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.is_false(result.success)
+            test.is_true(result.error:find("color, timezone", 1, true) ~= nil, result.error)
+            test.is_nil((result.error:find("private_key", 1, true)))
+        end)
+
+        test.it("uses checkpoint options independently of the agent model", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, { { id = "summary", role = "user", content = "A working task." } })
+            fixture.script.respond("generate", "Continue the working task.")
+            local payload = fixture.payload("checkpoint", session, "agent-a", {
+                agent = { id = "agent-a", model = "missing-agent-model" }, options = { model = "class:fast", max_tokens = 73 },
+            })
+            local result, err = fixture.op(user, "checkpoint", { payload = payload }, fixture.agent_context(id, session, "agent-a", { write_enabled = false }))
+            test.is_nil(err, tostring(err))
+            test.eq(result.summary, "Continue the working task.")
+            test.eq(fixture.script.requests("generate")[1].options.max_tokens, 73)
+        end)
+
+        test.it("rejects missing checkpoint model and invalid token options before reading history", function()
+            local user = fixture.user()
+            for _, options in ipairs({ {}, { model = "class:fast", max_tokens = 0 }, { model = "class:fast", max_tokens = 1.5 } }) do
+                local payload = fixture.payload("checkpoint", "absent-history", "agent-a", { options = options })
+                local result, err = fixture.op(user, "checkpoint", { payload = payload })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.INVALID)
+                test.is_true(err:message():find("checkpoint options require", 1, true) ~= nil, tostring(err))
+            end
+            test.eq(#fixture.script.requests("generate"), 0)
+        end)
+
+        test.it("returns consolidation wake failures from deactivation", function()
+            local user = fixture.user()
+            for _, missing in ipairs({ "job", "run" }) do
+                local id = fixture.memory(user)
+                local db = fixture.db()
+                local statement = missing == "job" and "UPDATE kickside_memory_runs SET job_id = NULL WHERE id = $1"
+                    or "DELETE FROM kickside_memory_runs WHERE id = $1"
+                local _, update_err = db:execute(statement, { "consolidate:" .. id })
+                db:release()
+                test.is_nil(update_err, tostring(update_err))
+                local result, err = apply(user, "deactivate", id, "s-" .. user, "agent-a")
+                test.not_nil(err)
+                test.eq(err:kind(), errors.NOT_FOUND)
+                test.is_nil(result)
+            end
+        end)
+
         test.it("records one content-free failure message without changing supplied details", function()
             local result, err = fixture.op(fixture.user(), "diagnostics", {})
             test.is_nil(err, tostring(err))
@@ -138,6 +303,25 @@ local function define_tests()
             test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
             local schema = fixture.script.requests("structured_output")[1]
             test.eq(schema.properties.plans.items.properties.value.properties.details.minLength, 1)
+        end)
+
+        test.it("normalizes typed values without asking for a discarded string substitute", function()
+            local user = fixture.user()
+            fixture.script.respond("structured_output", { mappings = {
+                ["1"] = { key = "switch", kind = "fact", cardinality = "multi" },
+                ["2"] = { key = "goal", kind = "plan", cardinality = "single" },
+            } })
+            local state = { status = "open", next_step = "", details = "A durable goal" }
+            local result, err = fixture.op(user, "normalize", { candidates = {
+                fixture.candidate("fact", "switch", false, "The switch is false."),
+                fixture.candidate("plan", "goal", state, "An ongoing goal."),
+            } })
+            test.is_nil(err, tostring(err))
+            test.eq(result[1].value, false)
+            test.eq(json.encode(result[2].value), (json.encode(state)))
+            local schema = fixture.script.requests("structured_output")[1].properties.mappings.properties
+            test.is_nil(schema["1"].properties.value)
+            test.is_nil(schema["2"].properties.value)
         end)
 
         test.it("normalizes every candidate once using required numbered result properties", function()
@@ -501,10 +685,10 @@ local function define_tests()
             fixture.remember(alice, id, { fixture.candidate("fact", "trip", "Tokyo", "The user is planning a trip to Tokyo.", "m3") }, "b1",
                 { scope_id = bob })
             fixture.op(alice, "create", { component_id = id, fields = {
-                kind = "lesson", scope_family = "agent", scope_id = "agent-a", key = "trip_lesson", content = "Trips: always ask for travel dates first.",
+                kind = "lesson", scope_family = "agent", scope_id = "agent-a", key = "trip_lesson", value = "Trips: always ask for travel dates first.", content = "Trips: always ask for travel dates first.",
             } })
             fixture.op(alice, "create", { component_id = id, fields = {
-                kind = "lesson", scope_family = "agent", scope_id = "agent-b", key = "trip_lesson", content = "Trips: prefer trains over flights.",
+                kind = "lesson", scope_family = "agent", scope_id = "agent-b", key = "trip_lesson", value = "Trips: prefer trains over flights.", content = "Trips: prefer trains over flights.",
             } })
             fixture.settle(alice, id)
             local input = { recent_actions = { "user: help me plan my trip" }, constraints = { max_items = 10 } }
@@ -542,7 +726,7 @@ local function define_tests()
             test.is_nil(err, tostring(err))
             local context = fixture.agent_context(id, session, "agent-a")
             local first = fixture.op(user, "prompt", {}, context)
-            test.eq(first, "## What you know about the user\nUse these facts as defaults. Do not ask the user to repeat or confirm an attribute shown here. Apply it when relevant, state the assumption and let the user correct it. Ask only for missing details.\n- Name: Sam\n- Tone: concise")
+            test.eq(first, "## What you know about the user\nUse these facts as defaults. Do not ask the user to repeat or confirm an attribute shown here. Apply it when relevant, state the assumption and let the user correct it. Ask only for missing details.\n- Name [name]: Sam\n- Tone [tone]: concise")
             fixture.verdict("ADD", {})
             local _, add_err = fixture.remember(user, id, { fixture.candidate("preference", "format", "bullets", "The user likes bullet lists.", "m3") }, "p3")
             test.is_nil(add_err, tostring(add_err))
@@ -551,17 +735,17 @@ local function define_tests()
             apply(user, "activate", id, session, "agent-a")
             local second = fixture.op(user, "prompt", {}, context)
             test.neq(second, first)
-            test.is_true(second:find("Format: bullets", 1, true) ~= nil)
+            test.is_true(second:find("Format [format]: bullets", 1, true) ~= nil)
         end)
 
         test.it("contributes the agent's identity and rules in a deterministic order", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             for _, fields in ipairs({
-                { kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "units", content = "Use metric units.", priority = 1 },
-                { kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", content = "You are Ada." },
-                { kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "currency", content = "Quote prices in euros.", priority = 5 },
-                { kind = "rule", scope_family = "agent", scope_id = "agent-b", key = "other", content = "Not for agent a." },
+                { kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "units", value = "Use metric units.", content = "Use metric units.", priority = 1 },
+                { kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", value = "You are Ada.", content = "You are Ada." },
+                { kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "currency", value = "Quote prices in euros.", content = "Quote prices in euros.", priority = 5 },
+                { kind = "rule", scope_family = "agent", scope_id = "agent-b", key = "other", value = "Not for agent a.", content = "Not for agent a." },
             }) do
                 local _, err = fixture.op(user, "create", { component_id = id, fields = fields })
                 test.is_nil(err, tostring(err))
@@ -598,13 +782,10 @@ local function define_tests()
 
             fixture.remember(user, id, { fixture.candidate("fact", "secret", "x", "Another user's fact.", "m1") }, "o1", { scope_id = other })
             fixture.settle(user, id)
-            local others = fixture.items(user, id, { scope_family = "owner" })
-            local other_id
-            for _, row in ipairs(others) do if row.scope_id == other then other_id = row.id end end
-            local denied = fixture.op(user, "tool_forget", { input = { item_id = other_id } }, context)
+            local denied = fixture.op(user, "tool_forget", { input = { key = "secret", value = "x" } }, context)
             test.eq(denied.success, false)
             fixture.history.record(session, { { id = "forget-dog", role = "user", content = "Forget my dog's name." } })
-            local forgotten = fixture.op(user, "tool_forget", { input = { item_id = stored.item_ids[1] } }, context)
+            local forgotten = fixture.op(user, "tool_forget", { input = { key = "dog_name", value = "Rex" } }, context)
             test.is_true(forgotten.success)
         end)
 
@@ -740,7 +921,7 @@ local function define_tests()
             test.is_nil(activate_err, tostring(activate_err))
             test.eq(#activated.errors, 0)
             local pinned = fixture.op(user, "cursor", { component_id = memory, host_kind = "session", host_id = session })
-            test.is_true(pinned.pinned_prompt:find("Home city: Berlin", 1, true) ~= nil)
+            test.is_true(pinned.pinned_prompt:find("Home city [home_city]: Berlin", 1, true) ~= nil)
             fixture.script.respond("generate", "Choose a window seat.")
             local stepped, step_err = fixture.op(user, "trait_agent", {
                 spec = spec, messages = { { role = "user", text = "Plan a train trip" },

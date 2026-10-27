@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 */
 @import "@wippy-fe/theme/theme-config.css";
 @import "@kickside/ui-kit/kx-tokens.css";
+@import "@kickside/ui-kit/kx-tone.css";
 @import "@kickside/ui-kit/kx-shell.css";
 @import "@kickside/ui-kit/kx-controls.css";
 @import "@kickside/ui-kit/kx-overlay.css";
@@ -83,8 +84,8 @@
 }
 .mm-row-ic { width: 28px; height: 28px; }
 .mm-row-ic svg { width: 15px; height: 15px; }
-.mm-row-ic.knowhow, .mm-head-ic.knowhow { color: var(--p-help-500); background: var(--kx-wash-help); }
-.mm-row-ic.people, .mm-head-ic.people { color: var(--p-info-500); background: var(--kx-wash-info); }
+.mm-row-ic.knowhow, .mm-head-ic.knowhow { color: var(--kx-tone-violet); background: color-mix(in srgb, var(--kx-tone-violet) 13%, transparent); }
+.mm-row-ic.people, .mm-head-ic.people { color: var(--kx-tone-blue); background: color-mix(in srgb, var(--kx-tone-blue) 13%, transparent); }
 .mm-row-main { display: grid; gap: 1px; min-width: 0; flex: 1; }
 .mm-row-t { font-size: 12.8px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mm-row-s { font-size: 10.5px; color: var(--kx-text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

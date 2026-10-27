@@ -14,7 +14,7 @@ import { usePaged, type Memory } from './useMemory'
 import { useWidget } from './useWidget'
 
 const props = defineProps<{ memory: Memory }>()
-const emit = defineEmits<{ (e: 'added', id: string | null): void }>()
+const emit = defineEmits<{ (e: 'added', id: string): void }>()
 
 type AgentKind = Extract<MemoryKind, 'identity' | 'rule' | 'skill' | 'lesson'>
 const KINDS: { value: AgentKind; label: string; hint: string }[] = [
@@ -52,11 +52,12 @@ async function add() {
   const target = `${props.memory.base.value}/items`
   const ok = await props.memory.act(async () => {
     const { data } = await api.post(target, {
-      kind: kind.value, scope_family: 'agent', scope_id: agent.value, key: topicKey.value, content: text.value.trim(),
+      kind: kind.value, scope_family: 'agent', scope_id: agent.value, key: topicKey.value, value: text.value.trim(), content: text.value.trim(),
     })
-    created = data && typeof data.item_id === 'string' ? data.item_id : null
+    if (!data || typeof data.item_id !== 'string' || !data.item_id) throw new Error('Memory create response is missing item_id')
+    created = data.item_id
   })
-  if (ok) emit('added', created)
+  if (ok && created !== null) emit('added', created)
 }
 </script>
 

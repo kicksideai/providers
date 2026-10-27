@@ -69,7 +69,7 @@ function M.create(component_id: string, fields: any): (any?, error?)
     if scope_id == "" then return nil, types.invalid("memory scope id is required") end
     if content == "" then return nil, types.invalid("memory content is required") end
     local value = fields.value
-    if value == nil then value = content end
+    if value == nil then return nil, types.invalid("memory value is required") end
     local key, key_err = types.topic_key(fields.key, content, value)
     if key_err then return nil, key_err end
     local vector, vector_err = vector_for(component_id, content)
@@ -104,7 +104,6 @@ function M.edit(component_id: string, item_id: string, fields: any): (any?, erro
         local vector, vector_err = vector_for(component_id, content or item.content)
         if vector_err then return nil, vector_err end
         local value = fields.value
-        if value == nil and content and item.value == item.content then value = content end
         if value ~= nil then
             local claim_id, claim_err = types.claim_id(component_id, item.scope_key, item.key, value)
             if claim_err then return nil, claim_err end
@@ -177,6 +176,67 @@ function M.forget(component_id: string, item_id: string): (any?, error?)
         local forget_err = d:forget(item)
         if forget_err then return nil, forget_err end
         return { item_id = item.id, forgotten = d.stats.forgotten }, nil
+    end)
+end
+
+local function key_distance(a: string, b: string): integer
+    local previous: { integer } = {}
+    for j = 0, #b do previous[j + 1] = j end
+    for i = 1, #a do
+        local current: { integer } = { i }
+        for j = 1, #b do
+            local cost = a:sub(i, i) == b:sub(j, j) and 0 or 1
+            current[j + 1] = math.min(current[j] + 1, previous[j + 1] + 1, previous[j] + cost)
+        end
+        previous = current
+    end
+    return previous[#b + 1]
+end
+
+function M.forget_key(component_id: string, key: string, value: any): (any?, error?)
+    local owner = types.actor_id()
+    if owner == "" then return nil, types.invalid("forget requires a signed-in user") end
+    local scope_key = types.scope_key(types.SCOPE.OWNER, owner)
+    local idempotency, hash_err = types.digest({ operation = "owner.forget_key", scope_key = scope_key, key = key, value = value })
+    if hash_err then return nil, hash_err end
+    return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
+        local rows, read_err = items.all(component_id, { scope_keys = { scope_key } })
+        if read_err then return nil, read_err end
+        local matches, keys, seen = {}, {}, {}
+        for _, row in ipairs(rows :: any) do
+            if row.status ~= types.STATUS.FORGOTTEN then
+                if not seen[row.key] then keys[#keys + 1] = row.key; seen[row.key] = true end
+                if row.key == key then matches[#matches + 1] = row end
+            end
+        end
+        if #matches == 0 then
+            table.sort(keys, function(a, b)
+                local ad, bd = key_distance(key, a), key_distance(key, b)
+                if ad ~= bd then return ad < bd end
+                return a < b
+            end)
+            local closest: { string } = {}
+            for i = 1, math.min(5, #keys) do closest[i] = keys[i] end
+            return nil, types.not_found("unknown memory key: " .. key .. ". Existing keys, closest first: " .. table.concat(closest, ", "))
+        end
+        local multi = matches[1].cardinality == types.CARDINALITY.MULTI
+        if multi and value == nil then return nil, types.invalid("value is required for a multi-valued key") end
+        local claim, claim_err
+        if multi then
+            claim, claim_err = types.claim_id(component_id, scope_key, key, value)
+            if claim_err then return nil, claim_err end
+        end
+        local selected = false
+        for _, row in ipairs(matches) do
+            if not multi or row.claim_id == claim then
+                selected = true
+                local err = d:forget(row)
+                if err then return nil, err end
+                break
+            end
+        end
+        if not selected then return nil, types.not_found("memory value not found for key: " .. key) end
+        return { key = key, forgotten = d.stats.forgotten }, nil
     end)
 end
 

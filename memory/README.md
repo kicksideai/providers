@@ -20,8 +20,10 @@ trait_contexts:
 
 The trait requires a released `wippy/agent` that compiles recall behaviors
 into the shared memory binding plan and recalls that plan on each step. It supplies SearchMemory, Remember and ForgetMemory. Corrections
-supersede values and retain history. ForgetMemory erases the selected item's
-versions, payloads, vectors, provenance and retained source input. Owner-scoped
+supersede values and retain history. Remember requires an explicit typed value.
+SearchMemory returns canonical keys and typed values. ForgetMemory selects the
+caller's attribute by key and erases its versions, payloads, vectors, provenance
+and retained source input; a multi-valued key also requires the selected value. Owner-scoped
 items belong to the signed-in user; agent identity and rules are managed on
 the memory page.
 

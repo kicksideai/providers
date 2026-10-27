@@ -1,5 +1,5 @@
-import { mergeProps as S, openBlock as k, createElementBlock as O, createElementVNode as ce, resolveComponent as ve, resolveDirective as be, createBlock as R, Transition as he, withCtx as ye, renderSlot as V, normalizeClass as $e, resolveDynamicComponent as xe, createCommentVNode as N, withDirectives as we, ref as Z, onMounted as Se } from "vue";
-import { B as P, d as pe, l as me, F as _e, j as ke, n as Pe, N as G, o as W, S as j, q as H, r as K, t as J, v as Te, P as B, C as Oe, Q as je, w as F, T as ee, R as ne, x as ze, y as Ce, K as Ie, W as Ae, U as Ee, c as Le, f as Y, e as De } from "./types-BfEeI96r.js";
+import { mergeProps as S, openBlock as k, createElementBlock as O, createElementVNode as ce, resolveComponent as ve, resolveDirective as be, createBlock as R, Transition as he, withCtx as ye, renderSlot as V, normalizeClass as $e, resolveDynamicComponent as xe, createCommentVNode as N, withDirectives as we, ref as X, onMounted as Se } from "vue";
+import { B as P, d as pe, l as me, F as _e, y as ke, z as Pe, N as Y, A as W, D as j, E as H, G as K, H as Z, J as Te, P as B, K as Oe, Q as je, O as F, T as ee, R as ne, t as ze, C as Ce, V as Ie, W as Ae, U as Ee, c as Le, f as Q, e as De } from "./types-B7VilOFV.js";
 import { loadByTagName as Ve } from "@wippy-fe/proxy";
 var M = {};
 function Be(n = "pui_id_") {
@@ -132,7 +132,7 @@ function C(n) {
   }, C(n);
 }
 function re(n, e) {
-  return Qe(n) || qe(n, e) || Fe(n, e) || Ke();
+  return Ge(n) || qe(n, e) || Fe(n, e) || Ke();
 }
 function Ke() {
   throw new TypeError(`Invalid attempt to destructure non-iterable instance.
@@ -168,7 +168,7 @@ function qe(n, e) {
     return s;
   }
 }
-function Qe(n) {
+function Ge(n) {
   if (Array.isArray(n)) return n;
 }
 function ie(n, e) {
@@ -193,13 +193,13 @@ function g(n) {
   return n;
 }
 function q(n, e, t) {
-  return (e = Xe(e)) in n ? Object.defineProperty(n, e, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : n[e] = t, n;
+  return (e = Je(e)) in n ? Object.defineProperty(n, e, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : n[e] = t, n;
 }
-function Xe(n) {
-  var e = Ye(n, "string");
+function Je(n) {
+  var e = Qe(n, "string");
   return C(e) == "symbol" ? e : e + "";
 }
-function Ye(n, e) {
+function Qe(n, e) {
   if (C(n) != "object" || !n) return n;
   var t = n[Symbol.toPrimitive];
   if (t !== void 0) {
@@ -211,7 +211,7 @@ function Ye(n, e) {
 }
 var p = {
   _getMeta: function() {
-    return [J(arguments.length <= 0 ? void 0 : arguments[0]) || arguments.length <= 0 ? void 0 : arguments[0], Te(J(arguments.length <= 0 ? void 0 : arguments[0]) ? arguments.length <= 0 ? void 0 : arguments[0] : arguments.length <= 1 ? void 0 : arguments[1])];
+    return [Z(arguments.length <= 0 ? void 0 : arguments[0]) || arguments.length <= 0 ? void 0 : arguments[0], Te(Z(arguments.length <= 0 ? void 0 : arguments[0]) ? arguments.length <= 0 ? void 0 : arguments[0] : arguments.length <= 1 ? void 0 : arguments[1])];
   },
   _getConfig: function(e, t) {
     var o, r, i;
@@ -317,11 +317,11 @@ var p = {
   _themeChangeListener: function() {
     var e = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : function() {
     };
-    W.clearLoadedStyleNames(), G.on("theme:change", e);
+    W.clearLoadedStyleNames(), Y.on("theme:change", e);
   },
   _removeThemeListeners: function() {
     var e = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {};
-    G.off("theme:change", e.$loadStyles), e.$loadStyles = void 0;
+    Y.off("theme:change", e.$loadStyles), e.$loadStyles = void 0;
   },
   _hook: function(e, t, o, r, i, c) {
     var s, a, d = "on".concat(Pe(t)), m = p._getConfig(r, i), l = o?.$instance, f = p._usePT(l, p._getPT(r == null || (s = r.value) === null || s === void 0 ? void 0 : s.pt, e), p._getOptionValue, "hooks.".concat(d)), b = p._useDefaultPT(l, m == null || (a = m.pt) === null || a === void 0 || (a = a.directives) === null || a === void 0 ? void 0 : a[e], p._getOptionValue, "hooks.".concat(d)), h = {
@@ -460,7 +460,7 @@ var p = {
       }
     }, p._extend(o, r));
   }
-}, Ze = `
+}, Xe = `
     .p-ink {
         display: block;
         position: absolute;
@@ -480,14 +480,14 @@ var p = {
             transform: scale(2.5);
         }
     }
-`, Ge = {
+`, Ye = {
   root: "p-ink"
-}, Je = P.extend({
+}, Ze = P.extend({
   name: "ripple-directive",
-  style: Ze,
-  classes: Ge
+  style: Xe,
+  classes: Ye
 }), en = p.extend({
-  style: Je
+  style: Ze
 });
 function I(n) {
   "@babel/helpers - typeof";
@@ -506,18 +506,18 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
 }
 function on(n, e) {
   if (n) {
-    if (typeof n == "string") return Q(n, e);
+    if (typeof n == "string") return G(n, e);
     var t = {}.toString.call(n).slice(8, -1);
-    return t === "Object" && n.constructor && (t = n.constructor.name), t === "Map" || t === "Set" ? Array.from(n) : t === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? Q(n, e) : void 0;
+    return t === "Object" && n.constructor && (t = n.constructor.name), t === "Map" || t === "Set" ? Array.from(n) : t === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? G(n, e) : void 0;
   }
 }
 function rn(n) {
   if (typeof Symbol < "u" && n[Symbol.iterator] != null || n["@@iterator"] != null) return Array.from(n);
 }
 function an(n) {
-  if (Array.isArray(n)) return Q(n);
+  if (Array.isArray(n)) return G(n);
 }
-function Q(n, e) {
+function G(n, e) {
   (e == null || e > n.length) && (e = n.length);
   for (var t = 0, o = Array(e); t < e; t++) o[t] = n[t];
   return o;
@@ -606,18 +606,18 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
 }
 function pn(n, e) {
   if (n) {
-    if (typeof n == "string") return X(n, e);
+    if (typeof n == "string") return J(n, e);
     var t = {}.toString.call(n).slice(8, -1);
-    return t === "Object" && n.constructor && (t = n.constructor.name), t === "Map" || t === "Set" ? Array.from(n) : t === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? X(n, e) : void 0;
+    return t === "Object" && n.constructor && (t = n.constructor.name), t === "Map" || t === "Set" ? Array.from(n) : t === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? J(n, e) : void 0;
   }
 }
 function mn(n) {
   if (typeof Symbol < "u" && n[Symbol.iterator] != null || n["@@iterator"] != null) return Array.from(n);
 }
 function gn(n) {
-  if (Array.isArray(n)) return X(n);
+  if (Array.isArray(n)) return J(n);
 }
-function X(n, e) {
+function J(n, e) {
   (e == null || e > n.length) && (e = n.length);
   for (var t = 0, o = Array(e); t < e; t++) o[t] = n[t];
   return o;
@@ -823,7 +823,7 @@ var Sn = {
       }), this.formField);
     },
     dataP: function() {
-      return Y($n({
+      return Q($n({
         invalid: this.$invalid,
         fluid: this.$fluid,
         filled: this.$variant === "filled"
@@ -1025,7 +1025,7 @@ var An = {
       }), this.formField);
     },
     dataP: function() {
-      return Y(zn({
+      return Q(zn({
         invalid: this.$invalid,
         fluid: this.$fluid,
         filled: this.$variant === "filled"
@@ -1479,7 +1479,7 @@ var Nn = {
       return this.$primevue.config.locale.aria ? this.$primevue.config.locale.aria.close : void 0;
     },
     dataP: function() {
-      return Y(le(le({
+      return Q(le(le({
         outlined: this.variant === "outlined",
         simple: this.variant === "simple"
       }, this.severity, this.severity), this.size, this.size));
@@ -1538,8 +1538,8 @@ function Kn(n, e) {
   }
   return (e === "string" ? String : Number)(n);
 }
-var Fn = ["data-p"], qn = ["data-p"], Qn = ["data-p"], Xn = ["aria-label", "data-p"], Yn = ["data-p"];
-function Zn(n, e, t, o, r, i) {
+var Fn = ["data-p"], qn = ["data-p"], Gn = ["data-p"], Jn = ["aria-label", "data-p"], Qn = ["data-p"];
+function Xn(n, e, t, o, r, i) {
   var c = ve("TimesIcon"), s = be("ripple");
   return k(), R(he, S({
     name: "p-message",
@@ -1573,7 +1573,7 @@ function Zn(n, e, t, o, r, i) {
         key: 0,
         class: n.cx("text"),
         "data-p": i.dataP
-      }, n.ptm("text")), [V(n.$slots, "default")], 16, Qn)) : N("", !0), n.closable ? we((k(), O("button", S({
+      }, n.ptm("text")), [V(n.$slots, "default")], 16, Gn)) : N("", !0), n.closable ? we((k(), O("button", S({
         key: 1,
         class: n.cx("closeButton"),
         "aria-label": i.closeAriaLabel,
@@ -1587,19 +1587,19 @@ function Zn(n, e, t, o, r, i) {
           key: 0,
           class: [n.cx("closeIcon"), n.closeIcon],
           "data-p": i.dataP
-        }, n.ptm("closeIcon")), null, 16, Yn)) : (k(), R(c, S({
+        }, n.ptm("closeIcon")), null, 16, Qn)) : (k(), R(c, S({
           key: 1,
           class: [n.cx("closeIcon"), n.closeIcon],
           "data-p": i.dataP
         }, n.ptm("closeIcon")), null, 16, ["class", "data-p"]))];
-      })], 16, Xn)), [[s]]) : N("", !0)], 16, qn))], 16)], 16, Fn)) : N("", !0)];
+      })], 16, Jn)), [[s]]) : N("", !0)], 16, qn))], 16)], 16, Fn)) : N("", !0)];
     }),
     _: 3
   }, 16);
 }
-Nn.render = Zn;
+Nn.render = Xn;
 function nt(n) {
-  const e = Z(!!customElements.get(n)), t = Z("");
+  const e = X(!!customElements.get(n)), t = X("");
   return Se(async () => {
     if (!e.value)
       try {
@@ -1610,6 +1610,7 @@ function nt(n) {
   }), { ready: e, failed: t };
 }
 export {
+  p as B,
   un as R,
   ge as a,
   Sn as b,
@@ -1619,4 +1620,4 @@ export {
   He as s,
   nt as u
 };
-//# sourceMappingURL=useWidget-DMiTxrj1.js.map
+//# sourceMappingURL=useWidget-SFloqZkE.js.map

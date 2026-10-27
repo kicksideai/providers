@@ -6,6 +6,7 @@ local http_client = require("http_client")
 local registry = require("registry")
 local session = require("session")
 local groups = require("user_groups_repo")
+local types = require("types")
 
 local function live_for_key(user: string, component_id: string, key: string): { any }
     return fixture.items(user, component_id, { key = key, statuses = { "current", "conflict" } })
@@ -37,6 +38,40 @@ end
 local function define_tests()
     test.describe("memory surfaces", function()
         test.before_each(function() fixture.script.reset() end)
+
+        test.it("publishes the same typed tool contracts that the runtime implements", function()
+            local remember = json.decode(registry.get("kickside.memory.agent:remember_tool").meta.input_schema)
+            test.eq(json.encode(remember.properties.kind.enum), (json.encode(types.MEMORY_KINDS)))
+            local required = {}
+            for _, name in ipairs(remember.required) do required[name] = true end
+            test.is_true(required.value)
+            local forget = json.decode(registry.get("kickside.memory.agent:forget_tool").meta.input_schema)
+            test.eq(forget.required[1], "key")
+            test.is_nil(forget.properties.item_id)
+            local search = registry.get("kickside.memory.agent:search_tool")
+            test.is_nil(json.decode(search.meta.input_schema).properties.fields)
+            local shape = json.decode(search.meta.output_schema).properties.items.items
+            test.eq(#shape.required, 9)
+            test.is_false(shape.additionalProperties)
+            test.not_nil(shape.properties.key)
+            test.not_nil(shape.properties.value)
+        end)
+
+        test.it("rejects non-object JSON request bodies", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local gateway = assert(registry.get("app:gateway"))
+            local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
+            local minted = assert(session.mint(assert(groups.get_user_with_groups(user))))
+            for _, raw in ipairs({ "[]", "null", "{", "false" }) do
+                local response, err = http_client.request("POST", "http://127.0.0.1:" .. port .. "/api/memory/" .. id .. "/items", {
+                    headers = { Authorization = "Bearer " .. minted.token, ["Content-Type"] = "application/json" }, body = raw,
+                })
+                test.is_nil(err, tostring(err))
+                test.eq(response.status_code, 400)
+                test.eq(json.decode(response.body).error, "body must be a JSON object")
+            end
+        end)
 
         test.it("serves each driver's declared web component from its own static mount", function()
             local gateway = assert(registry.get("app:gateway"))
@@ -278,12 +313,12 @@ local function define_tests()
             } })
             fixture.settle(user, component_id)
             fixture.op(user, "apply", { payload = fixture.payload("activate", session, "agent-a") }, context)
-            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink: tea", 1, true) ~= nil)
+            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink [drink]: tea", 1, true) ~= nil)
 
             local _, archive_err = fixture.op(user, "archive", { component_id = component_id, item_id = added.item_id })
             test.is_nil(archive_err, tostring(archive_err))
             fixture.settle(user, component_id)
-            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink: tea", 1, true) == nil)
+            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink [drink]: tea", 1, true) == nil)
         end)
 
         test.it("rejects a pin whose rendered text was revised before its transaction", function()

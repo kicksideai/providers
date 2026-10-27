@@ -13,15 +13,18 @@ export function useMemory(memoryId: Ref<string>) {
 
   let generation = 0
   async function refresh() {
-    if (!memoryId.value) return
     const current = ++generation
+    if (!memoryId.value) return false
     try {
       const { data } = await api.get(`${base.value}/status`)
-      if (current !== generation) return
+      if (current !== generation) return false
       status.value = data as MemoryStatusView
+      error.value = ''
       revision.value++
+      return true
     } catch (err) {
       if (current === generation) error.value = errorText(err)
+      return false
     }
   }
 
@@ -30,8 +33,7 @@ export function useMemory(memoryId: Ref<string>) {
     error.value = ''
     try {
       await fn()
-      await refresh()
-      return true
+      return await refresh()
     } catch (err) {
       error.value = errorText(err)
       return false
@@ -44,14 +46,16 @@ export function useMemory(memoryId: Ref<string>) {
   watch(memoryId, (id) => {
     if (unsubscribe) unsubscribe()
     unsubscribe = null
+    generation++
     status.value = null
+    error.value = ''
     if (!id) return
     const off = on(`component.${id}`, () => { void refresh() })
     unsubscribe = typeof off === 'function' ? off : null
     void refresh()
   }, { immediate: true })
   onUnmounted(() => { if (unsubscribe) unsubscribe() })
-  useHostVisibilityRefresh(refresh)
+  useHostVisibilityRefresh(async () => { await refresh() })
 
   return { memoryId, base, status, error, busy, revision, act }
 }

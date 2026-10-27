@@ -56,6 +56,7 @@ local function set_status_tx(tx: any, component_id: string, item_id: string, seq
     if err then return types.failed("memory item update failed", err) end
     return nil
 end
+
 local function next_version_tx(tx: any, component_id: string, scope_key: string, key: string): (integer?, error?)
     local rows, err = tx:query(
         "SELECT MAX(version) AS version FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND key = $3",
@@ -63,6 +64,7 @@ local function next_version_tx(tx: any, component_id: string, scope_key: string,
     if err then return nil, types.failed("memory version read failed", err) end
     return (rows and rows[1] and tonumber(rows[1].version) or 0) + 1, nil
 end
+
 local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: integer, body: any, recorded_at: string): error?
     local item_id = types.trim(body.item_id)
     if item_id == "" then return types.invalid("item.added requires item_id") end

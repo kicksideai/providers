@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useEvents, useProps } from '@wippy-fe/webcomponent-vue'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -21,6 +21,7 @@ const emit = useEvents<MemoryEvents>()
 const memoryId = ref('')
 const capture = ref(true)
 const kept = ref<Record<string, unknown>>({})
+const configError = ref('')
 const query = ref('')
 const debounced = ref('')
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -29,11 +30,16 @@ watch(query, (q) => {
   timer = setTimeout(() => { debounced.value = q.trim() }, 250)
 })
 
+onUnmounted(() => clearTimeout(timer))
+
 watch(() => props.value.config, (raw) => {
-  const context = parseConfig(raw)
-  memoryId.value = String(context.memory_id || '')
-  capture.value = context.write_enabled !== false
-  kept.value = Object.fromEntries(Object.entries(context).filter(([key]) => CARRIED_KEYS.includes(key)))
+  try {
+    const context = parseConfig(raw)
+    memoryId.value = String(context.memory_id || '')
+    capture.value = context.write_enabled !== false
+    kept.value = Object.fromEntries(Object.entries(context).filter(([key]) => CARRIED_KEYS.includes(key)))
+    configError.value = ''
+  } catch (err) { configError.value = errorText(err) }
 }, { immediate: true, deep: true })
 
 const revision = ref(0)
@@ -49,10 +55,10 @@ watch(memoryId, async (id) => {
   try {
     const { data } = await api.get(`/api/v1/knowledge/${encodeURIComponent(id)}`)
     if (id !== memoryId.value) return
-    current.value = isRecord(data) && data.kb_type === 'memory' ? { id, name: String(data.name || '') } : null
+    if (!isRecord(data) || data.kb_type !== 'memory' || typeof data.name !== 'string') throw new Error('Selected resource is not a memory')
+    current.value = { id, name: data.name }
   } catch (err) {
-    const status = isRecord(err) && isRecord(err.response) ? err.response.status : 0
-    if (id === memoryId.value && status !== 404 && status !== 403) resolveError.value = errorText(err)
+    if (id === memoryId.value) resolveError.value = errorText(err)
   } finally {
     if (id === memoryId.value) resolving.value = false
   }
@@ -69,7 +75,8 @@ function pick(choice: MemoryChoice): void {
 </script>
 
 <template>
-  <div class="mm-trait">
+  <div v-if="configError" class="kx-notice error">{{ configError }}</div>
+  <div v-else class="mm-trait">
     <div class="mm-field">
       <span id="trait_memory" class="mm-label">Memory</span>
       <span class="mm-hint">The agent remembers into this memory and recalls from it. Models, limits and cadence are set on the memory.</span>

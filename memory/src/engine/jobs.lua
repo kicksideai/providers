@@ -110,7 +110,7 @@ end
 function M.wake_consolidation(component_id: string): (any?, error?)
     local run, err = runs.get("consolidate:" .. component_id)
     if err then return nil, err end
-    if not (run :: any).job_id or (run :: any).job_id == "" then
+    if not run or not (run :: any).job_id or (run :: any).job_id == "" then
         return nil, types.not_found("memory consolidation is not scheduled for " .. component_id)
     end
     local _, wake_err = jobs.wake_job((run :: any).job_id, { control = true })

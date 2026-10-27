@@ -11,7 +11,7 @@ vi.mock('@wippy-fe/proxy', () => ({
 }))
 vi.mock('@wippy-fe/webcomponent-vue', () => ({ useHostVisibilityRefresh: () => {} }))
 
-const { usePaged } = await import('./useMemory')
+const { usePaged, useMemory } = await import('./useMemory')
 
 function deferred() {
   let resolve!: (v: { data: unknown }) => void
@@ -70,5 +70,25 @@ describe('usePaged', () => {
     const list = usePaged<{ id: string }>(() => '/items', 'items', ref(0))
     await flush()
     expect(list.error.value).toBe('memory unavailable')
+  })
+})
+
+
+describe('useMemory', () => {
+  it('reports a refresh failure to the action caller', async () => {
+    respond = () => Promise.reject(new Error('status unavailable'))
+    const memory = useMemory(ref('selected'))
+    await flush()
+    expect(await memory.act(() => Promise.resolve())).toBe(false)
+    expect(memory.error.value).toBe('status unavailable')
+  })
+
+  it('clears a refresh error after a successful load', async () => {
+    respond = () => Promise.reject(new Error('status unavailable'))
+    const memory = useMemory(ref('selected'))
+    await flush()
+    respond = () => Promise.resolve({ data: { counts: {}, runs: [] } })
+    expect(await memory.act(() => Promise.resolve())).toBe(true)
+    expect(memory.error.value).toBe('')
   })
 })

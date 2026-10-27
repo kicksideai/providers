@@ -10,12 +10,19 @@ import IconButton from './chrome/IconButton.vue'
 import SideDrawer from './chrome/SideDrawer.vue'
 import MemoryDetail from './MemoryDetail.vue'
 import MemoryRail from './MemoryRail.vue'
-import { parseConfig, type MemoryItem } from './types'
+import { errorText, parseConfig, type MemoryItem } from './types'
 import { useMemory } from './useMemory'
 
 const props = useProps<{ config?: unknown }>()
 const emit = useEvents<{ navigate: string }>()
-const context = computed(() => parseConfig(props.value.config))
+const configError = ref('')
+const context = ref<Record<string, unknown>>({})
+watch(() => props.value.config, (raw) => {
+  try {
+    context.value = parseConfig(raw)
+    configError.value = ''
+  } catch (err) { configError.value = errorText(err) }
+}, { immediate: true })
 const memory = useMemory(computed(() => String(context.value.kb_id || '')))
 
 type View = 'item' | 'conflicts' | 'activity'
@@ -48,14 +55,15 @@ function toggle(next: View) {
   view.value = view.value === next ? 'item' : next
 }
 
-function added(id: string | null) {
+function added(id: string) {
   adding.value = false
   if (id) open(id)
 }
 </script>
 
 <template>
-  <div class="mm-page">
+  <div v-if="configError" class="kx-notice error">{{ configError }}</div>
+  <div v-else class="mm-page">
     <div v-if="memory.error.value" class="kx-notice error mm-page-note">
       <Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ memory.error.value }}</span>
     </div>
