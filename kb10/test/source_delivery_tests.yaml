@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: '1.0'
+namespace: app
+entries:
+- name: source_delivery_test
+  kind: function.lua
+  source: file://source_delivery_test.lua
+  method: run
+  meta: {type: test, suite: source_delivery}
+  imports:
+    test: wippy.test:test
+    source: app:source_delivery_handler
+    fixture: app:source_delivery_fixture
+    kc: kickside.kb10:types
+
+- name: source_delivery_fixture
+  kind: library.lua
+  source: file://source_delivery_fixture.lua
+  imports:
+    kc: kickside.kb10:types
+- name: source_delivery_handler
+  kind: library.lua
+  source: file://src_link/api/source.lua
+  imports:
+    http: app:source_delivery_http
+    security: app:source_delivery_security
+    component: app:source_delivery_component
+    node_store: app:source_delivery_nodes
+    uploads: app:source_delivery_uploads
+    http_errors: kickside.contract:http_errors
+    kc: kickside.kb10:types
+
+- name: source_delivery_http
+  kind: library.lua
+  source: file://source_delivery_dependency.lua
+  imports: {state: "app:source_delivery_fixture"}
+
+- name: source_delivery_security
+  kind: library.lua
+  source: file://source_delivery_dependency.lua
+  imports: {state: "app:source_delivery_fixture"}
+
+- name: source_delivery_component
+  kind: library.lua
+  source: file://source_delivery_dependency.lua
+  imports: {state: "app:source_delivery_fixture"}
+
+- name: source_delivery_nodes
+  kind: library.lua
+  source: file://source_delivery_dependency.lua
+  imports: {state: "app:source_delivery_fixture"}
+
+- name: source_delivery_uploads
+  kind: library.lua
+  source: file://source_delivery_dependency.lua
+  imports: {state: "app:source_delivery_fixture"}

@@ -67,9 +67,9 @@ entries:
   - name: dep.kickside.uploads
     kind: ns.dependency
     component: kickside/uploads
-    version: "*"
+    version: ">=0.3.2"
     meta:
-      comment: Stages and stores files through the uploads repository and file_manager trait.
+      comment: Stages files and resolves storage-aware original delivery through Uploads.
 
   - name: dep.wippy.agent
     kind: ns.dependency
