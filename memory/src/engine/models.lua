@@ -29,49 +29,50 @@ end
 
 local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
-local EXTRACTION_PROMPT = [[You extract durable memory about the user from a conversation span.
+local EXTRACTION_PROMPT = [[You extract personal attributes and actionable goals from new conversation statements.
 
-Keep information the user states that will help in later conversations: attributes,
-preferences, decisions, corrections, outcomes, and ongoing goals. A correction supplies
-a new value; reconciliation determines its relationship to earlier values.
+First identify requests, intentions and ongoing work. Each request to accomplish a task
+is an open plan from its first statement. A task needs no date, audience, destination,
+method or other details to qualify. The requested outcome itself supplies value.details;
+leave next_step empty when no next action is agreed. A request phrased as a question
+still opens a plan. Later task answers add to the same goal's complete state. Carry
+forward its known decisions and constraints. Mark completion or cancellation done.
+Different goals coexist under distinct keys. Do not invent any missing information.
+
+Then identify stated personal attributes, preferences, decisions, corrections, skills,
+lessons and outcomes that help future conversations. Split independent attributes into
+separate items, even when they share one statement. A correction supplies a new value;
+reconciliation determines its relationship to earlier values.
 
 Interpret each statement in its preceding conversation and existing memory context.
-An answer to a question about a task supplies that task's requested detail. It does not
-assert or change a stable personal attribute. Hypothetical statements do not establish
-personal attributes. Update a stable attribute only when the user states that attribute
-or its change directly.
+Answers about a task change that goal's details, not stable personal attributes.
+Hypotheticals do not establish personal attributes. Change a stable attribute only
+when the user directly states it or its change.
 
-A request to get something done opens a plan, even when details remain unknown. Keep one
-stable key per goal. A later answer or decision updates that goal's complete state:
-carry forward known details and add the new information to value.details and content.
-Different goals coexist under distinct keys. Mark a plan done on completion or cancellation.
-Do not invent missing details or replace known state with an empty state.
-
-Cite only a new user, tool or document statement that supplies the item's evidence.
-Preceding context and existing memories explain meaning but are not new evidence.
-Assistant suggestions, answers, narration and recalled-memory notes are not statements
-by the user. Raw tool output is not itself a durable claim. Skip questions with no goal
-or durable information, vague statements with no future use, task chatter that adds no
-decision or constraint, greetings, thanks and acknowledgements.
+Cite only new user, tool or document statements that supply evidence. Preceding context
+and existing memories explain meaning but supply no new evidence. Assistant suggestions,
+answers, narration and recalled-memory notes are not user statements. Raw tool output
+alone is not a durable claim. Omit greetings, thanks, acknowledgements, questions that
+request no task and state no useful information, and narration that changes neither a
+goal nor an attribute. An actionable task qualifies even if it is short-lived or vague.
 
 Each item has:
 - kind: fact | preference | profile_slot | skill | lesson | plan.
   profile_slot is a stable personal attribute with one value at a time.
-- key: a short canonical topic naming the attribute or goal, not its value or sentence.
-  Reuse an existing key naming the same attribute, regardless of phrasing.
-- cardinality: single when only one value holds at a time; multi when independent values
-  can hold simultaneously. Plans have cardinality single under their own goal key.
-- value: the newly stated attribute value alone. Never combine it with an earlier,
-  different value. Extract separate candidates for simultaneous values. A plan uses an
-  object with status (open or done), next_step (the agreed next action, empty if unknown),
-  and details (known decisions and constraints, including the goal itself).
-- content: one self-contained sentence in the third person about the user or goal.
+- key: a short canonical topic naming the attribute or goal, never its value or sentence.
+  Reuse an existing key for the same topic, regardless of phrasing.
+- cardinality: single for one value at a time; multi for independent simultaneous values.
+  Plans use single under their own goal key.
+- value: the newly stated attribute value alone, never a union with an earlier value.
+  A plan uses an object with status (open or done), next_step (agreed action or empty),
+  and details (the requested outcome plus known decisions and constraints).
+- content: one self-contained third-person sentence about this attribute or goal.
 - event_id: the new user, tool or document message id supplying the evidence.
-- valid_at: when the statement says the value became true (RFC3339), otherwise empty.
+- valid_at: RFC3339 time when the statement says the value became true, otherwise empty.
 - confidence: a number from 0 to 1.
 
 Return scalar attributes in items and goals in plans. Both arrays are required.
-Return {"items": [], "plans": []} when nothing durable is stated.]]
+Return {"items": [], "plans": []} only when no attributes or actionable goals are stated.]]
 
 local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of the same person.
 
@@ -94,22 +95,28 @@ as their details or next step progress. Different attributes or goals remain sep
 target_ids contains only existing ids from the supplied list, empty for ADD.
 Decide the relationship from the statements; do not infer an update from record order.]]
 
-local NORMALIZATION_PROMPT = [[Normalize candidate memory attributes before reconciliation.
+local NORMALIZATION_PROMPT = [[Normalize candidate memories into independently changeable attributes before reconciliation.
 
-For every numbered candidate return its canonical key, kind, cardinality and value.
-Reuse an existing key whenever it names the same attribute, regardless of phrasing or
-kind. Within the batch, candidates for the same attribute also share a key. Use a new
-key only for an attribute or goal no existing key represents. Different attributes and
-distinct goals keep different keys.
+For every numbered candidate return a nonempty array of attributes. Split compound
+statements into separate attributes whenever either can change independently. Give
+each its own topic key, kind, cardinality, value and self-contained content describing
+only that attribute. All parts keep the candidate's evidence. Do not discard an
+attribute when splitting or add information absent from the candidate.
 
-Conversation grounds the new claim. Existing values explain attribute identity but do
-not authorize an unstated union of old and new values. Return the newly stated scalar
-value alone, never a sentence about the user. Preserve typed non-string values; their
-value field is not part of the mapping. Do not add information or alter meaning.
+Keys name topics, never their values, instructions or whole sentences. Use lowercase
+letters, digits and underscores, starting with a letter, at most 64 characters. Reuse
+an existing key for the same attribute regardless of phrasing or kind; candidates for
+the same attribute share a key within the batch too. Create new topic keys for
+independent attributes not represented by existing keys.
 
-Plans never map onto personal attributes or other kinds. Each goal keeps one complete
-state under its own key. Stable personal attributes use profile_slot and cardinality
-single, even when a caller labels them fact. Independent simultaneous values use multi.]]
+Conversation grounds the claim. Existing values explain attribute identity but never
+authorize an unstated union of old and new values. Return only the newly stated scalar
+value. Preserve non-string typed values unchanged as one item; their value and content
+fields are not part of the mapping. Do not alter meaning.
+
+Plans never map onto personal attributes or other kinds. Each goal keeps its own key
+and complete typed state. Stable personal attributes use profile_slot and single.
+Independent simultaneous values use multi. Lessons remain lessons.]]
 
 local REFLECTION_PROMPT = [[Derive concrete guidance for helping this person from their numbered memories.
 Each lesson must combine at least two memories into guidance that no single memory
@@ -246,39 +253,35 @@ end
 
 function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?): (any?, error?)
     if #candidates == 0 then return candidates, nil end
-    local names, named = {}, {}
     local known: { [string]: any } = {}
-    local function name(key: string)
-        if not named[key] then names[#names + 1] = key; named[key] = true end
-    end
-    for _, row in ipairs(keys) do name(row.key); known[row.key] = row end
-    for _, candidate in ipairs(candidates) do name(candidate.key) end
-    local properties, required, allowed = {}, {}, {}
+    for _, row in ipairs(keys) do known[row.key] = row end
+    local properties, required = {}, {}
     for i, candidate in ipairs(candidates) do
-        local keys_for_candidate, kinds = {}, {}
-        allowed[i] = {}
-        for _, key in ipairs(names) do
-            local existing = known[key]
-            if not existing or ((candidate.kind == types.KIND.PLAN) == (existing.kind == types.KIND.PLAN)) then
-                keys_for_candidate[#keys_for_candidate + 1] = key
-                allowed[i][key] = true
+        local kinds = {}
+        for _, kind in ipairs(CANDIDATE_KINDS) do
+            if (kind == types.KIND.PLAN) == (candidate.kind == types.KIND.PLAN)
+                and (candidate.kind ~= types.KIND.LESSON or kind == types.KIND.LESSON) then
+                kinds[#kinds + 1] = kind
             end
         end
-        for _, kind in ipairs(CANDIDATE_KINDS) do
-            if (kind == types.KIND.PLAN) == (candidate.kind == types.KIND.PLAN) then kinds[#kinds + 1] = kind end
-        end
         local mapping_properties = {
-            key = { type = "string", enum = keys_for_candidate },
-            kind = { type = "string", enum = kinds }, cardinality = { type = "string", enum = { "single", "multi" } },
+            key = { type = "string" }, kind = { type = "string", enum = kinds },
+            cardinality = { type = "string", enum = { "single", "multi" } },
         }
         local mapping_required = { "key", "kind", "cardinality" }
+        local mappings: any = { type = "array", minItems = 1 }
         if type(candidate.value) == "string" then
-            mapping_properties.value = { type = "string" }
+            mapping_properties.value = { type = "string", minLength = 1 }
+            mapping_properties.content = { type = "string", minLength = 1 }
             mapping_required[#mapping_required + 1] = "value"
+            mapping_required[#mapping_required + 1] = "content"
+        else
+            mappings.maxItems = 1
         end
-        properties[tostring(i)] = { type = "object", additionalProperties = false,
+        mappings.items = { type = "object", additionalProperties = false,
             required = mapping_required, properties = mapping_properties,
         }
+        properties[tostring(i)] = mappings
         required[#required + 1] = tostring(i)
     end
     local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
@@ -290,30 +293,37 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     if type(mappings) ~= "table" then return nil, types.unavailable("memory normalization returned malformed output") end
     local out = {}
     for i, candidate in ipairs(candidates) do
-        local mapping = mappings[tostring(i)]
-        if type(mapping) ~= "table" then return nil, types.unavailable("memory normalization returned an invalid mapping") end
-        if not named[mapping.key] or (type(candidate.value) == "string" and type(mapping.value) ~= "string") then
+        local parts = mappings[tostring(i)]
+        if type(parts) ~= "table" or #parts == 0 or (type(candidate.value) ~= "string" and #parts ~= 1) then
             return nil, types.unavailable("memory normalization returned an invalid mapping")
         end
-        if not allowed[i][mapping.key] or ((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)) then
-            return nil, types.invalid("memory normalization maps different item kinds")
+        for _, mapping in ipairs(parts) do
+            if type(mapping) ~= "table" or not types.KIND_SET[mapping.kind] or not types.CARDINALITY_SET[mapping.cardinality] then
+                return nil, types.unavailable("memory normalization returned an invalid item type")
+            end
+            local existing = known[mapping.key]
+            if ((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN))
+                or (existing and ((existing.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)))
+                or (candidate.kind == types.KIND.LESSON and mapping.kind ~= types.KIND.LESSON) then
+                return nil, types.invalid("memory normalization maps different item kinds")
+            end
+            local normalized = {}
+            for k, v in pairs(candidate) do normalized[k] = v end
+            normalized.kind = mapping.kind
+            normalized.cardinality = existing and existing.cardinality or mapping.cardinality
+            if type(candidate.value) == "string" then
+                if type(mapping.value) ~= "string" or type(mapping.content) ~= "string"
+                    or types.trim(mapping.value) == "" or types.trim(mapping.content) == "" then
+                    return nil, types.unavailable("memory normalization returned an empty attribute")
+                end
+                normalized.value = types.trim(mapping.value)
+                normalized.content = types.trim(mapping.content)
+            end
+            local key, key_err = types.topic_key(mapping.key, normalized.content :: string, normalized.value)
+            if key_err then return nil, key_err end
+            normalized.key = key
+            out[#out + 1] = normalized
         end
-        if not types.KIND_SET[mapping.kind] or not types.CARDINALITY_SET[mapping.cardinality] then
-            return nil, types.unavailable("memory normalization returned an invalid item type")
-        end
-        local normalized = {}
-        for k, v in pairs(candidate) do normalized[k] = v end
-        normalized.key = mapping.key
-        normalized.kind = mapping.kind
-        normalized.cardinality = mapping.cardinality
-        if type(candidate.value) == "string" then
-            normalized.value = types.trim(mapping.value)
-            if normalized.value == "" then return nil, types.unavailable("memory normalization returned an empty value") end
-        end
-        if known[mapping.key] then
-            normalized.cardinality = known[mapping.key].cardinality
-        end
-        out[i] = normalized
     end
     return out, nil
 end
@@ -353,7 +363,7 @@ function M.reflect(model: string, items: { any }): (any?, error?)
             grounded[#grounded + 1] = candidate
         end
     end
-    return grounded, nil
+    return M.normalize(model, grounded, items)
 end
 
 function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)

@@ -46,6 +46,7 @@ local function define_tests()
             local lesson = fixture.candidate("lesson", "contact_time", "evening", "Reach the user in the evening; they sleep during the day.", "")
             lesson.based_on = { 1, 2 }
             fixture.script.respond("structured_output", { items = { lesson } })
+            fixture.normalization({ lesson })
             fixture.verdict("ADD", {})
             local woken, err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(err, tostring(err))
@@ -85,6 +86,7 @@ local function define_tests()
                 "Send requests in the evening because the user rests during the day.", "")
             lesson.based_on = { 1, 2 }
             fixture.script.respond("structured_output", { items = { lesson } })
+            fixture.normalization({ lesson })
             fixture.verdict("ADD", {})
             local _, wake_err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(wake_err, tostring(wake_err))
@@ -131,6 +133,7 @@ local function define_tests()
                     end
                 end
                 fixture.script.respond("structured_output", { items = lessons })
+                fixture.normalization(lessons)
                 for _, lesson in ipairs(lessons) do
                     if not numbers[lesson.key] then fixture.verdict("ADD", {}) end
                 end
@@ -205,6 +208,7 @@ local function define_tests()
                 "Propose rail routes that allow dogs and avoid long car transfers.", "")
             two.based_on = { 1, 2 }
             fixture.script.respond("structured_output", { items = { one, two } })
+            fixture.normalization({ two })
             fixture.verdict("ADD", {})
             fixture.op(user, "wake", { component_id = id })
             local runs = fixture.wait_runs(user, id, "consolidate", 1)

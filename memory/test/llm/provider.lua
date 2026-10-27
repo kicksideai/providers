@@ -41,6 +41,10 @@ local function structured_output(args: any): (any, any)
     if hold_err then return nil, errors.new({ kind = errors.INTERNAL, retryable = false, message = hold_err }) end
     local response, failure, kind, retryable = script.take("structured_output")
     if failure then return nil, failed(failure, kind, retryable) end
+    if args.schema.properties.plans then
+        local extraction_err = script.await_release("extraction")
+        if extraction_err then return nil, errors.new({ kind = errors.INTERNAL, message = extraction_err }) end
+    end
     return { success = true, result = { data = response }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }
 end
 

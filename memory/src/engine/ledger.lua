@@ -67,12 +67,7 @@ function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, exp
         }
     end
     local result, append_err = threads_append.append_events_tx(tx, component_id, writes, { expect = { head = expected_head } })
-    if append_err then
-        if errors.is(append_err, errors.CONFLICT) then
-            return nil, types.unavailable("memory ledger moved while deciding; decide again", { expected_head = expected_head })
-        end
-        return nil, append_err
-    end
+    if append_err then return nil, append_err end
     return result, nil
 end
 

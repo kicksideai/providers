@@ -135,11 +135,13 @@ local function call(a: any): (any?, error?)
         return writer.write(a.component_id, "outdated-decision", { source = "owner" }, function(d: any): (any?, error?)
             local previous, read_err = d:get(a.item_id)
             if read_err then return nil, read_err end
+            local held, held_err = d:held(previous.scope_key, previous.key)
+            if held_err then return nil, held_err end
             local successor, add_err = d:add({ scope_family = "owner", scope_id = a.user }, {
                 kind = "fact", key = previous.key, cardinality = "single", value = "Berlin", content = "The user lives in Berlin.", valid_at = d.now,
             })
             if add_err then return nil, add_err end
-            local replace_err = d:replace({previous}, successor)
+            local replace_err = d:replace(held, successor)
             if replace_err then return nil, replace_err end
             local _, concurrent_err = writer.write(a.component_id, "concurrent-decision", {source="owner"}, function(other: any): (any?, error?)
                 local current, current_err = other:get(a.item_id)
@@ -165,7 +167,7 @@ local function call(a: any): (any?, error?)
                 valid_at = d.now, vector = vectors[1],
             })
             if add_err then return nil, add_err end
-            local _, race_err = writer.write(a.component_id, "accepted", {
+            local _, race_err = writer.write(a.component_id, a.contended and "accepted:" .. tostring(attempts) or "accepted", {
                 source = "owner", extra_events = { { type = types.EVENT.CONSOLIDATION_COMPLETED, body = {} } },
             }, function(_inner: any): (any?, error?) return nil, nil end)
             if race_err then return nil, race_err end

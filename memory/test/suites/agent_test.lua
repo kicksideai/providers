@@ -271,6 +271,23 @@ local function define_tests()
             test.eq(schema.properties.plans.items.properties.value.type, "object")
         end)
 
+        test.it("retains open task requests with no agreed next action or supporting details", function()
+            local user = fixture.user()
+            for _, request in ipairs({ "I need to arrange a repair.", "Can you help me organize a workshop?" }) do
+                local goal = fixture.candidate("plan", "requested_task", {
+                    status = "open", next_step = "", details = request,
+                }, "The user requests help with a task.", "task-source")
+                fixture.extraction({ goal })
+                local result, err = fixture.op(user, "extract", { span = { { id = "task-source", role = "user", text = request } } })
+                test.is_nil(err, tostring(err))
+                test.eq(#result, 1)
+                test.eq(result[1].value.status, "open")
+                test.eq(result[1].value.next_step, "")
+                test.eq(result[1].value.details, request)
+                test.eq(result[1].event_id, "task-source")
+            end
+        end)
+
         test.it("rejects goal-shaped output for an extracted scalar attribute", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { plans = {}, items = { fixture.candidate("profile_slot", "pet_name", {
@@ -336,11 +353,60 @@ local function define_tests()
             end
         end)
 
+        test.it("reconciles compound tool and extracted attributes independently after one attribute changes", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { tool = true, value = "Engineer at Northstar", content = "The user is an engineer at Northstar.", parts = {
+                    fixture.candidate("profile_slot", "employer", "Northstar", "The user works at Northstar.", "compound-source"),
+                    fixture.candidate("profile_slot", "occupation", "engineer", "The user is an engineer.", "compound-source"),
+                }, changed = "Harbor" },
+                { value = "Cedar College studying chemistry", content = "The user studies chemistry at Cedar College.", parts = {
+                    fixture.candidate("profile_slot", "school", "Cedar College", "The user attends Cedar College.", "compound-source"),
+                    fixture.candidate("profile_slot", "field_of_study", "chemistry", "The user studies chemistry.", "compound-source"),
+                }, changed = "Pine Institute" },
+            }) do
+                local id = fixture.memory(user)
+                local session = "s-" .. id
+                local parts = example.parts
+                local compound = fixture.candidate("fact", "background", example.value, example.content, "compound-source")
+                fixture.history.record(session, { { id = "compound-source", role = "user", content = example.content } })
+                if not example.tool then fixture.script.respond("structured_output", { items = { compound }, plans = {} }) end
+                fixture.script.respond("structured_output", { mappings = { ["1"] = parts } })
+                if example.tool then
+                    local result, err = fixture.op(user, "tool_remember", { input = compound }, fixture.agent_context(id, session, "agent-a"))
+                    test.is_nil(err, tostring(err))
+                    test.is_true(result.success)
+                    test.eq(#result.item_ids, 2)
+                else
+                    local _, err = apply(user, "before_step", id, session, "agent-a")
+                    test.is_nil(err, tostring(err))
+                    test.eq(fixture.wait_runs(user, id, "derive", 1)[1].status, "succeeded")
+                end
+                fixture.settle(user, id)
+                local first = fixture.items(user, id, { key = parts[1].key })[1]
+                local second = fixture.items(user, id, { key = parts[2].key })[1]
+                test.eq(fixture.op(user, "provenance", { component_id = id, item_id = first.id })[1].event_id, "compound-source")
+                test.eq(fixture.op(user, "provenance", { component_id = id, item_id = second.id })[1].event_id, "compound-source")
+                local changed = fixture.candidate("profile_slot", parts[1].key, example.changed, "The user changes this attribute.", "change-source")
+                fixture.normalization({ changed })
+                local result, err = fixture.op(user, "tool_remember", { input = changed }, fixture.agent_context(id, session, "agent-a"))
+                test.is_nil(err, tostring(err))
+                test.is_true(result.success)
+                fixture.settle(user, id)
+                test.eq(fixture.op(user, "get", { component_id = id, item_id = first.id }).status, "superseded")
+                local retained = fixture.op(user, "get", { component_id = id, item_id = second.id })
+                test.eq(retained.status, "current")
+                test.eq(retained.value, parts[2].value)
+                test.eq(#fixture.items(user, id, { statuses = { "current" } }), 2)
+                test.eq(fixture.script.pending("structured_output"), 0)
+            end
+        end)
+
         test.it("normalizes typed values without asking for a discarded string substitute", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { mappings = {
-                ["1"] = { key = "switch", kind = "fact", cardinality = "multi" },
-                ["2"] = { key = "goal", kind = "plan", cardinality = "single" },
+                ["1"] = { { key = "switch", kind = "fact", cardinality = "multi" } },
+                ["2"] = { { key = "goal", kind = "plan", cardinality = "single" } },
             } })
             local state = { status = "open", next_step = "", details = "A durable goal" }
             local result, err = fixture.op(user, "normalize", { candidates = {
@@ -351,16 +417,16 @@ local function define_tests()
             test.eq(result[1].value, false)
             test.eq(json.encode(result[2].value), (json.encode(state)))
             local schema = fixture.script.requests("structured_output")[1].properties.mappings.properties
-            test.is_nil(schema["1"].properties.value)
-            test.is_nil(schema["2"].properties.value)
+            test.is_nil(schema["1"].items.properties.value)
+            test.is_nil(schema["2"].items.properties.value)
         end)
 
         test.it("normalizes every candidate once using required numbered result properties", function()
             local user = fixture.user()
             fixture.script.respond("structured_output", { mappings = {
-                ["1"] = { key = "name", value = "Sam", kind = "profile_slot", cardinality = "single" },
-                ["2"] = { key = "home_city", value = "Paris", kind = "profile_slot", cardinality = "single" },
-                ["3"] = { key = "diet", value = "vegetarian", kind = "profile_slot", cardinality = "single" },
+                ["1"] = { { key = "name", value = "Sam", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
+                ["2"] = { { key = "home_city", value = "Paris", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
+                ["3"] = { { key = "diet", value = "vegetarian", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
             } })
             local normalized, err = fixture.op(user, "normalize", { candidates = {
                 fixture.candidate("profile_slot", "name", "Sam", "The user's name is Sam."),
@@ -383,7 +449,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
             fixture.script.respond("structured_output", { items = {}, plans = { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal") } })
-            fixture.script.respond("structured_output", { mappings = { ["1"] = { key = "home_city", value = "", kind = "profile_slot", cardinality = "single" } } })
+            fixture.script.respond("structured_output", { mappings = { ["1"] = { { key = "home_city", value = "", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } } } })
             apply(user, "before_step", id, session, "agent-a")
             local runs = fixture.wait_runs(user, id, "derive", 1)
             test.eq(runs[1].status, "failed")
@@ -457,7 +523,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.history.record(session, { { id = "move", role = "user", content = "I moved to Berlin." } })
             fixture.script.respond("structured_output", { plans = {}, items = { fixture.candidate("profile_slot", "current_city", "The user lives in Berlin.", "The user lives in Berlin.", "move") } })
-            fixture.script.respond("structured_output", { mappings = { ["1"] = { key = "home_city", value = "Berlin", kind = "profile_slot", cardinality = "single" } } })
+            fixture.script.respond("structured_output", { mappings = { ["1"] = { { key = "home_city", value = "Berlin", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } } } })
             fixture.verdict("SUPERSEDE", { seed.item_ids[1] })
             local applied, err = apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))

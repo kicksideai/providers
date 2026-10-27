@@ -88,6 +88,7 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
     if case.reflect then
         if target.scripted then
             fixture.script.respond("structured_output", { items = case.ideal.reflection })
+            if #case.ideal.reflection > 0 then fixture.normalization(case.ideal.reflection) end
             script_verdict(case.ideal.verdict, nil, {})
         end
         local _, wake_err = fixture.op(user, "wake", { component_id = memory })

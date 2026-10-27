@@ -103,7 +103,7 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Remember
       llm_alias: Remember
-      llm_description: "Store a durable memory about the user or an ongoing plan. Use this for corrections and changed values: supersession preserves earlier versions. Never call ForgetMemory for a correction. Use one topic key per goal and update its complete state as work progresses."
+      llm_description: "Store one independent attribute about the user per call, or one ongoing plan. Use separate calls and topic keys for attributes that can change independently. Use this for corrections and changed values: supersession preserves earlier versions. Never call ForgetMemory for a correction. Use one topic key per goal and update its complete state as work progresses."
       input_schema: |
         {
           "type": "object",
