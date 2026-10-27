@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local kc = require("kc")
 local M = {CONTENT = {JSON = "application/json"}, STATUS = {
     OK = 200, BAD_REQUEST = 400, UNAUTHORIZED = 401, NOT_FOUND = 404, INTERNAL_ERROR = 500}, ACCESS = {READ = 1}}
