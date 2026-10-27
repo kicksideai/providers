@@ -99,6 +99,18 @@ local function define_tests()
         end)
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("assigns conversation learning to capture and reserves Remember for explicit requests", function()
+            local tool = registry.get("kickside.memory.agent:remember_tool").meta.llm_description
+            local trait = registry.get("kickside.memory:memory").data.prompt
+            test.is_true(tool:find("explicitly asks", 1, true) ~= nil, tool)
+            test.is_true(trait:find("explicitly asks", 1, true) ~= nil, trait)
+            test.is_true(trait:find("Background capture learns", 1, true) ~= nil, trait)
+            test.is_true(tool:find("supersession preserves earlier versions", 1, true) ~= nil, tool)
+            test.is_true(tool:find("Ordinary corrections and goal progress belong to background capture", 1, true) ~= nil, tool)
+            local forget = registry.get("kickside.memory.agent:forget_tool").meta.llm_description
+            test.is_true(forget:find("explicitly asks to remember", 1, true) ~= nil, forget)
+        end)
+
         test.it("publishes the same typed tool contracts that the runtime implements", function()
             local remember = json.decode(registry.get("kickside.memory.agent:remember_tool").meta.input_schema)
             test.eq(json.encode(remember.properties.kind.enum), (json.encode(types.MEMORY_KINDS)))

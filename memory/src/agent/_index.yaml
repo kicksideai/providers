@@ -104,7 +104,7 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Remember
       llm_alias: Remember
-      llm_description: "Store one independent attribute about the user per call, or one ongoing plan. Use separate calls and topic keys for attributes that can change independently. Use this for corrections and changed values: supersession preserves earlier versions. Never call ForgetMemory for a correction. Use one topic key per goal and update its complete state as work progresses."
+      llm_description: "Use only when the user explicitly asks you to remember something. Ordinary corrections and goal progress belong to background capture; leave them to it. For an explicit remember request, store one independent typed attribute or one complete plan per call. Use separate calls for attributes that can change independently. Reuse the exact key shown in the profile or SearchMemory for a known attribute or goal. For a requested update, supersession preserves earlier versions. Never call ForgetMemory for a correction."
       input_schema: |
         {
           "type": "object",
@@ -132,7 +132,7 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Forget Memory
       llm_alias: ForgetMemory
-      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Never use this for a correction, changed value or update; use Remember to supersede the earlier value. Use the canonical key shown in the profile or SearchMemory. For a multi-valued key, supply value to select the value and its versions."
+      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Ordinary corrections and changed values belong to background capture. If the user explicitly asks to remember an updated value, Remember supersedes its earlier version. Use the canonical key shown in the profile or SearchMemory. For a multi-valued key, supply value to select the value and its versions."
       input_schema: |
         {"type": "object", "additionalProperties": false, "properties": {"key": {"type": "string", "description": "Canonical topic key of your own attribute to erase"}, "value": {"description": "Required for a multi-valued key: the typed value to erase with all its versions"}}, "required": ["key"]}
       output_schema: |

@@ -457,8 +457,9 @@ entries:
         additionalProperties: false
     prompt: |
       Use known profile attributes as defaults and resume open goals from memory.
-      Use SearchMemory to find details. Use Remember for durable facts, goals and
-      corrections; a correction supersedes a value and preserves its history.
+      Use SearchMemory to find details. Background capture learns facts, corrections
+      and goal progress from conversation. Use Remember only when the user explicitly asks
+      you to remember something; a correction supersedes a value and preserves its history.
       Use ForgetMemory only when the user asks to erase a memory.
       Memories come from conversations and may be incomplete or out of date.
     tools:
