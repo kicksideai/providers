@@ -7,7 +7,6 @@ local types = require("types")
 local context = require("agent_context")
 local history = require("agent_history")
 local items = require("memory_items")
-local models = require("memory_models")
 local writer = require("memory_writer")
 local ops = require("memory_ops")
 local recall = require("memory_recall")
@@ -56,14 +55,10 @@ function M.remember(args: any): (any?, error?)
     local written, write_err = writer.write(memory_id :: string, idempotency :: string, {
         source = types.ITEM_SOURCE.TOOL, actor = owner, keyed_by_head = true,
     }, function(d: any): (any?, error?)
-        local keys, keys_err = items.keys(memory_id :: string, types.scope_key(types.SCOPE.OWNER, owner), 200)
-        if keys_err then return nil, keys_err end
-        local candidates, normalize_err = models.normalize((store :: any).effective.judge_model, {
+        local err = reconcile.decide(d, {
             { kind = kind, key = key, cardinality = cardinality ~= "" and cardinality or nil, value = value, content = content,
                 valid_at = input.valid_at or (statement and statement.created_at), event_id = statement and statement.id, confidence = 1 },
-        }, keys :: any, statement and statement.text)
-        if normalize_err then return nil, normalize_err end
-        local err = reconcile.decide(d, candidates :: any, {
+        }, {
             embedding_model = (store :: any).embedding_model, judge_model = (store :: any).effective.judge_model,
             scope_family = types.SCOPE.OWNER, scope_id = owner, explicit = true,
             host_kind = host_kind ~= "" and host_kind or nil, host_id = host_id,

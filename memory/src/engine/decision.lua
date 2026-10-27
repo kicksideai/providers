@@ -131,21 +131,31 @@ end
 
 type Scope = { scope_family: string, scope_id: string }
 
-function Decision:add(scope: Scope, fields: Fields): (any?, error?)
+function Decision:validate(scope: Scope, fields: Fields): error?
+    if not types.KIND_SET[fields.kind] then return types.invalid("unknown memory kind") end
+    if types.trim(fields.content) == "" then return types.invalid("memory content is required") end
     local value_err = types.validate_value(fields.kind, fields.value)
-    if value_err then return nil, value_err end
+    if value_err then return value_err end
     if fields.kind == types.KIND.PLAN and fields.cardinality ~= types.CARDINALITY.SINGLE then
-        return nil, types.invalid("each plan goal holds one state")
+        return types.invalid("each plan goal holds one state")
     end
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
     local key, key_err = types.topic_key(fields.key, fields.content, fields.value, fields.kind)
-    if key_err then return nil, key_err end
+    if key_err then return key_err end
     local kind_err = self:check_key_kind(scope_key, key :: string, fields.kind)
-    if kind_err then return nil, kind_err end
-    if not types.CARDINALITY_SET[fields.cardinality] then return nil, types.invalid("unknown cardinality: " .. tostring(fields.cardinality)) end
+    if kind_err then return kind_err end
+    if not types.CARDINALITY_SET[fields.cardinality] then return types.invalid("unknown cardinality: " .. tostring(fields.cardinality)) end
     local established, cardinality_err = self:cardinality_of(scope_key, key :: string)
-    if cardinality_err then return nil, cardinality_err end
-    if established and established ~= fields.cardinality then return nil, types.invalid("memory key cardinality cannot change") end
+    if cardinality_err then return cardinality_err end
+    if established and established ~= fields.cardinality then return types.invalid("memory key cardinality cannot change") end
+    return nil
+end
+
+function Decision:add(scope: Scope, fields: Fields): (any?, error?)
+    local validation_err = self:validate(scope, fields)
+    if validation_err then return nil, validation_err end
+    local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
+    local key = fields.key
     local key_id, topic_err = canonical_json.hash({ "key", self.component_id, scope_key, key })
     if topic_err then return nil, topic_err end
     local claim_id, claim_err = types.claim_id(self.component_id, scope_key, key, fields.value)

@@ -65,7 +65,6 @@ entries:
       agent_context: kickside.memory.agent:context
       agent_history: kickside.memory.agent:history
       memory_items: kickside.memory.persist:items
-      memory_models: kickside.memory.engine:models
       memory_writer: kickside.memory.engine:writer
       memory_ops: kickside.memory.engine:ops
       memory_recall: kickside.memory.engine:recall

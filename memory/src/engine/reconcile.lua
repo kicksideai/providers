@@ -129,6 +129,7 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
     local scope = { scope_family = opts.scope_family, scope_id = opts.scope_id }
     local scope_key = types.scope_key(opts.scope_family, opts.scope_id)
     local reflection = d.source == types.ITEM_SOURCE.REFLECTION
+    local curated = d.source == types.ITEM_SOURCE.TOOL or d.source == types.ITEM_SOURCE.OWNER
 
     for index, candidate in ipairs(candidates) do
         local key = types.normalize_key(candidate.key)
@@ -144,10 +145,15 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
         if candidate.kind ~= types.KIND.PLAN then valid_at = types.utc(candidate.valid_at) or valid_at end
         local fields = {
             kind = candidate.kind, key = key, value = value, content = candidate.content,
-            cardinality = established or candidate.cardinality or types.default_cardinality(candidate.kind),
+            cardinality = candidate.cardinality or established or types.default_cardinality(candidate.kind),
             valid_at = valid_at,
             confidence = candidate.confidence, provenance = provenance, vector = (embedded :: any)[index], run_id = opts.run_id,
         }
+        if candidate.valid_at ~= nil and candidate.valid_at ~= "" and not types.utc(candidate.valid_at) then
+            return types.invalid("memory valid_at must be an RFC3339 instant")
+        end
+        local validation_err = d:validate(scope, fields)
+        if validation_err then return validation_err end
         local claim_id, claim_err = types.claim_id(d.component_id, scope_key, key, value)
         if claim_err then return claim_err end
 
@@ -176,6 +182,9 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
                 local err = apply(d, types.ACTION.SUPERSEDE, scope, fields, held :: any, provenance)
                 if err then return err end
             end
+        elseif curated then
+            local _, add_err = d:add(scope, fields)
+            if add_err then return add_err end
         else
             local compatible = {}
             for kind in pairs(types.KIND_SET) do

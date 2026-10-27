@@ -158,6 +158,9 @@ function M.render_content(row: any): string
 end
 
 function M.validate_value(kind: string, value: any): error?
+    if value == nil then return M.invalid("memory value is required") end
+    local _, encode_err = json.encode(value)
+    if encode_err then return M.invalid("memory value must be JSON") end
     if kind ~= M.KIND.PLAN then return nil end
     if type(value) ~= "table" or (value.status ~= "open" and value.status ~= "done")
         or type(value.next_step) ~= "string" or type(value.details) ~= "string" then
@@ -167,7 +170,10 @@ function M.validate_value(kind: string, value: any): error?
 end
 
 function M.topic_key(value: any, content: string, claim_value: any?, kind: string?): (string?, error?)
-    local key = M.normalize_key(value)
+    if type(value) ~= "string" or not value:match("^[a-z][a-z0-9_]*$") then
+        return nil, M.invalid("a topic key of up to 64 letters, digits and underscores is required")
+    end
+    local key = value
     if #key == 0 or #key > 64 or not key:match("^[a-z][a-z0-9_]*$") then
         return nil, M.invalid("a topic key of up to 64 letters, digits and underscores is required")
     end
