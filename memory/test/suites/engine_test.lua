@@ -27,6 +27,26 @@ local function define_tests()
     test.describe("memory knowledge base engine", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("supersedes exact single keys without a judge and retains both clocks", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local first = fixture.remember(user, id, { fixture.candidate("profile_slot", "employer", "Northstar", "Works at Northstar.", "first", "2026-01-01T00:00:00Z") }, "single-first")
+            fixture.settle(user, id)
+            local second = fixture.remember(user, id, { fixture.candidate("profile_slot", "employer", "Harbor", "Joined Harbor.", "second", "2026-02-01T00:00:00Z") }, "single-second")
+            test.eq(second.stats.superseded, 1)
+            test.eq(second.stats.judged, 0)
+            test.eq(#fixture.script.requests("structured_output"), 0)
+            fixture.settle(user, id)
+            local old = fixture.op(user, "get", { component_id = id, item_id = first.item_ids[1] })
+            local current = fixture.op(user, "get", { component_id = id, item_id = second.item_ids[1] })
+            test.eq(old.status, "superseded")
+            test.eq(old.invalid_at, "2026-02-01T00:00:00Z")
+            test.eq(old.valid_at, "2026-01-01T00:00:00Z")
+            test.eq(current.status, "current")
+            test.not_nil(old.recorded_at)
+            test.not_nil(current.recorded_at)
+        end)
+
         test.it("adds without judging unrelated or incompatible nearest memories", function()
             local user = fixture.user()
             for _, example in ipairs({
@@ -192,12 +212,11 @@ local function define_tests()
             test.eq(other.stats.noop, 0)
             fixture.settle(user, id)
             local first = fixture.values(fixture.items(user, id, { statuses = { "current" } }))["Berlin"]
-            fixture.relations({ "updates" })
             local later = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "home_city", "Oslo", "The user moves to Oslo.", "later-statement"),
             }, "later-event")
             test.eq(later.stats.superseded, 1)
-            test.eq(later.stats.judged, 1)
+            test.eq(later.stats.judged, 0)
             test.eq(later.stats.noop, 0)
             fixture.settle(user, id)
             local current = fixture.values(fixture.items(user, id, { statuses = { "current" } }))
@@ -399,7 +418,6 @@ local function define_tests()
             test.eq(first.stats.judged, 0)
             local paris_id = first.item_ids[1]
 
-            fixture.relations({ "updates" })
             local berlin = fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "m2", "2026-06-01T10:00:00Z")
             local second, second_err = fixture.remember(user, id, { berlin }, "t2")
             test.is_nil(second_err, tostring(second_err))
@@ -414,7 +432,6 @@ local function define_tests()
             test.eq(values.Berlin.status, "current")
             test.eq(values.Berlin.version, 2)
 
-            fixture.relations({ "updates" })
             local lyon = fixture.candidate("profile_slot", "home_city", "Lyon", "The user lives in Lyon.", "m0", "2025-01-01T10:00:00Z")
             local third, third_err = fixture.remember(user, id, { lyon }, "t3")
             test.is_nil(third_err, tostring(third_err))
@@ -462,13 +479,12 @@ local function define_tests()
             local first = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "birth_date", "1990-03-03", "The user was born on 3 March 1990.", "b1"),
             }, "slot-1")
-            fixture.relations({ "contradicts" })
             local second = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "birth_date", "1990-03-05", "The user was born on 5 March 1990.", "b2"),
             }, "slot-2")
-            test.eq(second.stats.conflicted, 1)
-            local offered = fixture.script.requests("structured_output")[1].properties.relations.properties["1"].enum
-            test.eq(table.concat(offered, ","), "same,updates,rephrases,contradicts")
+            test.eq(second.stats.superseded, 1)
+            test.eq(second.stats.conflicted, 0)
+            test.eq(second.stats.judged, 0)
 
             local fact = fixture.remember(user, id, {
                 fixture.candidate("fact", "sibling", "Ana", "The user has a sister, Ana.", "b3"),
@@ -481,7 +497,7 @@ local function define_tests()
             }, "slot-4", { source = "reflection" })
             test.eq(reflected.stats.noop, 1)
             test.eq(reflected.stats.added, 0)
-            test.eq(#fixture.script.requests("structured_output"), 1)
+            test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
         test.it("treats a key as one attribute across kinds: a profile slot value is never added beside another kind's value of that key", function()
@@ -489,11 +505,10 @@ local function define_tests()
             local id = fixture.memory(user)
             fixture.remember(user, id, { fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", "d1") }, "kind-1")
             fixture.settle(user, id)
-            fixture.relations({ "updates" })
             local vegan = fixture.remember(user, id, { fixture.candidate("profile_slot", "diet", "vegan", "The user is vegan.", "d2") }, "kind-2")
             test.eq(vegan.stats.superseded, 1)
-            local offered = fixture.script.requests("structured_output")[1].properties.relations.properties["1"].enum
-            test.eq(table.concat(offered, ","), "same,updates,rephrases,contradicts")
+            test.eq(vegan.stats.judged, 0)
+            test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
         test.it("keeps a conflict open when a contested memory is replaced", function()

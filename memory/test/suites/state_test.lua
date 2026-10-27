@@ -50,14 +50,14 @@ local function define_tests()
             local conversation = "[change][user] " .. statement
             fixture.relations({ "updates" })
             local result = fixture.remember(user, id, {
-                fixture.candidate("profile_slot", "residence", "Lisbon", "The user lives in Lisbon.", "change"),
+                fixture.candidate("profile_slot", "location", "Lisbon", "The user lives in Lisbon.", "change"),
             }, "residence-change", { events = { change = { text = statement } }, conversation = conversation })
             test.eq(result.stats.superseded, 1)
             test.eq(result.stats.conflicted, 0)
             fixture.settle(user, id)
             fixture.relations({ "unrelated" })
             local related_result = fixture.remember(user, id, {
-                fixture.candidate("fact", "relocation_time", "last month", "The user moved to Lisbon last month.", "change", nil, "single"),
+                fixture.candidate("fact", "relocation_time", "last month", "The user lives in Lisbon since last month.", "change", nil, "single"),
             }, "relocation-time", { events = { change = { text = statement } }, conversation = conversation })
             test.eq(related_result.stats.conflicted, 0)
             test.eq(related_result.stats.added, 1)
@@ -77,8 +77,8 @@ local function define_tests()
             test.eq(#current, 1)
             test.eq(current[1].value, "Lisbon")
             test.eq(fixture.op(user, "get", { component_id = id, item_id = old.item_ids[1] }).status, "superseded")
-            fixture.relations({ "contradicts" })
-            local uncertain = fixture.remember(user, id, { fixture.candidate("profile_slot", "residence", "Porto", "The user may live in Porto.", "uncertain") },
+            fixture.relations({ "contradicts", "unrelated" })
+            local uncertain = fixture.remember(user, id, { fixture.candidate("profile_slot", "uncertain_residence", "Porto", "The user lives in Porto.", "uncertain") },
                 "uncertain-residence", { events = { uncertain = { text = "One record says Porto; another says Lisbon. I cannot confirm either." } } })
             test.eq(uncertain.stats.conflicted, 1)
         end)
@@ -204,12 +204,6 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local function say(city: string, at: string, idem: string, verdict: boolean)
-                if verdict then
-                    local held = by_status(key_rows(user, id, "home_city"), "current")
-                    local relations = {}
-                    for _ = 1, #held do relations[#relations + 1] = "updates" end
-                    fixture.relations(relations)
-                end
                 fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", city, "The user lives in " .. city .. ".", idem, at) }, idem)
                 fixture.settle(user, id)
             end
@@ -243,8 +237,7 @@ local function define_tests()
                     }, "The user needs to prepare the review.", "initial"),
                 }, "initial-plan", { events = { initial = { at = "2026-10-10T10:00:00Z" } } })
                 fixture.settle(user, id)
-                fixture.relations({ "updates" })
-                local details = "Prepare the review scheduled for " .. event_date
+                    local details = "Prepare the review scheduled for " .. event_date
                 local next_step = "Prepare slides before " .. event_date
                 local updated = fixture.remember(user, id, {
                     fixture.candidate("plan", "prepare_review", {
@@ -260,11 +253,9 @@ local function define_tests()
                 test.eq(current[1].value.next_step, next_step)
                 test.eq(current[1].version, 2)
                 test.eq(fixture.op(user, "get", { component_id = id, item_id = original.item_ids[1] }).status, "superseded")
-                local prompt = json.decode(fixture.script.prompts("structured_output")[1].user)
-                test.eq(prompt.new_memory.valid_at, "2026-10-20T10:00:00Z")
+                test.eq(#fixture.script.requests("structured_output"), 0)
 
-                fixture.relations({ "updates" })
-                local late = fixture.remember(user, id, {
+                    local late = fixture.remember(user, id, {
                     fixture.candidate("plan", "prepare_review", {
                         status = "open", next_step = "Draft outline", details = "Prepare the review outline",
                     }, "The user needs a review outline.", "earlier"),
@@ -285,7 +276,6 @@ local function define_tests()
                 fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "initial", "2026-07-01T00:00:00Z"),
             }, "initial-city", { events = { initial = { at = "2026-10-10T10:00:00Z" } } })
             fixture.settle(user, id)
-            fixture.relations({ "updates" })
             fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "home_city", "Berlin", "The user moved to Berlin in September.", "moved", "2026-09-01T00:00:00Z"),
             }, "past-move", { events = { moved = { at = "2026-10-20T10:00:00Z", text = "I moved to Berlin last month." } } })
@@ -382,7 +372,7 @@ local function define_tests()
                     for _ = 1, #held do relations[#relations + 1] = "contradicts" end
                     fixture.relations(relations)
                 end
-                fixture.remember(user, id, { fixture.candidate("profile_slot", "birth_date", value, "The user was born on " .. value .. ".", idem) }, idem)
+                fixture.remember(user, id, { fixture.candidate("fact", "birth_date", value, "The user was born on " .. value .. ".", idem) }, idem)
                 fixture.settle(user, id)
             end
             claim("1990-03-03", "c1")

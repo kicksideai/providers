@@ -39,8 +39,6 @@ local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
 
 local REFLECTION_ACTIONS = { types.ACTION.ADD, types.ACTION.NOOP }
 
-local HELD_ACTIONS = { types.ACTION.SUPERSEDE, types.ACTION.MERGE, types.ACTION.NOOP, types.ACTION.CONFLICT }
-
 local function provenance_of(opts: Options, candidate: Candidate): { any }
     local event_id = types.trim(candidate.event_id)
     local refs: { any } = {}
@@ -174,14 +172,9 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
         elseif fields.cardinality == types.CARDINALITY.SINGLE and #(held :: any) > 0 then
             if reflection then
                 d.stats.noop = d.stats.noop + 1
-            elseif opts.explicit then
+            else
                 local err = apply(d, types.ACTION.SUPERSEDE, scope, fields, held :: any, provenance)
                 if err then return err end
-            else
-                local verdict, err = judge(d, opts, fields, event.text, held :: any, HELD_ACTIONS)
-                if err then return err end
-                local apply_err = apply(d, verdict.action, scope, fields, held :: any, provenance)
-                if apply_err then return apply_err end
             end
         else
             local compatible = {}

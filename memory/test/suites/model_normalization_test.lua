@@ -83,7 +83,6 @@ local function define_tests()
             fixture.wait_runs(user, id, "derive", 1)
             fixture.history.record(session, { { id = "answer", role = "user", content = "London" } })
             fixture.extraction({ fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", "answer") })
-            fixture.relations({ "updates" })
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 2)
             local prompt = fixture.script.prompts("structured_output")[1].system
