@@ -38,6 +38,8 @@ local function define_tests()
                 ctx = { get = function() return nil end },
                 contract = { get = function() return { open = function() return { get_prompt = function(_, args)
                     captured.selector = args.selector
+                    captured.prompt_host = args.host
+                    captured.prompt_agent = args.agent
                     return { text = text, range = {from_id = "first", to_id = "last"} }
                 end } end } end },
                 prompt = prompt,
@@ -114,6 +116,110 @@ local function define_tests()
             test.eq(captured.selector.max_chars, 256)
             test.eq(captured.model_resolutions, 0)
             test.eq(#captured.requests, 2)
+        end)
+        test.it("uses the first-history deactivation range without crossing agent ownership", function()
+            local captured = setup("[PREFERENCE:tea]", 8192)
+            local host = {kind = "session", session_id = "owned-session"}
+            local agent = {id = "outgoing-agent", model = "active-model", revision = "owned-revision"}
+            local result, err = runtime.apply({
+                phase = "deactivate", host = host, agent = agent,
+                refs = {deactivation_range = {to_id = "last-outgoing-row"}},
+                checkpoint_source_max_chars = 256,
+                run_context = {contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding"},
+            })
+            test.is_nil(err)
+            test.is_true(result.metadata.skipped)
+            test.eq(captured.selector.mode, "range")
+            test.is_nil(captured.selector.from_id)
+            test.eq(captured.selector.to_id, "last-outgoing-row")
+            test.eq(captured.selector.max_chars, 256)
+            test.eq(captured.prompt_host, host)
+            test.eq(captured.prompt_agent, agent)
+        end)
+        test.it("uses both endpoints for a bounded deactivation range", function()
+            local captured = setup("[PREFERENCE:tea]", 8192)
+            local result, err = runtime.apply({
+                phase = "deactivate", host = {kind = "session", session_id = "owned-session"},
+                agent = {id = "owned-agent", model = "active-model"},
+                refs = {deactivation_range = {from_id = "exclusive-predecessor", to_id = "last-outgoing-row"}},
+                run_context = {contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding"},
+            })
+            test.is_nil(err)
+            test.is_true(result.metadata.skipped)
+            test.eq(captured.selector.mode, "range")
+            test.eq(captured.selector.from_id, "exclusive-predecessor")
+            test.eq(captured.selector.to_id, "last-outgoing-row")
+        end)
+        test.it("keeps an explicit empty selector ahead of a deactivation range", function()
+            local captured = setup("[PREFERENCE:tea]", 8192)
+            local result, err = runtime.apply({
+                phase = "deactivate", host = {kind = "session", session_id = "owned-session"},
+                agent = {id = "owned-agent", model = "active-model"}, selector = {},
+                refs = {deactivation_range = {from_id = "exclusive-row", to_id = "last-outgoing-row"}},
+                checkpoint_source_max_chars = 256,
+                run_context = {contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding"},
+            })
+            test.is_nil(err)
+            test.is_true(result.metadata.skipped)
+            test.is_nil(captured.selector.mode)
+            test.is_nil(captured.selector.from_id)
+            test.is_nil(captured.selector.to_id)
+            test.eq(captured.selector.max_chars, 256)
+        end)
+        test.it("preserves the legacy default when the host supplies a false selector", function()
+            local captured = setup("[PREFERENCE:tea]", 8192)
+            local result, err = runtime.apply({
+                phase = "deactivate", host = {kind = "session", session_id = "owned-session"},
+                agent = {id = "owned-agent", model = "active-model"}, selector = false,
+                refs = {deactivation_range = {from_id = "exclusive-row", to_id = "last-outgoing-row"}},
+                checkpoint_source_max_chars = 256,
+                run_context = {contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding"},
+            })
+            test.is_nil(err)
+            test.is_true(result.metadata.skipped)
+            test.eq(captured.selector.mode, "since_checkpoint")
+            test.is_nil(captured.selector.from_id)
+            test.is_nil(captured.selector.to_id)
+            test.eq(captured.selector.max_chars, 256)
+        end)
+        test.it("falls back to since-checkpoint for malformed deactivation bounds", function()
+            for _, range in ipairs({
+                {},
+                {to_id = ""},
+                {to_id = 42},
+                {from_id = "", to_id = "last-outgoing-row"},
+                {from_id = 42, to_id = "last-outgoing-row"},
+            }) do
+                local captured = setup("[PREFERENCE:tea]", 8192)
+                local result, err = runtime.apply({
+                    phase = "deactivate", host = {kind = "session", session_id = "owned-session"},
+                    agent = {id = "owned-agent", model = "active-model"},
+                    refs = {deactivation_range = range}, checkpoint_source_max_chars = 256,
+                    run_context = {contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding"},
+                })
+                test.is_nil(err)
+                test.is_true(result.metadata.skipped)
+                test.eq(captured.selector.mode, "since_checkpoint")
+                test.is_nil(captured.selector.from_id)
+                test.is_nil(captured.selector.to_id)
+                test.eq(captured.selector.max_chars, 256)
+            end
+        end)
+        test.it("does not apply deactivation bounds to checkpoint creation", function()
+            local captured = setup("[OPEN:finish]", 8192)
+            local result, err = runtime.create({
+                phase = "checkpoint", host = {kind = "session", session_id = "owned-session"},
+                agent = {id = "owned-agent", model = "active-model"},
+                refs = {deactivation_range = {from_id = "exclusive-row", to_id = "last-outgoing-row"}},
+                checkpoint_source_max_chars = 256,
+                run_context = {contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding"},
+            })
+            test.is_nil(err)
+            test.eq(result.memory, "NO_DURABLE_MEMORY")
+            test.eq(captured.selector.mode, "since_checkpoint")
+            test.is_nil(captured.selector.from_id)
+            test.is_nil(captured.selector.to_id)
+            test.eq(captured.selector.max_chars, 256)
         end)
         test.it("rejects a truncated working summary before committing durable memory", function()
             local captured = setup("[OPEN:finish]", 8192, false, 4, 8192, true)
