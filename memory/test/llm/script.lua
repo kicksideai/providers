@@ -38,7 +38,7 @@ local function push(method: string, response: any, failure: string?, failure_kin
     local conn = db()
     local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_script")
     if read_err then conn:release(); error(tostring(read_err)) end
-    local seq = tonumber(rows[1].n) + 1
+    local seq = assert(tonumber(rows[1].n)) + 1
     local failure_details = failure_kind ~= nil and { kind = failure_kind, details = details } or {}
     if retryable ~= nil then failure_details.retryable = retryable end
     local encoded = response ~= nil and json.encode(response) or (next(failure_details) ~= nil and json.encode(failure_details) or sql.NULL)
@@ -103,7 +103,7 @@ function M.record(method: string, schema: any, messages: any)
     local conn = db()
     local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_requests")
     if read_err then conn:release(); error(tostring(read_err)) end
-    local seq = tonumber(rows[1].n) + 1
+    local seq = assert(tonumber(rows[1].n)) + 1
     local _, write_err = conn:execute("INSERT INTO app_llm_requests (seq, method, schema, messages) VALUES ($1, $2, $3, $4)",
         { seq, method, schema ~= nil and json.encode(schema) or sql.NULL, json.encode(messages or {}) })
     conn:release()
@@ -144,7 +144,7 @@ function M.pending(method: string): integer
     local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_script WHERE method = $1", { method })
     conn:release()
     if read_err then error(tostring(read_err)) end
-    return tonumber(rows[1].n)
+    return math.floor(assert(tonumber(rows[1].n)))
 end
 
 return M

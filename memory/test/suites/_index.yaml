@@ -278,3 +278,13 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+
+  - name: model_normalization_test
+    kind: function.lua
+    meta: { type: test, suite: memory_model_normalization, timeout: 300s }
+    source: file://model_normalization_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture

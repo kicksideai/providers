@@ -23,7 +23,7 @@ function M.record(host_id: string, messages: { any })
     local conn = db()
     local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_history WHERE host_id = $1", { host_id })
     if read_err then conn:release(); error(tostring(read_err)) end
-    local seq = tonumber(rows[1].n)
+    local seq = assert(tonumber(rows[1].n))
     for _, message in ipairs(messages) do
         seq = seq + 1
         local _, write_err = conn:execute("INSERT INTO app_history (host_id, seq, id, role, content, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
