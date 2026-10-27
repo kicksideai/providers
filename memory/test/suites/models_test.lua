@@ -94,7 +94,7 @@ local function define_tests()
             local user = fixture.user()
             local city = candidate("residence", "Oslo")
             local job = candidate("occupation", "engineer")
-            fixture.script.respond("structured_output", { items = { city, job }, plans = {} })
+            fixture.extraction({ city, job }, { "residence" })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = {
                 { id = "event", role = "user", text = "I live in Oslo and work as an engineer." },
             }, keys = { { key = "residence", kind = "profile_slot", cardinality = "single", value = "Paris", content = "Lives in Paris." } } })
@@ -106,7 +106,7 @@ local function define_tests()
             test.eq(result.items[2].event_id, "event")
             test.eq(#fixture.script.requests("structured_output"), 1)
             local request = fixture.script.requests("structured_output")[1]
-            test.eq(request.properties.items.items.properties.key.pattern, "^[a-z][a-z0-9_]{0,63}$")
+            test.eq(request.properties.items.items.properties.new_key.pattern, "^$|^[a-z][a-z0-9_]{0,63}$")
             local prompt = fixture.script.prompts("structured_output")[1]
             test.is_true(prompt.system:find("residence (single)", 1, true) ~= nil)
             test.is_true(prompt.system:find("independently", 1, true) ~= nil)
@@ -115,7 +115,7 @@ local function define_tests()
         test.it("rejects truncated output at every structured step even when JSON is complete", function()
             local user = fixture.user()
             for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
-                for _, data in ipairs({ { items = {}, plans = {}, mappings = {}, relations = {} }, '{"items":[' }) do
+                for _, data in ipairs({ { items = {}, plans = {}, lessons = {}, mappings = {}, relations = {} }, '{"items":[' }) do
                     fixture.script.respond("structured_output", data, "length")
                     local result, err = fixture.op(user, "model_step", { step = step,
                         span = { { id = "event", role = "user", text = "I live in Oslo." } },
@@ -175,7 +175,7 @@ local function define_tests()
                 end
             end
             local user = fixture.user()
-            fixture.script.respond("structured_output", { items = {}, plans = {} })
+            fixture.script.respond("structured_output", { items = {}, plans = {}, lessons = {} })
             local _, err = fixture.op(user, "model_step", { step = "extract", span = {
                 { id = "event", role = "user", text = "I live in Oslo and need to renew my passport." },
             }, keys = {
@@ -256,7 +256,7 @@ local function define_tests()
             for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
                 for _, overflow in ipairs({ "string", "array" }) do
                     local city = candidate("home_city", "Oslo")
-                    local data = { items = { city }, plans = {} }
+                    local data = { items = { city }, plans = {}, lessons = {} }
                     if step == "normalize" then
                         data = { mappings = { ["1"] = { { kind = city.kind, key = city.key, cardinality = city.cardinality, value = city.value, content = city.content } } } }
                     elseif step == "reflect" then
@@ -386,7 +386,7 @@ local function define_tests()
             }) do
                 local invalid = candidate("work_role", "engineer")
                 invalid[example.field] = example.value
-                fixture.script.respond("structured_output", { items = { candidate("home_city", "Oslo"), invalid }, plans = {} })
+                fixture.extraction({ candidate("home_city", "Oslo"), invalid })
                 local result, err = fixture.op(user, "model_step", { step = "extract", span = {
                     { id = "event", role = "user", text = "I live in Oslo and work as an engineer." },
                 } })
@@ -521,7 +521,7 @@ local function define_tests()
 
         test.it("fails malformed whole responses instead of accepting an empty batch", function()
             local user = fixture.user()
-            for _, data in ipairs({ '{"items":[', { items = "invalid", plans = {} }, { items = { invalid = true }, plans = {} } }) do
+            for _, data in ipairs({ '{"items":[', { items = "invalid", plans = {}, lessons = {} }, { items = { invalid = true }, plans = {}, lessons = {} } }) do
                 fixture.script.respond("structured_output", data)
                 local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", text = "I live in Oslo." } } })
                 test.is_nil(result)
@@ -531,10 +531,10 @@ local function define_tests()
 
         test.it("fails the whole extraction when one candidate violates topic rules", function()
             local user = fixture.user()
-            fixture.script.respond("structured_output", { items = {
+            fixture.extraction({
                 candidate("home_city", "Oslo"), candidate("private_value", "private value"),
                 candidate("work_role", "engineer"),
-            }, plans = {} })
+            })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", text = "I live in Oslo." } } })
             test.is_nil(result)
             test.not_nil(err)

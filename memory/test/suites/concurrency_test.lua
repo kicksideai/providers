@@ -64,7 +64,7 @@ local function define_tests()
             local session = "s-" .. user
             local role = fixture.candidate("profile_slot", "occupation", "engineer", "The user is an engineer.", "role-source")
             fixture.script.hold("extraction")
-            fixture.script.respond("structured_output", { items = { role }, plans = {} })
+            fixture.extraction({ role })
             fixture.history.record(session, { { id = "role-source", role = "user", content = "I am an engineer." } })
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
