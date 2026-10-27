@@ -138,6 +138,9 @@ entries:
       comment: Vision-capable model used to transcribe page screenshots.
     namespace: kickside.llm_ocr
     key: ocr_model
+    control:
+      tag: wc-model-picker
+      props: { capability: vision }
     value_type: string
     default: "class:fast"
     description: Model id or class (e.g. class:fast) used to transcribe page screenshots into text.
