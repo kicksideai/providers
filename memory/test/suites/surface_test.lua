@@ -44,7 +44,6 @@ local function define_tests()
             local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "event")
             local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", "event")
             fixture.script.respond("structured_output", { items = { good, bad }, plans = {} })
-            fixture.normalization({ good })
             fixture.history.record(session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") },
                 fixture.agent_context(id, session_id, "agent-a"))

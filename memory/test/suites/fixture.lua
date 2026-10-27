@@ -176,16 +176,12 @@ function M.settle(user_id: string, component_id: string)
 end
 
 function M.extraction(items: { any })
-    local attributes, plans, ordered = {}, {}, {}
+    local attributes, plans = {}, {}
     for _, item in ipairs(items) do
         local collection = item.kind == "plan" and plans or attributes
         collection[#collection + 1] = item
     end
-    for _, collection in ipairs({ attributes, plans }) do
-        for _, item in ipairs(collection) do ordered[#ordered + 1] = item end
-    end
     script.respond("structured_output", { items = attributes, plans = plans })
-    if #ordered > 0 then M.normalization(ordered) end
 end
 
 function M.normalization(items: { any })

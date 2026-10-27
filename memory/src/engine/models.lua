@@ -48,7 +48,7 @@ Different goals coexist under distinct keys. Do not invent any missing informati
 
 Then identify stated personal attributes, preferences, decisions, corrections, skills,
 lessons and outcomes that help future conversations. Split independent attributes into
-separate items, even when they share one statement. A correction supplies a new value;
+separate items whenever they can change independently, even when they share one statement. A correction supplies a new value;
 reconciliation determines its relationship to earlier values.
 
 Interpret each statement in its preceding conversation and existing memory context.
@@ -67,7 +67,9 @@ Each item has:
 - kind: fact | preference | profile_slot | skill | lesson | plan.
   profile_slot is a stable personal attribute with one value at a time.
 - key: a short canonical topic naming the attribute or goal, never its value or sentence.
-  Reuse an existing key for the same topic, regardless of phrasing.
+  Use lowercase letters, digits and underscores, starting with a letter, at most 64 characters.
+  Reuse an existing key for the same attribute regardless of phrasing or kind, and use
+  the same key for that attribute throughout the batch. Plans keep their own goal keys.
 - cardinality: single for one value at a time; multi for independent simultaneous values.
   Plans use single under their own goal key.
 - value: the newly stated attribute value alone, never a union with an earlier value.
@@ -154,7 +156,17 @@ local CANDIDATE_KINDS = types.MEMORY_KINDS
 local CANDIDATE_KIND_SET = {}
 for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 
-local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
+local function topic_schema(plan: boolean, keys: { any }): any
+    local schema: any = { type = "string", pattern = "^[a-z][a-z0-9_]{0,63}$" }
+    local excluded = {}
+    for _, row in ipairs(keys) do
+        if (row.kind == types.KIND.PLAN) ~= plan then excluded[#excluded + 1] = row.key end
+    end
+    if #excluded > 0 then schema["not"] = { enum = excluded } end
+    return schema
+end
+
+local function candidate_schema(event_ids: { string }?, kinds: { string }?, keys: { any }?): any
     local event_id: any = { type = "string" }
     if event_ids then event_id = { type = "string", enum = event_ids } end
     local scalar_kinds = {}
@@ -165,7 +177,7 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
         return { type = "object", additionalProperties = false,
             required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
             properties = {
-                kind = { type = "string", enum = allowed }, key = { type = "string" },
+                kind = { type = "string", enum = allowed }, key = topic_schema(allowed[1] == types.KIND.PLAN, keys or {}),
                 cardinality = { type = "string", enum = cardinalities }, value = value,
                 content = { type = "string" }, event_id = event_id, valid_at = { type = "string" }, confidence = { type = "number" },
             },
@@ -257,17 +269,24 @@ local function candidate_reason(item: any, typed: boolean?): string?
     return nil
 end
 
-local function read_candidates(response: any, step: string, stats: any, event_ids: { [string]: boolean }?): (any?, error?)
+local function read_candidates(response: any, step: string, stats: any, event_ids: { [string]: boolean }?, keys: { any }?): (any?, error?)
     local err = response_error(response, "memory " .. step)
     if err then return nil, err end
     local data = response.result
     if not is_array(data.items) or (step == "extraction" and not is_array(data.plans)) then
         return nil, types.invalid("memory " .. step .. " returned malformed output", { code = "model_output_malformed" })
     end
+    local known = {}
+    for _, row in ipairs(keys or {}) do known[row.key] = row end
     local out = {}
     local function read(collection: any, plans: boolean)
         for _, item in ipairs(collection) do
             local reason = candidate_reason(item)
+            local existing = not reason and known[types.normalize_key(item.key)] or nil
+            if existing then
+                if (existing.kind == types.KIND.PLAN) ~= (item.kind == types.KIND.PLAN) then reason = "kind"
+                else item.cardinality = existing.cardinality end
+            end
             if not reason and step == "extraction" then
                 if (item.kind == types.KIND.PLAN) ~= plans then reason = "kind"
                 elseif not event_ids[item.event_id] then reason = "evidence" end
@@ -326,14 +345,14 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local conversation = M.conversation(span, context)
-    local schema = candidate_schema(ids)
+    local schema = candidate_schema(ids, nil, keys)
     local count = candidate_count(conversation)
     local budget = output_budget(schema, { items = count, plans = count })
     local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory extraction", err) end
-    local candidates, read_err = read_candidates(response, "extraction", stats, allowed)
+    local candidates, read_err = read_candidates(response, "extraction", stats, allowed, keys)
     if read_err then return nil, read_err end
-    return M.normalize(model, candidates :: any, keys, conversation, stats)
+    return candidates, nil
 end
 
 function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?, stats: any?): (any?, error?)
@@ -351,16 +370,9 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             end
         end
         local mapping_properties = {
-            key = { type = "string", pattern = "^[a-z][a-z0-9_]{0,63}$" }, kind = { type = "string", enum = kinds },
+            key = topic_schema(candidate.kind == types.KIND.PLAN, keys), kind = { type = "string", enum = kinds },
             cardinality = { type = "string", enum = { "single", "multi" } },
         }
-        local excluded_keys = {}
-        for _, row in ipairs(keys) do
-            if (row.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN) then
-                excluded_keys[#excluded_keys + 1] = row.key
-            end
-        end
-        if #excluded_keys > 0 then mapping_properties.key["not"] = { enum = excluded_keys } end
         local mapping_required = { "key", "kind", "cardinality" }
         local mappings: any = { type = "array", minItems = 1 }
         counts[tostring(i)] = math.min(OUTPUT.max_parts,

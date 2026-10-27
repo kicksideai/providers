@@ -10,6 +10,28 @@ local function define_tests()
     test.describe("bounded untrusted memory model output", function()
         test.before_each(function() fixture.script.reset() end)
 
+        test.it("extracts canonical independent attributes in one call while reusing existing keys", function()
+            local user = fixture.user()
+            local city = candidate("residence", "Oslo")
+            local job = candidate("occupation", "engineer")
+            fixture.script.respond("structured_output", { items = { city, job }, plans = {} })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "event", role = "user", text = "I live in Oslo and work as an engineer." },
+            }, keys = { { key = "residence", kind = "profile_slot", cardinality = "single", value = "Paris", content = "Lives in Paris." } } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 2)
+            test.eq(result.items[1].key, "residence")
+            test.eq(result.items[1].value, "Oslo")
+            test.eq(result.items[2].key, "occupation")
+            test.eq(result.items[2].event_id, "event")
+            test.eq(#fixture.script.requests("structured_output"), 1)
+            local request = fixture.script.requests("structured_output")[1]
+            test.eq(request.properties.items.items.properties.key.pattern, "^[a-z][a-z0-9_]{0,63}$")
+            local prompt = fixture.script.prompts("structured_output")[1]
+            test.is_true(prompt.system:find("residence (single)", 1, true) ~= nil)
+            test.is_true(prompt.system:find("independently", 1, true) ~= nil)
+        end)
+
         test.it("rejects truncated output at every structured step even when JSON is complete", function()
             local user = fixture.user()
             for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
@@ -93,7 +115,6 @@ local function define_tests()
                 candidate("home_city", "Oslo"), candidate("private_value", "private value"),
                 { kind = "unknown", key = "bad", content = "Private text" },
             }, plans = {} })
-            fixture.normalization({ candidate("home_city", "Oslo") })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", text = "I live in Oslo." } } })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 1)
