@@ -25,6 +25,16 @@ local agent_prompt = require("llm_prompt")
 local lifecycle = require("agent_lifecycle")
 
 local OPS: { [string]: (any) -> (any, any) } = {
+    model_step = function(a: any)
+        local stats = {}
+        local result, err
+        if a.step == "extract" then result, err = models.extract("test-fast", a.span, {}, nil, nil, stats)
+        elseif a.step == "reflect" then result, err = models.reflect("test-fast", a.items, stats)
+        elseif a.step == "judge" then result, err = models.judge("test-fast", a.candidate, a.items, { "ADD", "NOOP" })
+        else result, err = models.normalize("test-fast", a.candidates, a.keys or {}, nil, stats) end
+        if err then return nil, err end
+        return { items = result, stats = stats }, nil
+    end,
     normalize = function(a: any) return models.normalize("test-fast", a.candidates, a.keys or {}) end,
     extract = function(a: any) return models.extract("test-fast", a.span, {}, nil) end,
     create = function(a: any) return ops.create(a.component_id, a.fields) end,

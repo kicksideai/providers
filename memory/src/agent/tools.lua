@@ -60,7 +60,7 @@ function M.remember(args: any): (any?, error?)
         local candidates, normalize_err = models.normalize((store :: any).effective.judge_model, {
             { kind = kind, key = key, cardinality = cardinality ~= "" and cardinality or nil, value = value, content = content,
                 valid_at = input.valid_at or (statement and statement.created_at), event_id = statement and statement.id, confidence = 1 },
-        }, keys :: any, statement and statement.text)
+        }, keys :: any, statement and statement.text, d.stats)
         if normalize_err then return nil, normalize_err end
         local err = reconcile.decide(d, candidates :: any, {
             embedding_model = (store :: any).embedding_model, judge_model = (store :: any).effective.judge_model,

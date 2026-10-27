@@ -135,10 +135,10 @@ local function retryable(err: any): boolean
 end
 
 -- Queue diagnostics retain classification independently of erasable input.
-local function fail(run_id: string, err: any): any
+local function fail(run_id: string, err: any, stats: any?): any
     local message, encode_err = types.failure(err)
     if encode_err then error(encode_err) end
-    local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message)
+    local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message, stats)
     if close_err then error(close_err) end
     local diagnostic = message
     if retryable(err) then
@@ -207,6 +207,7 @@ function M.derive_authorized(value: any): any
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
     local deadline = value.job.deadline
+    local failed_stats = nil
     local result, write_err = writer.write(run.component_id, "derive:" .. run.id, {
         source = types.ITEM_SOURCE.CAPTURE, deadline = deadline,
         extra_events = run.host_kind ~= "content" and {
@@ -215,6 +216,7 @@ function M.derive_authorized(value: any): any
             } },
         } or nil,
     }, function(d: any): (any?, error?)
+        failed_stats = d.stats
         local fresh, read_err = runs.get(run.id)
         if read_err then return nil, read_err end
         if not fresh then return nil, types.not_found("memory run not found") end
@@ -228,7 +230,7 @@ function M.derive_authorized(value: any): any
         if #span > 0 then
             local keys, keys_err = items.keys(run.component_id, types.scope_key(types.SCOPE.OWNER, types.trim(input.owner_id)), KEY_LIMIT)
             if keys_err then return nil, keys_err end
-            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions, input.context)
+            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions, input.context, d.stats)
             if extract_err then return nil, extract_err end
             candidates = extracted
         end
@@ -240,7 +242,7 @@ function M.derive_authorized(value: any): any
             conversation = models.conversation(span, input.context),
         })
     end)
-    if write_err then return fail(run.id, write_err) end
+    if write_err then return fail(run.id, write_err, failed_stats) end
     local _, settle_err = ledger.settled_head(run.component_id, deadline)
     if settle_err then return fail(run.id, settle_err) end
     local stats = (result :: any).stats
@@ -261,9 +263,11 @@ function M.consolidate_authorized(value: any): any
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
     local next_at = types.after_seconds(cfg.consolidation_interval_hours * 3600)
+    local failed_stats = nil
     local result, write_err = writer.write(run.component_id, "consolidate:" .. run.id .. ":" .. run.cycle, {
         source = types.ITEM_SOURCE.REFLECTION, deadline = value.job.deadline,
     }, function(d: any): (any?, error?)
+        failed_stats = d.stats
         local current, list_err = items.list(run.component_id, {
             scope_family = types.SCOPE.OWNER, statuses = { types.STATUS.CURRENT }, limit = 500,
         })
@@ -277,7 +281,7 @@ function M.consolidate_authorized(value: any): any
         table.sort(order)
         d.stats.scopes = 0
         for _, scope_id in ipairs(order) do
-            local reflected, reflect_err = models.reflect(cfg.extraction_model, by_scope[scope_id] :: { any })
+            local reflected, reflect_err = models.reflect(cfg.extraction_model, by_scope[scope_id] :: { any }, d.stats)
             if reflect_err then return nil, reflect_err end
             local reconcile_err = reconcile.decide(d, reflected :: any, {
                 embedding_model = store.embedding_model, judge_model = cfg.judge_model,
@@ -289,7 +293,7 @@ function M.consolidate_authorized(value: any): any
         d:emit(types.EVENT.CONSOLIDATION_COMPLETED, { run_id = run.id, stats = d.stats })
         return nil, nil
     end)
-    if write_err then return fail(run.id, write_err) end
+    if write_err then return fail(run.id, write_err, failed_stats) end
     local stats = result.stats
     local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end

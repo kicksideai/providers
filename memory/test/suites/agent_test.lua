@@ -293,10 +293,11 @@ local function define_tests()
             fixture.script.respond("structured_output", { plans = {}, items = { fixture.candidate("profile_slot", "pet_name", {
                 status = "open", next_step = "", details = "A cat named Biscuit",
             }, "The user's cat is named Biscuit.", "statement") } })
-            local result, err = fixture.op(user, "extract", { span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
-            test.is_nil(result)
-            test.not_nil(err)
-            test.eq(tostring(err), "memory extraction returned a non-scalar attribute")
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 0)
+            test.eq(result.stats.rejected, 1)
+            test.eq(result.stats.rejected_extraction_value, 1)
             test.eq(#fixture.script.requests("structured_output"), 1)
         end)
 
@@ -407,12 +408,14 @@ local function define_tests()
             for _, key in ipairs({ "travel_help", "Travel Help" }) do
                 local lesson = fixture.candidate("lesson", key, "accessible routes", "Suggest accessible routes.")
                 fixture.normalization({ lesson })
-                local result, err = fixture.op(user, "normalize", { candidates = { lesson }, keys = {
+                local result, err = fixture.op(user, "model_step", { candidates = { lesson }, keys = {
                     { key = "travel_help", kind = "plan", cardinality = "single" },
                     { key = "mobility", kind = "profile_slot", cardinality = "single" },
                 } })
-                test.not_nil(err)
-                test.is_nil(result)
+                test.is_nil(err, tostring(err))
+                test.eq(#result.items, 0)
+                test.eq(result.stats.rejected, 1)
+                test.eq(result.stats.rejected_normalization_kind, 1)
                 local schema = fixture.script.requests("structured_output")[1].properties.mappings.properties["1"].items.properties.key
                 test.not_nil(schema["not"], "The model must not select an existing goal as an attribute topic")
                 test.eq(table.concat(schema["not"].enum, ","), "travel_help")
@@ -469,9 +472,11 @@ local function define_tests()
             fixture.script.respond("structured_output", { mappings = { ["1"] = { { key = "home_city", value = "", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } } } })
             apply(user, "before_step", id, session, "agent-a")
             local runs = fixture.wait_runs(user, id, "derive", 1)
-            test.eq(runs[1].status, "failed")
-            fixture.wait_job(runs[1].job_id, "dead")
-            test.eq(json.decode(runs[1].last_error).explanation, "memory normalization maps different item kinds")
+            test.eq(runs[1].status, "succeeded")
+            fixture.wait_job(runs[1].job_id, "done")
+            test.eq(runs[1].stats.rejected, 1)
+            test.eq(runs[1].stats.rejected_normalization_kind, 1)
+            test.is_nil(runs[1].last_error)
             fixture.settle(user, id)
             local rows = fixture.items(user, id)
             test.eq(#rows, 1)

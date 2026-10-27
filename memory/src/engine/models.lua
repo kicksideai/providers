@@ -123,7 +123,11 @@ Each lesson must combine at least two memories into guidance that no single memo
 already states. Never restate or summarize one memory, repeat a profile attribute, or
 guess beyond the evidence. Return {"items": []} when no grounded lesson follows.
 
-Each lesson has kind lesson, a short stable key, cardinality multi, value (guidance in a
+Keys name a reusable guidance topic, never the recommended action, a value, a person,
+or the lesson sentence. Use lowercase letters, digits and underscores, starting with
+a letter, at most 64 characters. The same guidance topic keeps its key as advice changes.
+
+Each lesson has kind lesson, a short stable topic key, cardinality multi, value (guidance in a
 few words), content (one sentence of guidance), based_on (at least two distinct memory
 numbers), empty event_id and valid_at, and confidence from 0 to 1.]]
 
@@ -138,6 +142,8 @@ local function messages(system: string, user: string): { any }
 end
 
 local CANDIDATE_KINDS = types.MEMORY_KINDS
+local CANDIDATE_KIND_SET = {}
+for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 
 local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
     local event_id: any = { type = "string" }
@@ -173,31 +179,96 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
     return schema
 end
 
-local function read_candidates(response: any, step: string): (any?, error?)
-    local data = response and response.result
-    if type(data) ~= "table" or type(data.items) ~= "table" then
-        return nil, types.unavailable(step .. " returned malformed output")
-    end
-    local candidates = {}
-    for _, item in ipairs(data.items) do candidates[#candidates + 1] = item end
-    if step == "memory extraction" then
-        if type(data.plans) ~= "table" then return nil, types.unavailable(step .. " returned malformed goals") end
-        for _, item in ipairs(data.plans) do candidates[#candidates + 1] = item end
-    end
-    local out: { any } = {}
-    for index, item in ipairs(candidates) do
-        if type(item) ~= "table" or not types.KIND_SET[item.kind] or types.trim(item.key) == ""
-            or types.trim(item.content) == "" or not types.CARDINALITY_SET[item.cardinality] then
-            return nil, types.unavailable(step .. " returned a malformed item at " .. tostring(index))
+-- The schema bounds result size; the budget includes JSON structure and field text.
+local OUTPUT = { max_tokens = 8192, min_tokens = 256, characters_per_token = 3,
+    max_candidates = 16, max_parts = 8, characters_per_candidate = 120,
+    string_lengths = { key = 64, value = 256, content = 384, details = 512, next_step = 256,
+        event_id = 128, valid_at = 35, reason = 192 }, default_string_length = 128 }
+
+local function output_budget(schema: any, field: string?): integer
+    local function size(node: any, name: string?): number
+        if node.enum then
+            local longest = 0
+            for _, value in ipairs(node.enum) do longest = math.max(longest, #json.encode(value)) end
+            return longest
+        elseif node.type == "object" then
+            local total = 2
+            for key, child in pairs(node.properties) do total = total + #key + 4 + size(child, key) end
+            return total
+        elseif node.type == "array" then
+            return 2 + (node.maxItems or 1) * (size(node.items, name) + 1)
+        elseif node.type == "string" then
+            node.maxLength = node.maxLength or OUTPUT.string_lengths[name] or OUTPUT.default_string_length
+            return node.maxLength + 2
         end
-        if item.kind ~= types.KIND.PLAN and type(item.value) ~= "string" then
-            return nil, types.unavailable(step .. " returned a non-scalar attribute")
-        end
-        if item.kind == types.KIND.PLAN and types.validate_value(item.kind, item.value) then
-            return nil, types.unavailable(step .. " returned an invalid goal state")
-        end
-        out[#out + 1] = item
+        return 24
     end
+    return math.min(OUTPUT.max_tokens, math.max(OUTPUT.min_tokens, math.ceil(size(schema, field) / OUTPUT.characters_per_token)))
+end
+
+local function candidate_count(text: string): integer
+    return math.min(OUTPUT.max_candidates, math.max(4, math.ceil(#text / OUTPUT.characters_per_candidate)))
+end
+
+local function is_array(value: any): boolean
+    if type(value) ~= "table" then return false end
+    for key in pairs(value) do
+        if type(key) ~= "number" or key < 1 or key > #value or key ~= math.floor(key) then return false end
+    end
+    return true
+end
+
+local function response_error(response: any, step: string): error?
+    if response and response.finish_reason == "length" then
+        return types.invalid(step .. " output is truncated", { code = "model_output_truncated", step = step })
+    end
+    if not response or type(response.result) ~= "table" then
+        return types.invalid(step .. " returned malformed output", { code = "model_output_malformed", step = step })
+    end
+    return nil
+end
+
+local function reject(stats: any, step: string, reason: string)
+    stats.rejected = (stats.rejected or 0) + 1
+    local code = "rejected_" .. step .. "_" .. reason
+    stats[code] = (stats[code] or 0) + 1
+end
+
+local function candidate_reason(item: any, typed: boolean?): string?
+    if type(item) ~= "table" or not CANDIDATE_KIND_SET[item.kind] or types.trim(item.key) == ""
+        or types.trim(item.content) == "" or not types.CARDINALITY_SET[item.cardinality] then return "shape" end
+    if item.kind == types.KIND.PLAN then
+        if types.validate_value(item.kind, item.value) or item.cardinality ~= types.CARDINALITY.SINGLE
+            or types.trim(item.value.details) == "" then return "value" end
+    elseif not typed and (type(item.value) ~= "string" or types.trim(item.value) == "") then return "value" end
+    if item.confidence ~= nil and (type(item.confidence) ~= "number" or item.confidence ~= item.confidence
+        or item.confidence < 0 or item.confidence > 1) then return "confidence" end
+    if item.valid_at ~= nil and item.valid_at ~= "" and not types.utc(item.valid_at) then return "time" end
+    local _, key_err = types.topic_key(item.key, item.content, item.value)
+    if key_err then return "topic_key" end
+    return nil
+end
+
+local function read_candidates(response: any, step: string, stats: any, event_ids: { [string]: boolean }?): (any?, error?)
+    local err = response_error(response, "memory " .. step)
+    if err then return nil, err end
+    local data = response.result
+    if not is_array(data.items) or (step == "extraction" and not is_array(data.plans)) then
+        return nil, types.invalid("memory " .. step .. " returned malformed output", { code = "model_output_malformed" })
+    end
+    local out = {}
+    local function read(collection: any, plans: boolean)
+        for _, item in ipairs(collection) do
+            local reason = candidate_reason(item)
+            if not reason and step == "extraction" then
+                if (item.kind == types.KIND.PLAN) ~= plans then reason = "kind"
+                elseif not event_ids[item.event_id] then reason = "evidence" end
+            elseif not reason and step == "reflection" and item.kind ~= types.KIND.LESSON then reason = "kind" end
+            if reason then reject(stats, step, reason) else out[#out + 1] = item end
+        end
+    end
+    read(data.items, false)
+    if step == "extraction" then read(data.plans, true) end
     return out, nil
 end
 
@@ -233,10 +304,12 @@ function M.conversation(span: { any }, context: { any }?): string
     return table.concat(lines, "\n")
 end
 
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?): (any?, error?)
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, stats: any?): (any?, error?)
+    stats = stats or {}
     local ids: { string } = {}
+    local allowed = {}
     for _, message in ipairs(span) do
-        if STATEMENT_ROLES[message.role] then ids[#ids + 1] = message.id end
+        if STATEMENT_ROLES[message.role] then ids[#ids + 1] = message.id; allowed[message.id] = true end
     end
     if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
@@ -244,14 +317,19 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
         system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. key_listing(keys)
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
-    local response, err = llm.structured_output(candidate_schema(ids), messages(system, M.conversation(span, context)), { model = model })
+    local conversation = M.conversation(span, context)
+    local schema = candidate_schema(ids)
+    schema.properties.items.maxItems = candidate_count(conversation)
+    schema.properties.plans.maxItems = schema.properties.items.maxItems
+    local response, err = llm.structured_output(schema, messages(system, conversation), { model = model, max_tokens = output_budget(schema) })
     if err then return nil, model_error("memory extraction", err) end
-    local candidates, read_err = read_candidates(response, "memory extraction")
+    local candidates, read_err = read_candidates(response, "extraction", stats, allowed)
     if read_err then return nil, read_err end
-    return M.normalize(model, candidates :: any, keys, M.conversation(span, context))
+    return M.normalize(model, candidates :: any, keys, conversation, stats)
 end
 
-function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?): (any?, error?)
+function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?, stats: any?): (any?, error?)
+    stats = stats or {}
     if #candidates == 0 then return candidates, nil end
     local known: { [string]: any } = {}
     for _, row in ipairs(keys) do known[row.key] = row end
@@ -276,7 +354,8 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
         end
         if #excluded_keys > 0 then mapping_properties.key["not"] = { enum = excluded_keys } end
         local mapping_required = { "key", "kind", "cardinality" }
-        local mappings: any = { type = "array", minItems = 1 }
+        local mappings: any = { type = "array", minItems = 1, maxItems = math.min(OUTPUT.max_parts,
+            math.max(2, math.ceil((#candidate.content + #json.encode(candidate.value)) / OUTPUT.characters_per_candidate))) }
         if type(candidate.value) == "string" then
             mapping_properties.value = { type = "string", minLength = 1 }
             mapping_properties.content = { type = "string", minLength = 1 }
@@ -294,43 +373,50 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
         mappings = { type = "object", additionalProperties = false, properties = properties, required = required },
     } }
-    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model })
+    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model, max_tokens = output_budget(schema) })
     if err then return nil, model_error("memory normalization", err) end
+    local response_err = response_error(response, "memory normalization")
+    if response_err then return nil, response_err end
     local mappings = response and response.result and response.result.mappings
-    if type(mappings) ~= "table" then return nil, types.unavailable("memory normalization returned malformed output") end
+    if type(mappings) ~= "table" then
+        return nil, types.invalid("memory normalization returned malformed output", { code = "model_output_malformed" })
+    end
     local out = {}
     for i, candidate in ipairs(candidates) do
         local parts = mappings[tostring(i)]
-        if type(parts) ~= "table" or #parts == 0 or (type(candidate.value) ~= "string" and #parts ~= 1) then
-            return nil, types.unavailable("memory normalization returned an invalid mapping")
+        if type(parts) ~= "table" then
+            return nil, types.invalid("memory normalization returned malformed mappings", { code = "model_output_malformed" })
         end
-        for _, mapping in ipairs(parts) do
-            if type(mapping) ~= "table" or not types.KIND_SET[mapping.kind] or not types.CARDINALITY_SET[mapping.cardinality] then
-                return nil, types.unavailable("memory normalization returned an invalid item type")
-            end
-            local mapped_key = types.normalize_key(mapping.key)
-            local existing = known[mapped_key]
-            if ((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN))
-                or (existing and ((existing.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)))
-                or (candidate.kind == types.KIND.LESSON and mapping.kind ~= types.KIND.LESSON) then
-                return nil, types.invalid("memory normalization maps different item kinds")
-            end
-            local normalized = {}
-            for k, v in pairs(candidate) do normalized[k] = v end
-            normalized.kind = mapping.kind
-            normalized.cardinality = existing and existing.cardinality or mapping.cardinality
-            if type(candidate.value) == "string" then
-                if type(mapping.value) ~= "string" or type(mapping.content) ~= "string"
-                    or types.trim(mapping.value) == "" or types.trim(mapping.content) == "" then
-                    return nil, types.unavailable("memory normalization returned an empty attribute")
+        if not is_array(parts) or #parts == 0 or (type(candidate.value) ~= "string" and #parts ~= 1) then
+            reject(stats, "normalization", "mapping")
+        else
+            for _, mapping in ipairs(parts) do
+                local reason = nil
+                local normalized = {}
+                for k, v in pairs(candidate) do normalized[k] = v end
+                if type(mapping) ~= "table" or not types.CARDINALITY_SET[mapping.cardinality] then reason = "shape"
+                else
+                    local mapped_key = types.normalize_key(mapping.key)
+                    local existing = known[mapped_key]
+                    normalized.kind = mapping.kind
+                    normalized.key = mapped_key
+                    normalized.cardinality = existing and existing.cardinality or mapping.cardinality
+                    if type(candidate.value) == "string" then
+                        normalized.value = mapping.value
+                        normalized.content = mapping.content
+                    end
+                    reason = candidate_reason(normalized, type(candidate.value) ~= "string")
+                    if not reason and (((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN))
+                        or (existing and ((existing.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)))
+                        or (candidate.kind == types.KIND.LESSON and mapping.kind ~= types.KIND.LESSON)) then reason = "kind" end
                 end
-                normalized.value = types.trim(mapping.value)
-                normalized.content = types.trim(mapping.content)
+                if reason then reject(stats, "normalization", reason)
+                else
+                    normalized.content = types.trim(normalized.content)
+                    if type(normalized.value) == "string" then normalized.value = types.trim(normalized.value) end
+                    out[#out + 1] = normalized
+                end
             end
-            local key, key_err = types.topic_key(mapped_key, normalized.content :: string, normalized.value)
-            if key_err then return nil, key_err end
-            normalized.key = key
-            out[#out + 1] = normalized
         end
     end
     return out, nil
@@ -338,7 +424,8 @@ end
 
 local REFLECTION_MIN_SOURCES = 2
 
-function M.reflect(model: string, items: { any }): (any?, error?)
+function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
+    stats = stats or {}
     local lines: { string } = {}
     local numbers: { integer } = {}
     for index, item in ipairs(items) do
@@ -346,32 +433,35 @@ function M.reflect(model: string, items: { any }): (any?, error?)
         numbers[index] = index
     end
     local schema = candidate_schema(nil, { types.KIND.LESSON })
+    schema.properties.items.maxItems = math.min(OUTPUT.max_parts, math.max(1, math.floor(#items / REFLECTION_MIN_SOURCES)))
     local item_schema = schema.properties.items.items
-    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES }
+    item_schema.properties.key.pattern = "^[a-z][a-z0-9_]{0,63}$"
+    item_schema.properties.cardinality.enum = { "multi" }
+    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES, maxItems = #items, uniqueItems = true }
     item_schema.required[#item_schema.required + 1] = "based_on"
-    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
+    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model, max_tokens = output_budget(schema) })
     if err then return nil, model_error("memory reflection", err) end
-    local candidates, read_err = read_candidates(response, "memory reflection")
+    local candidates, read_err = read_candidates(response, "reflection", stats)
     if read_err then return nil, read_err end
     local grounded: { any } = {}
     for _, candidate in ipairs(candidates :: any) do
         local sources: { [integer]: boolean } = {}
         local source_ids: { string } = {}
-        local count = 0
-        for _, number in ipairs(type(candidate.based_on) == "table" and candidate.based_on or {}) do
-            local n = math.floor(tonumber(number) or 0)
-            if items[n] and not sources[n] then
-                sources[n] = true
-                count = count + 1
-                source_ids[#source_ids + 1] = items[n].id
+        local valid = is_array(candidate.based_on)
+        for _, number in ipairs(valid and candidate.based_on or {}) do
+            if type(number) ~= "number" or number ~= math.floor(number) or not items[number] or sources[number] then
+                valid = false
+            else
+                sources[number] = true
+                source_ids[#source_ids + 1] = items[number].id
             end
         end
-        if candidate.kind == types.KIND.LESSON and count >= REFLECTION_MIN_SOURCES then
+        if valid and #source_ids >= REFLECTION_MIN_SOURCES and candidate.cardinality == types.CARDINALITY.MULTI then
             candidate.source_ids = source_ids
             grounded[#grounded + 1] = candidate
-        end
+        else reject(stats, "reflection", "grounding") end
     end
-    return M.normalize(model, grounded, items)
+    return M.normalize(model, grounded, items, nil, stats)
 end
 
 function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)
@@ -389,7 +479,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
         required = { "action", "target_ids", "reason" },
         properties = {
             action = { type = "string", enum = actions },
-            target_ids = { type = "array", items = { type = "string", enum = ids } },
+            target_ids = { type = "array", items = { type = "string", enum = ids }, maxItems = #ids },
             reason = { type = "string" },
         },
     }
@@ -397,8 +487,10 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
             new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at,
                 stated = candidate.stated }, conversation = candidate.conversation,
             existing_memories = listing,
-        })), { model = model })
+        })), { model = model, max_tokens = output_budget(schema) })
     if err then return nil, model_error("memory reconcile judge", err) end
+    local response_err = response_error(response, "memory reconcile judge")
+    if response_err then return nil, response_err end
     local data = response and response.result
     if type(data) ~= "table" or type(data.action) ~= "string" or type(data.target_ids) ~= "table" then
         return nil, types.unavailable("memory reconcile judge returned malformed output")

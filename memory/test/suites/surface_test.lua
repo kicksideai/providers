@@ -37,6 +37,37 @@ end
 
 local function define_tests()
     test.describe("memory surfaces", function()
+        test.it("exposes candidate rejection counts through run activity while valid memories persist", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session_id = "s-" .. user
+            local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "event")
+            local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", "event")
+            fixture.script.respond("structured_output", { items = { good, bad }, plans = {} })
+            fixture.normalization({ good })
+            fixture.history.record(session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
+            local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") },
+                fixture.agent_context(id, session_id, "agent-a"))
+            test.is_nil(err, tostring(err))
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            local response = get_path(user, "/memory/" .. id .. "/status")
+            test.eq(response.status, 200, response.raw)
+            local found = false
+            for _, run in ipairs(response.body.runs) do
+                if run.id == runs[1].id then
+                    found = true
+                    test.eq(run.stats.rejected, 1)
+                    test.eq(run.stats.rejected_extraction_topic_key, 1)
+                    test.is_nil((json.encode(run.stats):find("private", 1, true)))
+                end
+            end
+            test.is_true(found)
+            fixture.settle(user, id)
+            local items = fixture.items(user, id)
+            test.eq(#items, 1)
+            test.eq(items[1].value, "Oslo")
+        end)
         test.before_each(function() fixture.script.reset() end)
 
         test.it("publishes the same typed tool contracts that the runtime implements", function()

@@ -256,7 +256,7 @@ function M.failure(err: any): (string?, error?)
     local failure = { kind = errors.INTERNAL, code = errors.INTERNAL, explanation = "Memory operation violates an internal invariant.", retryable = false }
     if type(err) == "userdata" then
         local details = err:details() or {}
-        failure.kind, failure.code = err:kind(), details.cause_kind or err:kind()
+        failure.kind, failure.code = err:kind(), details.code or details.cause_kind or err:kind()
         failure.explanation = err:message()
         failure.retryable = err:retryable() == true
     end

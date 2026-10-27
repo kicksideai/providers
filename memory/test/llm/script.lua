@@ -45,7 +45,9 @@ local function push(method: string, response: any, failure: string?, failure_kin
     if err then error(tostring(err)) end
 end
 
-function M.respond(method: string, response: any) push(method, response, nil) end
+function M.respond(method: string, response: any, finish_reason: string?)
+    push(method, { data = response, finish_reason = finish_reason or "stop" }, nil)
+end
 function M.fail(method: string, failure: string, kind: string?, retryable: boolean?) push(method, nil, failure, kind, retryable) end
 
 function M.hold(method: string)
@@ -73,7 +75,7 @@ function M.await_release(method: string): string?
     end
 end
 
-function M.take(method: string): (any, string?, string?, boolean?)
+function M.take(method: string): (any, string?, string?, boolean?, string?)
     M.ensure()
     local conn = db()
     local rows, err = conn:query("SELECT seq, response, failure FROM app_llm_script WHERE method = $1 ORDER BY seq LIMIT 1", { method })
@@ -86,7 +88,8 @@ function M.take(method: string): (any, string?, string?, boolean?)
         return nil, rows[1].failure, type(details) == "table" and details.kind or nil,
             type(details) == "table" and details.retryable or nil
     end
-    return json.decode(rows[1].response), nil, nil, nil
+    local response = json.decode(rows[1].response)
+    return response.data, nil, nil, nil, response.finish_reason
 end
 
 function M.record(method: string, schema: any, messages: any)

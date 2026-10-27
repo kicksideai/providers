@@ -200,3 +200,13 @@ entries:
     source: file://measured_db.lua
     imports:
       memory_db: kickside.memory.persist:db
+
+  - name: models_test
+    kind: function.lua
+    meta: { type: test, suite: memory_models, timeout: 300s }
+    source: file://models_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture

@@ -7,7 +7,7 @@ local function define_tests()
     test.describe("memory consolidation", function()
         test.before_each(function() fixture.script.reset() end)
 
-        test.it("normalizes reflected value-bearing keys before persisting grounded guidance", function()
+        test.it("rejects reflected value-bearing keys while persisting valid grounded guidance", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             fixture.remember(user, id, {
@@ -17,7 +17,9 @@ local function define_tests()
             fixture.settle(user, id)
             local lesson = fixture.candidate("lesson", "contact_evening", "evening", "Contact the user in the evening.", "")
             lesson.based_on = { 1, 2 }
-            fixture.script.respond("structured_output", { items = { lesson } })
+            local valid = fixture.candidate("lesson", "contact_guidance", "evening", lesson.content, "")
+            valid.based_on = { 1, 2 }
+            fixture.script.respond("structured_output", { items = { lesson, valid } })
             fixture.script.respond("structured_output", { mappings = { ["1"] = {
                 { key = "contact_window", kind = "lesson", cardinality = "multi", value = "evening", content = lesson.content },
             } } })
@@ -26,6 +28,8 @@ local function define_tests()
             test.is_nil(err, tostring(err))
             local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
             test.eq(run.status, "succeeded", tostring(run.last_error))
+            test.eq(run.stats.rejected, 1)
+            test.eq(run.stats.rejected_reflection_topic_key, 1)
             fixture.settle(user, id)
             local lessons = fixture.items(user, id, { kinds = { "lesson" } })
             test.eq(#lessons, 1)
