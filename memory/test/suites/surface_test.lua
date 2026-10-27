@@ -300,9 +300,9 @@ local function define_tests()
             for index, value in ipairs(values) do
                 local held = live_for_key(user, component_id, "cat_name")
                 if #held > 0 then
-                    local ids = {}
-                    for _, item in ipairs(held) do ids[#ids + 1] = item.id end
-                    fixture.verdict("CONFLICT", ids)
+                    local relations = {}
+                    for _ = 1, #held do relations[#relations + 1] = "contradicts" end
+                    fixture.relations(relations)
                 end
                 fixture.remember(user, component_id, {
                     fixture.candidate("fact", "cat_name", value, "The user's cat is called " .. value .. ".", "cat-" .. index),

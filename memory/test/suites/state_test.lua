@@ -48,14 +48,14 @@ local function define_tests()
             fixture.settle(user, id)
             local statement = "I moved to Lisbon last month."
             local conversation = "[change][user] " .. statement
-            fixture.verdict("SUPERSEDE", { old.item_ids[1] })
+            fixture.relations({ "updates" })
             local result = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "residence", "Lisbon", "The user lives in Lisbon.", "change"),
             }, "residence-change", { events = { change = { text = statement } }, conversation = conversation })
             test.eq(result.stats.superseded, 1)
             test.eq(result.stats.conflicted, 0)
             fixture.settle(user, id)
-            fixture.verdict("ADD", {})
+            fixture.relations({ "unrelated" })
             local related_result = fixture.remember(user, id, {
                 fixture.candidate("fact", "relocation_time", "last month", "The user moved to Lisbon last month.", "change", nil, "single"),
             }, "relocation-time", { events = { change = { text = statement } }, conversation = conversation })
@@ -68,8 +68,8 @@ local function define_tests()
             test.eq(change.new_memory.cardinality, "single")
             test.eq(change.new_memory.stated, statement)
             test.eq(change.conversation, conversation)
-            test.eq(change.existing_memories[1].value, "Oslo")
-            test.eq(change.existing_memories[1].cardinality, "single")
+            test.eq(change.existing_memories["1"].value, "Oslo")
+            test.eq(change.existing_memories["1"].cardinality, "single")
             local related = json.decode(prompts[2].user)
             test.eq(related.new_memory.key, "relocation_time")
             test.eq(related.new_memory.value, "last month")
@@ -77,7 +77,7 @@ local function define_tests()
             test.eq(#current, 1)
             test.eq(current[1].value, "Lisbon")
             test.eq(fixture.op(user, "get", { component_id = id, item_id = old.item_ids[1] }).status, "superseded")
-            fixture.verdict("CONFLICT", { current[1].id })
+            fixture.relations({ "contradicts" })
             local uncertain = fixture.remember(user, id, { fixture.candidate("profile_slot", "residence", "Porto", "The user may live in Porto.", "uncertain") },
                 "uncertain-residence", { events = { uncertain = { text = "One record says Porto; another says Lisbon. I cannot confirm either." } } })
             test.eq(uncertain.stats.conflicted, 1)
@@ -206,9 +206,9 @@ local function define_tests()
             local function say(city: string, at: string, idem: string, verdict: boolean)
                 if verdict then
                     local held = by_status(key_rows(user, id, "home_city"), "current")
-                    local ids = {}
-                    for _, item in ipairs(held) do ids[#ids + 1] = item.id end
-                    fixture.verdict("SUPERSEDE", ids)
+                    local relations = {}
+                    for _ = 1, #held do relations[#relations + 1] = "updates" end
+                    fixture.relations(relations)
                 end
                 fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", city, "The user lives in " .. city .. ".", idem, at) }, idem)
                 fixture.settle(user, id)
@@ -243,7 +243,7 @@ local function define_tests()
                     }, "The user needs to prepare the review.", "initial"),
                 }, "initial-plan", { events = { initial = { at = "2026-10-10T10:00:00Z" } } })
                 fixture.settle(user, id)
-                fixture.verdict("SUPERSEDE", { original.item_ids[1] })
+                fixture.relations({ "updates" })
                 local details = "Prepare the review scheduled for " .. event_date
                 local next_step = "Prepare slides before " .. event_date
                 local updated = fixture.remember(user, id, {
@@ -263,7 +263,7 @@ local function define_tests()
                 local prompt = json.decode(fixture.script.prompts("structured_output")[1].user)
                 test.eq(prompt.new_memory.valid_at, "2026-10-20T10:00:00Z")
 
-                fixture.verdict("SUPERSEDE", { updated.item_ids[1] })
+                fixture.relations({ "updates" })
                 local late = fixture.remember(user, id, {
                     fixture.candidate("plan", "prepare_review", {
                         status = "open", next_step = "Draft outline", details = "Prepare the review outline",
@@ -285,7 +285,7 @@ local function define_tests()
                 fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "initial", "2026-07-01T00:00:00Z"),
             }, "initial-city", { events = { initial = { at = "2026-10-10T10:00:00Z" } } })
             fixture.settle(user, id)
-            fixture.verdict("SUPERSEDE", { original.item_ids[1] })
+            fixture.relations({ "updates" })
             fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "home_city", "Berlin", "The user moved to Berlin in September.", "moved", "2026-09-01T00:00:00Z"),
             }, "past-move", { events = { moved = { at = "2026-10-20T10:00:00Z", text = "I moved to Berlin last month." } } })
@@ -304,7 +304,7 @@ local function define_tests()
             fixture.remember(user, id, { flag }, "string-claim")
             local boolean_claim = fixture.candidate("fact", "subscribed", "true", "The user is subscribed (flag).", "t2")
             boolean_claim.value = true
-            fixture.verdict("ADD", {})
+            fixture.relations({ "unrelated" })
             fixture.remember(user, id, { boolean_claim }, "boolean-claim")
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id, { key = "subscribed" }), 2)
@@ -378,9 +378,9 @@ local function define_tests()
                 local held = by_status(key_rows(user, id, "birth_date"), "current")
                 for _, row in ipairs(by_status(key_rows(user, id, "birth_date"), "conflict")) do held[#held + 1] = row end
                 if #held > 0 then
-                    local ids = {}
-                    for _, item in ipairs(held) do ids[#ids + 1] = item.id end
-                    fixture.verdict("CONFLICT", ids)
+                    local relations = {}
+                    for _ = 1, #held do relations[#relations + 1] = "contradicts" end
+                    fixture.relations(relations)
                 end
                 fixture.remember(user, id, { fixture.candidate("profile_slot", "birth_date", value, "The user was born on " .. value .. ".", idem) }, idem)
                 fixture.settle(user, id)
@@ -411,7 +411,7 @@ local function define_tests()
             fixture.remember(user, id, { fixture.candidate("fact", "cat_name", "Biscuit", "The user's cat is called Biscuit.", "k1") }, "alt-1")
             fixture.settle(user, id)
             local first = fixture.items(user, id, { key = "cat_name" })[1]
-            fixture.verdict("CONFLICT", { first.id })
+            fixture.relations({ "contradicts" })
             fixture.remember(user, id, { fixture.candidate("fact", "cat_name", "Pepper", "The user's cat is called Pepper.", "k2") }, "alt-2")
             fixture.settle(user, id)
             local found = fixture.op(user, "tool_search", { input = { query = "cat called" } }, fixture.agent_context(id, "s-" .. user, "agent-a"))
@@ -525,7 +525,7 @@ local function define_tests()
             fixture.settle(user, id)
             fixture.create_claim(user, id, "Berlin")
             local berlin = fixture.items(user, id, { statuses = { "current" }, key = "home_city" })[1]
-            fixture.verdict("CONFLICT", { berlin.id })
+            fixture.relations({ "contradicts" })
             fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "contested-city") }, "contested-city")
             fixture.settle(user, id)
             local _, err = fixture.op(user, "restore", { component_id = id, item_id = first.item_ids[1] })

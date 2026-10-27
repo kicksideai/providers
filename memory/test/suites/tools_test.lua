@@ -61,14 +61,14 @@ local function define_tests()
                     fixture.script.respond("structured_output", { mappings = { ["1"] = {} } })
                 else
                     fixture.normalization({ input })
-                    fixture.verdict("NOOP", {})
+                    fixture.script.respond("structured_output", { relations = {}, reason = "test" })
                 end
                 local result, err = fixture.op(user, "tool_remember", { input = input }, fixture.agent_context(id, "s-" .. user, "agent-a"))
                 test.is_nil(result)
                 test.not_nil(err)
-                local code = "model_output_invalid_" .. step .. (step == "normalization" and "_mapping" or "_targets")
+                local code = step == "normalization" and "model_output_invalid_normalization_mapping" or "model_output_malformed"
                 test.eq(err:details().code, code)
-                test.is_true(tostring(err):find(code, 1, true) ~= nil, tostring(err))
+                test.is_true(tostring(err):find(step == "judge" and "malformed output" or code, 1, true) ~= nil, tostring(err))
                 fixture.settle(user, id)
                 test.eq(#fixture.items(user, id), 1)
             end

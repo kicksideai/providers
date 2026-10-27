@@ -138,7 +138,7 @@ local function define_tests()
                 fixture.script.hold("structured_output")
                 fixture.extraction({ fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "first") })
                 fixture.extraction({ fixture.candidate("fact", "hobby", "cycling", "The user enjoys cycling.", "last") })
-                fixture.verdict("ADD", {})
+                fixture.relations({ "unrelated" })
                 if phase == "deactivate" then fixture.script.respond("structured_output", { items = {} }) end
                 local extra = phase == "after_persist" and { refs = { event_id = "last" } } or nil
                 local applied, err
@@ -182,7 +182,7 @@ local function define_tests()
                 local requests = fixture.script.requests("structured_output")
                 local extractions, judgments, reflections = 0, 0, 0
                 for _, schema in ipairs(requests) do
-                    if schema.properties.action then judgments = judgments + 1
+                    if schema.properties.relations then judgments = judgments + 1
                     elseif schema.properties.items.items.properties.based_on then reflections = reflections + 1
                     else extractions = extractions + 1 end
                 end

@@ -90,7 +90,7 @@ local function define_tests()
             test.not_nil(stepped.compiled.tools.ForgetMemory, "ForgetMemory tool")
             fixture.history.record(session, { { id = "trait-capture", role = "user", content = "I prefer aisle seats." } })
             fixture.extraction({ fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "trait-capture") })
-            fixture.verdict("ADD", {})
+            fixture.relations({ "unrelated", "unrelated" })
             local captured, capture_err = fixture.op(user, "trait_agent", {
                 spec = spec, payload = fixture.payload("before_step", session, agent_id),
             }, run_context)

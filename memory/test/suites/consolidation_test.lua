@@ -49,7 +49,7 @@ local function define_tests()
             lesson.based_on = { 1, 2 }
             fixture.script.respond("structured_output", { items = { lesson } })
             fixture.normalization({ lesson })
-            fixture.verdict("ADD", {})
+            fixture.relations({ "unrelated", "unrelated" })
             local woken, err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(err, tostring(err))
             test.is_true(woken.woken)
@@ -59,7 +59,7 @@ local function define_tests()
             test.eq(runs[1].stats.added, 1)
             local judged = fixture.script.requests("structured_output")
             local judge_schema = judged[#judged]
-            test.eq(table.concat(judge_schema.properties.action.enum, ","), "ADD,NOOP")
+            test.eq(table.concat(judge_schema.properties.relations.properties["1"].enum, ","), "same,unrelated")
             fixture.settle(user, id)
             local lessons = fixture.items(user, id, { kinds = { "lesson" } })
             test.eq(#lessons, 1)
@@ -89,7 +89,7 @@ local function define_tests()
             lesson.based_on = { 1, 2 }
             fixture.script.respond("structured_output", { items = { lesson } })
             fixture.normalization({ lesson })
-            fixture.verdict("ADD", {})
+            fixture.relations({ "unrelated", "unrelated" })
             local _, wake_err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(wake_err, tostring(wake_err))
             local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
@@ -138,7 +138,11 @@ local function define_tests()
                 fixture.script.respond("structured_output", { items = lessons })
                 fixture.normalization(lessons)
                 for _, lesson in ipairs(lessons) do
-                    if not numbers[lesson.key] then fixture.verdict("ADD", {}) end
+                    if not numbers[lesson.key] then
+                        local relations = {}
+                        for _ = 1, math.min(5, #current) do relations[#relations + 1] = "unrelated" end
+                        fixture.relations(relations)
+                    end
                 end
                 local _, err = fixture.op(user, "wake", { component_id = id })
                 test.is_nil(err, tostring(err))

@@ -42,13 +42,13 @@ end
 
 local function script_verdict(verdict: string?, candidate: any?, seeded: { any })
     if not verdict then return end
-    if verdict == "ADD" then fixture.verdict("ADD", {}); return end
-    local all, same = {}, {}
+    local relation = ({ ADD = "unrelated", NOOP = "same", SUPERSEDE = "updates", MERGE = "rephrases", CONFLICT = "contradicts" })[verdict]
+    local values, same = {}, {}
     for _, item in ipairs(seeded) do
-        all[#all + 1] = item.id
-        if candidate and item.key == candidate.key then same[#same + 1] = item.id end
+        values[#values + 1] = relation
+        if candidate and item.key == candidate.key then same[#same + 1] = relation end
     end
-    fixture.verdict(verdict, #same > 0 and same or all)
+    fixture.relations(#same > 0 and same or values)
 end
 
 local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer,
@@ -72,7 +72,7 @@ local function capture(user: string, memory: string, session: string, messages: 
             end
             fixture.extraction(candidates)
             if seed and i > 1 then
-                for _ = 1, #candidates do fixture.verdict("ADD", {}) end
+                for _ = 1, #candidates do fixture.relations({ "unrelated" }) end
             elseif not seed then
                 for _, candidate in ipairs(candidates) do script_verdict(verdict, candidate, seeded) end
             end
@@ -113,7 +113,7 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
         if target.scripted and #fixture.items(user, memory, { statuses = { "current" } }) >= 2 then
             fixture.script.respond("structured_output", { items = case.ideal.reflection })
             if #case.ideal.reflection > 0 then fixture.normalization(case.ideal.reflection) end
-            script_verdict(case.ideal.verdict, nil, {})
+            script_verdict(case.ideal.verdict, nil, fixture.items(user, memory, { statuses = { "current" } }))
         end
         local _, wake_err = fixture.op(user, "wake", { component_id = memory })
         if wake_err then return "ERROR", tostring(wake_err) end

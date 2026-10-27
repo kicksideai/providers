@@ -78,7 +78,7 @@ local function define_tests()
         test.it("rejects truncated output at every structured step even when JSON is complete", function()
             local user = fixture.user()
             for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
-                for _, data in ipairs({ { items = {}, plans = {}, mappings = {}, action = "ADD", target_ids = {} }, '{"items":[' }) do
+                for _, data in ipairs({ { items = {}, plans = {}, mappings = {}, relations = {} }, '{"items":[' }) do
                     fixture.script.respond("structured_output", data, "length")
                     local result, err = fixture.op(user, "model_step", { step = step,
                         span = { { id = "event", role = "user", text = "I live in Oslo." } },
@@ -202,7 +202,7 @@ local function define_tests()
                 elseif step == "reflect" then
                     test.eq(schema.properties.items.maxItems, math.min(4, capacity))
                     test.eq(schema.properties.items.items.properties.based_on.maxItems, #sources)
-                elseif step == "judge" then test.eq(schema.properties.target_ids.maxItems, #sources) end
+                elseif step == "judge" then test.eq(#schema.properties.relations.required, #sources) end
             end
             span[#span + 1] = span[1]
             fixture.script.respond("structured_output", {}, "length")
@@ -225,13 +225,13 @@ local function define_tests()
                     elseif step == "reflect" then
                         data = { items = { city } }
                         city.kind = "lesson"; city.cardinality = "multi"; city.event_id = ""; city.based_on = { 1, 2 }
-                    elseif step == "judge" then data = { action = "ADD", reason = "Distinct attribute.", target_ids = {} } end
+                    elseif step == "judge" then data = { relations = { ["1"] = "unrelated", ["2"] = "unrelated" }, reason = "Distinct attribute." } end
                     if overflow == "string" then
                         if step == "judge" then data.reason = string.rep("x", 193)
                         elseif step == "normalize" then data.mappings["1"][1].content = string.rep("x", 241)
                         else city.content = string.rep("x", 241) end
                     else
-                        if step == "judge" then data.target_ids = { "a", "a", "a" }
+                        if step == "judge" then data.relations["3"] = "unrelated"
                         elseif step == "normalize" then
                             for i = 2, 5 do data.mappings["1"][i] = data.mappings["1"][1] end
                         else
@@ -355,7 +355,7 @@ local function define_tests()
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
-                test.eq(err:details().code, "model_output_invalid_extraction_" .. example.reason)
+                test.eq(err:details().code, (example.field == "kind" or example.field == "event_id") and "model_output_malformed" or "model_output_invalid_extraction_" .. example.reason)
                 test.is_true(err:retryable())
             end
             local schema = fixture.script.requests("structured_output")[1]
@@ -373,44 +373,95 @@ local function define_tests()
             test.is_true(err:retryable())
         end)
 
-        test.it("fails invalid judge actions and target combinations", function()
+        test.it("derives every action from required neighbour relations with deterministic precedence", function()
             local user = fixture.user()
-            for _, example in ipairs({
-                { action = "ADD", targets = { "a" }, reason = "targets" },
-                { action = "NOOP", targets = {}, reason = "targets" },
-                { action = "NOOP", targets = { "z" }, reason = "targets" },
-                { action = "NOOP", targets = { "a", "a" }, reason = "targets" },
-                { action = "SUPERSEDE", targets = { "a", "b" }, reason = "identity" },
-                { action = "INVALID", targets = {}, reason = "action" },
-            }) do
-                fixture.verdict(example.action, example.targets)
-                local result, err = fixture.op(user, "model_step", { step = "judge",
-                    candidate = candidate("home_city", "Oslo"), actions = { "ADD", "NOOP", "SUPERSEDE" }, items = {
-                        { id = "a", key = "home_city", cardinality = "single" },
-                        { id = "b", key = "occupation", cardinality = "single" },
-                    },
-                })
-                test.is_nil(result)
-                test.not_nil(err)
-                test.eq(err:details().code, "model_output_invalid_judge_" .. example.reason)
-                test.is_true(err:retryable())
+            local relations = { "same", "updates", "rephrases", "contradicts", "unrelated" }
+            local actions = { "NOOP", "SUPERSEDE", "MERGE", "CONFLICT", "ADD" }
+            for first, relation in ipairs(relations) do
+                local values, neighbors = {}, {}
+                for i = first, #relations do
+                    local number = tostring(i - first + 1)
+                    values[number] = relations[i]
+                    neighbors[#neighbors + 1] = { id = "n" .. number, key = "home_city", cardinality = "single" }
+                end
+                fixture.script.respond("structured_output", { relations = values, reason = "test" })
+                local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("home_city", "Oslo"),
+                    actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" }, items = neighbors })
+                test.is_nil(err, tostring(err))
+                test.eq(result.items.action, actions[first])
+                test.eq(table.concat(result.items.target_ids, ","), relation == "unrelated" and "" or "n1")
             end
             local schema = fixture.script.requests("structured_output")[1]
-            test.eq(table.concat(schema.properties.target_ids.items.enum, ","), "a,b")
+            test.eq(table.concat(schema.properties.relations.required, ","), "1,2,3,4,5")
+            test.eq(table.concat(schema.properties.relations.properties["1"].enum, ","), table.concat(relations, ","))
+            local prompt = fixture.script.prompts("structured_output")[1]
+            test.is_true(prompt.system:find("one relation for every numbered", 1, true) ~= nil)
+            test.eq(json.decode(prompt.user).existing_memories["1"].id, "n1")
         end)
 
-        test.it("requires targets in the schema when ADD is unavailable", function()
+        test.it("applies relation precedence independently of neighbour order", function()
             local user = fixture.user()
-            fixture.verdict("NOOP", { "existing" })
-            local result, err = fixture.op(user, "model_step", { step = "judge", actions = { "NOOP", "SUPERSEDE" },
-                candidate = candidate("home_city", "Oslo"), items = { { id = "existing", key = "home_city", cardinality = "single" } },
-            })
-            test.is_nil(err, tostring(err))
-            test.eq(result.items.action, "NOOP")
-            local schema = fixture.script.requests("structured_output")[1]
-            test.eq(schema.properties.target_ids.minItems, 1)
-            local prompt = fixture.script.prompts("structured_output")[1].system
-            test.is_true(prompt:find("Every other action requires at least one target", 1, true) ~= nil)
+            for _, example in ipairs({
+                { values = { "updates", "same", "same" }, action = "NOOP", targets = "b,c" },
+                { values = { "contradicts", "rephrases", "updates" }, action = "SUPERSEDE", targets = "c" },
+                { values = { "unrelated", "contradicts", "rephrases" }, action = "MERGE", targets = "c" },
+                { values = { "unrelated", "contradicts", "unrelated" }, action = "CONFLICT", targets = "b" },
+            }) do
+                fixture.relations(example.values)
+                local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("home_city", "Oslo"),
+                    actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" }, items = {
+                        { id = "a", key = "home_city", cardinality = "single" },
+                        { id = "b", key = "home_city", cardinality = "single" },
+                        { id = "c", key = "home_city", cardinality = "single" },
+                    } })
+                test.is_nil(err, tostring(err))
+                test.eq(result.items.action, example.action)
+                test.eq(table.concat(result.items.target_ids, ","), example.targets)
+            end
+        end)
+
+        test.it("selects every matching target while supersession keeps one single-valued key", function()
+            local user = fixture.user()
+            for _, relation in ipairs({ "same", "updates", "rephrases", "contradicts" }) do
+                fixture.script.respond("structured_output", { relations = { ["1"] = relation, ["2"] = relation, ["3"] = relation }, reason = "test" })
+                local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("residence", "Oslo"),
+                    actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" }, items = {
+                        { id = "a", key = "home_city", cardinality = "single" },
+                        { id = "b", key = "occupation", cardinality = "single" },
+                        { id = "c", key = "home_city", cardinality = "single" },
+                    } })
+                test.is_nil(err, tostring(err))
+                test.eq(table.concat(result.items.target_ids, ","), relation == "updates" and "a,c" or "a,b,c")
+            end
+        end)
+
+        test.it("restricts relation enums to the held and reflection action sets", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { actions = { "SUPERSEDE", "MERGE", "NOOP", "CONFLICT" }, values = "same,updates,rephrases,contradicts" },
+                { actions = { "ADD", "NOOP" }, values = "same,unrelated" },
+            }) do
+                fixture.script.respond("structured_output", { relations = { ["1"] = "same" }, reason = "test" })
+                local result, err = fixture.op(user, "model_step", { step = "judge", actions = example.actions,
+                    candidate = candidate("home_city", "Oslo"), items = { { id = "a", key = "home_city", cardinality = "single" } } })
+                test.is_nil(err, tostring(err))
+                test.eq(result.items.action, "NOOP")
+                local schemas = fixture.script.requests("structured_output")
+                test.eq(table.concat(schemas[#schemas].properties.relations.properties["1"].enum, ","), example.values)
+            end
+        end)
+
+        test.it("rejects missing extra unknown and disallowed neighbour relations at the schema boundary", function()
+            local user = fixture.user()
+            for _, relations in ipairs({ true, { ["1"] = 1 }, {}, { ["1"] = "same", ["2"] = "same" }, { ["1"] = "unknown" }, { ["1"] = "updates" } }) do
+                fixture.script.respond("structured_output", { relations = relations, reason = "test" })
+                local result, err = fixture.op(user, "model_step", { step = "judge", candidate = candidate("home_city", "Oslo"),
+                    actions = { "ADD", "NOOP" }, items = { { id = "a", key = "home_city", cardinality = "single" } } })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_malformed")
+                test.is_true(err:retryable())
+            end
         end)
 
         test.it("fails reflection with duplicate or absent grounding without normalizing partial lessons", function()
@@ -425,7 +476,7 @@ local function define_tests()
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
-                test.eq(err:details().code, "model_output_invalid_reflection_grounding")
+                test.eq(err:details().code, sources[2] == 3 and "model_output_malformed" or "model_output_invalid_reflection_grounding")
                 test.is_true(err:retryable())
             end
             test.eq(#fixture.script.requests("structured_output"), 3)
@@ -445,7 +496,7 @@ local function define_tests()
             local user = fixture.user()
             fixture.script.respond("structured_output", { items = {
                 candidate("home_city", "Oslo"), candidate("private_value", "private value"),
-                { kind = "unknown", key = "bad", content = "Private text" },
+                candidate("work_role", "engineer"),
             }, plans = {} })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", text = "I live in Oslo." } } })
             test.is_nil(result)

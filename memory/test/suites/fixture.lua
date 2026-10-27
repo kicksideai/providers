@@ -205,8 +205,10 @@ function M.normalization(items: { any })
     script.respond("structured_output", { mappings = mappings })
 end
 
-function M.verdict(action: string, target_ids: { string })
-    script.respond("structured_output", { action = action, target_ids = target_ids, reason = "test" })
+function M.relations(values: { string })
+    local relations = {}
+    for index, relation in ipairs(values) do relations[tostring(index)] = relation end
+    script.respond("structured_output", { relations = relations, reason = "test" })
 end
 
 function M.candidate(kind: string, key: string, value: any, content: string, event_id: string?, valid_at: string?, cardinality: string?): any
