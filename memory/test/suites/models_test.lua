@@ -427,18 +427,20 @@ local function define_tests()
         end)
 
         test.it("rejects extraction models unable to hold one statement on creation and update", function()
+            for _, model in ipairs({ "test-small", "test-bounded" }) do
             local user = fixture.user()
-            local id, create_err = fixture.try_memory(user, { extraction_model = "test-small" })
+            local id, create_err = fixture.try_memory(user, { extraction_model = model })
             test.is_nil(id)
             test.not_nil(create_err)
             test.is_true(tostring(create_err):find("one statement", 1, true) ~= nil, tostring(create_err))
             id = fixture.memory(user)
-            local updated, update_err = fixture.op(user, "update_config", { component_id = id, config = { extraction_model = "test-small" } })
+            local updated, update_err = fixture.op(user, "update_config", { component_id = id, config = { extraction_model = model } })
             test.is_nil(updated)
             test.not_nil(update_err)
             test.is_true(tostring(update_err):find("one statement", 1, true) ~= nil, tostring(update_err))
             local stored = fixture.op(user, "store", { component_id = id })
-            test.is_true(stored.config.extraction_model ~= "test-small")
+            test.is_true(stored.config.extraction_model ~= model)
+            end
         end)
 
         test.it("fails malformed whole responses instead of accepting an empty batch", function()

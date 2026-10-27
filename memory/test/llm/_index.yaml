@@ -95,3 +95,16 @@ entries:
     providers:
       - id: app.llm:provider
         provider_model: test-small
+
+  - name: test-bounded
+    kind: registry.entry
+    meta:
+      type: llm.model
+      name: test-bounded
+      title: Bounded output test model
+      capabilities: [generate, structured_output]
+    max_tokens: 100000
+    output_tokens: 8192
+    providers:
+      - id: app.llm:provider
+        provider_model: test-bounded
