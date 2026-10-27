@@ -179,6 +179,9 @@ function M.forget(component_id: string, item_id: string): (any?, error?)
     end)
 end
 
+local SUGGESTIONS = 5
+local SUGGESTION_SCAN = 200
+
 local function key_distance(a: string, b: string): integer
     local previous: { integer } = {}
     for j = 0, #b do previous[j + 1] = j end
@@ -200,23 +203,28 @@ function M.forget_key(component_id: string, key: string, value: any): (any?, err
     local idempotency, hash_err = types.digest({ operation = "owner.forget_key", scope_key = scope_key, key = key, value = value })
     if hash_err then return nil, hash_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
-        local rows, read_err = items.all(component_id, { scope_keys = { scope_key } })
+        local rows, read_err = items.all(component_id, { scope_keys = { scope_key }, key = key })
         if read_err then return nil, read_err end
-        local matches, keys, seen = {}, {}, {}
+        local matches = {}
         for _, row in ipairs(rows :: any) do
-            if row.status ~= types.STATUS.FORGOTTEN then
-                if not seen[row.key] then keys[#keys + 1] = row.key; seen[row.key] = true end
-                if row.key == key then matches[#matches + 1] = row end
-            end
+            if row.status ~= types.STATUS.FORGOTTEN then matches[#matches + 1] = row end
         end
         if #matches == 0 then
-            table.sort(keys, function(a, b)
-                local ad, bd = key_distance(key, a), key_distance(key, b)
-                if ad ~= bd then return ad < bd end
-                return a < b
+            local known, known_err = items.keys(component_id, scope_key, SUGGESTION_SCAN)
+            if known_err then return nil, known_err end
+            local ranked, seen = {}, {}
+            for _, row in ipairs(known :: any) do
+                if not seen[row.key] then
+                    seen[row.key] = true
+                    ranked[#ranked + 1] = { key = row.key, distance = key_distance(key, row.key) }
+                end
+            end
+            table.sort(ranked, function(a, b)
+                if a.distance ~= b.distance then return a.distance < b.distance end
+                return a.key < b.key
             end)
             local closest: { string } = {}
-            for i = 1, math.min(5, #keys) do closest[i] = keys[i] end
+            for i = 1, math.min(SUGGESTIONS, #ranked) do closest[i] = ranked[i].key end
             return nil, types.not_found("unknown memory key: " .. key .. ". Existing keys, closest first: " .. table.concat(closest, ", "))
         end
         local multi = matches[1].cardinality == types.CARDINALITY.MULTI
