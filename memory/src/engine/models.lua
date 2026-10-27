@@ -84,6 +84,8 @@ Each item has:
 - cardinality: single for one value at a time; multi for independent simultaneous values.
   Plans use single under their own goal key.
 - value: the newly stated attribute value alone, never a union with an earlier value.
+  When one phrase combines values of attributes that can change independently, such as
+  one thing at or for another, each attribute gets its own item, key and value.
   A plan uses an object with status (open or done), next_step (agreed action or empty),
   and details (the requested outcome plus known decisions and constraints).
 - content: one self-contained third-person sentence about this attribute or goal.
