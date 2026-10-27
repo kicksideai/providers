@@ -12,7 +12,7 @@ entries:
     kind: function.lua
     source: file://provider.lua
     method: embed
-    modules: [hash]
+    modules: [hash, ctx]
     imports:
       script: app.llm:script
 
@@ -20,7 +20,7 @@ entries:
     kind: function.lua
     source: file://provider.lua
     method: structured_output
-    modules: [hash]
+    modules: [hash, ctx]
     imports:
       script: app.llm:script
 
@@ -28,7 +28,7 @@ entries:
     kind: function.lua
     source: file://provider.lua
     method: generate
-    modules: [hash]
+    modules: [hash, ctx]
     imports:
       script: app.llm:script
 

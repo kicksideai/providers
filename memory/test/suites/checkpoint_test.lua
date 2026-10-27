@@ -5,21 +5,20 @@ local json = require("json")
 
 local function define_tests()
     test.describe("checkpoint", function()
-        test.before_each(function() fixture.script.reset() end)
 
         test.it("uses checkpoint options independently of the agent model", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
             fixture.history.record(session, { { id = "summary", role = "user", content = "A working task." } })
-            fixture.script.respond("generate", "Continue the working task.")
+            fixture.script.respond(id, "generate", "Continue the working task.")
             local payload = fixture.payload("checkpoint", session, "agent-a", {
                 agent = { id = "agent-a", model = "missing-agent-model" }, options = { model = "class:fast", max_tokens = 73 },
             })
             local result, err = fixture.op(user, "checkpoint", { payload = payload }, fixture.agent_context(id, session, "agent-a", { write_enabled = false }))
             test.is_nil(err, tostring(err))
             test.eq(result.summary, "Continue the working task.")
-            test.eq(fixture.script.requests("generate")[1].options.max_tokens, 73)
+            test.eq(fixture.script.requests(id, "generate")[1].options.max_tokens, 73)
         end)
 
         test.it("rejects missing checkpoint model and invalid token options before reading history", function()
@@ -32,7 +31,7 @@ local function define_tests()
                 test.eq(err:kind(), errors.INVALID)
                 test.is_true(err:message():find("checkpoint options require", 1, true) ~= nil, tostring(err))
             end
-            test.eq(#fixture.script.requests("generate"), 0)
+            test.eq(#fixture.script.requests(user, "generate"), 0)
         end)
 
         test.it("checkpoints with a working summary and captures the compacted range", function()
@@ -43,8 +42,8 @@ local function define_tests()
                 { id = "c1", role = "user", content = "Book the Lisbon hotel for May 3 to May 7." },
                 { id = "c2", role = "assistant", content = "Booked." },
             })
-            fixture.script.respond("generate", "Goal: Lisbon trip. Hotel booked May 3-7.")
-            fixture.extraction({ fixture.candidate("fact", "hotel", "Lisbon May 3-7", "The user booked a Lisbon hotel for May 3 to 7.", "c1") })
+            fixture.script.respond(id, "generate", "Goal: Lisbon trip. Hotel booked May 3-7.")
+            fixture.extraction(id, { fixture.candidate("fact", "hotel", "Lisbon May 3-7", "The user booked a Lisbon hotel for May 3 to 7.", "c1") })
             local result, err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))
@@ -61,7 +60,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.history.record(session, { { id = "model-1", role = "user", content = "I live in Oslo." } })
 
-            fixture.script.fail("generate", "model rejected the summary request", errors.INVALID, true)
+            fixture.script.fail(id, "generate", "model rejected the summary request", errors.INVALID, true)
             local _, invalid_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.not_nil(invalid_err)
@@ -69,7 +68,7 @@ local function define_tests()
             test.eq(invalid_err:retryable(), false)
             test.eq(invalid_err:details().cause.kind, errors.INVALID)
 
-            fixture.script.fail("generate", "model denied the summary request", errors.PERMISSION_DENIED)
+            fixture.script.fail(id, "generate", "model denied the summary request", errors.PERMISSION_DENIED)
             local _, denied_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.not_nil(denied_err)
@@ -77,7 +76,7 @@ local function define_tests()
             test.eq(denied_err:retryable(), false)
             test.eq(denied_err:details().cause.kind, errors.PERMISSION_DENIED)
 
-            fixture.script.fail("generate", "model timed out", errors.TIMEOUT)
+            fixture.script.fail(id, "generate", "model timed out", errors.TIMEOUT)
             local _, transient_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.not_nil(transient_err)
@@ -85,7 +84,7 @@ local function define_tests()
             test.eq(transient_err:retryable(), true)
             test.eq(transient_err:details().cause.kind, errors.TIMEOUT)
 
-            fixture.script.fail("structured_output", "model rejected extraction", errors.INVALID)
+            fixture.script.fail(id, "structured_output", "model rejected extraction", errors.INVALID)
             local applied, apply_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(apply_err, tostring(apply_err))
             test.is_true(applied.metadata.capture.captured)

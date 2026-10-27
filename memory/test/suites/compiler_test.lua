@@ -5,7 +5,6 @@ local json = require("json")
 
 local function define_tests()
     test.describe("compiler", function()
-        test.before_each(function() fixture.script.reset() end)
 
         test.it("resolves an agent explicitly selecting the Memory trait", function()
             local user = fixture.user()
@@ -75,7 +74,7 @@ local function define_tests()
             test.eq(#activated.errors, 0)
             local pinned = fixture.op(user, "cursor", { component_id = memory, host_kind = "session", host_id = session })
             test.is_true(pinned.pinned_prompt:find("Home city [home_city]: Berlin", 1, true) ~= nil)
-            fixture.script.respond("generate", "Choose a window seat.")
+            fixture.script.respond(memory, "generate", "Choose a window seat.")
             local stepped, step_err = fixture.op(user, "trait_agent", {
                 spec = spec, messages = { { role = "user", text = "Plan a train trip" },
                     { role = "assistant", text = "Which seat would you like?" },
@@ -91,8 +90,8 @@ local function define_tests()
             test.eq(tool_count, 2, json.encode(stepped.compiled.tools))
             test.not_nil(stepped.compiled.tools.ForgetMemory, "ForgetMemory tool")
             fixture.history.record(session, { { id = "trait-capture", role = "user", content = "Remember that I prefer aisle seats." } })
-            fixture.extraction({ fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "trait-capture") })
-            fixture.relations({ "unrelated" })
+            fixture.extraction(memory, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "trait-capture") })
+            fixture.relations(memory, { "unrelated" })
             local captured, capture_err = fixture.op(user, "trait_agent", {
                 spec = spec, payload = fixture.payload("before_step", session, agent_id),
             }, run_context)

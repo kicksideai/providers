@@ -40,7 +40,7 @@ local function stamp(messages: { any }, at: string): { any }
     return out
 end
 
-local function script_verdict(verdict: string?, candidate: any?, seeded: { any })
+local function script_verdict(memory: string, verdict: string?, candidate: any?, seeded: { any })
     if not verdict then return end
     local relation = ({ ADD = "unrelated", NOOP = "same", SUPERSEDE = "updates", MERGE = "rephrases", CONFLICT = "contradicts" })[verdict]
     local values, same = {}, {}
@@ -48,13 +48,13 @@ local function script_verdict(verdict: string?, candidate: any?, seeded: { any }
         values[#values + 1] = relation
         if candidate and item.key == candidate.key then same[#same + 1] = relation end
     end
-    fixture.relations(#same > 0 and same or values)
+    fixture.relations(memory, #same > 0 and same or values)
 end
 
 local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer,
     scripted: any?, verdict: string?, seed: boolean?, judgments: any?): (any?, string?)
     fixture.history.record(session, stamp(messages, at))
-    if scripted then fixture.script.hold("structured_output") end
+    if scripted then fixture.script.hold(memory, "structured_output") end
     local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
         fixture.agent_context(memory, session, "eval-agent"))
     if err then return nil, "capture failed: " .. tostring(err) end
@@ -70,17 +70,17 @@ local function capture(user: string, memory: string, session: string, messages: 
             for _, candidate in ipairs(scripted) do
                 if ids[candidate.event_id] then candidates[#candidates + 1] = candidate end
             end
-            fixture.extraction(candidates)
+            fixture.extraction(memory, candidates)
             for index, candidate in ipairs(scripted) do
-                if ids[candidate.event_id] and judgments and judgments[index] then fixture.relations(judgments[index]) end
+                if ids[candidate.event_id] and judgments and judgments[index] then fixture.relations(memory, judgments[index]) end
             end
             if not seed then
                 for _, candidate in ipairs(candidates) do
-                    if candidate.cardinality ~= "single" then script_verdict(verdict, candidate, seeded) end
+                    if candidate.cardinality ~= "single" then script_verdict(memory, verdict, candidate, seeded) end
                 end
             end
         end
-        fixture.script.release("structured_output")
+        fixture.script.release(memory, "structured_output")
     end
     local stats = {}
     for _, run in ipairs(fixture.wait_runs(user, memory, "derive", count + #current)) do
@@ -104,7 +104,7 @@ end
 local function outcome(case: any, target: any, user: string, memory: string): (string, string)
     local session = "eval-" .. memory .. "-"
     local derived = 0
-    if target.scripted then fixture.script.reset() end
+    if target.scripted then fixture.script.reset(memory) end
     if case.seed then
         local seeded, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, derived,
             target.scripted and case.ideal.seed or nil, nil, true, case.ideal.seed_relations)
@@ -114,9 +114,9 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
     local stats: any
     if case.reflect then
         if target.scripted and #fixture.items(user, memory, { statuses = { "current" } }) >= 2 then
-            fixture.script.respond("structured_output", { items = case.ideal.reflection })
-            if #case.ideal.reflection > 0 then fixture.normalization(case.ideal.reflection) end
-            script_verdict(case.ideal.verdict, nil, fixture.items(user, memory, { statuses = { "current" } }))
+            fixture.script.respond(memory, "structured_output", { items = case.ideal.reflection })
+            if #case.ideal.reflection > 0 then fixture.normalization(memory, case.ideal.reflection) end
+            script_verdict(memory, case.ideal.verdict, nil, fixture.items(user, memory, { statuses = { "current" } }))
         end
         local _, wake_err = fixture.op(user, "wake", { component_id = memory })
         if wake_err then return "ERROR", tostring(wake_err) end
@@ -129,7 +129,7 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
         if err then return "ERROR", err end
         stats = run.stats
     end
-    if target.scripted and fixture.script.pending("structured_output") > 0 then
+    if target.scripted and fixture.script.pending(memory, "structured_output") > 0 then
         return "ERROR", "the pipeline left a scripted model answer unused"
     end
     fixture.settle(user, memory)

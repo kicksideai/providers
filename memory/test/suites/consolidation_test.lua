@@ -5,12 +5,11 @@ local time = require("time")
 
 local function define_tests()
     test.describe("memory consolidation", function()
-        test.before_each(function() fixture.script.reset() end)
 
         test.it("fails consolidation without persisting any lesson when reflection is invalid", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            fixture.relations({ "unrelated" })
+            fixture.relations(id, { "unrelated" })
             fixture.remember(user, id, {
                 fixture.candidate("fact", "work_schedule", "night", "The user works at night.", "work-source"),
                 fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
@@ -22,7 +21,7 @@ local function define_tests()
             lesson.based_on = { 1, 2 }
             local valid = fixture.candidate("lesson", "contact_guidance", "evening", lesson.content, "")
             valid.based_on = { 1, 2 }
-            fixture.script.respond("structured_output", { items = { lesson, valid } })
+            fixture.script.respond(id, "structured_output", { items = { lesson, valid } })
             local _, err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(err, tostring(err))
             local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
@@ -31,7 +30,7 @@ local function define_tests()
             test.is_nil(run.stats.rejected)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id, { kinds = { "lesson" } }), 0)
-            fixture.script.respond("structured_output", { items = {} })
+            fixture.script.respond(id, "structured_output", { items = {} })
             fixture.wait_runs(user, id, "consolidate", 1, "succeeded")
             fixture.wait_job(run.job_id, "pending")
         end)
@@ -45,11 +44,11 @@ local function define_tests()
             }, "k1")
             test.is_nil(seed_err, tostring(seed_err))
             fixture.settle(user, id)
-            test.eq(fixture.script.pending("structured_output"), 0)
+            test.eq(fixture.script.pending(id, "structured_output"), 0)
             local lesson = fixture.candidate("lesson", "contact_time", "evening", "Reach the user in the evening; they sleep during the day.", "")
             lesson.based_on = { 1, 2 }
-            fixture.script.respond("structured_output", { items = { lesson } })
-            fixture.normalization({ lesson })
+            fixture.script.respond(id, "structured_output", { items = { lesson } })
+            fixture.normalization(id, { lesson })
             local woken, err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(err, tostring(err))
             test.is_true(woken.woken)
@@ -57,7 +56,7 @@ local function define_tests()
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
             test.eq(runs[1].stats.scopes, 1)
             test.eq(runs[1].stats.added, 1)
-            local judged = fixture.script.requests("structured_output")
+            local judged = fixture.script.requests(id, "structured_output")
             test.eq(#judged, 2)
             test.eq(runs[1].stats.judged, 0)
             fixture.settle(user, id)
@@ -90,8 +89,8 @@ local function define_tests()
             local original = fixture.op(user, "provenance", { component_id = id, item_id = source_id })
             local duplicate = fixture.candidate("lesson", "contact_window", "evening", "Send requests outside the rest period.", "")
             duplicate.based_on = { 1, 2 }
-            fixture.script.respond("structured_output", { items = { duplicate } })
-            fixture.normalization({ duplicate })
+            fixture.script.respond(id, "structured_output", { items = { duplicate } })
+            fixture.normalization(id, { duplicate })
             local _, err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(err, tostring(err))
             local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
@@ -114,8 +113,8 @@ local function define_tests()
             local lesson = fixture.candidate("lesson", "contact_window", "evening",
                 "Send requests in the evening because the user rests during the day.", "")
             lesson.based_on = { 1, 2 }
-            fixture.script.respond("structured_output", { items = { lesson } })
-            fixture.normalization({ lesson })
+            fixture.script.respond(id, "structured_output", { items = { lesson } })
+            fixture.normalization(id, { lesson })
             local _, wake_err = fixture.op(user, "wake", { component_id = id })
             test.is_nil(wake_err, tostring(wake_err))
             local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
@@ -142,9 +141,9 @@ local function define_tests()
         test.it("erases derived memories transitively across source versions while retaining independent lessons", function()
             local user = fixture.user()
             local id = fixture.memory(user, { judge_min_similarity = 0 })
-            fixture.relations({ "unrelated" })
-            fixture.relations({ "unrelated", "unrelated" })
-            fixture.relations({ "unrelated", "unrelated", "unrelated" })
+            fixture.relations(id, { "unrelated" })
+            fixture.relations(id, { "unrelated", "unrelated" })
+            fixture.relations(id, { "unrelated", "unrelated", "unrelated" })
             fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "work_schedule", "night", "The user works at night.", "work-source"),
                 fixture.candidate("preference", "rest_period", "day", "The user rests during the day.", "rest-source"),
@@ -164,8 +163,8 @@ local function define_tests()
                         lesson.based_on[#lesson.based_on + 1] = numbers[key]
                     end
                 end
-                fixture.script.respond("structured_output", { items = lessons })
-                fixture.normalization(lessons)
+                fixture.script.respond(id, "structured_output", { items = lessons })
+                fixture.normalization(id, lessons)
                 local neighbor_count = 0
                 for _, item in ipairs(current) do if item.kind == "lesson" then neighbor_count = neighbor_count + 1 end end
                 for _, lesson in ipairs(lessons) do
@@ -173,7 +172,7 @@ local function define_tests()
                         if neighbor_count > 0 then
                             local relations = {}
                             for _ = 1, neighbor_count do relations[#relations + 1] = "unrelated" end
-                            fixture.relations(relations)
+                            fixture.relations(id, relations)
                         end
                         neighbor_count = neighbor_count + 1
                     end
@@ -250,16 +249,16 @@ local function define_tests()
             local two = fixture.candidate("lesson", "rail_with_dog", "rail routes that allow dogs",
                 "Propose rail routes that allow dogs and avoid long car transfers.", "")
             two.based_on = { 1, 2 }
-            fixture.script.respond("structured_output", { items = { one, two } })
+            fixture.script.respond(id, "structured_output", { items = { one, two } })
             fixture.op(user, "wake", { component_id = id })
             local runs = fixture.wait_runs(user, id, "consolidate", 1)
             test.eq(runs[1].status, "failed")
             test.is_true(runs[1].last_error:find("model_output_invalid_reflection_grounding", 1, true) ~= nil, runs[1].last_error)
-            local schema = fixture.script.requests("structured_output")[1]
+            local schema = fixture.script.requests(id, "structured_output")[1]
             test.eq(table.concat(schema.properties.items.items.properties.kind.enum, ","), "lesson")
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id, { kinds = { "lesson" } }), 0)
-            fixture.script.respond("structured_output", { items = {} })
+            fixture.script.respond(id, "structured_output", { items = {} })
             fixture.wait_runs(user, id, "consolidate", 1, "succeeded")
             fixture.wait_job(runs[1].job_id, "pending")
         end)

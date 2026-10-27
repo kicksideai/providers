@@ -5,7 +5,6 @@ local json = require("json")
 
 local function define_tests()
     test.describe("capture history selection", function()
-        test.before_each(function() fixture.script.reset() end)
 
         test.it("bounds deactivation capture to the outgoing agent history", function()
             local user = fixture.user()
@@ -16,7 +15,7 @@ local function define_tests()
                 { id = "outgoing", role = "user", content = "I live in Paris." },
                 { id = "incoming", role = "user", content = "A different agent handles this." },
             })
-            fixture.extraction({})
+            fixture.extraction(id, {})
             local applied, err = fixture.apply(user, "deactivate", id, session, "agent-a", {
                 refs = { deactivation_range = { from_id = "earlier", to_id = "outgoing" } },
             })
@@ -48,16 +47,16 @@ local function define_tests()
                     { id = "c", role = "user", content = "The incoming message." },
                 })
                 if case.cursor then
-                    fixture.extraction({})
+                    fixture.extraction(id, {})
                     fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = case.cursor } })
                     local count = case.cursor == "c" and 2 or 1
-                    if count == 2 then fixture.extraction({}) end
+                    if count == 2 then fixture.extraction(id, {}) end
                     fixture.wait_runs(user, id, "derive", count)
                 end
                 local capacity = fixture.op(user, "extraction_capacity", { model = "test-bounded" })
                 local selected_count = case.expected == "" and 0 or #case.expected:gsub(",", "")
                 local count = math.ceil(selected_count / capacity)
-                for _ = 1, count do fixture.extraction({}) end
+                for _ = 1, count do fixture.extraction(id, {}) end
                 local applied, err = fixture.apply(user, "deactivate", id, session, "agent-a", { refs = case.refs, selector = case.selector })
                 test.is_nil(err, tostring(err))
                 if case.expected == "" then

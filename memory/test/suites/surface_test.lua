@@ -59,7 +59,7 @@ local function define_tests()
             end
             test.is_true(found)
             test.is_nil((response.raw:find("private-source-", 1, true)))
-            test.eq(#fixture.script.requests("structured_output"), 0)
+            test.eq(#fixture.script.requests(id, "structured_output"), 0)
         end)
 
         test.it("exposes exhausted model validation failures through run activity without partial writes", function()
@@ -68,7 +68,7 @@ local function define_tests()
             local session_id = "s-" .. user
             local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "event")
             local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", "event")
-            for i = 1, 3 do fixture.extraction({ good, bad }) end
+            for i = 1, 3 do fixture.extraction(id, { good, bad }) end
             fixture.history.record(session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") },
                 fixture.agent_context(id, session_id, "agent-a"))
@@ -96,7 +96,6 @@ local function define_tests()
             local items = fixture.items(user, id)
             test.eq(#items, 0)
         end)
-        test.before_each(function() fixture.script.reset() end)
 
         test.it("assigns conversation learning only to automatic capture", function()
             local trait = registry.get("kickside.memory:memory").data.prompt
@@ -279,7 +278,7 @@ local function define_tests()
                 if #held > 0 then
                     local relations = {}
                     for _ = 1, #held do relations[#relations + 1] = "contradicts" end
-                    fixture.relations(relations)
+                    fixture.relations(component_id, relations)
                 end
                 fixture.remember(user, component_id, {
                     fixture.candidate("fact", "cat_name", value, "The user's cat is called " .. value .. ".", "cat-" .. index),

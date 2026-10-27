@@ -7,7 +7,6 @@ local DIAGNOSTIC = json.encode({ kind = errors.INTERNAL, code = errors.INTERNAL,
 
 local function define_tests()
     test.describe("memory erasure", function()
-        test.before_each(function() fixture.script.reset() end)
 
         test.it("detects retained run reads independently of their projection", function()
             local user = fixture.user()

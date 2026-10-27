@@ -5,7 +5,6 @@ local json = require("json")
 
 local function define_tests()
     test.describe("memory search", function()
-        test.before_each(function() fixture.script.reset() end)
 
         test.it("publishes a staged revision vector only when its accepted item folds", function()
             local user = fixture.user()

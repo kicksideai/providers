@@ -28,7 +28,7 @@ end
 function M.agent_context(memory_id: string, session_id: string, agent_id: string, extra: any?): any
     local host = { kind = "session", session_id = session_id }
     local context = {
-        memory_id = memory_id, agent_id = agent_id,
+        memory_id = memory_id, thread_id = memory_id, agent_id = agent_id,
         agent_run = { host = host, agent = { id = agent_id }, run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host } },
     }
     for k, v in pairs(extra or {}) do context[k] = v end
@@ -111,11 +111,20 @@ function M.call_as(user_id: string, fn_id: string, args: any, context: any?): (a
     return executor:call(fn_id, args)
 end
 
+local function model_context(user_id: string, args: any, context: any?): any
+    local out = {}
+    for k, v in pairs(context or {}) do out[k] = v end
+    out.thread_id = out.thread_id or out.memory_id or args.component_id or (args.opts and args.opts.component_id) or user_id
+    return out
+end
+
 function M.op(user_id: string, op: string, args: any, context: any?): (any, any)
+    context = model_context(user_id, args, context)
     return M.call_as(user_id, "app.suites:memory_call", { op = op, args = args }, context)
 end
 
 function M.async_op(user_id: string, op: string, args: any, context: any?): (any?, error?)
+    context = model_context(user_id, args, context)
     local executor = funcs.new():with_actor(security.new_actor(user_id, {})):with_scope(scope())
     if context then executor = executor:with_context(context) end
     return executor:async("app.suites:memory_call", { op = op, args = args })
@@ -183,16 +192,16 @@ function M.settle(user_id: string, component_id: string)
     if err then error(tostring(err)) end
 end
 
-function M.extraction(items: { any })
+function M.extraction(scope: string, items: { any })
     local attributes, lessons, plans = {}, {}, {}
     for _, item in ipairs(items) do
         local collection = item.kind == "plan" and plans or (item.kind == "lesson" and lessons or attributes)
         collection[#collection + 1] = item
     end
-    script.respond("structured_output", { items = attributes, lessons = lessons, plans = plans })
+    script.respond(scope, "structured_output", { items = attributes, lessons = lessons, plans = plans })
 end
 
-function M.normalization(items: { any })
+function M.normalization(scope: string, items: { any })
     local mappings = {}
     for i, item in ipairs(items) do
         local mapping = { key = item.key, kind = item.kind or "fact", cardinality = item.cardinality or "multi" }
@@ -202,13 +211,13 @@ function M.normalization(items: { any })
         end
         mappings[tostring(i)] = { mapping }
     end
-    script.respond("structured_output", { mappings = mappings })
+    script.respond(scope, "structured_output", { mappings = mappings })
 end
 
-function M.relations(values: { string })
+function M.relations(scope: string, values: { string })
     local relations = {}
     for index, relation in ipairs(values) do relations[tostring(index)] = relation end
-    script.respond("structured_output", { relations = relations, reason = "test" })
+    script.respond(scope, "structured_output", { relations = relations, reason = "test" })
 end
 
 function M.candidate(kind: string, key: string, value: any, content: string, event_id: string?, valid_at: string?, cardinality: string?): any
@@ -219,7 +228,7 @@ end
 
 function M.persistence_op(user: string, name: string, args: any): (any, any)
     args.op = name
-    return M.call_as(user, "app.suites:persistence_call", args)
+    return M.call_as(user, "app.suites:persistence_call", args, model_context(user, args, nil))
 end
 
 function M.count_rows(table_name: string, id: string): number
