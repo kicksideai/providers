@@ -233,6 +233,70 @@ local function define_tests()
             test.eq(table.concat(versions, ","), "1,2,3,4")
         end)
 
+        for _, event_date in ipairs({ "2026-03-14", "2026-12-14" }) do
+            test.it("orders plan updates by statement time while retaining event date " .. event_date, function()
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local original = fixture.remember(user, id, {
+                    fixture.candidate("plan", "prepare_review", {
+                        status = "open", next_step = "Prepare slides", details = "Prepare the review",
+                    }, "The user needs to prepare the review.", "initial"),
+                }, "initial-plan", { events = { initial = { at = "2026-10-10T10:00:00Z" } } })
+                fixture.settle(user, id)
+                fixture.verdict("SUPERSEDE", { original.item_ids[1] })
+                local details = "Prepare the review scheduled for " .. event_date
+                local next_step = "Prepare slides before " .. event_date
+                local updated = fixture.remember(user, id, {
+                    fixture.candidate("plan", "prepare_review", {
+                        status = "open", next_step = next_step, details = details,
+                    }, "The user's review is on " .. event_date .. ".", "dated", event_date .. "T00:00:00Z"),
+                }, "dated-plan", { events = { dated = { at = "2026-10-20T10:00:00Z", text = "It's on " .. event_date .. "." } } })
+                fixture.settle(user, id)
+                local current = by_status(key_rows(user, id, "prepare_review"), "current")
+                test.eq(#current, 1)
+                test.eq(current[1].id, updated.item_ids[1])
+                test.eq(current[1].valid_at, "2026-10-20T10:00:00Z")
+                test.eq(current[1].value.details, details)
+                test.eq(current[1].value.next_step, next_step)
+                test.eq(current[1].version, 2)
+                test.eq(fixture.op(user, "get", { component_id = id, item_id = original.item_ids[1] }).status, "superseded")
+                local prompt = json.decode(fixture.script.prompts("structured_output")[1].user)
+                test.eq(prompt.new_memory.valid_at, "2026-10-20T10:00:00Z")
+
+                fixture.verdict("SUPERSEDE", { updated.item_ids[1] })
+                local late = fixture.remember(user, id, {
+                    fixture.candidate("plan", "prepare_review", {
+                        status = "open", next_step = "Draft outline", details = "Prepare the review outline",
+                    }, "The user needs a review outline.", "earlier"),
+                }, "earlier-plan", { events = { earlier = { at = "2026-10-15T10:00:00Z" } } })
+                fixture.settle(user, id)
+                current = by_status(key_rows(user, id, "prepare_review"), "current")
+                test.eq(#current, 1)
+                test.eq(current[1].id, updated.item_ids[1])
+                test.eq(current[1].value.details, details)
+                test.eq(fixture.op(user, "get", { component_id = id, item_id = late.item_ids[1] }).status, "superseded")
+            end)
+        end
+
+        test.it("keeps an attribute's stated past change as its effective time", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local original = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "initial", "2026-07-01T00:00:00Z"),
+            }, "initial-city", { events = { initial = { at = "2026-10-10T10:00:00Z" } } })
+            fixture.settle(user, id)
+            fixture.verdict("SUPERSEDE", { original.item_ids[1] })
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Berlin", "The user moved to Berlin in September.", "moved", "2026-09-01T00:00:00Z"),
+            }, "past-move", { events = { moved = { at = "2026-10-20T10:00:00Z", text = "I moved to Berlin last month." } } })
+            fixture.settle(user, id)
+            local current = by_status(key_rows(user, id, "home_city"), "current")
+            test.eq(#current, 1)
+            test.eq(current[1].value, "Berlin")
+            test.eq(current[1].valid_at, "2026-09-01T00:00:00Z")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = original.item_ids[1] }).status, "superseded")
+        end)
+
         test.it("hashes typed values, so true and \"true\" are different claims", function()
             local user = fixture.user()
             local id = fixture.memory(user)

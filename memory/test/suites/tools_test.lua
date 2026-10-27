@@ -19,6 +19,38 @@ local function define_tests()
             test.eq(#fixture.script.requests("structured_output"), 0)
         end)
 
+        test.it("dates remembered plans by the source statement instead of the scheduled event", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            local context = fixture.agent_context(id, session, "agent-a")
+            local input = { kind = "plan", key = "prepare_review", cardinality = "single",
+                value = { status = "open", next_step = "Prepare slides", details = "Prepare the review" },
+                content = "The user needs to prepare the review." }
+            fixture.history.record(session, { { id = "initial", role = "user", content = "Prepare the review.", created_at = "2026-10-10T10:00:00Z" } })
+            fixture.normalization({ input })
+            local initial, initial_err = fixture.op(user, "tool_remember", { input = input }, context)
+            test.is_nil(initial_err, tostring(initial_err))
+            test.is_true(initial.success, initial.error)
+            fixture.settle(user, id)
+            local current = fixture.items(user, id, { key = input.key, statuses = { "current" } })
+            test.eq(current[1].valid_at, "2026-10-10T10:00:00Z")
+            fixture.history.record(session, { { id = "dated", role = "user", content = "It's on March 14.", created_at = "2026-10-20T10:00:00Z" } })
+            input.value.details = "Prepare the review scheduled for March 14"
+            input.content = "The user's review is on March 14."
+            input.valid_at = "2026-03-14T00:00:00Z"
+            fixture.normalization({ input })
+            local updated, updated_err = fixture.op(user, "tool_remember", { input = input }, context)
+            test.is_nil(updated_err, tostring(updated_err))
+            test.is_true(updated.success, updated.error)
+            fixture.settle(user, id)
+            current = fixture.items(user, id, { key = input.key, statuses = { "current" } })
+            test.eq(#current, 1)
+            test.eq(current[1].id, updated.item_ids[1])
+            test.eq(current[1].valid_at, "2026-10-20T10:00:00Z")
+            test.eq(current[1].value.details, input.value.details)
+        end)
+
         test.it("returns visible validation errors from Remember normalization and judge calls", function()
             local user = fixture.user()
             local id = fixture.memory(user)
