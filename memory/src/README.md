@@ -33,6 +33,11 @@ job owns that host's unconsumed span. A failed run remains visible; the next
 capture includes the unconsumed history. Consolidation reflects across owner
 scopes; re-embedding conditionally replaces payload vectors under the accepted item lock and content hash.
 
+Invalid structured model output fails the whole call with a retryable,
+content-free `model_output_invalid_<step>_<reason>` code. No partial candidates
+commit. The existing job attempt limit retries failed derive attempts; an exhausted
+run stays `failed` without advancing capture. Remember returns the model error.
+
 A source event above the derive input byte bound has its own run with a
 `source_too_large` rejection, byte size and bound recorded at enrollment.
 Its text stays out of retained input and subsequent capture context. The

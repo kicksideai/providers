@@ -120,7 +120,10 @@ Compare the attribute named by each key and its typed value, not incidental ment
 in content. Independently changeable attributes do not conflict merely because they
 mention the same entity. A value and the time when it changes are separate attributes.
 
-target_ids contains only existing ids from the supplied list, empty for ADD.
+target_ids contains only existing ids from the supplied list. ADD requires an empty
+array. Every other action requires at least one target that has the chosen relationship
+to the new memory. NOOP requires an existing memory that already covers the claim;
+an independent attribute is ADD, even when its content mentions a related entity.
 Decide the relationship from the statements; do not infer an update from record order.]]
 
 local NORMALIZATION_PROMPT = [[Normalize candidate memories into independently changeable attributes before reconciliation.
@@ -193,7 +196,7 @@ local CANDIDATE_KINDS = types.MEMORY_KINDS
 local CANDIDATE_KIND_SET = {}
 for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 
--- Kind compatibility between a key and its existing items is validated per candidate after decoding.
+-- Kind compatibility with existing topics is validated after decoding.
 local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0,63}$" }
 
 local function candidate_schema(event_ids: { string }?, kinds: { string }?, count: integer): any
@@ -208,12 +211,12 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?, coun
             properties = {
                 kind = enum_string(allowed), key = TOPIC_SCHEMA,
                 cardinality = enum_string(cardinalities), value = value,
-                content = bounded_string(LIMITS.content), event_id = event_id,
+                content = { type = "string", minLength = 1, maxLength = LIMITS.content }, event_id = event_id,
                 valid_at = bounded_string(LIMITS.valid_at), confidence = { type = "number", minimum = 0, maximum = 1 },
             },
         }
     end
-    local scalar = item(scalar_kinds, bounded_string(LIMITS.value), { "single", "multi" })
+    local scalar = item(scalar_kinds, { type = "string", minLength = 1, maxLength = LIMITS.value }, { "single", "multi" })
     local schema = { type = "object", additionalProperties = false, required = { "items" }, properties = {
         items = { type = "array", maxItems = kinds and count or count * LIMITS.per_statement, items = scalar },
     } }
@@ -321,10 +324,9 @@ local function response_error(response: any, step: string, schema: any): error?
     return nil
 end
 
-local function reject(stats: any, step: string, reason: string)
-    stats.rejected = (stats.rejected or 0) + 1
-    local code = "rejected_" .. step .. "_" .. reason
-    stats[code] = (stats[code] or 0) + 1
+local function validation_error(step: string, reason: string): error
+    local code = "model_output_invalid_" .. step .. "_" .. reason
+    return types.unavailable("memory " .. step .. " returned invalid output: " .. code, { step = step, code = code })
 end
 
 local function candidate_reason(item: any, typed: boolean?): string?
@@ -342,7 +344,7 @@ local function candidate_reason(item: any, typed: boolean?): string?
     return nil
 end
 
-local function read_candidates(response: any, step: string, stats: any, event_ids: { [string]: boolean }?, keys: { any }?, schema: any): (any?, error?)
+local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any): (any?, error?)
     local err = response_error(response, "memory " .. step, schema)
     if err then return nil, err end
     local data = response.result
@@ -352,7 +354,7 @@ local function read_candidates(response: any, step: string, stats: any, event_id
     local known = {}
     for _, row in ipairs(keys or {}) do known[row.key] = row end
     local out = {}
-    local function read(collection: any, plans: boolean)
+    local function read(collection: any, plans: boolean): error?
         for _, item in ipairs(collection) do
             local reason = candidate_reason(item)
             local existing = not reason and known[types.normalize_key(item.key)] or nil
@@ -364,11 +366,17 @@ local function read_candidates(response: any, step: string, stats: any, event_id
                 if (item.kind == types.KIND.PLAN) ~= plans then reason = "kind"
                 elseif not event_ids[item.event_id] then reason = "evidence" end
             elseif not reason and step == "reflection" and item.kind ~= types.KIND.LESSON then reason = "kind" end
-            if reason then reject(stats, step, reason) else out[#out + 1] = item end
+            if reason then return validation_error(step, reason) end
+            out[#out + 1] = item
         end
+        return nil
     end
-    read(data.items, false)
-    if step == "extraction" then read(data.plans, true) end
+    local item_err = read(data.items, false)
+    if item_err then return nil, item_err end
+    if step == "extraction" then
+        local plan_err = read(data.plans, true)
+        if plan_err then return nil, plan_err end
+    end
     return out, nil
 end
 
@@ -404,8 +412,7 @@ function M.conversation(span: { any }, context: { any }?): string
     return table.concat(lines, "\n")
 end
 
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, stats: any?): (any?, error?)
-    stats = stats or {}
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?): (any?, error?)
     local ids: { string } = {}
     local allowed = {}
     for _, message in ipairs(span) do
@@ -423,13 +430,12 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory extraction", err) end
-    local candidates, read_err = read_candidates(response, "extraction", stats, allowed, keys, schema)
+    local candidates, read_err = read_candidates(response, "extraction", allowed, keys, schema)
     if read_err then return nil, read_err end
     return candidates, nil
 end
 
-function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?, stats: any?): (any?, error?)
-    stats = stats or {}
+function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?): (any?, error?)
     if #candidates == 0 then return candidates, nil end
     local known: { [string]: any } = {}
     for _, row in ipairs(keys) do known[row.key] = row end
@@ -482,36 +488,33 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             return nil, types.unavailable("memory normalization returned malformed mappings", { code = "model_output_malformed" })
         end
         if not is_array(parts) or #parts == 0 or (type(candidate.value) ~= "string" and #parts ~= 1) then
-            reject(stats, "normalization", "mapping")
-        else
-            for _, mapping in ipairs(parts) do
-                local reason = nil
-                local normalized = {}
-                for k, v in pairs(candidate) do normalized[k] = v end
-                if type(mapping) ~= "table" or type(mapping.key) ~= "string"
-                    or not types.CARDINALITY_SET[mapping.cardinality] then reason = "shape"
-                else
-                    local mapped_key = types.normalize_key(mapping.key)
-                    local existing = known[mapped_key]
-                    normalized.kind = mapping.kind
-                    normalized.key = mapped_key
-                    normalized.cardinality = existing and existing.cardinality or mapping.cardinality
-                    if type(candidate.value) == "string" then
-                        normalized.value = mapping.value
-                        normalized.content = mapping.content
-                    end
-                    reason = candidate_reason(normalized, type(candidate.value) ~= "string")
-                    if not reason and (((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN))
-                        or (existing and ((existing.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)))
-                        or (candidate.kind == types.KIND.LESSON and mapping.kind ~= types.KIND.LESSON)) then reason = "kind" end
+            return nil, validation_error("normalization", "mapping")
+        end
+        for _, mapping in ipairs(parts) do
+            local reason = nil
+            local normalized = {}
+            for k, v in pairs(candidate) do normalized[k] = v end
+            if type(mapping) ~= "table" or type(mapping.key) ~= "string"
+                or not types.CARDINALITY_SET[mapping.cardinality] then reason = "shape"
+            else
+                local mapped_key = types.normalize_key(mapping.key)
+                local existing = known[mapped_key]
+                normalized.kind = mapping.kind
+                normalized.key = mapped_key
+                normalized.cardinality = existing and existing.cardinality or mapping.cardinality
+                if type(candidate.value) == "string" then
+                    normalized.value = mapping.value
+                    normalized.content = mapping.content
                 end
-                if reason then reject(stats, "normalization", reason)
-                else
-                    normalized.content = types.trim(normalized.content)
-                    if type(normalized.value) == "string" then normalized.value = types.trim(normalized.value) end
-                    out[#out + 1] = normalized
-                end
+                reason = candidate_reason(normalized, type(candidate.value) ~= "string")
+                if not reason and (((mapping.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN))
+                    or (existing and ((existing.kind == types.KIND.PLAN) ~= (candidate.kind == types.KIND.PLAN)))
+                    or (candidate.kind == types.KIND.LESSON and mapping.kind ~= types.KIND.LESSON)) then reason = "kind" end
             end
+            if reason then return nil, validation_error("normalization", reason) end
+            normalized.content = types.trim(normalized.content)
+            if type(normalized.value) == "string" then normalized.value = types.trim(normalized.value) end
+            out[#out + 1] = normalized
         end
     end
     return out, nil
@@ -519,8 +522,7 @@ end
 
 local REFLECTION_MIN_SOURCES = 2
 
-function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
-    stats = stats or {}
+function M.reflect(model: string, items: { any }): (any?, error?)
     if #items < REFLECTION_MIN_SOURCES then return {}, nil end
     local lines: { string } = {}
     local numbers: { integer } = {}
@@ -539,7 +541,7 @@ function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory reflection", err) end
-    local candidates, read_err = read_candidates(response, "reflection", stats, nil, nil, schema)
+    local candidates, read_err = read_candidates(response, "reflection", nil, nil, schema)
     if read_err then return nil, read_err end
     local grounded: { any } = {}
     for _, candidate in ipairs(candidates :: any) do
@@ -557,12 +559,12 @@ function M.reflect(model: string, items: { any }, stats: any?): (any?, error?)
         if valid and #source_ids >= REFLECTION_MIN_SOURCES and candidate.cardinality == types.CARDINALITY.MULTI then
             candidate.source_ids = source_ids
             grounded[#grounded + 1] = candidate
-        else reject(stats, "reflection", "grounding") end
+        else return nil, validation_error("reflection", "grounding") end
     end
-    return M.normalize(model, grounded, items, nil, stats)
+    return M.normalize(model, grounded, items, nil)
 end
 
-function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }, stats: any?): (any?, error?)
+function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)
     local ids: { string } = {}
     local known: { [string]: boolean } = {}
     local listing: { any } = {}
@@ -572,13 +574,15 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
         listing[#listing + 1] = { id = item.id, kind = item.kind, key = item.key, cardinality = item.cardinality,
             value = item.value, content = item.content, valid_at = item.valid_at }
     end
+    local allows_add = false
+    for _, action in ipairs(actions) do if action == types.ACTION.ADD then allows_add = true end end
     local schema = {
         type = "object",
         additionalProperties = false,
         required = { "action", "target_ids", "reason" },
         properties = {
             action = enum_string(actions),
-            target_ids = { type = "array", maxItems = #ids, items = enum_string(ids) },
+            target_ids = { type = "array", minItems = allows_add and 0 or 1, maxItems = #ids, items = enum_string(ids) },
             reason = bounded_string(LIMITS.reason),
         },
     }
@@ -617,7 +621,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
         end
         if (data.action == types.ACTION.ADD) ~= (#targets == 0) then reason = "targets" end
     end
-    if reason then reject(stats or {}, "judge", reason); return nil, nil end
+    if reason then return nil, validation_error("judge", reason) end
     return { action = data.action, target_ids = targets }, nil
 end
 

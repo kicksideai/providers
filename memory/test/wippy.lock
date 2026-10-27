@@ -50,8 +50,8 @@ modules:
       version: 0.3.0
       hash: b3e970dbff3a845badbc90feee6582df079880e86674916f540c3f54673046bf
     - name: kickside/uploads
-      version: 0.3.0
-      hash: 7d229e4847e09323eb7f7c11a67e8e61682ff7a267f8625f059e5e5f1ae8a2c5
+      version: 0.3.2
+      hash: 6c1d689f55f69fd6251ed1a762ff5ff1afc9e8123878cde238ec64c6d617c224
     - name: kickside/users
       version: 0.2.8
       hash: b4fdefbb09bbf1b6c8d09e7278802e694c6289950145c0d30b19e2a329339054

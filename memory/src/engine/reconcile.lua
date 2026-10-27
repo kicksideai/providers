@@ -87,7 +87,7 @@ local function judge(d: any, opts: Options, fields: any, stated: string?, neighb
         kind = fields.kind, key = fields.key, cardinality = fields.cardinality, value = fields.value,
         content = fields.content, valid_at = fields.valid_at, stated = stated,
         conversation = opts.conversation,
-    }, neighbors, actions, d.stats)
+    }, neighbors, actions)
     if err then return nil, err end
     d.stats.judged = d.stats.judged + 1
     return verdict, nil
@@ -143,10 +143,8 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             else
                 local verdict, err = judge(d, opts, fields, event.text, held :: any, HELD_ACTIONS)
                 if err then return err end
-                if verdict then
-                    local apply_err = apply(d, verdict.action, scope, fields, held :: any, provenance)
-                    if apply_err then return apply_err end
-                end
+                local apply_err = apply(d, verdict.action, scope, fields, held :: any, provenance)
+                if apply_err then return apply_err end
             end
         else
             local near, near_err = items.search(d.component_id, fields.vector, {
@@ -170,12 +168,10 @@ function M.decide(d: any, candidates: { Candidate }, opts: Options): error?
             else
                 local verdict, err = judge(d, opts, fields, event.text, neighbors, reflection and REFLECTION_ACTIONS or types.ACTIONS)
                 if err then return err end
-                if verdict then
-                    local targets: { any } = {}
-                    for _, target_id in ipairs(verdict.target_ids) do targets[#targets + 1] = by_id[target_id] end
-                    local apply_err = apply(d, verdict.action, scope, fields, targets, provenance)
-                    if apply_err then return apply_err end
-                end
+                local targets: { any } = {}
+                for _, target_id in ipairs(verdict.target_ids) do targets[#targets + 1] = by_id[target_id] end
+                local apply_err = apply(d, verdict.action, scope, fields, targets, provenance)
+                if apply_err then return apply_err end
             end
         end
     end

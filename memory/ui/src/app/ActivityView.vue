@@ -27,15 +27,6 @@ function changes(run: MemoryRun): string {
   return parts.length ? parts.join(' · ') : run.status === 'succeeded' ? 'No changes' : ''
 }
 
-function rejections(run: MemoryRun): string {
-  return Object.entries(run.stats || {})
-    .filter(([code, count]) => code.startsWith('rejected_') && count > 0)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([code, count]) => {
-      const [step, ...reason] = code.slice('rejected_'.length).split('_')
-      return `${step}: ${reason.join(' ')} (${count})`
-    }).join(' · ')
-}
 </script>
 
 <template>
@@ -55,7 +46,6 @@ function rejections(run: MemoryRun): string {
         <span class="mm-muted" :title="fullTime(run.finished_at || run.started_at || run.created_at)">
           {{ relativeTime(run.finished_at || run.started_at || run.created_at) }}<template v-if="changes(run)"> · {{ changes(run) }}</template>
         </span>
-        <span v-if="rejections(run)" class="mm-muted">{{ rejections(run) }}</span>
         <span v-if="run.last_error" class="mm-run-err">{{ run.last_error }}</span>
       </div>
       <Tag v-if="run.status !== 'succeeded'" class="kx-tag-sm" :severity="severity(run.status)" :value="run.status" />

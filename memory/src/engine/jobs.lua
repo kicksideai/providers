@@ -266,7 +266,7 @@ function M.derive_authorized(value: any): any
         if #span > 0 then
             local keys, keys_err = items.keys(run.component_id, types.scope_key(types.SCOPE.OWNER, types.trim(input.owner_id)), KEY_LIMIT)
             if keys_err then return nil, keys_err end
-            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions, input.context, d.stats)
+            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions, input.context)
             if extract_err then return nil, extract_err end
             candidates = extracted
         end
@@ -319,7 +319,7 @@ function M.consolidate_authorized(value: any): any
         table.sort(order)
         d.stats.scopes = 0
         for _, scope_id in ipairs(order) do
-            local reflected, reflect_err = models.reflect(cfg.extraction_model, by_scope[scope_id] :: { any }, d.stats)
+            local reflected, reflect_err = models.reflect(cfg.extraction_model, by_scope[scope_id] :: { any })
             if reflect_err then return nil, reflect_err end
             local reconcile_err = reconcile.decide(d, reflected :: any, {
                 embedding_model = store.embedding_model, judge_model = cfg.judge_model,
