@@ -41,6 +41,20 @@ variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
 
+## Original document delivery (unreleased storage integration)
+
+The source endpoint in this branch delegates original-file URLs to
+`kickside.uploads:uploads.delivery_url`. S3 originals use signed object URLs;
+filesystem originals use tokened raw URLs. KB10 requires Uploads >=0.3.2; the
+helper is absent in 0.3.1. The consumer change remains unreleased in this branch.
+
+The endpoint keeps its existing KB READ check and response fields. It trusts the
+document's stored upload reference; ingestion must preserve a validated source
+relationship. KB access alone does not authorize an arbitrary upload ID.
+
+See the [module reference](src/README.md#original-document-source) for the route,
+expiry and response contract.
+
 ## Retrieval optimization
 
 Raw question embeddings remain the default for new and existing knowledge bases.
