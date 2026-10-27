@@ -24,7 +24,7 @@ end
 
 function M.recall(input: any): (any?, error?)
     local args = type(input) == "table" and input or {}
-    local component_id, store, store_err = context.memory({ context = { memory_id = ctx.get("component_id") } }, component.ACCESS.READ)
+    local component_id, store, store_err = context.memory({}, component.ACCESS.READ)
     if store_err then return nil, store_err end
     local query = recall_query(args)
     if query == "" then return { memories = {} }, nil end

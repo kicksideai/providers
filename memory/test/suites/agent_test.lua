@@ -508,7 +508,7 @@ local function define_tests()
             } })
             fixture.settle(alice, id)
             local input = { recent_actions = { "user: help me plan my trip" }, constraints = { max_items = 10 } }
-            local recalled, err = fixture.op(alice, "recall", { input = input }, { component_id = id, agent_id = "agent-a" })
+            local recalled, err = fixture.op(alice, "recall", { input = input }, { memory_id = id, agent_id = "agent-a" })
             test.is_nil(err, tostring(err))
             local seen = {}
             for _, memory in ipairs(recalled.memories) do seen[memory.content] = memory end
@@ -521,11 +521,11 @@ local function define_tests()
 
             local skipped = fixture.op(alice, "recall", { input = {
                 recent_actions = input.recent_actions, constraints = input.constraints, previous_memories = { lisbon.id },
-            } }, { component_id = id, agent_id = "agent-a" })
+            } }, { memory_id = id, agent_id = "agent-a" })
             for _, memory in ipairs(skipped.memories) do test.neq(memory.id, lisbon.id) end
             test.eq(#skipped.memories, #recalled.memories - 1)
 
-            local bobs = fixture.op(bob, "recall", { input = input }, { component_id = id, agent_id = "agent-b" })
+            local bobs = fixture.op(bob, "recall", { input = input }, { memory_id = id, agent_id = "agent-b" })
             test.is_nil(bobs, "bob has no access to alice's memory")
         end)
 
@@ -706,10 +706,67 @@ local function define_tests()
                 traits = { { id = "kickside.memory:memory", context = { memory_id = memory } } },
             } })
             test.is_nil(err, tostring(err))
+            test.eq(#compiled.bindings.memory, 1)
+            test.eq(compiled.bindings.memory[1].binding, "kickside.memory.agent:memory_binding")
+            test.eq(compiled.bindings.memory[1].context.memory_id, memory)
             local text = json.encode(compiled)
             test.is_true(text:find("kickside.memory.agent:lifecycle_binding", 1, true) ~= nil, text)
             test.is_true(text:find("after_persist", 1, true) ~= nil, text)
             test.is_true(text:find("kickside.memory.agent:checkpoint_binding", 1, true) ~= nil, text)
+        end)
+
+        test.it("recalls, captures, pins and supplies tools from only a trait and its context", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local session, agent_id = "s-" .. user, "trait-agent"
+            local spec = { id = agent_id, name = "Planner", prompt = "Plan trips.", model = "test-fast",
+                traits = { { id = "kickside.memory:memory", context = { memory_id = memory } } } }
+            local profile, profile_err = fixture.op(user, "create", { component_id = memory, fields = {
+                kind = "profile_slot", scope_family = "owner", scope_id = user,
+                key = "home_city", value = "Berlin", content = "The user lives in Berlin.",
+            } })
+            test.is_nil(profile_err, tostring(profile_err))
+            local fact, fact_err = fixture.op(user, "create", { component_id = memory, fields = {
+                kind = "fact", scope_family = "owner", scope_id = user,
+                key = "train_seat", value = "window", content = "The user prefers window seats on trains.",
+            } })
+            test.is_nil(fact_err, tostring(fact_err))
+            fixture.settle(user, memory)
+            local run_context = fixture.agent_context(memory, session, agent_id)
+            run_context.memory_id = nil
+            local activated, activate_err = fixture.op(user, "trait_agent", {
+                spec = spec, payload = fixture.payload("activate", session, agent_id),
+            }, run_context)
+            test.is_nil(activate_err, tostring(activate_err))
+            test.eq(#activated.errors, 0)
+            local pinned = fixture.op(user, "cursor", { component_id = memory, host_kind = "session", host_id = session })
+            test.is_true(pinned.pinned_prompt:find("Home city: Berlin", 1, true) ~= nil)
+            fixture.script.respond("generate", "Choose a window seat.")
+            local stepped, step_err = fixture.op(user, "trait_agent", {
+                spec = spec, messages = { { role = "user", text = "Plan a train trip" },
+                    { role = "assistant", text = "Which seat would you like?" },
+                    { role = "user", text = "Which train seat do I prefer?" } },
+            }, run_context)
+            test.is_nil(step_err, tostring(step_err))
+            test.is_nil(stepped.response.memory_recall_error)
+            test.not_nil(stepped.response.memory_recall, json.encode(stepped.response))
+            test.eq(stepped.response.memory_recall.memory_ids[1], fact.item_id)
+            test.not_nil(stepped.compiled.tools.SearchMemory, json.encode(stepped.compiled.tools))
+            test.not_nil(stepped.compiled.tools.Remember, "Remember tool")
+            test.not_nil(stepped.compiled.tools.ForgetMemory, "ForgetMemory tool")
+            fixture.history.record(session, { { id = "trait-capture", role = "user", content = "I prefer aisle seats." } })
+            fixture.extraction({ fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "trait-capture") })
+            fixture.verdict("ADD", {})
+            local captured, capture_err = fixture.op(user, "trait_agent", {
+                spec = spec, payload = fixture.payload("before_step", session, agent_id),
+            }, run_context)
+            test.is_nil(capture_err, tostring(capture_err))
+            test.eq(#captured.errors, 0)
+            test.is_true(captured.metadata[1].metadata.capture.captured)
+            local runs = fixture.wait_runs(user, memory, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            fixture.settle(user, memory)
+            test.not_nil(values(fixture.items(user, memory)).aisle)
         end)
 
         test.it("requires a selected memory for compilation, prompt and tools", function()

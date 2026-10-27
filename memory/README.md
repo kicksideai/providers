@@ -7,8 +7,8 @@ skills and lessons supply agent context. Hybrid search combines vectors and
 full-text retrieval; the memory page shows items, conflicts, activity and settings.
 
 Create a Memory knowledge base, attach the **Memory** trait to an agent and
-select its memory. Select the **Memory** provider and the same target for
-recall on each step. The trait requires `memory_id`:
+select its memory. The trait configures recall on each step and requires
+`memory_id`:
 
 ```yaml
 traits:
@@ -18,7 +18,8 @@ trait_contexts:
     memory_id: <memory-id>
 ```
 
-The trait supplies SearchMemory, Remember and ForgetMemory. Corrections
+The trait requires a released `wippy/agent` that compiles recall behaviors
+into the shared memory binding plan and recalls that plan on each step. It supplies SearchMemory, Remember and ForgetMemory. Corrections
 supersede values and retain history. ForgetMemory erases the selected item's
 versions, payloads, vectors, provenance and retained source input. Owner-scoped
 items belong to the signed-in user; agent identity and rules are managed on

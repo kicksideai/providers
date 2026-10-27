@@ -430,7 +430,6 @@ entries:
             title: Memory
             description: The memory this agent captures into and recalls from.
             role: picker
-            web_component: wc-kb-picker
           read_enabled:
             type: boolean
             title: Recall memory
@@ -459,8 +458,9 @@ entries:
     behaviors:
       - id: memory
         kind: memory
-        handles: [activate, before_step, after_persist, deactivate, checkpoint]
+        handles: [recall, activate, before_step, after_persist, deactivate, checkpoint]
         handlers:
+          recall: kickside.memory.agent:memory_binding
           lifecycle: kickside.memory.agent:lifecycle_binding
           checkpoint: kickside.memory.agent:checkpoint_binding
         priority: 10

@@ -15,8 +15,8 @@ This module owns:
   `kickside.memory:memory_store` supplies embedding, query and deletion;
   `kickside.memory:maintainable` schedules consolidation and re-embedding.
 - `kickside.memory:memory` is the agent trait. It requires `memory_id` and uses
-  `kickside.memory:memory_settings`. The single provider is
-  `kickside.memory.agent:memory_provider`; the tools are `search_tool`,
+  `kickside.memory:memory_settings`. Its memory binding is
+  `kickside.memory.agent:memory_binding`; the tools are `search_tool`,
   `remember_tool` and `forget_tool` in `kickside.memory.agent`.
 
 ## Storage and capture

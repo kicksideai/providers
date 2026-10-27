@@ -80,16 +80,6 @@ entries:
     imports: *recall_imports
     method: recall
 
-  - name: list_memory_targets
-    kind: function.lua
-    meta:
-      comment: Lists the memory knowledge bases the caller can read, for the agent memory picker.
-    source: file://targets.lua
-    modules: [contract, security]
-    imports:
-      types: kickside.memory:types
-    method: list_targets
-
   - name: memory_build
     kind: function.lua
     meta:
@@ -160,20 +150,9 @@ entries:
       comment: Implements wippy.agent:memory recall over a memory knowledge base.
     contracts:
       - contract: wippy.agent:memory
-        context_required: [component_id]
+        context_required: [memory_id]
         methods:
           recall: kickside.memory.agent:memory_provider_recall
-
-  - name: memory_provider
-    kind: registry.entry
-    meta:
-      type: agent.memory_provider
-      title: Memory
-      comment: Recalls typed long-term memory from a selected memory knowledge base each step.
-      icon: tabler:brain
-      order: 20
-      implementation_id: kickside.memory.agent:memory_binding
-      list_targets: kickside.memory.agent:list_memory_targets
 
   - name: lifecycle
     kind: function.lua

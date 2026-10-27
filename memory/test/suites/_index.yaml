@@ -35,6 +35,9 @@ entries:
       component: kickside.component:component
       types: kickside.memory:types
       agent_compiler: wippy.agent.compiler:compiler
+      agent: wippy.agent:agent
+      llm_prompt: wippy.llm:prompt
+      agent_lifecycle: wippy.agent:lifecycle_runtime
 
   - name: history
     kind: library.lua

@@ -20,6 +20,9 @@ local security = require("security")
 local sql = require("sql")
 local types = require("types")
 local agent_compiler = require("agent_compiler")
+local agent = require("agent")
+local agent_prompt = require("llm_prompt")
+local lifecycle = require("agent_lifecycle")
 
 local OPS: { [string]: (any) -> (any, any) } = {
     normalize = function(a: any) return models.normalize("test-fast", a.candidates, a.keys or {}) end,
@@ -61,6 +64,20 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return store:get_store({ component_id = a.component_id })
     end,
     compile = function(a: any) return agent_compiler.compile(a.spec) end,
+    trait_agent = function(a: any)
+        local compiled, compile_err = agent_compiler.compile(a.spec)
+        if compile_err then return nil, compile_err end
+        if a.payload then
+            return lifecycle.apply(compiled.bindings, a.payload)
+        end
+        local builder = agent_prompt.new()
+        for _, message in ipairs(a.messages) do
+            builder:add_message(message.role, { agent_prompt.text(message.text) })
+        end
+        local result, step_err = agent.new(compiled):step(builder)
+        if step_err then return nil, step_err end
+        return { compiled = compiled, response = result }, nil
+    end,
     resolve_memory = function(a: any)
         local id, _, err = context.memory({ context = a.context }, component.ACCESS.READ)
         return id, err

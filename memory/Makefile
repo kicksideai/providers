@@ -1,5 +1,5 @@
 export VERSION
-# kickside/memory — memory knowledge-base engine, agent trait and memory provider.
+# kickside/memory — memory knowledge-base engine and agent trait.
 MODULE := memory
 WIPPY_BIN ?= wippy
 UI_KIT_WAPP ?=
