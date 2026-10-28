@@ -7,6 +7,7 @@ local security = require("security")
 local contract = require("contract")
 local artifact_content_repo = require("artifact_content_repo")
 local upload_record_repo = require("upload_record_repo")
+local upload_types = require("upload_types")
 local kb10_types = require("kb10_types")
 local kb10_store = require("kb10_store")
 local thread_ingest = require("thread_ingest")
@@ -285,12 +286,24 @@ local function define_tests()
     test.describe("kb_ingest agent tools", function()
         local test_kb_id
         local test_user_id
+        local test_uploads_component_id
 
         test.before_all(function()
             test_kb_id = uuid()
             test_user_id = "test_ingest_" .. uuid()
             local err = create_test_kb(test_kb_id, test_user_id)
             test.is_nil(err)
+
+            test_uploads_component_id = upload_types.component_id_for_owner(test_user_id)
+            test.not_nil(test_uploads_component_id)
+            local registered, register_err = new_executor(test_user_id)
+                :call("kickside.component.binding:register_component_func", {
+                    component_id = test_uploads_component_id,
+                    impl_id = upload_types.IMPL,
+                })
+            test.is_nil(register_err, tostring(register_err))
+            test.not_nil(registered)
+            test.is_true(registered.success, tostring(registered.error))
 
             local vdb = sql.get("app:db")
             assert(vdb, "app:db not available")
@@ -303,6 +316,9 @@ local function define_tests()
         test.after_all(function()
             local db = sql.get("app:db")
             if db then
+                local _, delete_err = db:execute("DELETE FROM kickside_components WHERE component_id = $1",
+                    { test_uploads_component_id })
+                test.is_nil(delete_err, tostring(delete_err))
                 cleanup_test_kb(db, test_kb_id, test_user_id)
                 db:release()
             end
