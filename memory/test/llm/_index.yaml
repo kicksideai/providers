@@ -96,6 +96,19 @@ entries:
       - id: app.llm:provider
         provider_model: test-small
 
+  - name: test-no-output
+    kind: registry.entry
+    meta:
+      type: llm.model
+      name: test-no-output
+      title: Missing output limit test model
+      capabilities: [generate, structured_output]
+    max_tokens: 100000
+    output_tokens: 0
+    providers:
+      - id: app.llm:provider
+        provider_model: test-no-output
+
   - name: test-bounded
     kind: registry.entry
     meta:

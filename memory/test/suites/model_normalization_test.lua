@@ -31,14 +31,21 @@ local function define_tests()
 
         test.it("rejects keys with no valid topic interpretation and incompatible kinds", function()
             local user = fixture.user()
-            for _, key in ipairs({ "", "123", "!!!", "contact_guidance" }) do
-                local item = fixture.candidate("profile_slot", key, "Bergen", "Lives in Bergen.", "source")
+            for _, case in ipairs({
+                { key = "", code = "model_output_invalid_extraction_shape" },
+                { key = "123", code = "model_output_invalid_extraction_topic_key" },
+                { key = "!!!", code = "model_output_invalid_extraction_shape" },
+                { key = "contact_guidance", code = "model_output_invalid_extraction_kind" },
+            }) do
+                local item = fixture.candidate("profile_slot", case.key, "Bergen", "Lives in Bergen.", "source")
                 fixture.script.respond(user, "structured_output", { items = { item }, plans = {}, lessons = {} })
                 local result, err = fixture.op(user, "model_step", { step = "extract", span = {
                     { id = "source", role = "user", text = "I moved to Bergen." },
                 }, keys = { { kind = "lesson", key = "contact_guidance", cardinality = "multi" } } })
                 test.is_nil(result)
                 test.not_nil(err)
+                test.eq(err:kind(), errors.UNAVAILABLE)
+                test.eq(err:details().code, case.code)
             end
         end)
 
@@ -47,11 +54,12 @@ local function define_tests()
             for _, kinds in ipairs({ { "lesson", "profile_slot" }, { "fact", "lesson" } }) do
                 local candidate = fixture.candidate(kinds[1], "guidance", "evening", "Contact in the evening.")
                 fixture.normalization(user, { candidate })
-                local result, err = fixture.op(user, "normalize", { candidates = { candidate }, keys = {
+                local result, err = fixture.op(user, "model_step", { step = "normalize", candidates = { candidate }, keys = {
                     { key = "guidance", kind = kinds[2], cardinality = "multi" },
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
+                test.eq(err:kind(), errors.UNAVAILABLE)
                 test.eq(err:details().code, "model_output_invalid_normalization_kind")
             end
         end)
@@ -61,13 +69,13 @@ local function define_tests()
             local attribute = fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement")
             local goal = fixture.candidate("plan", "ticket_booking", { status = "open", next_step = "Compare routes", details = "Travel tickets" }, "The user needs travel tickets.", "statement")
             fixture.extraction(user, { attribute, goal })
-            local result, err = fixture.op(user, "extract", { span = { { id = "statement", role = "user", text = "I live in Paris and need travel tickets." } } })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", text = "I live in Paris and need travel tickets." } } })
             test.is_nil(err, tostring(err))
-            test.eq(#result, 2)
-            test.eq(result[1].kind, "profile_slot")
-            test.eq(result[1].value, "Paris")
-            test.eq(result[2].kind, "plan")
-            test.eq(result[2].value.details, "Travel tickets")
+            test.eq(#result.items, 2)
+            test.eq(result.items[1].kind, "profile_slot")
+            test.eq(result.items[1].value, "Paris")
+            test.eq(result.items[2].kind, "plan")
+            test.eq(result.items[2].value.details, "Travel tickets")
             local schema = fixture.script.requests(user, "structured_output")[1]
             test.eq(schema.properties.items.items.properties.value.type, "string")
             test.eq(schema.properties.plans.items.properties.value.type, "object")
@@ -80,13 +88,13 @@ local function define_tests()
                     status = "open", next_step = "", details = request,
                 }, "The user requests help with a task.", "task-source")
                 fixture.extraction(user, { goal })
-                local result, err = fixture.op(user, "extract", { span = { { id = "task-source", role = "user", text = request } } })
+                local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "task-source", role = "user", text = request } } })
                 test.is_nil(err, tostring(err))
-                test.eq(#result, 1)
-                test.eq(result[1].value.status, "open")
-                test.eq(result[1].value.next_step, "")
-                test.eq(result[1].value.details, request)
-                test.eq(result[1].event_id, "task-source")
+                test.eq(#result.items, 1)
+                test.eq(result.items[1].value.status, "open")
+                test.eq(result.items[1].value.next_step, "")
+                test.eq(result.items[1].value.details, request)
+                test.eq(result.items[1].event_id, "task-source")
             end
         end)
 
@@ -143,10 +151,10 @@ local function define_tests()
                 fixture.script.respond(user, "structured_output", { mappings = { ["1"] = parts } })
                 local input = fixture.candidate("fact", "background", example.value, example.content, "evidence")
                 input.source_ids = { "source-a", "source-b" }
-                local normalized, err = fixture.op(user, "normalize", { candidates = { input } })
+                local normalized, err = fixture.op(user, "model_step", { step = "normalize", candidates = { input } })
                 test.is_nil(err, tostring(err))
-                test.eq(#normalized, 2)
-                for i, item in ipairs(normalized) do
+                test.eq(#normalized.items, 2)
+                for i, item in ipairs(normalized.items) do
                     test.eq(item.key, parts[i].key)
                     test.eq(item.value, parts[i].value)
                     test.eq(item.content, parts[i].content)
@@ -162,7 +170,7 @@ local function define_tests()
             for _, key in ipairs({ "travel_help", "Travel Help" }) do
                 local lesson = fixture.candidate("lesson", key, "accessible routes", "Suggest accessible routes.")
                 fixture.normalization(user, { lesson })
-                local result, err = fixture.op(user, "model_step", { candidates = { lesson }, keys = {
+                local result, err = fixture.op(user, "model_step", { step = "normalize", candidates = { lesson }, keys = {
                     { key = "travel_help", kind = "plan", cardinality = "single" },
                     { key = "mobility", kind = "profile_slot", cardinality = "single" },
                 } })
@@ -182,7 +190,7 @@ local function define_tests()
                 { key = "meal_planning", kind = "lesson", cardinality = "multi", value = "vegan meals", content = "Choose vegan meals when booking." },
                 { key = "booking_meals", kind = "lesson", cardinality = "multi", value = "vegan options", content = "Choose vegan meals when booking." },
             } } })
-            local result, err = fixture.op(user, "normalize", { candidates = { lesson } })
+            local result, err = fixture.op(user, "model_step", { step = "normalize", candidates = { lesson } })
             test.is_nil(result)
             test.not_nil(err)
             test.eq(err:details().code, "model_output_malformed")
@@ -192,7 +200,7 @@ local function define_tests()
             fixture.script.respond(user, "structured_output", { mappings = { ["1"] = {
                 { key = "meal_planning", kind = "lesson", cardinality = "single", value = "vegan meals", content = "Choose vegan meals when booking." },
             } } })
-            local single, single_err = fixture.op(user, "normalize", { candidates = { lesson } })
+            local single, single_err = fixture.op(user, "model_step", { step = "normalize", candidates = { lesson } })
             test.is_nil(single)
             test.eq(single_err:details().code, "model_output_malformed")
         end)
@@ -204,13 +212,13 @@ local function define_tests()
                 ["2"] = { { key = "goal", kind = "plan", cardinality = "single" } },
             } })
             local state = { status = "open", next_step = "", details = "A durable goal" }
-            local result, err = fixture.op(user, "normalize", { candidates = {
+            local result, err = fixture.op(user, "model_step", { step = "normalize", candidates = {
                 fixture.candidate("fact", "switch", false, "The switch is false."),
                 fixture.candidate("plan", "goal", state, "An ongoing goal."),
             } })
             test.is_nil(err, tostring(err))
-            test.eq(result[1].value, false)
-            test.eq(json.encode(result[2].value), (json.encode(state)))
+            test.eq(result.items[1].value, false)
+            test.eq(json.encode(result.items[2].value), (json.encode(state)))
             local schema = fixture.script.requests(user, "structured_output")[1].properties.mappings.properties
             test.is_nil(schema["1"].items.properties.value)
             test.is_nil(schema["2"].items.properties.value)
@@ -223,16 +231,16 @@ local function define_tests()
                 ["2"] = { { key = "home_city", value = "Paris", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
                 ["3"] = { { key = "diet", value = "vegetarian", kind = "profile_slot", cardinality = "single", content = "The user states this attribute." } },
             } })
-            local normalized, err = fixture.op(user, "normalize", { candidates = {
+            local normalized, err = fixture.op(user, "model_step", { step = "normalize", candidates = {
                 fixture.candidate("profile_slot", "name", "Sam", "The user's name is Sam."),
                 fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris."),
                 fixture.candidate("profile_slot", "diet", "vegetarian", "The user is vegetarian."),
             } })
             test.is_nil(err, tostring(err))
-            test.eq(#normalized, 3)
-            test.eq(normalized[1].value, "Sam")
-            test.eq(normalized[2].value, "Paris")
-            test.eq(normalized[3].value, "vegetarian")
+            test.eq(#normalized.items, 3)
+            test.eq(normalized.items[1].value, "Sam")
+            test.eq(normalized.items[2].value, "Paris")
+            test.eq(normalized.items[3].value, "vegetarian")
             test.eq(#fixture.script.requests(user, "structured_output")[1].properties.mappings.required, 3)
         end)
 
@@ -244,7 +252,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
             fixture.script.respond(user, "structured_output", { mappings = { ["1"] = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } } })
-            local normalized, err = fixture.op(user, "model_step", { candidates = {
+            local normalized, err = fixture.op(user, "model_step", { step = "normalize", candidates = {
                 fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal"),
             }, keys = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } })
             test.is_nil(normalized)

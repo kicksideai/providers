@@ -361,6 +361,20 @@ local function define_tests()
             test.is_true(stored.config.extraction_model ~= model)
         end)
 
+        test.it("rejects models without a positive output limit consistently", function()
+            local user = fixture.user()
+            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = "test-no-output" })
+            test.is_nil(capacity)
+            test.not_nil(capacity_err)
+            test.is_true(tostring(capacity_err):find("requires a positive output limit", 1, true) ~= nil, tostring(capacity_err))
+            local result, err = fixture.op(user, "model_step", { model = "test-no-output", step = "extract", span = {
+                { id = "event", role = "user", text = "I live in Oslo." },
+            } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.is_true(tostring(err):find("requires a positive output limit", 1, true) ~= nil, tostring(err))
+        end)
+
         test.it("admits an 8192-token extraction model on creation and update", function()
             local user = fixture.user()
             local id, create_err = fixture.try_memory(user, { extraction_model = "test-bounded" })
@@ -461,7 +475,7 @@ local function define_tests()
             local result, err = fixture.op(user, "model_step", { candidates = { candidate("home_city", "Oslo") } })
             test.is_nil(result)
             test.not_nil(err)
-            test.eq(err:details().code, "model_output_invalid_normalization_mapping")
+            test.eq(err:details().code, "model_output_malformed")
             test.is_true(err:retryable())
         end)
 
@@ -568,10 +582,25 @@ local function define_tests()
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
-                test.eq(err:details().code, sources[2] == 3 and "model_output_malformed" or "model_output_invalid_reflection_grounding")
+                test.eq(err:details().code, (#sources < 2 or sources[2] == 3) and "model_output_malformed" or "model_output_invalid_reflection_grounding")
                 test.is_true(err:retryable())
             end
             test.eq(#fixture.script.requests(user, "structured_output"), 3)
+        end)
+
+        test.it("builds a reflection cardinality schema without a stale single-value bound", function()
+            local user = fixture.user()
+            fixture.script.respond(user, "structured_output", { items = {} })
+            local result, err = fixture.op(user, "model_step", { step = "reflect", items = {
+                { id = "a", kind = "fact", key = "mobility", content = "Uses transit." },
+                { id = "b", kind = "fact", key = "schedule", content = "Prefers mornings." },
+            } })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 0)
+            local schema = fixture.script.requests(user, "structured_output")[1]
+            local cardinality = schema.properties.items.items.properties.cardinality
+            test.eq(table.concat(cardinality.enum, ","), "multi")
+            test.eq(cardinality.maxLength, #"multi")
         end)
 
         test.it("fails malformed whole responses instead of accepting an empty batch", function()

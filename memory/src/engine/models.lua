@@ -14,27 +14,6 @@ local TRANSIENT_KINDS = {
     [errors.RATE_LIMITED] = true,
 }
 
-local function model_error(step: string, err: any): error
-    local message = step .. " failed"
-    if type(err) ~= "userdata" then
-        return types.internal(message, { step = step, cause = { message = tostring(err), retryable = false } })
-    end
-    local details = err:details() or {}
-    if details.error_type == "model_error" and type(details.raw_content) == "string" then
-        local _, decode_err = json.decode(details.raw_content)
-        if decode_err then
-            return types.unavailable(step .. " returned malformed output", { step = step, code = "model_output_malformed" })
-        end
-    end
-    local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
-    return errors.new({
-        kind = retryable and err:kind() or errors.INTERNAL,
-        retryable = retryable,
-        message = message,
-        details = { step = step, cause_kind = err:kind(), cause = error_envelope.encode(err) },
-    })
-end
-
 local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
 function M.is_statement(message: any): boolean
@@ -177,6 +156,7 @@ end
 local LIMITS = { per_statement = 4, parts = 4, lessons = 4,
     key = types.KEY_MAX, value = 160, content = 240, details = 400, next_step = 160, valid_at = 35, reason = 192 }
 local NUMBER_BYTES = 24
+local REFLECTION_MIN_SOURCES = 2
 
 local function codepoints(text: string): integer
     local _, count = text:gsub("[^\128-\191]", "")
@@ -202,86 +182,118 @@ for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 -- Kind compatibility with existing topics is validated after decoding.
 local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0," .. tostring(types.KEY_MAX - 1) .. "}$" }
 
-local function candidate_schema(event_ids: { string }?, kinds: { string }?, count: integer): any
-    local event_id = enum_string(event_ids or { "" })
+local function item_schema(allowed: { string }, value: any, cardinalities: { string }, event_id: any, valid_at: any, based_on: any?): any
+    local required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" }
+    local properties = {
+        kind = enum_string(allowed), key = TOPIC_SCHEMA,
+        cardinality = enum_string(cardinalities), value = value,
+        content = bounded_string(LIMITS.content, 1), event_id = event_id,
+        valid_at = valid_at, confidence = { type = "number", minimum = 0, maximum = 1 },
+    }
+    if based_on then
+        required[#required + 1] = "based_on"
+        properties.based_on = based_on
+    end
+    return { type = "object", additionalProperties = false, required = required, properties = properties }
+end
+
+local function extraction_schema(event_ids: { string }, count: integer): any
+    local event_id = enum_string(event_ids)
     local scalar_kinds = {}
-    for _, kind in ipairs(kinds or CANDIDATE_KINDS) do
-        if kind ~= types.KIND.PLAN and (kinds or kind ~= types.KIND.LESSON) then scalar_kinds[#scalar_kinds + 1] = kind end
+    for _, kind in ipairs(CANDIDATE_KINDS) do
+        if kind ~= types.KIND.PLAN and kind ~= types.KIND.LESSON then scalar_kinds[#scalar_kinds + 1] = kind end
     end
-    local function item(allowed: { string }, value: any, cardinalities: { string }): any
-        local shape = { type = "object", additionalProperties = false,
-            required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
-            properties = {
-                kind = enum_string(allowed), key = TOPIC_SCHEMA,
-                cardinality = enum_string(cardinalities), value = value,
-                content = bounded_string(LIMITS.content, 1), event_id = event_id,
-                valid_at = bounded_string(LIMITS.valid_at), confidence = { type = "number", minimum = 0, maximum = 1 },
-            },
-        }
-        return shape
-    end
-    local scalar = item(scalar_kinds, bounded_string(LIMITS.value, 1), { "single", "multi" })
+    local scalar = item_schema(scalar_kinds, bounded_string(LIMITS.value, 1), { "single", "multi" }, event_id, bounded_string(LIMITS.valid_at))
     local schema = { type = "object", additionalProperties = false, required = { "items" }, properties = {
-        items = { type = "array", maxItems = kinds and count or count * LIMITS.per_statement, items = scalar },
+        items = { type = "array", maxItems = count * LIMITS.per_statement, items = scalar },
     } }
-    if not kinds then
-        schema.properties.lessons = { type = "array", maxItems = count * LIMITS.per_statement,
-            items = item({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }),
-        }
-        schema.required[#schema.required + 1] = "lessons"
-        local goal = item({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
-            required = { "status", "next_step", "details" }, properties = {
-                status = enum_string({ "open", "done" }),
-                next_step = bounded_string(LIMITS.next_step), details = bounded_string(LIMITS.details, 1),
-            },
-        }, { "single" })
-        schema.properties.plans = { type = "array", maxItems = count, items = goal }
-        schema.required[#schema.required + 1] = "plans"
-    end
+    schema.properties.lessons = { type = "array", maxItems = count * LIMITS.per_statement,
+        items = item_schema({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }, event_id, bounded_string(LIMITS.valid_at)),
+    }
+    schema.required[#schema.required + 1] = "lessons"
+    local goal = item_schema({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
+        required = { "status", "next_step", "details" }, properties = {
+            status = enum_string({ "open", "done" }),
+            next_step = bounded_string(LIMITS.next_step), details = bounded_string(LIMITS.details, 1),
+        },
+    }, { "single" }, event_id, bounded_string(LIMITS.valid_at))
+    schema.properties.plans = { type = "array", maxItems = count, items = goal }
+    schema.required[#schema.required + 1] = "plans"
     return schema
+end
+
+local function reflection_schema(numbers: { integer }, count: integer): any
+    return { type = "object", additionalProperties = false, required = { "items" }, properties = {
+        items = { type = "array", maxItems = count,
+            items = item_schema({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }, enum_string({ "" }), enum_string({ "" }),
+                { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES, maxItems = #numbers }),
+        },
+    } }
 end
 
 -- Control-free compact UTF-8 JSON uses at most four bytes per code point,
 -- including quote/backslash escapes. One token per byte bounds byte-level tokenizers.
-local function schema_bytes(schema: any, bytes_per_character: integer): integer
-    local function size(node: any): integer
+local function schema_bytes(schema: any, bytes_per_character: integer): (integer?, error?)
+    local function encoded_size(value: any): (integer?, error?)
+        local encoded, encode_err = json.encode(value)
+        if encode_err then return nil, types.internal("memory result schema encode failed", { cause = tostring(encode_err) }) end
+        return #encoded, nil
+    end
+    local function size(node: any): (integer?, error?)
         if node.enum then
             local longest = 0
-            for _, value in ipairs(node.enum) do longest = math.max(longest, #json.encode(value)) end
-            return longest
+            for _, value in ipairs(node.enum) do
+                local value_size, value_err = encoded_size(value)
+                if value_err then return nil, value_err end
+                longest = math.max(longest, value_size :: integer)
+            end
+            return longest, nil
         elseif node.type == "object" then
             local total, count = 2, 0
             for key, child in pairs(node.properties) do
-                total = total + #json.encode(key) + 1 + size(child)
+                local key_size, key_err = encoded_size(key)
+                if key_err then return nil, key_err end
+                local child_size, child_err = size(child)
+                if child_err then return nil, child_err end
+                total = total + (key_size :: integer) + 1 + (child_size :: integer)
                 count = count + 1
             end
-            return total + math.max(0, count - 1)
+            return total + math.max(0, count - 1), nil
         elseif node.type == "array" then
-            return 2 + node.maxItems * size(node.items) + math.max(0, node.maxItems - 1)
+            local item_size, item_err = size(node.items)
+            if item_err then return nil, item_err end
+            return 2 + node.maxItems * (item_size :: integer) + math.max(0, node.maxItems - 1), nil
         elseif node.type == "string" then
-            return 2 + bytes_per_character * node.maxLength
+            return 2 + bytes_per_character * node.maxLength, nil
         elseif node.type == "number" then
-            return NUMBER_BYTES
+            return NUMBER_BYTES, nil
         end
-        error("Unbounded memory result schema: " .. tostring(node.type))
+        return nil, types.internal("memory result schema is unbounded", { type = tostring(node.type) })
     end
     return size(schema)
 end
 
-local function output_budget(schema: any, model: string): (integer?, error?)
+local function output_limit(model: string): (integer?, error?)
     local card, err = llm.resolve_model(model)
     if err then return nil, err end
     local limit = tonumber(card and card.output_tokens)
-    if not limit or limit < 1 then
+    if not limit or limit ~= limit or limit < 1 then
         return nil, types.invalid("memory model " .. model .. " requires a positive output limit")
     end
-    return math.floor(math.min(limit, schema_bytes(schema, 4))), nil
+    return math.floor(limit), nil
+end
+
+local function output_budget(schema: any, model: string): (integer?, error?)
+    local limit, limit_err = output_limit(model)
+    if limit_err then return nil, limit_err end
+    local size, size_err = schema_bytes(schema, 4)
+    if size_err then return nil, size_err end
+    return math.min(limit :: integer, size :: integer), nil
 end
 
 function M.extraction_capacity(model: string, span: { any }?): (integer?, error?)
-    local card, err = llm.resolve_model(model)
-    if err then return nil, err end
-    local limit = tonumber(card and card.output_tokens)
+    local limit, limit_err = output_limit(model)
+    if limit_err then return nil, limit_err end
     local ids = {}
     for _, message in ipairs(span or {}) do
         if M.is_statement(message) then ids[#ids + 1] = message.id end
@@ -290,7 +302,12 @@ function M.extraction_capacity(model: string, span: { any }?): (integer?, error?
     local count = 0
     -- Capacity uses typical compact ASCII output so 8,192-token models remain usable;
     -- call budgets cover the four-byte bound up to the model card limit.
-    while limit and schema_bytes(candidate_schema(ids, nil, count + 1), 1) <= limit do count = count + 1 end
+    while true do
+        local size, size_err = schema_bytes(extraction_schema(ids, count + 1), 1)
+        if size_err then return nil, size_err end
+        if (size :: integer) > (limit :: integer) then break end
+        count = count + 1
+    end
     if count == 0 then
         return nil, types.invalid("memory extraction model " .. model .. " output limit cannot hold one statement")
     end
@@ -303,12 +320,19 @@ local function exceeds_bounds(value: any, schema: any): boolean
         for _, option in ipairs(schema.enum) do if value == option then return false end end
         return true
     end
+    if schema.type == "array" then
+        if type(value) ~= "table" then return true end
+        for key in pairs(value) do
+            if type(key) ~= "number" or key < 1 or key > #value or key ~= math.floor(key) then return true end
+        end
+        if schema.minItems and #value < schema.minItems then return true end
+        if schema.maxItems and #value > schema.maxItems then return true end
+        for _, item in ipairs(value) do if exceeds_bounds(item, schema.items) then return true end end
+        return false
+    end
     if schema.type == "object" and type(value) ~= "table" then return true end
     if type(value) == "string" and schema.maxLength then
         return codepoints(value) > schema.maxLength
-    elseif type(value) == "table" and schema.type == "array" then
-        if #value > schema.maxItems then return true end
-        for _, item in ipairs(value) do if exceeds_bounds(item, schema.items) then return true end end
     elseif type(value) == "table" and schema.type == "object" then
         for _, key in ipairs(schema.required or {}) do if value[key] == nil then return true end end
         for key, child in pairs(value) do
@@ -319,20 +343,16 @@ local function exceeds_bounds(value: any, schema: any): boolean
     return false
 end
 
-local function is_array(value: any): boolean
-    if type(value) ~= "table" then return false end
-    for key in pairs(value) do
-        if type(key) ~= "number" or key < 1 or key > #value or key ~= math.floor(key) then return false end
-    end
-    return true
+local function malformed_error(step: string): error
+    return types.unavailable("memory " .. step .. " returned malformed output", { step = step, code = "model_output_malformed" })
 end
 
 local function response_error(response: any, step: string, schema: any): error?
     if response and response.finish_reason == "length" then
-        return types.unavailable(step .. " output is truncated", { code = "model_output_truncated", step = step })
+        return types.unavailable("memory " .. step .. " output is truncated", { code = "model_output_truncated", step = step })
     end
     if not response or type(response.result) ~= "table" or exceeds_bounds(response.result, schema) then
-        return types.unavailable(step .. " returned malformed output", { code = "model_output_malformed", step = step })
+        return malformed_error(step)
     end
     return nil
 end
@@ -340,6 +360,25 @@ end
 local function validation_error(step: string, reason: string): error
     local code = "model_output_invalid_" .. step .. "_" .. reason
     return types.unavailable("memory " .. step .. " returned invalid output: " .. code, { step = step, code = code })
+end
+
+local function model_error(step: string, err: any): error
+    local message = "memory " .. step .. " failed"
+    if type(err) ~= "userdata" then
+        return types.internal(message, { step = step, cause = { message = tostring(err), retryable = false } })
+    end
+    local details = err:details() or {}
+    if details.error_type == "model_error" and type(details.raw_content) == "string" then
+        local _, decode_err = json.decode(details.raw_content)
+        if decode_err then return malformed_error(step) end
+    end
+    local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
+    return errors.new({
+        kind = retryable and err:kind() or errors.INTERNAL,
+        retryable = retryable,
+        message = message,
+        details = { step = step, cause_kind = err:kind(), cause = error_envelope.encode(err) },
+    })
 end
 
 local function candidate_reason(item: any, typed: boolean?): string?
@@ -358,12 +397,9 @@ local function candidate_reason(item: any, typed: boolean?): string?
 end
 
 local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any): (any?, error?)
-    local err = response_error(response, "memory " .. step, schema)
+    local err = response_error(response, step, schema)
     if err then return nil, err end
     local data = response.result
-    if not is_array(data.items) or (step == "extraction" and (not is_array(data.plans) or not is_array(data.lessons))) then
-        return nil, types.unavailable("memory " .. step .. " returned malformed output", { code = "model_output_malformed" })
-    end
     local known = {}
     for _, row in ipairs(keys or {}) do known[row.key] = row end
     local out = {}
@@ -447,11 +483,11 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local conversation = M.conversation(span, context)
-    local schema = candidate_schema(ids, nil, #ids)
+    local schema = extraction_schema(ids, #ids)
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
-    if err then return nil, model_error("memory extraction", err) end
+    if err then return nil, model_error("extraction", err) end
     local candidates, read_err = read_candidates(response, "extraction", allowed, keys, schema)
     if read_err then return nil, read_err end
     return candidates, nil
@@ -502,22 +538,13 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     local payload, encode_err = json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })
     if encode_err then return nil, types.internal("memory normalization input encode failed", { cause = tostring(encode_err) }) end
     local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, payload), { model = model, max_tokens = budget })
-    if err then return nil, model_error("memory normalization", err) end
-    local response_err = response_error(response, "memory normalization", schema)
+    if err then return nil, model_error("normalization", err) end
+    local response_err = response_error(response, "normalization", schema)
     if response_err then return nil, response_err end
-    local mappings = response and response.result and response.result.mappings
-    if type(mappings) ~= "table" then
-        return nil, types.unavailable("memory normalization returned malformed output", { code = "model_output_malformed" })
-    end
+    local mappings = response.result.mappings
     local out = {}
     for i, candidate in ipairs(candidates) do
         local parts = mappings[tostring(i)]
-        if type(parts) ~= "table" then
-            return nil, types.unavailable("memory normalization returned malformed mappings", { code = "model_output_malformed" })
-        end
-        if not is_array(parts) or #parts == 0 or (single_part(candidate) and #parts ~= 1) then
-            return nil, validation_error("normalization", "mapping")
-        end
         for _, mapping in ipairs(parts) do
             local reason = nil
             local normalized = {}
@@ -547,8 +574,6 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     return out, nil
 end
 
-local REFLECTION_MIN_SOURCES = 2
-
 function M.reflect(model: string, items: { any }): (any?, error?)
     if #items < REFLECTION_MIN_SOURCES then return {}, nil end
     local lines: { string } = {}
@@ -557,25 +582,19 @@ function M.reflect(model: string, items: { any }): (any?, error?)
         lines[#lines + 1] = string.format("%d. (%s/%s) %s", index, item.kind, item.key, item.content)
         numbers[index] = index
     end
-    local schema = candidate_schema(nil, { types.KIND.LESSON }, math.min(LIMITS.lessons, math.floor(#items / REFLECTION_MIN_SOURCES)))
-    local item_schema = schema.properties.items.items
-    item_schema.properties.event_id = enum_string({ "" })
-    item_schema.properties.valid_at = enum_string({ "" })
-    item_schema.properties.cardinality.enum = { "multi" }
-    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES, maxItems = #items }
-    item_schema.required[#item_schema.required + 1] = "based_on"
+    local schema = reflection_schema(numbers, math.min(LIMITS.lessons, math.floor(#items / REFLECTION_MIN_SOURCES)))
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = budget })
-    if err then return nil, model_error("memory reflection", err) end
+    if err then return nil, model_error("reflection", err) end
     local candidates, read_err = read_candidates(response, "reflection", nil, nil, schema)
     if read_err then return nil, read_err end
     local grounded: { any } = {}
     for _, candidate in ipairs(candidates :: any) do
         local sources: { [integer]: boolean } = {}
         local source_ids: { string } = {}
-        local valid = is_array(candidate.based_on)
-        for _, number in ipairs(valid and candidate.based_on or {}) do
+        local valid = true
+        for _, number in ipairs(candidate.based_on) do
             if type(number) ~= "number" or number ~= math.floor(number) or not items[number] or sources[number] then
                 valid = false
             else
@@ -583,7 +602,7 @@ function M.reflect(model: string, items: { any }): (any?, error?)
                 source_ids[#source_ids + 1] = items[number].id
             end
         end
-        if valid and #source_ids >= REFLECTION_MIN_SOURCES and candidate.cardinality == types.CARDINALITY.MULTI then
+        if valid and #source_ids >= REFLECTION_MIN_SOURCES then
             candidate.source_ids = source_ids
             grounded[#grounded + 1] = candidate
         else return nil, validation_error("reflection", "grounding") end
@@ -635,8 +654,8 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     })
     if encode_err then return nil, types.internal("memory reconcile judge input encode failed", { cause = tostring(encode_err) }) end
     local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT .. JSON_FORMAT, payload), { model = model, max_tokens = budget })
-    if err then return nil, model_error("memory reconcile judge", err) end
-    local response_err = response_error(response, "memory reconcile judge", schema)
+    if err then return nil, model_error("reconcile judge", err) end
+    local response_err = response_error(response, "reconcile judge", schema)
     if response_err then return nil, response_err end
     local relations = response.result.relations
     for _, choice in ipairs(RELATION_ACTIONS) do
@@ -665,7 +684,7 @@ end
 
 function M.embed(model: string, texts: { string }): (any?, error?)
     local response, err = llm.embed(texts, { model = model, dimensions = types.EMBEDDING_DIMENSIONS })
-    if err then return nil, model_error("memory embedding", err) end
+    if err then return nil, model_error("embedding", err) end
     local vectors = response and response.result
     if type(vectors) ~= "table" or #vectors ~= #texts then
         return nil, types.unavailable("memory embedding returned " .. tostring(type(vectors) == "table" and #vectors or 0) ..
