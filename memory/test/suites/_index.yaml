@@ -185,7 +185,6 @@ entries:
       fixture: app.suites:fixture
       session: kickside.users:session
       user_groups_repo: kickside.users.persist:user_groups_repo
-      types: kickside.memory:types
 
   - name: persistence_call
     kind: function.lua

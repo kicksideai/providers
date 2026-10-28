@@ -45,7 +45,7 @@ local function define_tests()
             for _, kind in ipairs(kinds) do
                 local neighbors, relations = {}, {}
                 for i, other in ipairs(kinds) do
-                    neighbors[i] = { id = tostring(i), kind = "profile_slot", key = "topic_" .. tostring(i), kind = other, cardinality = "single" }
+                    neighbors[i] = { id = tostring(i), key = "topic_" .. tostring(i), kind = other, cardinality = "single" }
                     relations[i] = "unrelated"
                 end
                 fixture.relations(user, relations)
