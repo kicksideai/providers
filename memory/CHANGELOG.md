@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.15](https://github.com/kicksideai/providers/compare/memory-v0.1.14...memory-v0.1.15) (2026-10-27)
+
+
+### Bug Fixes
+
+* **memory:** provide opt-in typed storage in the existing Memory package ([bc36885](https://github.com/kicksideai/providers/commit/bc3688586bfb8f23e53bd3c3af5f50665c89a3f6))
+* **memory:** retain outgoing conversation during agent handoffs ([955af14](https://github.com/kicksideai/providers/commit/955af149d1c03b12b5b4e17247100409ab3609f8))
+
 ## [0.1.14](https://github.com/kicksideai/providers/compare/memory-v0.1.13...memory-v0.1.14) (2026-10-24)
 
 

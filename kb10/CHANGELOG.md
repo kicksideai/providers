@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.9](https://github.com/kicksideai/providers/compare/kb10-v0.2.8...kb10-v0.2.9) (2026-10-27)
+
+
+### Features
+
+* **kb10:** page and slide locators on document chunks ([d37d276](https://github.com/kicksideai/providers/commit/d37d27648e6a9b3df28c3abb7dac4bc93b242d26))
+* **kb10:** page and slide locators on document chunks ([2feca6f](https://github.com/kicksideai/providers/commit/2feca6f013ba41d2ee1f23575b63ef8ff1c1f0b1))
+
+
+### Bug Fixes
+
+* **kb10:** use storage-aware URLs for original documents ([#49](https://github.com/kicksideai/providers/issues/49)) ([8123ab3](https://github.com/kicksideai/providers/commit/8123ab3e966e70457b43160286fc7a96269e8568))
+
 ## [0.2.8](https://github.com/kicksideai/providers/compare/kb10-v0.2.7...kb10-v0.2.8) (2026-10-23)
 
 
