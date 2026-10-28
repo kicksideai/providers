@@ -13,7 +13,7 @@ list:
 # Prepare each module's declared UI Kit artifact before legal inventory/builds.
 ui-kit:
 	@for module in $(MODULES); do \
-		if grep -q '^ui-kit:' "$$module/Makefile"; then \
+		if [ -f "$$module/build-inputs/wippy.lock" ]; then \
 			$(MAKE) -C $$module ui-kit || exit $$?; \
 		fi; \
 	done
