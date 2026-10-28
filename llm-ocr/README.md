@@ -29,6 +29,17 @@ for the contracts declared by the module.
 The standalone harness uses SQLite and declares a PostgreSQL test profile.
 Development uses Make and the Wippy CLI.
 
+The model picker requires Settings >=0.3.2 and Widgets >=0.1.52. Both are
+declared package dependencies. Bind `kickside.widgets:ui_server` to the host's
+UI server and `kickside.widgets:api_router` to its authenticated API router,
+as the KickSide host does for its shared widgets. Model discovery uses the
+host's Models API. These bindings configure the shared module; OCR does not
+serve or duplicate picker assets.
+
+The default test harness resolves Settings and Widgets from the Hub, so an
+unpublished dependency cannot be hidden by an unversioned Settings checkout.
+Pre-release source-pair qualification must use a separate explicit configuration.
+
 ## Development
 
 From this module directory:

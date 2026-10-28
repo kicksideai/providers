@@ -195,11 +195,18 @@ entries:
     component: kickside/uploads
 
   - name: dep.kickside.settings
-    version: '*'
+    version: '>=0.3.2'
     kind: ns.dependency
     meta:
       comment: Supplies the OCR settings definitions and runtime settings contract.
     component: kickside/settings
+
+  - name: dep.kickside.widgets
+    version: '>=0.1.52'
+    kind: ns.dependency
+    meta:
+      comment: Supplies the shared capability-filtered model picker used by the OCR setting.
+    component: kickside/widgets
 
   - name: dep.wippy.llm
     version: '*'
