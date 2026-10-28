@@ -12,18 +12,16 @@ local M = {}
 
 local SEARCH_MAX = 50
 
-local function tool_error(err: any): any
-    return { success = false, error = tostring(err) }
+local function tool_error(err: any, code: string?): any
+    return { success = false, error = tostring(err), code = code }
 end
 
 function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
     local key = types.trim(input.key)
     if key == "" then return tool_error("key is required"), nil end
-    if context.setting({}, "write_enabled") == false then return tool_error("this agent's memory is read-only"), nil end
     local memory_id, _, memory_err = context.memory({}, component.ACCESS.WRITE)
     if memory_err then return tool_error(memory_err), nil end
-    if types.actor_id() == "" then return tool_error("forget requires a signed-in user"), nil end
     local forgotten, forget_err = ops.forget_key(memory_id :: string, key, input.value)
     if forget_err then
         if forget_err:kind() == errors.INVALID or forget_err:kind() == errors.NOT_FOUND then
@@ -36,17 +34,18 @@ end
 
 function M.search(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
-    if context.setting({}, "read_enabled") == false then
-        return tool_error("memory search is disabled for this agent"), nil
-    end
     local query = types.trim(input.query)
     if query == "" then return tool_error("query is required"), nil end
-    local limit = math.floor(tonumber(input.limit) or tonumber(context.setting({}, "recall_limit")) or 5)
-    if limit < 1 or limit > SEARCH_MAX then return tool_error("limit must be between 1 and " .. SEARCH_MAX), nil end
-    local offset = math.floor(tonumber(input.cursor) or 0)
-    if offset < 0 then return tool_error("cursor is invalid"), nil end
-    local memory_id, _, err = context.memory({}, component.ACCESS.READ)
+    local memory_id, store, err = context.memory({}, component.ACCESS.READ)
     if err then return tool_error(err), nil end
+    local limit = math.floor(tonumber(input.limit) or (store :: any).effective.recall_max_items)
+    if limit < 1 or limit > SEARCH_MAX then return tool_error("limit must be between 1 and " .. SEARCH_MAX), nil end
+    local offset = 0
+    if input.cursor ~= nil then
+        local parsed = tonumber(input.cursor)
+        if not parsed or parsed < 0 or math.floor(parsed) ~= parsed then return tool_error("cursor is invalid", "invalid_input"), nil end
+        offset = math.floor(parsed)
+    end
     local scopes = recall.visible_scopes(ctx.get("agent_id"))
     local rows, search_err = recall.search({
         component_id = memory_id :: string, query = query, limit = offset + limit + 1,
@@ -90,8 +89,7 @@ function M.search(args: any): (any?, error?)
     end
     local result: { [string]: any } = {
         success = true, query = query, count = #page, items = page, alternatives = alternatives,
-        note = "Memory is derived from prior conversations and may be incomplete or out of date. Alternatives are " ..
-            "unresolved: the person has said contradicting things; ask before relying on either.",
+        note = "Alternatives are unresolved: the person has said contradicting things; ask before relying on either.",
     }
     if #(rows :: any) > offset + limit or #group_ids > offset + limit then result.next_cursor = tostring(offset + limit) end
     return result, nil

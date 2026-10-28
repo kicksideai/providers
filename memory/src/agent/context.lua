@@ -49,7 +49,6 @@ end
 function M.validate(payload: any): error?
     if type(payload) ~= "table" then return types.invalid("payload must be an object") end
     if type(payload.host) ~= "table" or types.trim(payload.host.kind) == "" then return types.invalid("host.kind is required") end
-    if type(payload.agent) ~= "table" then payload.agent = {} end
     return nil
 end
 

@@ -13,7 +13,7 @@ local function define_tests()
             local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
                 name = "memory agent", model = "test-fast", traits = { trait },
                 trait_contexts = { [trait] = {
-                    memory_id = memory, read_enabled = true, write_enabled = true, recall_limit = 5,
+                    memory_id = memory,
                 } },
             })
             test.is_nil(create_err, tostring(create_err))
@@ -26,9 +26,29 @@ local function define_tests()
                 if spec.id == trait then context = spec.context end
             end
             test.not_nil(context)
+            test.is_nil(context.read_enabled)
+            test.is_nil(context.write_enabled)
+            test.is_nil(context.recall_limit)
             local id, err = fixture.op(user, "resolve_memory", { context = context })
             test.is_nil(err, tostring(err))
             test.eq(id, memory)
+        end)
+
+        test.it("resolves an agent saved with retired memory trait settings", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local trait = "kickside.memory:memory"
+            local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
+                name = "legacy memory agent", model = "test-fast", traits = { trait },
+                trait_contexts = { [trait] = {
+                    memory_id = memory, read_enabled = false, write_enabled = false, recall_limit = 1,
+                } },
+            })
+            test.is_nil(create_err, tostring(create_err))
+            local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func",
+                { agent_id = "user_agent:" .. created.component_id })
+            test.is_nil(resolve_err, tostring(resolve_err))
+            test.not_nil(agent)
         end)
 
         test.it("compiles an agent mounting the trait with its lifecycle, after_persist and checkpoint behavior", function()

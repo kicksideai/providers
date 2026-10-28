@@ -43,6 +43,30 @@ local function define_tests()
             test.eq(result.items[1].value, "blue")
         end)
 
+        test.it("uses the memory search limit and rejects malformed cursors", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { recall_max_items = 1 })
+            for _, entry in ipairs({
+                { key = "coffee", value = "tea", content = "The user prefers tea to coffee." },
+                { key = "tea", value = "green", content = "The user prefers green tea." },
+            }) do
+                local _, create_err = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "preference", scope_family = "owner", key = entry.key, value = entry.value, content = entry.content,
+                } })
+                test.is_nil(create_err, tostring(create_err))
+            end
+            fixture.settle(user, id)
+            local context = fixture.agent_context(id, "s-" .. user, "agent-a")
+            local result, search_err = fixture.op(user, "tool_search", { input = { query = "tea" } }, context)
+            test.is_nil(search_err, tostring(search_err))
+            test.eq(result.count, 1)
+            local invalid, invalid_err = fixture.op(user, "registered_tool_search", { input = { query = "tea", cursor = "again" } }, context)
+            test.is_nil(invalid_err, tostring(invalid_err))
+            test.is_false(invalid.success)
+            test.eq(invalid.code, "invalid_input")
+            test.eq(invalid.error, "cursor is invalid")
+        end)
+
         test.it("forgets every version of a single key in only the caller's scope", function()
             local user, other = fixture.user(), fixture.user()
             local id = fixture.memory(user)

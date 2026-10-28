@@ -78,7 +78,7 @@ entries:
   - name: memory_build
     kind: function.lua
     meta:
-      comment: Trait build function - contributes the agent's identity, rules, skills and lessons to the compiled prompt.
+      comment: Adds the agent's identity, rules, skills and lessons to the compiled prompt.
     source: file://prompt.lua
     modules: *prompt_modules
     imports: *prompt_imports
@@ -87,7 +87,7 @@ entries:
   - name: memory_prompt
     kind: function.lua
     meta:
-      comment: Owner profile and preferences pinned for the active host.
+      comment: Pinned owner profile, preferences and open goals for the active host.
     source: file://prompt.lua
     modules: *prompt_modules
     imports: *prompt_imports
@@ -100,9 +100,9 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Forget Memory
       llm_alias: ForgetMemory
-      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Ordinary corrections and changed values belong to background capture. Use the canonical key shown in the profile or SearchMemory. Supply value to erase only that value and the versions it replaced; a multi-valued key requires it."
+      llm_description: "Erase one of the user's attributes and its history. Use only when the user explicitly asks to forget it."
       input_schema: |
-        {"type": "object", "additionalProperties": false, "properties": {"key": {"type": "string", "description": "Canonical topic key of your own attribute to erase"}, "value": {"description": "The typed value to erase with the versions it replaced; required for a multi-valued key. Without it, a single-valued attribute is erased with its whole history"}}, "required": ["key"]}
+        {"type": "object", "additionalProperties": false, "properties": {"key": {"type": "string", "description": "Canonical key of the user's attribute, as shown in the profile or SearchMemory"}, "value": {"description": "The typed value to erase with the versions it replaced; required for a multi-valued key. Without it, a single-valued attribute is erased with its whole history"}}, "required": ["key"]}
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "key": {"type": "string"}, "forgotten": {"type": "integer"}}, "required": ["success"]}
     source: file://tools.lua
@@ -123,6 +123,8 @@ entries:
 
   - name: lifecycle
     kind: function.lua
+    meta:
+      comment: Applies memory lifecycle phases for a running agent.
     source: file://lifecycle.lua
     modules: []
     imports:
@@ -135,6 +137,8 @@ entries:
 
   - name: checkpoint
     kind: function.lua
+    meta:
+      comment: Builds a checkpoint summary and captures its source range.
     source: file://checkpoint.lua
     modules: []
     imports:
@@ -152,11 +156,11 @@ entries:
       mcp: { required_scopes: [state.read] }
       title: Search Memory
       llm_alias: SearchMemory
-      llm_description: Search the selected memory for the user's facts, preferences and goals. Returns canonical keys, typed values and unresolved alternatives. Pass next_cursor with the same query for more results.
+      llm_description: "Search this agent's memory: the user's attributes, facts and goals and the agent's rules, skills and lessons. Returns canonical keys, typed values and unresolved alternatives. Pass next_cursor with the same query for more results."
       input_schema: |
         {"type":"object","additionalProperties":false,"properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50},"cursor":{"type":"string"}},"required":["query"]}
       output_schema: |
-        {"type":"object","properties":{"success":{"type":"boolean"},"error":{"type":"string"},"query":{"type":"string"},"count":{"type":"integer"},"items":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"kind":{"type":"string"},"key":{"type":"string"},"value":{},"content":{"type":"string"},"valid_at":{"type":"string"},"recorded_at":{"type":"string"},"score":{"type":"number"},"source":{"type":"string"}},"required":["id","kind","key","value","content","valid_at","recorded_at","score","source"]}},"alternatives":{"type":"array","items":{"type":"object"}},"next_cursor":{"type":"string"},"note":{"type":"string"}},"required":["success"]}
+        {"type":"object","properties":{"success":{"type":"boolean"},"error":{"type":"string"},"code":{"type":"string"},"query":{"type":"string"},"count":{"type":"integer"},"items":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"kind":{"type":"string"},"key":{"type":"string"},"value":{},"content":{"type":"string"},"valid_at":{"type":"string"},"recorded_at":{"type":"string"},"score":{"type":"number"},"source":{"type":"string"}},"required":["id","kind","key","value","content","valid_at","recorded_at","score","source"]}},"alternatives":{"type":"array","items":{"type":"object"}},"next_cursor":{"type":"string"},"note":{"type":"string"}},"required":["success"]}
     source: file://tools.lua
     modules: *tools_modules
     imports: *tools_imports
@@ -164,6 +168,8 @@ entries:
 
   - name: lifecycle_binding
     kind: contract.binding
+    meta:
+      comment: Binds memory behavior to agent lifecycle phases.
     contracts:
       - contract: wippy.agent:lifecycle
         methods:
@@ -171,6 +177,8 @@ entries:
 
   - name: checkpoint_binding
     kind: contract.binding
+    meta:
+      comment: Binds memory checkpoint creation for agent runs.
     contracts:
       - contract: wippy.agent:checkpoint
         methods:
