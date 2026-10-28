@@ -11,10 +11,7 @@ local M = {}
 local function content_text(body: any): string
     local content = type(body) == "table" and body.content or nil
     if type(content) ~= "string" then return "" end
-    local title = types.trim(body.title)
-    local text = content
-    if title ~= "" then text = title .. "\n\n" .. text end
-    return text
+    return jobs.document_text(body.title, content)
 end
 
 function M.run(input: any): (any?, error?)
