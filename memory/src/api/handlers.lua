@@ -15,6 +15,7 @@ local models = require("memory_models")
 local M = {}
 
 local MAX_PAGE = 200
+local MAX_OFFSET = 1000000
 
 local function reply(res: any, status: any, payload: any)
     res:set_content_type(http.CONTENT.JSON)
@@ -51,12 +52,24 @@ local function open(access: integer): (any?, any?, string?, any?)
     return res, req, id, store
 end
 
-local function body_of(req: any): any
+local function body_of(req: any): (any?, error?)
     local raw = req:body()
     if type(raw) ~= "string" or raw == "" then return {} end
-    local decoded, decode_err = types.decode_json(raw)
-    if decode_err or not raw:match("^%s*{") or type(decoded) ~= "table" then return nil end
-    return decoded
+    return types.decode_object(raw, "body")
+end
+
+local function page_params(req: any, default_limit: integer): (integer?, integer?, string?)
+    local limit, limit_err = int_param(req, "limit", default_limit, 1, MAX_PAGE)
+    if limit_err then return nil, nil, limit_err end
+    local offset, offset_err = int_param(req, "offset", 0, 0, MAX_OFFSET)
+    if offset_err then return nil, nil, offset_err end
+    return limit, offset, nil
+end
+
+local function paged(rows: { any }, limit: integer, offset: integer): ({ any }, integer?)
+    local page: { any } = {}
+    for i = 1, math.min(limit, #rows) do page[i] = rows[i] end
+    return page, #rows > limit and offset + limit or nil
 end
 
 local function list_param(req: any, name: string): { string }?
@@ -80,10 +93,8 @@ end
 function M.list_items()
     local res, req, id, store = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local query = types.trim(req:query("q"))
     local filter = {
         kinds = list_param(req, "kind"), statuses = list_param(req, "status"), limit = (limit :: integer) + 1, offset = offset,
@@ -102,10 +113,9 @@ function M.list_items()
         for i = (offset :: integer) + 1, #(ranked or {}) do rows[#rows + 1] = ranked[i] end
     end
     if err then return fail(res, err) end
-    local page: { any } = {}
-    for i = 1, math.min(limit :: integer, #(rows :: any)) do page[i] = (rows :: any)[i] end
+    local page, next_offset = paged(rows :: { any }, limit :: integer, offset :: integer)
     local result: { [string]: any } = { success = true, items = page, count = #page }
-    if #(rows :: any) > (limit :: integer) then result.next_offset = (offset :: integer) + (limit :: integer) end
+    if next_offset then result.next_offset = next_offset end
     reply(res, http.STATUS.OK, result)
 end
 
@@ -113,10 +123,8 @@ function M.list_memories()
     local res, req = http.response(), http.request()
     if not res or not req then return end
     if not security.actor() then return refuse(res, http.STATUS.UNAUTHORIZED, "authentication required") end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local query = types.trim(req:query("q")):lower()
     local matches, scanned = 0, 0
     local page: { any } = {}
@@ -150,10 +158,8 @@ end
 function M.list_topics()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local family, kind = types.trim(req:query("scope_family")), types.trim(req:query("kind"))
     if family ~= "" and not types.SCOPE_SET[family] then return refuse(res, http.STATUS.BAD_REQUEST, "invalid scope_family") end
     if kind ~= "" and not types.KIND_SET[kind] then return refuse(res, http.STATUS.BAD_REQUEST, "invalid kind") end
@@ -169,10 +175,8 @@ end
 function M.get_item()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local item_id = types.trim(req:param("item_id"))
     local item, err = items.get(id :: string, item_id)
     if err then return fail(res, err) end
@@ -193,8 +197,8 @@ end
 local function write_op(fn: (string, any, any) -> (any?, error?))
     local res, req, id = open(component.ACCESS.WRITE)
     if not res then return end
-    local body = body_of(req)
-    if not body then return refuse(res, http.STATUS.BAD_REQUEST, "body must be a JSON object") end
+    local body, body_err = body_of(req)
+    if body_err then return refuse(res, http.STATUS.BAD_REQUEST, "body must be a JSON object") end
     local result, err = fn(id :: string, req, body)
     if err then return fail(res, err) end
     local out: { [string]: any } = { success = true }
@@ -241,10 +245,8 @@ end
 function M.list_conflicts()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 20, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 20)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local page, err = items.conflict_groups(id :: string, offset :: integer, limit :: integer)
     if err then return fail(res, err) end
     local members, members_err = items.group_members(id :: string, (page :: any).groups)

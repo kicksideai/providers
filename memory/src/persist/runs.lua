@@ -2,17 +2,17 @@
 
 local sql = require("sql")
 local json = require("json")
+local uuid = require("uuid")
 local db = require("memory_db")
 local types = require("types")
 local search_index = require("search_index")
 local jobs = require("jobs")
 local jobs_wake = require("jobs_wake")
-local ledger = require("memory_ledger")
 
 local M = {}
 
 local SELECT = "SELECT id, component_id, run_type, status, job_id, host_kind, host_id, agent_id, from_event_id, " ..
-    "to_event_id, input, stats, last_error, actor_id, actor_context, created_at, started_at, finished_at FROM kickside_memory_runs"
+    "to_event_id, input, stats, last_error, actor_id, actor_context, created_at, started_at, cycle, finished_at FROM kickside_memory_runs"
 
 local function decode(row: any): (any?, error?)
     local input, input_err = types.decode_object(row.input, "input")
@@ -42,7 +42,7 @@ type RunInput = {
     finished_at: string?,
 }
 
-function M.sources_tx(tx: any, run: any): error?
+local function sources_tx(tx: any, run: any): error?
     local input = run.input or {}
     for _, messages in ipairs({ input.span or {}, input.context or {} }) do
         for _, message in ipairs(messages) do
@@ -75,12 +75,12 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
             run.agent_id or "", run.from_event_id or "", run.to_event_id or "", input,
             stats, run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now(), run.last_error or sql.NULL, run.finished_at or sql.NULL })
     if err then return nil, types.failed("memory run insert failed", err) end
-    local sources_err = M.sources_tx(tx, run)
+    local sources_err = sources_tx(tx, run)
     if sources_err then return nil, sources_err end
     return { created = true }, nil
 end
 
-local function capture_available_tx(tx: any, sqlite: boolean, run: RunInput, expected: string): (any?, error?)
+function M.capture_available_tx(tx: any, sqlite: boolean, run: RunInput, expected: string): (any?, error?)
     local rows, read_err = tx:query(
         "SELECT last_event_id FROM kickside_memory_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3" ..
         (sqlite and "" or " FOR UPDATE"), { run.component_id, run.host_kind, run.host_id })
@@ -90,47 +90,32 @@ local function capture_available_tx(tx: any, sqlite: boolean, run: RunInput, exp
     local active, active_err = tx:query([[SELECT r.id FROM kickside_memory_runs r
         JOIN kickside_job j ON j.id = r.job_id
         WHERE r.component_id = $1 AND r.host_kind = $2 AND r.host_id = $3
-        AND r.run_type = 'derive' AND r.status <> 'succeeded' AND j.status NOT IN ('done', 'dead', 'cancelled') LIMIT 1]],
-        { run.component_id, run.host_kind, run.host_id })
+        AND r.run_type = $4 AND r.status <> $5 AND j.status NOT IN ('done', 'dead', 'cancelled') LIMIT 1]],
+        { run.component_id, run.host_kind, run.host_id, types.RUN_TYPE.DERIVE, types.RUN_STATUS.SUCCEEDED })
     if active_err then return nil, types.failed("memory capture ownership read failed", active_err) end
     if active and #active > 0 then return { available = false, run_id = active[1].id }, nil end
     return { available = true }, nil
 end
 
-function M.reject_capture(run: RunInput): (any?, error?)
-    local _, settle_err = ledger.settled_head(run.component_id)
-    if settle_err then return nil, settle_err end
-    local result, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any?, error?)
-        local state, state_err = capture_available_tx(tx, sqlite, run, run.from_event_id or "")
-        if state_err then return nil, state_err end
-        if not state.available then return { recorded = false, run_id = state.run_id }, nil end
-        local _, insert_err = insert_tx(tx, run)
-        if insert_err then return nil, insert_err end
-        local _, append_err = ledger.append_tx(tx, run.component_id, { { type = types.EVENT.CAPTURE_ADVANCED, body = {
-            host_kind = run.host_kind, host_id = run.host_id, agent_id = run.agent_id,
-            from_event_id = run.from_event_id, last_event_id = run.to_event_id,
-        } } }, nil, "capture:" .. run.id)
-        if append_err then return nil, append_err end
-        local _, cursor_err = tx:execute([[INSERT INTO kickside_memory_cursors
-            (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET last_event_id = excluded.last_event_id,
-                agent_id = excluded.agent_id, updated_at = excluded.updated_at]],
-            { run.component_id, run.host_kind, run.host_id, run.agent_id or "", run.to_event_id, types.now() })
-        if cursor_err then return nil, types.failed("memory rejected capture cursor advance failed", cursor_err) end
-        return { recorded = true, run_id = run.id }, nil
-    end)
-    if err then return nil, err end
-    if result.recorded then
-        local notify_err = ledger.appended(run.component_id)
-        if notify_err then return nil, notify_err end
-    end
-    return result, nil
+function M.insert_tx(tx: any, run: RunInput): (any?, error?)
+    return insert_tx(tx, run)
+end
+
+function M.advance_cursor_tx(tx: any, component_id: string, body: any, updated_at: string): error?
+    local _, err = tx:execute([[INSERT INTO kickside_memory_cursors
+        (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET agent_id = excluded.agent_id, last_event_id = excluded.last_event_id,
+            updated_at = excluded.updated_at WHERE kickside_memory_cursors.last_event_id = $7]],
+        { component_id, types.trim(body.host_kind), types.trim(body.host_id), types.trim(body.agent_id), types.trim(body.last_event_id), updated_at,
+            types.trim(body.from_event_id) })
+    if err then return types.failed("memory cursor advance failed", err) end
+    return nil
 end
 
 function M.schedule(run: RunInput, params: any, expected: string?, following: { any }?): (any?, error?)
     local scheduled, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any, error?)
         if expected ~= nil then
-            local state, state_err = capture_available_tx(tx, sqlite, run, expected)
+            local state, state_err = M.capture_available_tx(tx, sqlite, run, expected)
             if state_err then return nil, state_err end
             if not state.available then return { scheduled = false, run_id = state.run_id }, nil end
         end
@@ -174,7 +159,7 @@ function M.cursor(component_id: string, host_kind: string, host_id: string): (an
     end)
 end
 
-function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, selected: { any }): (any?, error?)
+function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, selected: { any }, owner_scope_key: string?): (any?, error?)
     return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
         local item_ids: { string } = {}
         for _, item in ipairs(selected) do
@@ -189,11 +174,13 @@ function M.pin(component_id: string, host_kind: string, host_id: string, agent_i
             end
             item_ids[#item_ids + 1] = item.id
         end
+        local item_ids_json, encode_err = json.encode(item_ids)
+        if encode_err then return nil, types.internal("memory pin ids encode failed", { cause = tostring(encode_err) }) end
         local _, err = tx:execute(
-            "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at) " ..
-            "VALUES ($1, $2, $3, $4, '', $5, $6, $7, $8) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
-            "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, updated_at = excluded.updated_at",
-            { component_id, host_kind, host_id, agent_id, head, prompt, json.encode(item_ids), types.now() })
+            "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at) " ..
+            "VALUES ($1, $2, $3, $4, $5, '', $6, $7, $8, $9) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
+            "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, owner_scope_key = excluded.owner_scope_key, updated_at = excluded.updated_at",
+            { component_id, host_kind, host_id, agent_id, owner_scope_key or sql.NULL, head, prompt, item_ids_json, types.now() })
         if err then return nil, types.failed("memory pin failed", err) end
         return true, nil
     end)
@@ -203,9 +190,18 @@ function M.get(run_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(SELECT .. " WHERE id = $1", { run_id })
         if err then return nil, types.failed("memory run read failed", err) end
-        if not rows or #rows == 0 then return nil, types.not_found("memory run not found: " .. run_id) end
+        if not rows or #rows == 0 then return nil, nil end
         return decode(rows[1])
     end)
+end
+
+function M.view(run: any): any?
+    if not run then return nil end
+    return {
+        id = run.id, run_type = run.run_type, status = run.status, job_id = run.job_id, last_error = run.last_error,
+        stats = run.stats, created_at = run.created_at, started_at = run.started_at, finished_at = run.finished_at,
+        in_flight = run.status == types.RUN_STATUS.RUNNING or run.status == types.RUN_STATUS.SCHEDULED,
+    }
 end
 
 function M.list(component_id: string, run_type: string?, limit: integer): (any?, error?)
@@ -233,17 +229,19 @@ function M.claim(run_id: string, repeatable: boolean): (any?, error?)
         local S = types.RUN_STATUS
         local claimable = { S.SCHEDULED, S.RUNNING, S.FAILED }
         if repeatable then claimable[#claimable + 1] = S.SUCCEEDED end
-        local params: { any } = { S.RUNNING, S.SCHEDULED, S.SUCCEEDED, types.now(), run_id }
+        local params: { any } = { S.RUNNING, S.SCHEDULED, S.SUCCEEDED, types.now(), uuid.v7(), run_id }
         for _, status in ipairs(claimable) do params[#params + 1] = status end
         local result, err = tx:execute("UPDATE kickside_memory_runs SET status = $1, " ..
             "started_at = CASE WHEN status IN ($2, $3) OR started_at IS NULL THEN $4 ELSE started_at END, " ..
-            "finished_at = NULL, last_error = NULL WHERE id = $5 AND status IN (" ..
-            search_index.placeholders(#claimable, 6) .. ")", params)
+            "cycle = CASE WHEN status IN ($2, $3) OR cycle IS NULL THEN $5 ELSE cycle END, " ..
+            "finished_at = NULL, last_error = NULL WHERE id = $6 AND status IN (" ..
+            search_index.placeholders(#claimable, 7) .. ")", params)
         if err then return nil, types.failed("memory run claim failed", err) end
         if (tonumber(result and (result :: any).rows_affected) or 0) < 1 then return { claimed = false }, nil end
-        local rows, read_err = tx:query("SELECT started_at FROM kickside_memory_runs WHERE id = $1", { run_id })
+        local rows, read_err = tx:query("SELECT started_at, cycle FROM kickside_memory_runs WHERE id = $1", { run_id })
         if read_err then return nil, types.failed("memory run claim failed", read_err) end
-        return { claimed = true, cycle = tostring(rows[1].started_at) }, nil
+        if not rows or not rows[1] or types.trim(rows[1].cycle) == "" then return nil, types.internal("memory run claim has no cycle") end
+        return { claimed = true, cycle = rows[1].cycle }, nil
     end)
 end
 

@@ -59,10 +59,12 @@ type LedgerEvent = { type: string, body: any }
 function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, expected_head: integer?, idempotency: string): (any?, error?)
     local writes: { any } = {}
     for index, event in ipairs(events) do
+        local body_json, encode_err = json.encode(event.body)
+        if encode_err then return nil, types.internal("memory ledger event encode failed", { cause = tostring(encode_err) }) end
         writes[index] = {
             type = event.type,
             role = "system",
-            body_json = json.encode(event.body),
+            body_json = body_json,
             external = { external_source = types.SOURCE, external_id = idempotency .. ":" .. tostring(index) },
         }
     end

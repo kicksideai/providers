@@ -54,15 +54,15 @@ entries:
       search_index: kickside.search_index:index
       memory_items: kickside.memory.persist:items
       memory_payloads: kickside.memory.persist:payloads
+      memory_runs: kickside.memory.persist:runs
 
   - name: runs
     kind: library.lua
     meta:
       comment: Deferred run records with frozen identity, capture cursors and soul pins.
     source: file://runs.lua
-    modules: [sql, json]
+    modules: [sql, json, uuid]
     imports:
-      memory_ledger: kickside.memory.engine:ledger
       jobs: kickside.core.jobs:jobs
       jobs_wake: kickside.core.jobs.persist:wake
       memory_db: kickside.memory.persist:db

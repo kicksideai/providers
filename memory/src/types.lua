@@ -44,6 +44,8 @@ M.STATUS = {
 }
 
 M.RETAINED_STATUSES = { M.STATUS.CURRENT, M.STATUS.CONFLICT, M.STATUS.SUPERSEDED, M.STATUS.ARCHIVED }
+M.LIVE_STATUSES = { M.STATUS.CURRENT, M.STATUS.CONFLICT }
+M.KEY_MAX = 64
 
 M.ITEM_SOURCE = {
     CAPTURE = "capture",
@@ -170,9 +172,9 @@ function M.validate_value(kind: string, value: any): error?
     return nil
 end
 
-function M.topic_key(value: any, content: string, claim_value: any?, kind: string?): (string?, error?)
-    if type(value) ~= "string" or #value > 64 or not value:match("^[a-z][a-z0-9_]*$") then
-        return nil, M.invalid("a topic key of up to 64 letters, digits and underscores is required")
+function M.check_topic_key(value: any, content: string, claim_value: any?, kind: string?): error?
+    if type(value) ~= "string" or #value > M.KEY_MAX or not value:match("^[a-z][a-z0-9_]*$") then
+        return M.invalid("a topic key of up to " .. tostring(M.KEY_MAX) .. " letters, digits and underscores is required")
     end
     local key = value
     local tokens: { string } = {}
@@ -189,10 +191,10 @@ function M.topic_key(value: any, content: string, claim_value: any?, kind: strin
         end
         return false
     end
-    if copied(content) then return nil, M.invalid("topic key must not contain memory content") end
+    if copied(content) then return M.invalid("topic key must not contain memory content") end
     if claim_value ~= nil then
         local _, encode_err = json.encode(claim_value)
-        if encode_err then return nil, M.invalid("memory value must be JSON", { cause = tostring(encode_err) }) end
+        if encode_err then return M.invalid("memory value must be JSON", { cause = tostring(encode_err) }) end
         local function copied_leaf(leaf: any): boolean
             if type(leaf) == "table" then
                 for _, child in pairs(leaf) do if copied_leaf(child) then return true end end
@@ -201,10 +203,10 @@ function M.topic_key(value: any, content: string, claim_value: any?, kind: strin
             return leaf ~= nil and copied(tostring(leaf))
         end
         if kind ~= M.KIND.PLAN and copied_leaf(claim_value) then
-            return nil, M.invalid("topic key must not contain the memory value")
+            return M.invalid("topic key must not contain the memory value")
         end
     end
-    return key, nil
+    return nil
 end
 
 function M.actor_id(): string
@@ -214,6 +216,14 @@ end
 
 function M.scope_key(scope_family: string, scope_id: string): string
     return scope_family .. ":" .. scope_id
+end
+
+function M.key_identity(scope_key: string, key: string): string
+    return scope_key .. "\0" .. key
+end
+
+function M.is_live(status: string): boolean
+    return status == M.STATUS.CURRENT or status == M.STATUS.CONFLICT
 end
 
 -- The tag distinguishes an absent value from every JSON value in a canonical hash.
@@ -233,7 +243,6 @@ function M.content_hash(component_id: string, content: string, value: any): (str
 end
 
 function M.decode_json(value: any): (any?, error?)
-    if type(value) == "table" then return value, nil end
     if type(value) ~= "string" then return nil, M.internal("memory JSON value is missing or invalid") end
     local decoded, err = json.decode(value)
     if err then return nil, M.failed("memory JSON decode failed", err) end
@@ -277,7 +286,7 @@ function M.failed(message: string, err: any): error
     return errors.new({ kind = errors.INTERNAL, retryable = false, message = message })
 end
 
-function M.failure(err: any): (string?, error?)
+function M.failure(err: error): (any?, error?)
     local failure = { kind = errors.INTERNAL, code = errors.INTERNAL, explanation = "Memory operation violates an internal invariant.", retryable = false }
     if type(err) == "userdata" then
         local details = err:details() or {}
@@ -285,7 +294,7 @@ function M.failure(err: any): (string?, error?)
         failure.explanation = err:message()
         failure.retryable = err:retryable() == true
     end
-    return json.encode(failure)
+    return failure, nil
 end
 
 function M.internal(message: string, details: any?): error

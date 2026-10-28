@@ -2,6 +2,7 @@
 
 local uuid = require("uuid")
 local canonical_json = require("canonical_json")
+local json = require("json")
 local types = require("types")
 local config = require("memory_config")
 local runs = require("memory_runs")
@@ -15,6 +16,7 @@ local reconcile = require("memory_reconcile")
 local component = require("component")
 local jobs = require("jobs")
 local execution_identity = require("execution_identity")
+local db = require("memory_db")
 
 local M = { INPUT_BYTES = 24000 }
 
@@ -32,6 +34,28 @@ local AUTHORIZED = {
 local DERIVE_ATTEMPTS = 3
 local REEMBED_PAGE = 64
 local KEY_LIMIT = 200
+local CONSOLIDATION_ITEMS = 500
+local SECONDS_PER_HOUR = 3600
+
+function M.consolidation_run_id(component_id: string): string
+    return "consolidate:" .. component_id
+end
+
+function M.document_text(title: any, content: string): string
+    local heading = types.trim(title)
+    return heading == "" and content or heading .. "\n\n" .. content
+end
+
+type Capture = {
+    component_id: string,
+    host_kind: string,
+    host_id: string,
+    agent_id: string,
+    from_event_id: string,
+    to_event_id: string,
+    span: { any },
+    context: { any }?,
+}
 
 local function frozen_identity(): (any?, any?, error?)
     local identity, err = execution_identity.capture()
@@ -56,45 +80,38 @@ local function enrollment(run: any, identity: any, run_type: string, extra: any)
     return params
 end
 
-local function new_derive_run(run_id: string, component_id: string, host_kind: string, host_id: string, agent_id: string?,
-    from_event_id: string, to_event_id: string, span: { any }, context: { any }?): (any?, any?, error?)
+local function source_size(span: { any }): integer
     local size = 0
     for _, message in ipairs(span) do size = size + #(message.text or "") end
+    return size
+end
+
+local function new_derive_run(run_id: string, capture: Capture): (any?, any?, error?)
+    local size = source_size(capture.span)
     if size > M.INPUT_BYTES then
-        return nil, nil, types.invalid("memory derive input exceeds " .. tostring(M.INPUT_BYTES) .. " bytes")
+        return nil, nil, types.invalid("memory derive input exceeds " .. tostring(M.INPUT_BYTES) .. " bytes", {
+            code = "source_too_large", source_bytes = size, input_limit_bytes = M.INPUT_BYTES,
+        })
     end
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, nil, id_err end
-    local input: any = { span = span, context = context, owner_id = (identity :: any).principal.id }
+    local input: any = { span = capture.span, context = capture.context, owner_id = (identity :: any).principal.id }
     return {
-        id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
+        id = run_id :: string, component_id = capture.component_id, run_type = types.RUN_TYPE.DERIVE,
         status = types.RUN_STATUS.SCHEDULED,
-        host_kind = host_kind, host_id = host_id, agent_id = agent_id,
-        from_event_id = from_event_id, to_event_id = to_event_id,
+        host_kind = capture.host_kind, host_id = capture.host_id, agent_id = capture.agent_id,
+        from_event_id = capture.from_event_id, to_event_id = capture.to_event_id,
         input = input,
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }, identity, nil
 end
 
-type Capture = {
-    component_id: string,
-    host_kind: string,
-    host_id: string,
-    agent_id: string,
-    from_event_id: string,
-    to_event_id: string,
-    span: { any },
-    context: { any }?,
-}
-
 function M.capture(capture: Capture, following: { Capture }?): (any?, error?)
-    local run, identity, err = new_derive_run(uuid.v7(), capture.component_id, capture.host_kind, capture.host_id, capture.agent_id,
-        capture.from_event_id, capture.to_event_id, capture.span, capture.context)
+    local run, identity, err = new_derive_run(uuid.v7(), capture)
     if err then return nil, err end
     local rest = {}
     for _, part in ipairs(following or {}) do
-        local next_run, next_identity, next_err = new_derive_run(uuid.v7(), part.component_id, part.host_kind, part.host_id, part.agent_id,
-            part.from_event_id, part.to_event_id, part.span, part.context)
+        local next_run, next_identity, next_err = new_derive_run(uuid.v7(), part)
         if next_err then return nil, next_err end
         rest[#rest + 1] = { run = next_run, params = enrollment(next_run, next_identity, types.RUN_TYPE.DERIVE,
             { max_attempts = DERIVE_ATTEMPTS }) }
@@ -103,29 +120,78 @@ function M.capture(capture: Capture, following: { Capture }?): (any?, error?)
         { max_attempts = DERIVE_ATTEMPTS }), capture.from_event_id, rest)
 end
 
+function M.reject_capture(run: any): (any?, error?)
+    local _, settle_err = ledger.settled_head(run.component_id)
+    if settle_err then return nil, settle_err end
+    local result, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any?, error?)
+        local state, state_err = runs.capture_available_tx(tx, sqlite, run, run.from_event_id or "")
+        if state_err then return nil, state_err end
+        if not state.available then return { recorded = false, run_id = state.run_id }, nil end
+        local _, insert_err = runs.insert_tx(tx, run)
+        if insert_err then return nil, insert_err end
+        local body = {
+            host_kind = run.host_kind, host_id = run.host_id, agent_id = run.agent_id,
+            from_event_id = run.from_event_id, last_event_id = run.to_event_id,
+        }
+        local _, append_err = ledger.append_tx(tx, run.component_id, { { type = types.EVENT.CAPTURE_ADVANCED, body = body } }, nil, "capture:" .. run.id)
+        if append_err then return nil, append_err end
+        local cursor_err = runs.advance_cursor_tx(tx, run.component_id, body, types.now())
+        if cursor_err then return nil, cursor_err end
+        return { recorded = true, run_id = run.id }, nil
+    end)
+    if err then return nil, err end
+    if result.recorded then
+        local notify_err = ledger.appended(run.component_id)
+        if notify_err then return nil, notify_err end
+    end
+    return result, nil
+end
+
+local function reject_content(run: any): (any?, error?)
+    return db.write(run.component_id, function(tx: any, _sqlite: boolean): (any?, error?)
+        local result, err = runs.insert_tx(tx, run)
+        if err then return nil, err end
+        return { recorded = result.created, run_id = run.id }, nil
+    end)
+end
+
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
     local run_id, hash_err = canonical_json.hash({ "derive", component_id, "content", source_event_id })
     if hash_err then return nil, hash_err end
-    local run, identity, err = new_derive_run(run_id :: string, component_id, "content", component_id, nil, source_event_id, source_event_id, span)
-    if err then return nil, err end
+    local capture: Capture = { component_id = component_id, host_kind = "content", host_id = component_id, agent_id = "",
+        from_event_id = "", to_event_id = source_event_id, span = span }
+    local run, identity, err = new_derive_run(run_id :: string, capture)
+    if err then
+        local details = type(err) == "userdata" and err:details() or nil
+        if type(details) == "table" and details.code == "source_too_large" then
+            return reject_content({
+                id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
+                status = types.RUN_STATUS.REJECTED, finished_at = types.now(), actor_id = types.actor_id(),
+                host_kind = "content", host_id = component_id, agent_id = "", from_event_id = "", to_event_id = source_event_id,
+                stats = { rejected = 1, rejected_source_too_large = 1, source_bytes = details.source_bytes, input_limit_bytes = details.input_limit_bytes },
+                last_error = "source_too_large: memory source event exceeds " .. tostring(details.input_limit_bytes) .. " bytes (" .. tostring(details.source_bytes) .. " bytes)",
+            })
+        end
+        return nil, err
+    end
     return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE, { max_attempts = DERIVE_ATTEMPTS }))
 end
 
 function M.arm_consolidation(component_id: string, interval_hours: number): (any?, error?)
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, id_err end
-    local run_id = "consolidate:" .. component_id
+    local run_id = M.consolidation_run_id(component_id)
     local run = {
         id = run_id, component_id = component_id, run_type = types.RUN_TYPE.CONSOLIDATE,
         input = {}, actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }
     return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.CONSOLIDATE, {
-        slot = true, scheduled_at = types.after_seconds(interval_hours * 3600), queue_tier = "maintenance",
+        slot = true, scheduled_at = types.after_seconds(interval_hours * SECONDS_PER_HOUR), queue_tier = "maintenance",
     }))
 end
 
 function M.wake_consolidation(component_id: string): (any?, error?)
-    local run, err = runs.get("consolidate:" .. component_id)
+    local run, err = runs.get(M.consolidation_run_id(component_id))
     if err then return nil, err end
     if not run or not (run :: any).job_id or (run :: any).job_id == "" then
         return nil, types.not_found("memory consolidation is not scheduled for " .. component_id)
@@ -153,18 +219,17 @@ end
 
 -- Queue diagnostics retain classification independently of erasable input.
 local function fail(run_id: string, err: any, stats: any?): any
-    local message, encode_err = types.failure(err)
+    local failure, failure_err = types.failure(err)
+    if failure_err then error(failure_err) end
+    local message, encode_err = json.encode(failure)
     if encode_err then error(encode_err) end
     local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message, stats)
     if close_err then error(close_err) end
-    local diagnostic = message
     if retryable(err) then
-        local failure, decode_err = types.decode_json(message)
-        if decode_err then error(decode_err) end
         error(errors.new({ kind = err:kind(), retryable = true, message = err:message(),
-            details = { cause_kind = failure.code } }))
+            details = { cause_kind = (failure :: any).code } }))
     end
-    return { ok = false, job_error = diagnostic, failure_class = "deterministic" }
+    return { ok = false, job_error = message, failure_class = "deterministic" }
 end
 
 local function load_run(value: any, run_type: string): (any?, any?)
@@ -174,6 +239,9 @@ local function load_run(value: any, run_type: string): (any?, any?)
     local run, err = runs.get(run_id)
     if err then
         return nil, { ok = false, job_error = "the memory run could not be read: " .. tostring(err), failure_class = "deterministic" }
+    end
+    if not run then
+        return nil, { ok = false, job_error = "the memory run no longer exists", failure_class = "deterministic" }
     end
     if (run :: any).component_id ~= types.trim(payload.component_id) or (run :: any).run_type ~= run_type then
         return nil, { ok = false, job_error = "the memory job does not match its run record", failure_class = "deterministic" }
@@ -186,7 +254,7 @@ local function admit(value: any, run_type: string): any
     if refusal then return refusal end
     local identity, identity_err = execution_identity.from_row((run :: any).actor_id, (run :: any).actor_context)
     if identity_err or not identity then
-        return fail((run :: any).id, "the requester's stored identity is invalid: " .. tostring(identity_err))
+        return fail((run :: any).id, types.internal("the requester's stored identity is invalid: " .. tostring(identity_err)))
     end
     local outcome, run_err = execution_identity.run_as(identity, AUTHORIZED[run_type], value, { deferred_owner = JOB[run_type] })
     if run_err then
@@ -201,7 +269,7 @@ local function claim(run: any, repeatable: boolean): any?
     if not (claimed :: any).claimed then return { ok = true, outcome = "declined", record = { status = "completed" } } end
     run.cycle = (claimed :: any).cycle
     local _, access_err = component.validate_access(run.component_id, component.ACCESS.WRITE)
-    if access_err then return fail(run.id, "memory access denied: " .. tostring(access_err)) end
+    if access_err then return fail(run.id, types.failed("memory access denied", access_err)) end
     return nil
 end
 
@@ -287,14 +355,14 @@ function M.consolidate_authorized(value: any): any
     if declined then return declined end
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
-    local next_at = types.after_seconds(cfg.consolidation_interval_hours * 3600)
+    local next_at = types.after_seconds(cfg.consolidation_interval_hours * SECONDS_PER_HOUR)
     local failed_stats = nil
     local result, write_err = writer.write(run.component_id, "consolidate:" .. run.id .. ":" .. run.cycle, {
         source = types.ITEM_SOURCE.REFLECTION, deadline = value.job.deadline,
     }, function(d: any): (any?, error?)
         failed_stats = d.stats
         local current, list_err = items.list(run.component_id, {
-            scope_family = types.SCOPE.OWNER, statuses = { types.STATUS.CURRENT }, limit = 500,
+            scope_family = types.SCOPE.OWNER, statuses = { types.STATUS.CURRENT }, limit = CONSOLIDATION_ITEMS,
         })
         if list_err then return nil, list_err end
         local by_scope: { [string]: { any } } = {}

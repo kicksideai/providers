@@ -175,7 +175,8 @@ local function messages(system: string, user: string): { any }
 end
 
 local LIMITS = { per_statement = 4, parts = 4, lessons = 4,
-    key = 64, value = 160, content = 240, details = 400, next_step = 160, valid_at = 35, reason = 192 }
+    key = types.KEY_MAX, value = 160, content = 240, details = 400, next_step = 160, valid_at = 35, reason = 192 }
+local NUMBER_BYTES = 24
 
 local function codepoints(text: string): integer
     local _, count = text:gsub("[^\128-\191]", "")
@@ -199,7 +200,7 @@ local CANDIDATE_KIND_SET = {}
 for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 
 -- Kind compatibility with existing topics is validated after decoding.
-local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0,63}$" }
+local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0," .. tostring(types.KEY_MAX - 1) .. "}$" }
 
 local function candidate_schema(event_ids: { string }?, kinds: { string }?, count: integer): any
     local event_id = enum_string(event_ids or { "" })
@@ -260,7 +261,7 @@ local function schema_bytes(schema: any, bytes_per_character: integer): integer
         elseif node.type == "string" then
             return 2 + bytes_per_character * node.maxLength
         elseif node.type == "number" then
-            return 24
+            return NUMBER_BYTES
         end
         error("Unbounded memory result schema: " .. tostring(node.type))
     end
@@ -351,7 +352,7 @@ local function candidate_reason(item: any, typed: boolean?): string?
     if item.confidence ~= nil and (type(item.confidence) ~= "number" or item.confidence ~= item.confidence
         or item.confidence < 0 or item.confidence > 1) then return "confidence" end
     if item.valid_at ~= nil and item.valid_at ~= "" and not types.utc(item.valid_at) then return "time" end
-    local _, key_err = types.topic_key(item.key, item.content, item.value, item.kind)
+    local key_err = types.check_topic_key(item.key, item.content, item.value, item.kind)
     if key_err then return "topic_key" end
     return nil
 end
@@ -395,7 +396,7 @@ local function read_candidates(response: any, step: string, event_ids: { [string
     return out, nil
 end
 
-local function key_listing(keys: { any }): string
+local function key_listing(keys: { any }): (string?, error?)
     local lines: { string } = {}
     local kind, names = nil, {}
     local function flush()
@@ -405,11 +406,15 @@ local function key_listing(keys: { any }): string
         if row.kind ~= kind then flush(); kind, names = row.kind, {} end
         local description = row.key .. " (" .. tostring(row.cardinality) .. ")"
         if row.content then description = description .. ": " .. row.content end
-        if row.value ~= nil then description = description .. " State: " .. json.encode(row.value) end
+        if row.value ~= nil then
+            local value, encode_err = json.encode(row.value)
+            if encode_err then return nil, types.internal("memory key value encode failed", { cause = tostring(encode_err) }) end
+            description = description .. " State: " .. value
+        end
         names[#names + 1] = description
     end
     flush()
-    return table.concat(lines, "\n")
+    return table.concat(lines, "\n"), nil
 end
 
 function M.conversation(span: { any }, context: { any }?): string
@@ -436,7 +441,9 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
     if #keys > 0 then
-        system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. key_listing(keys)
+        local listing, listing_err = key_listing(keys)
+        if listing_err then return nil, listing_err end
+        system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. (listing :: string)
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
     local conversation = M.conversation(span, context)
@@ -492,7 +499,9 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     } }
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end
-    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model, max_tokens = budget })
+    local payload, encode_err = json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })
+    if encode_err then return nil, types.internal("memory normalization input encode failed", { cause = tostring(encode_err) }) end
+    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, payload), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory normalization", err) end
     local response_err = response_error(response, "memory normalization", schema)
     if response_err then return nil, response_err end
@@ -619,12 +628,13 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     }
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end
-    local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT .. JSON_FORMAT, json.encode({
-            new_memory = { kind = candidate.kind, key = candidate.key, cardinality = candidate.cardinality, value = candidate.value,
-                content = candidate.content, valid_at = candidate.valid_at,
-                stated = candidate.stated }, conversation = candidate.conversation,
-            existing_memories = listing,
-        })), { model = model, max_tokens = budget })
+    local payload, encode_err = json.encode({
+        new_memory = { kind = candidate.kind, key = candidate.key, cardinality = candidate.cardinality, value = candidate.value,
+            content = candidate.content, valid_at = candidate.valid_at, stated = candidate.stated },
+        conversation = candidate.conversation, existing_memories = listing,
+    })
+    if encode_err then return nil, types.internal("memory reconcile judge input encode failed", { cause = tostring(encode_err) }) end
+    local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT .. JSON_FORMAT, payload), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory reconcile judge", err) end
     local response_err = response_error(response, "memory reconcile judge", schema)
     if response_err then return nil, response_err end

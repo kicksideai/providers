@@ -6,12 +6,13 @@ local types = require("types")
 local index = require("search_index")
 local items = require("memory_items")
 local payloads = require("memory_payloads")
+local runs = require("memory_runs")
 
 local M = {}
 
 local PROVENANCE_INSERT = "INSERT INTO kickside_memory_provenance (item_id, component_id, host_kind, host_id, event_id, recorded_at) "
 
-local NULL = {}
+local CLEAR = {}
 local function set_fts_tx(tx: any, sqlite: boolean, item_id: string, content: string?): error?
     if not sqlite then return nil end
     local _, del_err = tx:execute("DELETE FROM kickside_memory_fts WHERE item_id = $1", { item_id })
@@ -40,7 +41,7 @@ local function set_status_tx(tx: any, component_id: string, item_id: string, seq
     local sets: { string } = {}
     local params: { any } = {}
     for _, name in ipairs({ "status", "superseded_by", "invalid_at", "conflict_group", "content", "value", "content_hash", "priority", "source" }) do
-        if fields[name] == NULL then
+        if fields[name] == CLEAR then
             sets[#sets + 1] = name .. " = NULL"
         elseif fields[name] ~= nil then
             params[#params + 1] = fields[name]
@@ -83,12 +84,15 @@ local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: 
     if version_err then return version_err end
     local status = payload and types.STATUS.CURRENT or types.STATUS.FORGOTTEN
     local content = payload and payload.content or ""
+    local value, value_err = sql.NULL, nil
+    if payload then value, value_err = payloads.encode_value(payload.value) end
+    if value_err then return value_err end
     local _, err = tx:execute(
         "INSERT INTO kickside_memory_items (id, component_id, claim_id, kind, scope_family, scope_id, scope_key, key, cardinality, " ..
         "content, value, content_hash, status, version, valid_at, recorded_at, confidence, source, run_id, priority, last_seq) " ..
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)",
         { item_id, component_id, body.claim_id, body.kind, body.scope_family, body.scope_id, scope_key, key, body.cardinality,
-            content, payload and payloads.encode_value(payload.value) or sql.NULL, body.content_hash, status, version, body.valid_at, recorded_at,
+            content, value, body.content_hash, status, version, body.valid_at, recorded_at,
             tonumber(body.confidence) or sql.NULL, body.source, body.run_id or sql.NULL, tonumber(body.priority) or 0, seq })
     if err then return types.failed("memory item insert failed", err) end
     if not payload then return nil end
@@ -123,7 +127,7 @@ end
 
 local function supersede_tx(tx: any, component_id: string, item_id: string, successor_id: string, seq: integer, invalid_at: string): error?
     return set_status_tx(tx, component_id, item_id, seq, {
-        status = types.STATUS.SUPERSEDED, superseded_by = successor_id, invalid_at = invalid_at, conflict_group = NULL,
+        status = types.STATUS.SUPERSEDED, superseded_by = successor_id, invalid_at = invalid_at, conflict_group = CLEAR,
     })
 end
 
@@ -142,16 +146,17 @@ local function scrub_runs_tx(tx: any, component_id: string, forgotten: { string 
     return nil
 end
 
-local function invalidate_pins_tx(tx: any, component_id: string, item_id: string?): error?
-    local statement = "UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL WHERE component_id = $1"
-    local params: { any } = { component_id }
-    if item_id then statement = statement .. " AND pinned_ids LIKE $2"; params[2] = '%"' .. item_id .. '"%' end
-    local _, err = tx:execute(statement, params)
+local function invalidate_pins_tx(tx: any, component_id: string, owner_scope_key: string): error?
+    local _, err = tx:execute("UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL WHERE component_id = $1 AND owner_scope_key = $2",
+        { component_id, owner_scope_key })
     if err then return types.failed("memory pin invalidation failed", err) end
     return nil
 end
 
 local function apply_forgotten(tx: any, sqlite: boolean, component_id: string, seq: integer, item_id: string, recorded_at: string): error?
+    local item, item_err = items.get_tx(tx, component_id, item_id)
+    if item_err then return item_err end
+    if not item then return types.internal("memory forgotten item is missing") end
     for _, statement in ipairs({
         "DELETE FROM kickside_memory_payloads WHERE component_id = $1 AND owner_item_id = $2",
         "DELETE FROM kickside_memory_embeddings WHERE component_id = $1 AND item_id = $2",
@@ -162,17 +167,20 @@ local function apply_forgotten(tx: any, sqlite: boolean, component_id: string, s
     end
     local fts_err = set_fts_tx(tx, sqlite, item_id, nil)
     if fts_err then return fts_err end
-    local pin_err = invalidate_pins_tx(tx, component_id, item_id)
+    local pin_err = invalidate_pins_tx(tx, component_id, item.scope_key)
     if pin_err then return pin_err end
     return set_status_tx(tx, component_id, item_id, seq, {
-        status = types.STATUS.FORGOTTEN, invalid_at = recorded_at, content = "", value = NULL, conflict_group = NULL,
+        status = types.STATUS.FORGOTTEN, invalid_at = recorded_at, content = "", value = CLEAR, conflict_group = CLEAR,
     })
 end
 
 local function apply_event(tx: any, sqlite: boolean, component_id: string, event: any): error?
-    local seq = math.floor(tonumber(event.seq) or 0) :: integer
-    local body = type(event.body) == "table" and event.body or {}
-    local recorded_at = types.utc(event.created_at) or types.now()
+    if type(event) ~= "table" or type(event.seq) ~= "number" or event.seq ~= math.floor(event.seq) or event.seq < 1
+        or type(event.body) ~= "table" then return types.internal("malformed ledger event") end
+    local recorded_at = types.utc(event.created_at)
+    if not recorded_at then return types.internal("malformed ledger event") end
+    local seq = event.seq :: integer
+    local body = event.body
     local kind = event.type
     if kind == types.EVENT.ITEM_ADDED then
         return apply_added(tx, sqlite, component_id, seq, body, recorded_at)
@@ -198,31 +206,33 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         end
         return nil
     elseif kind == types.EVENT.ITEM_ARCHIVED then
-        local pin_err = invalidate_pins_tx(tx, component_id, types.trim(body.item_id))
+        local item, item_err = items.get_tx(tx, component_id, types.trim(body.item_id))
+        if item_err then return item_err end
+        if not item then return types.internal("memory archived item is missing") end
+        local pin_err = invalidate_pins_tx(tx, component_id, item.scope_key)
         if pin_err then return pin_err end
         return set_status_tx(tx, component_id, types.trim(body.item_id), seq, {
             status = types.STATUS.ARCHIVED, invalid_at = recorded_at, conflict_group = NULL,
         })
     elseif kind == types.EVENT.ITEM_RESTORED then
-        local pin_err = invalidate_pins_tx(tx, component_id, nil)
+        local item, item_err = items.get_tx(tx, component_id, types.trim(body.item_id))
+        if item_err then return item_err end
+        if not item then return types.internal("memory restored item is missing") end
+        local pin_err = invalidate_pins_tx(tx, component_id, item.scope_key)
         if pin_err then return pin_err end
         return set_status_tx(tx, component_id, types.trim(body.item_id), seq, {
-            status = types.STATUS.CURRENT, invalid_at = NULL, superseded_by = NULL, conflict_group = NULL,
+            status = types.STATUS.CURRENT, invalid_at = CLEAR, superseded_by = CLEAR, conflict_group = CLEAR,
         })
     elseif kind == types.EVENT.ITEM_FORGOTTEN then
         return apply_forgotten(tx, sqlite, component_id, seq, types.trim(body.item_id), recorded_at)
     elseif kind == types.EVENT.PROVENANCE_ADDED then
         return add_provenance_tx(tx, component_id, types.trim(body.item_id), { body }, recorded_at)
     elseif kind == types.EVENT.CAPTURE_ADVANCED then
-        local _, err = tx:execute(
-            "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) " ..
-            "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET agent_id = excluded.agent_id, last_event_id = excluded.last_event_id, updated_at = excluded.updated_at " ..
-            "WHERE kickside_memory_cursors.last_event_id = $7",
-            { component_id, types.trim(body.host_kind), types.trim(body.host_id), types.trim(body.agent_id), types.trim(body.last_event_id), recorded_at, types.trim(body.from_event_id) })
-        if err then return types.failed("memory cursor fold failed", err) end
+        return runs.advance_cursor_tx(tx, component_id, body, recorded_at)
+    elseif kind == types.EVENT.CONSOLIDATION_COMPLETED then
         return nil
     end
-    return nil
+    return types.internal("unknown memory ledger event: " .. tostring(kind))
 end
 
 -- Item sequence numbers make redelivery idempotent within the fenced transaction.
@@ -230,6 +240,7 @@ function M.fold(component_id: string, events: { any }): (any?, error?)
     return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
         local forgotten: { string } = {}
         for _, event in ipairs(events) do
+            if type(event) ~= "table" or type(event.body) ~= "table" then return nil, types.internal("malformed ledger event") end
             if event.type == types.EVENT.ITEM_FORGOTTEN then forgotten[#forgotten + 1] = types.trim(event.body.item_id) end
         end
         local scrub_err = scrub_runs_tx(tx, component_id, forgotten)

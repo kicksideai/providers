@@ -8,9 +8,11 @@ local index = require("search_index")
 
 local M = {}
 
-function M.encode_value(value: any): any
+function M.encode_value(value: any): (any?, error?)
     if value == nil then return sql.NULL end
-    return json.encode(value)
+    local encoded, err = json.encode(value)
+    if err then return nil, types.internal("memory payload value encode failed", { cause = tostring(err) }) end
+    return encoded, nil
 end
 
 function M.get_tx(tx: any, component_id: string, payload_id: string): (any?, error?)
@@ -63,10 +65,12 @@ function M.stage_tx(tx: any, component_id: string, staged: { Staged }): error?
                 { entry.key_id, component_id, entry.scope_key, entry.key, entry.cardinality })
             if key_err then return types.failed("memory key stage failed", key_err) end
         end
+        local value, value_err = M.encode_value(entry.value)
+        if value_err then return value_err end
         local _, err = tx:execute(
             "INSERT INTO kickside_memory_payloads (item_id, component_id, owner_item_id, content, value, content_hash, embedding, created_at) " ..
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (item_id) DO NOTHING",
-            { entry.payload_id, component_id, entry.owner_item_id, entry.content, M.encode_value(entry.value), entry.content_hash, entry.vector and index.vector_literal(entry.vector) or sql.NULL, types.now() })
+            { entry.payload_id, component_id, entry.owner_item_id, entry.content, value, entry.content_hash, entry.vector and index.vector_literal(entry.vector) or sql.NULL, types.now() })
         if err then return types.failed("memory payload stage failed", err) end
     end
     return nil

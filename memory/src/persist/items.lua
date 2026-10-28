@@ -6,6 +6,8 @@ local index = require("search_index")
 
 local M = {}
 
+local IN_BATCH = 100
+
 local COLUMNS = {
     "component_id", "claim_id", "kind", "scope_family", "scope_id", "scope_key", "key", "cardinality", "content", "value",
     "content_hash", "status", "version", "valid_at", "invalid_at", "recorded_at", "superseded_by", "conflict_group",
@@ -25,6 +27,16 @@ local SEARCH_SPEC = {
 }
 
 local SELECT = "SELECT id, " .. table.concat(COLUMNS, ", ") .. " FROM kickside_memory_items"
+
+local function in_batches(values: { any }, fn: (values: { any }) -> error?): error?
+    for first = 1, #values, IN_BATCH do
+        local batch: { any } = {}
+        for i = first, math.min(first + IN_BATCH - 1, #values) do batch[#batch + 1] = values[i] end
+        local err = fn(batch)
+        if err then return err end
+    end
+    return nil
+end
 
 local function decode(row: any): (any?, error?)
     if row.value ~= nil then
@@ -124,20 +136,22 @@ end
 function M.key_metadata(component_id: string, keys: { any }): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local out = {}
-        for first = 1, #keys, 100 do
+        local batch_err = in_batches(keys, function(batch: { any }): error?
             local params, matches = { component_id }, {}
-            for i = first, math.min(first + 99, #keys) do
+            for _, key in ipairs(batch) do
                 matches[#matches + 1] = "(k.scope_key = $" .. (#params + 1) .. " AND k.key = $" .. (#params + 2) .. ")"
-                params[#params + 1] = keys[i].scope_key
-                params[#params + 1] = keys[i].key
+                params[#params + 1] = key.scope_key
+                params[#params + 1] = key.key
             end
             local rows, err = conn:query([[SELECT k.scope_key, k.key, k.cardinality, i.kind
                 FROM kickside_memory_keys k LEFT JOIN kickside_memory_items i
                 ON i.component_id = k.component_id AND i.scope_key = k.scope_key AND i.key = k.key
                 WHERE k.component_id = $1 AND (]] .. table.concat(matches, " OR ") .. ") GROUP BY k.scope_key, k.key, k.cardinality, i.kind", params)
-            if err then return nil, types.failed("memory key metadata read failed", err) end
+            if err then return types.failed("memory key metadata read failed", err) end
             for _, row in ipairs(rows) do out[#out + 1] = row end
-        end
+            return nil
+        end)
+        if batch_err then return nil, batch_err end
         return out, nil
     end)
 end
@@ -153,35 +167,38 @@ end
 
 function M.invariant_snapshot(tx: any, component_id: string, keys: { any }, ids: { string }): (any?, error?)
     local counts, statuses = {}, {}
-    local page_size = 100
-    for first = 1, #keys, page_size do
+    local counts_err = in_batches(keys, function(batch: { any }): error?
         local params, matches = { component_id, types.STATUS.CURRENT }, {}
-        for i = first, math.min(first + page_size - 1, #keys) do
+        for _, key in ipairs(batch) do
             matches[#matches + 1] = "(scope_key = $" .. (#params + 1) .. " AND key = $" .. (#params + 2) .. ")"
-            params[#params + 1] = keys[i].scope_key
-            params[#params + 1] = keys[i].key
+            params[#params + 1] = key.scope_key
+            params[#params + 1] = key.key
         end
         local rows, err = tx:query("SELECT scope_key, key, COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1 AND status = $2 AND (" ..
             table.concat(matches, " OR ") .. ") GROUP BY scope_key, key", params)
-        if err then return nil, types.failed("memory invariant counts read failed", err) end
-        for _, row in ipairs(rows) do counts[row.scope_key .. "\0" .. row.key] = tonumber(row.n) end
-    end
-    for first = 1, #ids, page_size do
+        if err then return types.failed("memory invariant counts read failed", err) end
+        for _, row in ipairs(rows) do counts[types.key_identity(row.scope_key, row.key)] = tonumber(row.n) end
+        return nil
+    end)
+    if counts_err then return nil, counts_err end
+    local statuses_err = in_batches(ids, function(batch: { any }): error?
         local params = { component_id }
-        for i = first, math.min(first + page_size - 1, #ids) do params[#params + 1] = ids[i] end
+        for _, id in ipairs(batch) do params[#params + 1] = id end
         local rows, err = tx:query("SELECT id, status FROM kickside_memory_items WHERE component_id = $1 AND id IN (" .. index.placeholders(#params - 1, 2) .. ")", params)
-        if err then return nil, types.failed("memory invariant originals read failed", err) end
+        if err then return types.failed("memory invariant originals read failed", err) end
         for _, row in ipairs(rows) do statuses[row.id] = row.status end
-    end
+        return nil
+    end)
+    if statuses_err then return nil, statuses_err end
     return { counts = counts, statuses = statuses }, nil
 end
 
 function M.lineage(component_id: string, sources: { any }): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local out = {}
-        for first = 1, #sources, 100 do
+        local batch_err = in_batches(sources, function(batch: { any }): error?
             local params = { component_id }
-            for i = first, math.min(first + 99, #sources) do params[#params + 1] = sources[i].id end
+            for _, source in ipairs(batch) do params[#params + 1] = source.id end
             local rows, err = conn:query([[WITH RECURSIVE lineage(scope_key, key, cardinality, claim_id) AS (
                 SELECT scope_key, key, cardinality, CASE WHEN cardinality = 'single' THEN '' ELSE claim_id END
                 FROM kickside_memory_items WHERE component_id = $1 AND id IN (]] .. index.placeholders(#params - 1, 2) .. [[)
@@ -194,11 +211,13 @@ function M.lineage(component_id: string, sources: { any }): (any?, error?)
                 ON i.component_id = $1 AND i.claim_id = l.claim_id WHERE l.cardinality = 'multi' AND i.scope_key = l.scope_key
                 UNION SELECT i.id, i.]] .. table.concat(COLUMNS, ", i.") .. [[ FROM lineage l JOIN kickside_memory_items i
                 ON i.component_id = $1 AND i.scope_key = l.scope_key AND i.key = l.key WHERE l.cardinality = 'single' ORDER BY id]], params)
-            if err then return nil, types.failed("memory lineage read failed", err) end
+            if err then return types.failed("memory lineage read failed", err) end
             local decoded, decode_err = decode_all(rows)
-            if decode_err then return nil, decode_err end
+            if decode_err then return decode_err end
             for _, row in ipairs(decoded) do out[#out + 1] = row end
-        end
+            return nil
+        end)
+        if batch_err then return nil, batch_err end
         return out, nil
     end)
 end
@@ -207,19 +226,21 @@ end
 function M.history(component_id: string, roots: { any }): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local out = {}
-        for first = 1, #roots, 100 do
+        local batch_err = in_batches(roots, function(batch: { any }): error?
             local params = { component_id }
-            for i = first, math.min(first + 99, #roots) do params[#params + 1] = roots[i].claim_id end
+            for _, root in ipairs(batch) do params[#params + 1] = root.claim_id end
             local rows, err = conn:query([[WITH RECURSIVE history(id) AS (
                 SELECT id FROM kickside_memory_items WHERE component_id = $1 AND claim_id IN (]] .. index.placeholders(#params - 1, 2) .. [[)
                 UNION SELECT p.id FROM history h JOIN kickside_memory_items p ON p.component_id = $1 AND p.superseded_by = h.id)
                 SELECT i.id, i.]] .. table.concat(COLUMNS, ", i.") .. [[ FROM history h JOIN kickside_memory_items i
                 ON i.component_id = $1 AND i.id = h.id ORDER BY i.id]], params)
-            if err then return nil, types.failed("memory history read failed", err) end
+            if err then return types.failed("memory history read failed", err) end
             local decoded, decode_err = decode_all(rows)
-            if decode_err then return nil, decode_err end
+            if decode_err then return decode_err end
             for _, row in ipairs(decoded) do out[#out + 1] = row end
-        end
+            return nil
+        end)
+        if batch_err then return nil, batch_err end
         return out, nil
     end)
 end
@@ -227,17 +248,19 @@ end
 function M.derived(component_id: string, source_ids: { string }): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local out = {}
-        for first = 1, #source_ids, 100 do
+        local batch_err = in_batches(source_ids, function(batch: { any }): error?
             local params = { component_id }
-            for i = first, math.min(first + 99, #source_ids) do params[#params + 1] = source_ids[i] end
+            for _, source_id in ipairs(batch) do params[#params + 1] = source_id end
             local rows, err = conn:query(SELECT .. " WHERE component_id = $1 AND id IN (" ..
                 "SELECT item_id FROM kickside_memory_provenance WHERE component_id = $1 AND host_kind = 'item' AND host_id IN (" ..
                 index.placeholders(#params - 1, 2) .. ")) ORDER BY id", params)
-            if err then return nil, types.failed("memory derivation read failed", err) end
+            if err then return types.failed("memory derivation read failed", err) end
             local decoded, decode_err = decode_all(rows)
-            if decode_err then return nil, decode_err end
+            if decode_err then return decode_err end
             for _, row in ipairs(decoded) do out[#out + 1] = row end
-        end
+            return nil
+        end)
+        if batch_err then return nil, batch_err end
         return out, nil
     end)
 end

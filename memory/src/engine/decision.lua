@@ -6,7 +6,7 @@ local items = require("memory_items")
 
 local M = {}
 
-local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
+local LIVE = types.LIVE_STATUSES
 
 type Fields = {
     kind: string,
@@ -61,7 +61,7 @@ function Decision:set(item: any, fields: { [string]: any })
     for k, v in pairs(item) do state[k] = v end
     for k, v in pairs(fields) do state[k] = v end
     self.overlay[item.id] = state
-    self.touched_keys[item.scope_key .. "\0" .. item.key] = { scope_key = item.scope_key, key = item.key, cardinality = item.cardinality }
+    self.touched_keys[types.key_identity(item.scope_key, item.key)] = { scope_key = item.scope_key, key = item.key, cardinality = item.cardinality }
 end
 
 function Decision:rows(filter: any, matches: (any) -> boolean, statuses: { string }?): ({ any }?, error?)
@@ -101,7 +101,7 @@ end
 function Decision:prepare_keys(keys: { any }): error?
     local missing, seen = {}, {}
     for _, key in ipairs(keys) do
-        local id = key.scope_key .. "\0" .. key.key
+        local id = types.key_identity(key.scope_key, key.key)
         if not self.key_metadata[id] and not seen[id] then
             missing[#missing + 1] = key
             seen[id] = true
@@ -112,7 +112,7 @@ function Decision:prepare_keys(keys: { any }): error?
     if err then return err end
     for id in pairs(seen) do self.key_metadata[id] = { kinds = {} } end
     for _, row in ipairs(rows) do
-        local meta = self.key_metadata[row.scope_key .. "\0" .. row.key]
+        local meta = self.key_metadata[types.key_identity(row.scope_key, row.key)]
         meta.cardinality = row.cardinality
         if row.kind then meta.kinds[row.kind] = true end
     end
@@ -125,13 +125,13 @@ function Decision:cardinality_of(scope_key: string, key: string): (string?, erro
     end
     local err = self:prepare_keys({ { scope_key = scope_key, key = key } })
     if err then return nil, err end
-    return self.key_metadata[scope_key .. "\0" .. key].cardinality, nil
+    return self.key_metadata[types.key_identity(scope_key, key)].cardinality, nil
 end
 
 function Decision:check_key_kind(scope_key: string, key: string, kind: string): error?
     local err = self:prepare_keys({ { scope_key = scope_key, key = key } })
     if err then return err end
-    for historical in pairs(self.key_metadata[scope_key .. "\0" .. key].kinds) do
+    for historical in pairs(self.key_metadata[types.key_identity(scope_key, key)].kinds) do
         if not types.compatible_kinds(kind, historical) then return types.invalid("memory key kind is incompatible") end
     end
     for _, state in pairs(self.overlay) do
@@ -167,12 +167,12 @@ function Decision:validate(scope: Scope, fields: Fields): error?
         return types.invalid("each plan goal holds one state")
     end
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
-    local key, key_err = types.topic_key(fields.key, fields.content, fields.value, fields.kind)
+    local key_err = types.check_topic_key(fields.key, fields.content, fields.value, fields.kind)
     if key_err then return key_err end
-    local kind_err = self:check_key_kind(scope_key, key :: string, fields.kind)
+    local kind_err = self:check_key_kind(scope_key, fields.key, fields.kind)
     if kind_err then return kind_err end
     if not types.CARDINALITY_SET[fields.cardinality] then return types.invalid("unknown cardinality: " .. tostring(fields.cardinality)) end
-    local established, cardinality_err = self:cardinality_of(scope_key, key :: string)
+    local established, cardinality_err = self:cardinality_of(scope_key, fields.key)
     if cardinality_err then return cardinality_err end
     if established and established ~= fields.cardinality then return types.invalid("memory key cardinality cannot change") end
     return nil
@@ -420,7 +420,7 @@ function Decision:forget(roots: { any }, attribute: boolean?): error?
         if derived_err then return derived_err end
         local sources, identities = {}, {}
         for _, source in ipairs(derived) do
-            local identity = source.scope_key .. "\0" .. (source.cardinality == types.CARDINALITY.SINGLE and source.key or source.claim_id)
+            local identity = types.key_identity(source.scope_key, source.cardinality == types.CARDINALITY.SINGLE and source.key or source.claim_id)
             if not visited[source.id] and not identities[identity] then
                 sources[#sources + 1] = source
                 identities[identity] = true
@@ -441,14 +441,14 @@ function Decision:check(tx: any): error?
     end
     if #keys == 0 then return nil end
     for id, state in pairs(self.overlay) do
-        if single[state.scope_key .. "\0" .. state.key] then ids[#ids + 1] = id end
+        if single[types.key_identity(state.scope_key, state.key)] then ids[#ids + 1] = id end
     end
     local snapshot, err = items.invariant_snapshot(tx, self.component_id, keys, ids)
     if err then return err end
     local counts = snapshot.counts
     for _, id in ipairs(ids) do
         local state = self.overlay[id]
-        local key = state.scope_key .. "\0" .. state.key
+        local key = types.key_identity(state.scope_key, state.key)
         local delta = (state.status == types.STATUS.CURRENT and 1 or 0) - (snapshot.statuses[id] == types.STATUS.CURRENT and 1 or 0)
         counts[key] = (counts[key] or 0) + delta
     end
