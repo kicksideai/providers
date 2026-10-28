@@ -118,6 +118,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.memory.migrations:03_run_cycle
         path: .meta.target_db
+      - entry: kickside.memory.migrations:04_memory_trait_context
+        path: .meta.target_db
       - entry: kickside.memory:db_config
         path: .meta.db_id
 
@@ -445,7 +447,7 @@ entries:
             title: Memory
             description: The memory this agent captures into and recalls from.
             role: picker
-        additionalProperties: true
+        additionalProperties: false
     prompt: |
       Memory learns from the conversation automatically, including facts, corrections
       and goal progress. Use SearchMemory to look things up.

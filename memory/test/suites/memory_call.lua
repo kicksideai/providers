@@ -87,16 +87,16 @@ local OPS: { [string]: (any) -> (any, any) } = {
     prompt = function(_a: any) return prompt.prompt() end,
     tool_search = function(a: any) return funcs.call("kickside.memory.agent:search_tool", a.input) end,
     migrate = function(a: any) return funcs.call("kickside.memory.migrations:" .. a.name,
-        { database_id = "app:migration_db", id = a.id, direction = "up" }) end,
+        { database_id = a.database_id or "app:migration_db", id = a.id, direction = "up" }) end,
     migration_exec = function(a: any): (any?, any?)
-        local db, db_err = sql.get("app:migration_db")
+        local db, db_err = sql.get(a.database_id or "app:migration_db")
         if db_err then return nil, db_err end
         local result, err = db:execute(a.statement, a.params or {})
         db:release()
         return result, err
     end,
     migration_query = function(a: any): (any?, any?)
-        local db, db_err = sql.get("app:migration_db")
+        local db, db_err = sql.get(a.database_id or "app:migration_db")
         if db_err then return nil, db_err end
         local result, err = db:query(a.statement, a.params or {})
         db:release()
@@ -118,8 +118,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return bodies, nil
     end,
     ledger_encode_failure = function(a: any): (any?, any?)
-        local body: any = {}
-        body.self = body
+        local body: any = { force_encode_error = true }
         return db.write(a.component_id, function(tx: any, _sqlite: boolean): (any?, error?)
             return ledger.append_tx(tx, a.component_id, { { type = types.EVENT.CONSOLIDATION_COMPLETED, body = body } }, nil, "encode-failure")
         end)

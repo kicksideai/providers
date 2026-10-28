@@ -154,7 +154,7 @@ entries:
     meta: { type: test, suite: memory_migration, timeout: 300s }
     source: file://migration_test.lua
     method: run
-    modules: []
+    modules: [json]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture

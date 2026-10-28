@@ -65,3 +65,24 @@ entries:
     source: file://03_run_cycle_implementation.lua
     imports:
       migration: wippy.migration:migration
+
+  - name: 04_memory_trait_context
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, memory, schema]
+      comment: Remove retired Memory trait settings from existing agent contexts.
+      target_db: ""
+      timestamp: "2026-10-28T00:00:02Z"
+    source: file://_fn_04_memory_trait_context.lua
+    imports:
+      operation_impl: kickside.memory.migrations:04_memory_trait_context_implementation
+    method: migrate
+
+  - name: 04_memory_trait_context_implementation
+    kind: library.lua
+    meta:
+      comment: Implementation for kickside.memory.migrations:04_memory_trait_context.
+    source: file://04_memory_trait_context.lua
+    imports:
+      migration: wippy.migration:migration

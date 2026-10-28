@@ -1,8 +1,67 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local fixture = require("fixture")
+local json = require("json")
 
 local function define_tests()
+    test.describe("memory trait context migration", function()
+        test.it("removes retired settings from an existing agent context before strict resolution", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local trait = "kickside.memory:memory"
+            local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
+                name = "upgraded memory agent", model = "test-fast", traits = { trait },
+                trait_contexts = { [trait] = { memory_id = memory } },
+            })
+            test.is_nil(create_err, tostring(create_err))
+
+            local db = fixture.db()
+            local rows, read_err = db:query("SELECT private_context FROM kickside_components WHERE component_id = $1", { created.component_id })
+            test.is_nil(read_err, tostring(read_err))
+            local private_context, decode_err = json.decode(tostring(rows[1].private_context))
+            test.is_nil(decode_err, tostring(decode_err))
+            private_context.trait_contexts[trait].read_enabled = false
+            private_context.trait_contexts[trait].write_enabled = false
+            private_context.trait_contexts[trait].recall_limit = 1
+            local encoded, encode_err = json.encode(private_context)
+            test.is_nil(encode_err, tostring(encode_err))
+            local _, write_err = db:execute("UPDATE kickside_components SET private_context = $1 WHERE component_id = $2", { encoded, created.component_id })
+            db:release()
+            test.is_nil(write_err, tostring(write_err))
+
+            local function migrate(id: string)
+                local result, migrate_err = fixture.op(user, "migrate", {
+                    name = "04_memory_trait_context", id = id, database_id = "app:db",
+                })
+                test.is_nil(migrate_err, tostring(migrate_err))
+                test.not_nil(result)
+            end
+            migrate("memory-trait-context-upgrade")
+            migrate("memory-trait-context-reapply")
+
+            local stored, query_err = fixture.op(user, "migration_query", {
+                database_id = "app:db",
+                statement = "SELECT private_context, context_revision FROM kickside_components WHERE component_id = $1",
+                params = { created.component_id },
+            })
+            test.is_nil(query_err, tostring(query_err))
+            local migrated, migrated_decode_err = json.decode(tostring(stored[1].private_context))
+            test.is_nil(migrated_decode_err, tostring(migrated_decode_err))
+            local context = migrated.trait_contexts[trait]
+            test.eq(context.memory_id, memory)
+            test.is_nil(context.read_enabled)
+            test.is_nil(context.write_enabled)
+            test.is_nil(context.recall_limit)
+            test.eq(tonumber(stored[1].context_revision), 1)
+
+            local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func", {
+                agent_id = "user_agent:" .. created.component_id,
+            })
+            test.is_nil(resolve_err, tostring(resolve_err))
+            test.not_nil(agent)
+        end)
+    end)
+
     test.describe("cursor owner scope migration", function()
         test.it("backfills complete owner pins and safely re-applies", function()
             local user = fixture.user()
