@@ -20,12 +20,28 @@ local function event_string(body: any, name: string): (string?, error?)
     return value, nil
 end
 
+local function event_array(value: any): ({ any }?, error?)
+    if type(value) ~= "table" then return nil, types.internal("malformed ledger event") end
+    local count = 0
+    for index, _ in pairs(value) do
+        if type(index) ~= "number" or index ~= math.floor(index) or index < 1 then
+            return nil, types.internal("malformed ledger event")
+        end
+        count = count + 1
+    end
+    for index = 1, count do
+        if value[index] == nil then return nil, types.internal("malformed ledger event") end
+    end
+    return value, nil
+end
+
 local function event_ids(body: any): ({ string }?, error?)
-    if type(body.item_ids) ~= "table" then return nil, types.internal("malformed ledger event") end
-    for _, id in ipairs(body.item_ids) do
+    local ids, array_err = event_array(body.item_ids)
+    if array_err then return nil, array_err end
+    for _, id in ipairs(ids :: { any }) do
         if type(id) ~= "string" or id == "" then return nil, types.internal("malformed ledger event") end
     end
-    return body.item_ids, nil
+    return ids :: { string }, nil
 end
 local function set_fts_tx(tx: any, sqlite: boolean, item_id: string, content: string?): error?
     if not sqlite then return nil end
@@ -39,8 +55,9 @@ local function set_fts_tx(tx: any, sqlite: boolean, item_id: string, content: st
 end
 
 local function add_provenance_tx(tx: any, component_id: string, item_id: string, refs: any, recorded_at: string): error?
-    if type(refs) ~= "table" then return types.internal("malformed ledger event") end
-    for _, ref in ipairs(refs) do
+    local values, array_err = event_array(refs)
+    if array_err then return array_err end
+    for _, ref in ipairs(values :: { any }) do
         if type(ref) ~= "table" or type(ref.host_kind) ~= "string" or type(ref.host_id) ~= "string" or type(ref.event_id) ~= "string"
             or (ref.event_id == "" and (ref.host_kind ~= "item" or ref.host_id == "")) then return types.internal("malformed ledger event") end
         local _, err = tx:execute(

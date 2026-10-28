@@ -319,6 +319,7 @@ entries:
     meta: { type: test, suite: memory_bindings, timeout: 300s }
     source: file://bindings_test.lua
     method: run
+    modules: [json]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture

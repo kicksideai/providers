@@ -2,6 +2,7 @@
 
 local test = require("test")
 local fixture = require("fixture")
+local json = require("json")
 
 local function define_tests()
     test.describe("memory contract bindings", function()
@@ -53,6 +54,64 @@ local function define_tests()
             test.is_nil(status_err, tostring(status_err))
             test.is_nil(status.resummarize)
             test.is_nil(status.reembed)
+        end)
+
+        test.it("rejects malformed ledger events and accepts consolidation completion", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local function project(event: any): (any?, error?)
+                return fixture.call_as(user, "kickside.memory.engine:ledger_projection", {
+                    thread_id = id, range = { to_seq = 1 }, events = { event },
+                })
+            end
+            for _, event in ipairs({
+                { seq = 0, created_at = "2026-10-01T10:00:00Z", type = "kickside.memory.events:consolidation.completed", body = {} },
+                { seq = 1, created_at = "invalid", type = "kickside.memory.events:consolidation.completed", body = {} },
+                { seq = 1, created_at = "2026-10-01T10:00:00Z", type = "kickside.memory.events:consolidation.completed", body = "invalid" },
+            }) do
+                local result, err = project(event)
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.INTERNAL)
+                test.is_true(err:message():find("malformed ledger event", 1, true) ~= nil, err:message())
+            end
+            local unknown, unknown_err = project({
+                seq = 1, created_at = "2026-10-01T10:00:00Z", type = "kickside.memory.events:unknown", body = {},
+            })
+            test.is_nil(unknown)
+            test.not_nil(unknown_err)
+            test.eq(unknown_err:kind(), errors.INTERNAL)
+            test.is_true(unknown_err:message():find("unknown memory ledger event", 1, true) ~= nil, unknown_err:message())
+            local malformed_ids, malformed_ids_err = project({
+                seq = 1, created_at = "2026-10-01T10:00:00Z", type = "kickside.memory.events:item.merged",
+                body = { into = "target", item_ids = { ignored = "source" } },
+            })
+            test.is_nil(malformed_ids)
+            test.not_nil(malformed_ids_err)
+            test.eq(malformed_ids_err:kind(), errors.INTERNAL)
+            test.is_true(malformed_ids_err:message():find("malformed ledger event", 1, true) ~= nil, malformed_ids_err:message())
+            fixture.create_claim(user, id, "Dublin")
+            local db = fixture.db()
+            local rows, read_err = db:query([[SELECT seq, type, body, created_at FROM kickside_event
+                WHERE thread_id = $1 AND type = 'kickside.memory.events:item.added' ORDER BY seq LIMIT 1]], { id })
+            db:release()
+            test.is_nil(read_err, tostring(read_err))
+            local added = rows[1]
+            local added_body, decode_err = json.decode(added.body)
+            test.is_nil(decode_err, tostring(decode_err))
+            added_body.provenance = { ignored = { host_kind = "session", host_id = "source", event_id = "event" } }
+            local malformed_provenance, malformed_provenance_err = project({
+                seq = tonumber(added.seq), created_at = added.created_at, type = added.type, body = added_body,
+            })
+            test.is_nil(malformed_provenance)
+            test.not_nil(malformed_provenance_err)
+            test.eq(malformed_provenance_err:kind(), errors.INTERNAL)
+            test.is_true(malformed_provenance_err:message():find("malformed ledger event", 1, true) ~= nil, malformed_provenance_err:message())
+            local completed, completed_err = project({
+                seq = 1, created_at = "2026-10-01T10:00:00Z", type = "kickside.memory.events:consolidation.completed", body = {},
+            })
+            test.is_nil(completed_err, tostring(completed_err))
+            test.eq(completed.last_seq, 1)
         end)
 
         test.it("rejects malformed query pagination at the registered binding", function()
