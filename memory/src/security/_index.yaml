@@ -13,7 +13,7 @@ entries:
     - kickside.memory.security:module_runtime
     - kickside.memory.security:endpoint_access
   groups: []
-  policy:
+  policy: &memory_runtime_policy
     resources:
     - kickside.memory:*
     - kickside.memory.agent:*
@@ -40,27 +40,7 @@ entries:
   meta:
     private: true
   groups: []
-  policy:
-    resources:
-    - kickside.memory:*
-    - kickside.memory.agent:*
-    - kickside.memory.security:*
-    - kickside.memory.engine:*
-    - kickside.memory.persist:*
-    - kickside.memory.api:*
-    - kickside.memory.events:*
-    - kickside.memory.migrations:*
-    actions:
-    - registry.get
-    - registry.find
-    - contract.get
-    - contract.open
-    - contract.call
-    - contract.implementations
-    - contract.security
-    - funcs.call
-    - funcs.security
-    effect: allow
+  policy: *memory_runtime_policy
 
 - name: endpoint_access
   kind: security.policy
