@@ -334,6 +334,28 @@ local function define_tests()
             cleanup()
             if not ok then error(failure) end
         end)
+
+        test.it("preserves a cycle across a failed retry and creates the next cycle after success", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local run_id = "consolidate:" .. id
+            local first = fixture.op(user, "claim", { run_id = run_id, repeatable = true })
+            test.is_true(first.claimed)
+            local first_run = fixture.op(user, "run", { run_id = run_id })
+            fixture.op(user, "finish", { run_id = run_id, status = "failed", error = "model unavailable" })
+            local retry = fixture.op(user, "claim", { run_id = run_id, repeatable = true })
+            test.is_true(retry.claimed)
+            local retry_run = fixture.op(user, "run", { run_id = run_id })
+            test.eq(retry.cycle, first.cycle)
+            test.eq(retry_run.cycle, first.cycle)
+            test.eq(retry_run.started_at, first_run.started_at)
+            fixture.op(user, "finish", { run_id = run_id, status = "succeeded" })
+            local next_cycle = fixture.op(user, "claim", { run_id = run_id, repeatable = true })
+            test.is_true(next_cycle.claimed)
+            local next_run = fixture.op(user, "run", { run_id = run_id })
+            test.is_true(next_cycle.cycle ~= first.cycle, tostring(next_cycle.cycle))
+            test.eq(next_run.cycle, next_cycle.cycle)
+        end)
     end)
 end
 
