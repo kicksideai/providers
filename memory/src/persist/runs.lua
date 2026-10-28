@@ -14,13 +14,11 @@ local SELECT = "SELECT id, component_id, run_type, status, job_id, host_kind, ho
     "to_event_id, input, stats, last_error, actor_id, actor_context, created_at, started_at, finished_at FROM kickside_memory_runs"
 
 local function decode(row: any): (any?, error?)
-    local input, input_err = types.decode_json(row.input)
+    local input, input_err = types.decode_object(row.input, "input")
     if input_err then return nil, input_err end
-    if type(input) ~= "table" then return nil, types.internal("memory input must be a JSON object") end
     row.input = input
-    local stats, stats_err = types.decode_json(row.stats)
+    local stats, stats_err = types.decode_object(row.stats, "stats")
     if stats_err then return nil, stats_err end
-    if type(stats) ~= "table" then return nil, types.internal("memory stats must be a JSON object") end
     row.stats = stats
     return row, nil
 end
@@ -64,12 +62,16 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
         if type(job_id) ~= "string" or job_id == "" then return nil, types.internal("memory run has no queue enrollment") end
         return { created = false, job_id = job_id }, nil
     end
+    local input, input_err = types.encode_object(run.input or {}, "input")
+    if input_err then return nil, input_err end
+    local stats, stats_err = types.encode_object(run.stats or {}, "stats")
+    if stats_err then return nil, stats_err end
     local _, err = tx:execute(
         "INSERT INTO kickside_memory_runs (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, " ..
         "to_event_id, input, stats, actor_id, actor_context, created_at, last_error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
         { run.id, run.component_id, run.run_type, run.status or types.RUN_STATUS.SCHEDULED, run.host_kind or "", run.host_id or "",
-            run.agent_id or "", run.from_event_id or "", run.to_event_id or "", json.encode(run.input or {}),
-            json.encode(run.stats or {}), run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now(), run.last_error or sql.NULL })
+            run.agent_id or "", run.from_event_id or "", run.to_event_id or "", input,
+            stats, run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now(), run.last_error or sql.NULL })
     if err then return nil, types.failed("memory run insert failed", err) end
     local sources_err = M.sources_tx(tx, run)
     if sources_err then return nil, sources_err end
@@ -207,10 +209,12 @@ function M.claim(run_id: string, repeatable: boolean): (any?, error?)
 end
 
 function M.finish(run_id: string, status: string, last_error: string?, stats: any?): (any?, error?)
+    local encoded, encode_err = types.encode_object(stats or {}, "stats")
+    if encode_err then return nil, encode_err end
     return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
         local _, err = tx:execute(
             "UPDATE kickside_memory_runs SET status = $1, last_error = $2, stats = $3, finished_at = $4 WHERE id = $5",
-            { status, last_error or sql.NULL, json.encode(stats or {}), types.now(), run_id })
+            { status, last_error or sql.NULL, encoded, types.now(), run_id })
         if err then return nil, types.failed("memory run close failed", err) end
         return true, nil
     end)

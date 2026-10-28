@@ -168,6 +168,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
     pin = function(a: any)
         return runs.pin(a.component_id, a.host_kind, a.host_id, a.agent_id, a.head, a.prompt, a.selected)
     end,
+    derive_worker = function(a: any) return jobs.derive_run({ payload = a, job = {} }), nil end,
     claim = function(a: any) return runs.claim(a.run_id, a.repeatable) end,
     finish = function(a: any) return runs.finish(a.run_id, a.status, a.error) end,
     run = function(a: any) return runs.get(a.run_id) end,

@@ -18,7 +18,7 @@ entries:
     meta:
       comment: Memory store rows and the bounded purge of a memory's rows.
     source: file://stores.lua
-    modules: [json]
+    modules: []
     imports:
       memory_db: kickside.memory.persist:db
       types: kickside.memory:types

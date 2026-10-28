@@ -1,6 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
-local json = require("json")
 local db = require("memory_db")
 local types = require("types")
 local index = require("search_index")
@@ -10,14 +9,15 @@ local M = {}
 local PURGE_PAGE = 200
 
 local function decode_row(row: any): (any?, error?)
-    local config, config_err = types.decode_json(row.config)
+    local config, config_err = types.decode_object(row.config, "config")
     if config_err then return nil, config_err end
-    if type(config) ~= "table" then return nil, types.internal("memory config must be a JSON object") end
     row.config = config
     return row, nil
 end
 
 function M.create(component_id: string, kb_type: string, embedding_model: string, config: any): (any?, error?)
+    local encoded, encode_err = types.encode_object(config, "config")
+    if encode_err then return nil, encode_err end
     local now = types.now()
     return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
         local existing, read_err = tx:query("SELECT component_id FROM kickside_memory_stores WHERE component_id = $1", { component_id })
@@ -27,7 +27,7 @@ function M.create(component_id: string, kb_type: string, embedding_model: string
         end
         local _, err = tx:execute(
             "INSERT INTO kickside_memory_stores (component_id, kb_type, embedding_model, config, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $5)",
-            { component_id, kb_type, embedding_model, json.encode(config), now })
+            { component_id, kb_type, embedding_model, encoded, now })
         if err then return nil, types.failed("memory store insert failed", err) end
         return { success = true, store_id = component_id }, nil
     end)
@@ -45,10 +45,12 @@ function M.get(component_id: string): (any?, error?)
 end
 
 function M.update_config(component_id: string, config: any): (any?, error?)
+    local encoded, encode_err = types.encode_object(config, "config")
+    if encode_err then return nil, encode_err end
     return db.write(component_id, function(tx: any, _sqlite: boolean): (any, error?)
         local _, err = tx:execute(
             "UPDATE kickside_memory_stores SET config = $1, updated_at = $2 WHERE component_id = $3",
-            { json.encode(config), types.now(), component_id })
+            { encoded, types.now(), component_id })
         if err then return nil, types.failed("memory store config update failed", err) end
         return { success = true }, nil
     end)

@@ -423,6 +423,48 @@ local function define_tests()
             end
         end)
 
+        test.it("requires object-shaped configuration, input and stats including empty objects", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            for _, target in ipairs({ { table = "kickside_memory_stores", column = "config", key = "component_id", id = id },
+                { table = "kickside_memory_runs", column = "input", key = "id", id = "consolidate:" .. id },
+                { table = "kickside_memory_runs", column = "stats", key = "id", id = "consolidate:" .. id } }) do
+                for _, encoded in ipairs({ "[]", "[1]", "{}" }) do
+                    local db = fixture.db()
+                    local _, err = db:execute("UPDATE " .. target.table .. " SET " .. target.column .. " = $1 WHERE " .. target.key .. " = $2", { encoded, target.id })
+                    db:release()
+                    test.is_nil(err, tostring(err))
+                    local value, read_err = fixture.op(user, target.column == "config" and "store" or "run", { component_id = id, run_id = target.id })
+                    if encoded == "{}" then
+                        test.is_nil(read_err, tostring(read_err))
+                        test.not_nil(value)
+                    else
+                        test.is_nil(value, target.column .. " accepts " .. encoded)
+                        test.not_nil(read_err)
+                        test.is_true(tostring(read_err):find("JSON object", 1, true) ~= nil)
+                    end
+                end
+            end
+        end)
+
+        test.it("fails array-shaped derive input visibly without advancing the cursor", function()
+            for _, encoded in ipairs({ "[]", "[1]" }) do
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local run_id, session = "consolidate:" .. id, "s-" .. user
+                local db = fixture.db()
+                local _, err = db:execute("UPDATE kickside_memory_runs SET run_type = 'derive', host_kind = 'session', host_id = $1, to_event_id = 'unprocessed', input = $2 WHERE id = $3", { session, encoded, run_id })
+                db:release()
+                test.is_nil(err, tostring(err))
+                local result, worker_err = fixture.op(user, "derive_worker", { component_id = id, run_id = run_id })
+                test.is_nil(worker_err, tostring(worker_err))
+                test.is_false(result.ok)
+                test.is_true(result.job_error:find("JSON object", 1, true) ~= nil)
+                local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+                test.is_true(cursor == nil or cursor.last_event_id == "")
+            end
+        end)
+
         test.it("validates required engine descriptor wiring before applying stored overrides", function()
             local user = fixture.user()
             for _, meta in ipairs({ {}, { default_config = {} },

@@ -241,6 +241,24 @@ function M.decode_json(value: any): (any?, error?)
     return decoded, nil
 end
 
+function M.encode_object(value: any, name: string): (string?, error?)
+    if type(value) ~= "table" then return nil, M.internal("memory " .. name .. " must be a JSON object") end
+    for key in pairs(value) do
+        if type(key) ~= "string" then return nil, M.internal("memory " .. name .. " must be a JSON object") end
+    end
+    if next(value) == nil then return "{}", nil end
+    return json.encode(value)
+end
+
+function M.decode_object(value: any, name: string): (any?, error?)
+    local decoded, err = M.decode_json(value)
+    if err then return nil, err end
+    if type(value) ~= "string" or not value:match("^%s*{") or type(decoded) ~= "table" then
+        return nil, M.internal("memory " .. name .. " must be a JSON object")
+    end
+    return decoded, nil
+end
+
 function M.invalid(message: string, details: any?): error
     return errors.new({ kind = errors.INVALID, retryable = false, message = message, details = details })
 end
