@@ -12,6 +12,7 @@ local index = require("search_index")
 local measured_db = require("measured_db")
 local runs = require("memory_runs")
 local reconcile = require("memory_reconcile")
+local ops = require("memory_ops")
 
 local function call(a: any): (any?, error?)
     if a.op == "record_provenance" then
@@ -27,6 +28,16 @@ local function call(a: any): (any?, error?)
                 content = "Contact in the evening.", valid_at = d.now, provenance = refs,
             })
         end)
+    elseif a.op == "forget_cost" then
+        measured_db.reset()
+        local result, err = ops.forget_key(a.component_id, a.key, a.value)
+        local records, reads, selection_rows = measured_db.records(), 0, 0
+        for _, record in ipairs(records) do
+            if record.statement:match("^WITH RECURSIVE") then break end
+            if record.rows then reads = reads + 1; selection_rows = selection_rows + record.rows end
+        end
+        return { result = result, error = err and tostring(err), queries = #measured_db.statements(),
+            records = records, selection_reads = reads, selection_rows = selection_rows }, nil
     elseif a.op == "decide_cost" then
         measured_db.reset()
         local d = decision.new(a.component_id, "decide-cost", "capture", a.user)

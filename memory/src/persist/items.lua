@@ -199,6 +199,16 @@ function M.derived(component_id: string, source_id: string): (any?, error?)
     end)
 end
 
+function M.key_names(component_id: string, scope_key: string, limit: integer): (any?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local rows, err = conn:query([[SELECT DISTINCT key FROM kickside_memory_items
+            WHERE component_id = $1 AND scope_key = $2 AND status IN ($3, $4) ORDER BY key LIMIT $5]],
+            { component_id, scope_key, types.STATUS.CURRENT, types.STATUS.CONFLICT, limit })
+        if err then return nil, types.failed("memory key names read failed", err) end
+        return rows or {}, nil
+    end)
+end
+
 function M.keys(component_id: string, scope_key: string, limit: integer): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(

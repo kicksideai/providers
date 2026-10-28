@@ -18,6 +18,7 @@ local function measured(conn: any): any
             statements[#statements + 1] = statement
             records[#records + 1] = { statement = statement, params = params }
             local rows, err = conn:query(statement, params)
+            if not err then records[#records].rows = #rows end
             local normalized = " " .. statement:lower():gsub('"', ''):gsub("%s+", " ") .. " "
             if normalized:find(" from kickside_memory_runs ", 1, true)
                 or normalized:find(" join kickside_memory_runs ", 1, true) then

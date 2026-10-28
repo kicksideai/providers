@@ -218,21 +218,28 @@ function M.forget_key(component_id: string, key: string, value: any): (any?, err
     local idempotency, hash_err = canonical_json.hash({ operation = "owner.forget_key", scope_key = scope_key, key = key, value = value })
     if hash_err then return nil, hash_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
-        local rows, read_err = items.all(component_id, { scope_keys = { scope_key }, key = key })
-        if read_err then return nil, read_err end
-        local matches = {}
-        for _, row in ipairs(rows :: any) do
-            if row.status ~= types.STATUS.FORGOTTEN then matches[#matches + 1] = row end
+        local cardinality, card_err = items.key_cardinality(component_id, scope_key, key)
+        if card_err then return nil, card_err end
+        local multi = cardinality == types.CARDINALITY.MULTI
+        if multi and value == nil then return nil, types.invalid("value is required for a multi-valued key") end
+        local claim, claim_err
+        if multi then
+            claim, claim_err = types.claim_id(component_id, scope_key, key, value)
+            if claim_err then return nil, claim_err end
         end
-        if #matches == 0 then
-            local known, known_err = items.keys(component_id, scope_key, SUGGESTION_SCAN)
+        local rows, read_err = items.list(component_id, { scope_keys = { scope_key }, key = key,
+            statuses = { types.STATUS.CURRENT, types.STATUS.CONFLICT, types.STATUS.SUPERSEDED, types.STATUS.ARCHIVED },
+            claim_ids = claim and { claim } or nil, limit = 1,
+        })
+        if read_err then return nil, read_err end
+        local selected = rows[1]
+        if not selected then
+            if multi then return nil, types.not_found("memory value not found for key: " .. key) end
+            local known, known_err = items.key_names(component_id, scope_key, SUGGESTION_SCAN)
             if known_err then return nil, known_err end
-            local ranked, seen = {}, {}
+            local ranked = {}
             for _, row in ipairs(known :: any) do
-                if not seen[row.key] then
-                    seen[row.key] = true
-                    ranked[#ranked + 1] = { key = row.key, distance = key_distance(key, row.key) }
-                end
+                ranked[#ranked + 1] = { key = row.key, distance = key_distance(key, row.key) }
             end
             table.sort(ranked, function(a, b)
                 if a.distance ~= b.distance then return a.distance < b.distance end
@@ -242,23 +249,8 @@ function M.forget_key(component_id: string, key: string, value: any): (any?, err
             for i = 1, math.min(SUGGESTIONS, #ranked) do closest[i] = ranked[i].key end
             return nil, types.not_found("unknown memory key: " .. key .. ". Existing keys, closest first: " .. table.concat(closest, ", "))
         end
-        local multi = matches[1].cardinality == types.CARDINALITY.MULTI
-        if multi and value == nil then return nil, types.invalid("value is required for a multi-valued key") end
-        local claim, claim_err
-        if multi then
-            claim, claim_err = types.claim_id(component_id, scope_key, key, value)
-            if claim_err then return nil, claim_err end
-        end
-        local selected = false
-        for _, row in ipairs(matches) do
-            if not multi or row.claim_id == claim then
-                selected = true
-                local err = d:forget(row)
-                if err then return nil, err end
-                break
-            end
-        end
-        if not selected then return nil, types.not_found("memory value not found for key: " .. key) end
+        local forget_err = d:forget(selected)
+        if forget_err then return nil, forget_err end
         return { key = key, forgotten = d.stats.forgotten }, nil
     end)
 end

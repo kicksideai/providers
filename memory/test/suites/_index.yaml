@@ -193,6 +193,7 @@ entries:
     method: call
     modules: [sql]
     imports:
+      memory_ops: kickside.memory.engine:ops
       memory_reconcile: kickside.memory.engine:reconcile
       memory_decision: kickside.memory.engine:decision
       memory_runs: kickside.memory.persist:runs
