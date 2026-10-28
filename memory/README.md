@@ -18,16 +18,15 @@ trait_contexts:
     memory_id: <memory-id>
 ```
 
-The trait requires a released `wippy/agent` that compiles recall behaviors
-into the shared memory binding plan and recalls that plan on each step. It supplies
-SearchMemory and ForgetMemory. Background capture learns from conversation automatically. Corrections supersede values and retain history.
-SearchMemory returns canonical keys and typed values. ForgetMemory selects the
-caller's attribute by key and erases its versions, payloads, vectors, provenance
-and retained source input. A value narrows it to that value and the versions it
-replaced, so a value that replaced it stays current; a multi-valued key requires
-the value. Owner-scoped
-items belong to the signed-in user; agent identity and rules are managed on
-the memory page.
+Requires `wippy/agent` 0.5.7 or later. The trait supplies SearchMemory and
+ForgetMemory. Background capture learns from conversation automatically.
+Corrections supersede values and retain history. SearchMemory returns canonical
+keys and typed values. ForgetMemory selects the caller's attribute by key and
+erases its versions, payloads, vectors, provenance and retained source input. A
+value narrows it to that value and the versions it replaced, so a value that
+replaced it stays current; a multi-valued key requires the value. Owner-scoped
+items belong to the signed-in user; agent identity and rules are managed on the
+memory page.
 
 The host binds `ui_server`, `api_router`, `target_db` and
 `kickside.memory.security:user_security_scope`. Models, capture settings,

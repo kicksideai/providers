@@ -101,7 +101,7 @@ entries:
   default: kickside.security.groups:members
   meta:
     value_kind: security.scope
-    description: Application security group allowed to use the memory HTTP endpoints.
+    description: "Application security group whose members use the memory module: its endpoints, tools and contracts."
   targets:
   - entry: kickside.memory.security:module_access
     path: .groups +=
