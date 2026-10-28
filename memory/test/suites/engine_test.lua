@@ -465,6 +465,33 @@ local function define_tests()
             end
         end)
 
+        test.it("retains an invalid stored identity as the derive run diagnostic", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local run_id = "consolidate:" .. id
+            local db = fixture.db()
+            local _, setup_err = db:execute("UPDATE kickside_memory_runs SET run_type = 'derive', actor_context = $1 WHERE id = $2", { "{", run_id })
+            db:release()
+            test.is_nil(setup_err, tostring(setup_err))
+            local result, worker_err = fixture.op(user, "derive_worker", { component_id = id, run_id = run_id })
+            test.is_nil(worker_err, tostring(worker_err))
+            test.is_false(result.ok)
+            local run = fixture.op(user, "run", { run_id = run_id })
+            test.eq(run.status, "failed")
+            local failure = json.decode(run.last_error)
+            test.is_true(failure.explanation:find("requester's stored identity is invalid", 1, true) ~= nil, run.last_error)
+        end)
+
+        test.it("returns a declared error when ledger event encoding fails", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local result, err = fixture.op(user, "ledger_encode_failure", { component_id = id })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.INTERNAL)
+            test.is_true(err:message():find("memory ledger event encode failed", 1, true) ~= nil, tostring(err))
+        end)
+
         test.it("validates required engine descriptor wiring before applying stored overrides", function()
             local user = fixture.user()
             for _, meta in ipairs({ {}, { default_config = {} },
@@ -810,16 +837,21 @@ local function define_tests()
             end
         end)
 
-        test.it("rejects oversized ingestion before enrollment without discarding its suffix", function()
+        test.it("records oversized ingestion as a rejected derive run without retaining its source", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local result, err = fixture.op(user, "embed_contract", { component_id = id, request = {
                 content = string.rep("x", 30000) .. "tail-marker", title = string.rep("title", 10000),
                 external_id = "large", external_version = "1",
             } })
-            test.is_true(err ~= nil or result.success == false)
-            test.is_true(tostring(err or result.error):find("24000", 1, true) ~= nil)
-            test.eq(#fixture.op(user, "runs", { component_id = id, run_type = "derive" }), 0)
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, json.encode(result))
+            local run = fixture.op(user, "run", { run_id = result.run_id })
+            test.eq(run.status, "rejected")
+            test.eq(run.stats.rejected_source_too_large, 1)
+            test.eq(run.stats.input_limit_bytes, 24000)
+            test.is_true(run.last_error:find("source_too_large", 1, true) ~= nil)
+            test.is_nil((json.encode(run):find("tail-marker", 1, true)))
             test.eq(#fixture.script.requests(id, "structured_output"), 0)
         end)
 
