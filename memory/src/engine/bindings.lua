@@ -1,9 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Contract surface of the memory knowledge-base engine: the store lifecycle the
--- knowledge control plane drives, embeddable ingestion, scoped hybrid query,
--- bounded deletion, and maintenance.
 
 local ctx = require("ctx")
+local canonical_json = require("canonical_json")
 local types = require("types")
 local config = require("memory_config")
 local stores = require("memory_stores")
@@ -15,7 +13,6 @@ local component = require("component")
 
 local M = {}
 
--- Store pages a single deletable call removes before reporting progress.
 local DELETE_PAGES = 20
 local QUERY_MAX = 100
 
@@ -29,8 +26,6 @@ local function context_component(): (string?, error?)
     return id, nil
 end
 
--- kb_store_lifecycle -------------------------------------------------------
-
 function M.create_store(value: any): (any?, error?)
     local args = args_of(value)
     local component_id = types.trim(args.component_id)
@@ -38,14 +33,14 @@ function M.create_store(value: any): (any?, error?)
     local opts = args_of(args.opts)
     if component_id == "" then return nil, types.invalid("component_id is required") end
     if embedding_model == "" then return nil, types.invalid("embedding_model is required") end
-    local kb_type = types.trim(opts.kb_type)
-    if kb_type ~= "" and kb_type ~= types.KB_TYPE then
-        return nil, types.invalid("the memory engine stores kb_type '" .. types.KB_TYPE .. "', not '" .. kb_type .. "'")
+    local store_type = types.trim(opts.kb_type)
+    if store_type ~= "" and store_type ~= types.STORE_TYPE then
+        return nil, types.invalid("the memory engine stores kb_type '" .. types.STORE_TYPE .. "', not '" .. store_type .. "'")
     end
     local cfg = args.config or {}
     local invalid = config.validate(cfg)
     if invalid then return nil, invalid end
-    local created, err = stores.create(component_id, types.KB_TYPE, embedding_model, cfg)
+    local created, err = stores.create(component_id, types.STORE_TYPE, embedding_model, cfg)
     if err then return nil, err end
     local effective, cfg_err = config.effective(cfg)
     if cfg_err then return nil, cfg_err end
@@ -96,11 +91,6 @@ function M.delete_store(value: any): (any?, error?)
     end
 end
 
--- deletable ----------------------------------------------------------------
-
--- Stops the ledger first, so a failed purge leaves inert rows, then removes a
--- bounded number of pages. A memory larger than one call reports pending
--- cleanup and the component teardown resumes it.
 function M.delete(_value: any): (any?, error?)
     local component_id, id_err = context_component()
     if id_err then return nil, id_err end
@@ -115,10 +105,6 @@ function M.delete(_value: any): (any?, error?)
     return { success = true }, nil
 end
 
--- embeddable ---------------------------------------------------------------
-
--- Schedules content for derivation. The source id references a hash while the
--- text stays in the erasable run input.
 function M.embed_content(value: any): (any?, error?)
     local req = args_of(value)
     local component_id, id_err = context_component()
@@ -129,7 +115,7 @@ function M.embed_content(value: any): (any?, error?)
     if type(content) ~= "string" or types.trim(content) == "" then
         return { success = false, error = "content is required" }, nil
     end
-    local source_event_id, hash_err = types.digest({ operation = "memory.embed_content", component_id = component_id, external_id = req.external_id, external_version = req.external_version, content = content })
+    local source_event_id, hash_err = canonical_json.hash({ operation = "memory.embed_content", component_id = component_id, external_id = req.external_id, external_version = req.external_version, content = content })
     if hash_err then return { success = false, error = "memory ingest failed: " .. tostring(hash_err) }, nil end
     local queued, err = jobs.ingest(component_id :: string, source_event_id :: string, {
         { id = source_event_id, role = "document", text = types.trim(req.title) ~= "" and (types.trim(req.title) .. "\n\n" .. content) or content, created_at = types.now() },
@@ -138,8 +124,6 @@ function M.embed_content(value: any): (any?, error?)
     return { success = true, status = "queued", kb_id = component_id,
         thread_id = component_id, run_id = (queued :: any).run_id, external_id = req.external_id, external_version = req.external_version }, nil
 end
-
--- queryable ----------------------------------------------------------------
 
 local function to_query_item(row: any): any
     return {
@@ -181,8 +165,6 @@ function M.query(value: any): (any?, error?)
     return result, nil
 end
 
--- maintainable -------------------------------------------------------------
-
 local function authorize(access: integer): (string?, error?)
     local component_id, id_err = context_component()
     if id_err then return nil, id_err end
@@ -200,8 +182,6 @@ local function run_view(run: any): any?
     }
 end
 
--- Consolidation is the memory engine's whole-store rewrite; the control
--- plane's resummarize verb brings it forward.
 function M.schedule_resummarize(_value: any): (any?, error?)
     local component_id, err = authorize(component.ACCESS.WRITE)
     if err then return nil, err end

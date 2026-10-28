@@ -3,7 +3,6 @@
 import Message from 'primevue/message'
 import { useWidget } from './useWidget'
 
-// The shared model picker (wc-model-picker).
 defineProps<{ value: string; capability: 'embed' | 'generate'; labelledBy?: string }>()
 const emit = defineEmits<{ (e: 'select', v: string): void }>()
 const picker = useWidget('wc-model-picker')

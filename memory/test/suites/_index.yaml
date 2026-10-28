@@ -16,12 +16,17 @@ entries:
     meta: { comment: Runs a named memory operation in the caller's frame. }
     source: file://memory_call.lua
     method: call
-    modules: [contract, security, sql]
+    modules: [contract, security, sql, funcs]
     imports:
+      memory_config: kickside.memory:config
       memory_ops: kickside.memory.engine:ops
       memory_writer: kickside.memory.engine:writer
       memory_reconcile: kickside.memory.engine:reconcile
-      runtime: kickside.memory.agent:runtime
+      memory_models: kickside.memory.engine:models
+      agent_context: kickside.memory.agent:context
+      agent_prompt: kickside.memory.agent:prompt
+      agent_recall: kickside.memory.agent:recall
+      agent_tools: kickside.memory.agent:tools
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
       memory_ledger: kickside.memory.engine:ledger
@@ -30,6 +35,9 @@ entries:
       component: kickside.component:component
       types: kickside.memory:types
       agent_compiler: wippy.agent.compiler:compiler
+      agent: wippy.agent:agent
+      llm_prompt: wippy.llm:prompt
+      agent_lifecycle: wippy.agent:lifecycle_runtime
 
   - name: history
     kind: library.lua
@@ -77,13 +85,60 @@ entries:
       test: wippy.test:test
       fixture: app.suites:fixture
 
-  - name: agent_test
+  - name: tools_test
     kind: function.lua
-    meta:
-      type: test
-      suite: memory_agent
-      timeout: 300s
-    source: file://agent_test.lua
+    meta: { type: test, suite: memory_tools, timeout: 300s }
+    source: file://tools_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: checkpoint_test
+    kind: function.lua
+    meta: { type: test, suite: memory_checkpoint, timeout: 300s }
+    source: file://checkpoint_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: capture_test
+    kind: function.lua
+    meta: { type: test, suite: memory_capture, timeout: 300s }
+    source: file://capture_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: prompt_test
+    kind: function.lua
+    meta: { type: test, suite: memory_prompt, timeout: 300s }
+    source: file://prompt_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: capture_enrollment_test
+    kind: function.lua
+    meta: { type: test, suite: memory_capture_enrollment, timeout: 300s }
+    source: file://capture_enrollment_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: compiler_test
+    kind: function.lua
+    meta: { type: test, suite: memory_compiler, timeout: 300s }
+    source: file://compiler_test.lua
     method: run
     modules: [json]
     imports:
@@ -131,26 +186,46 @@ entries:
       session: kickside.users:session
       user_groups_repo: kickside.users.persist:user_groups_repo
 
-  - name: rework_call
+  - name: persistence_call
     kind: function.lua
-    source: file://rework_call.lua
+    source: file://persistence_call.lua
     method: call
     modules: [sql]
     imports:
+      memory_ops: kickside.memory.engine:ops
+      memory_reconcile: kickside.memory.engine:reconcile
+      memory_decision: kickside.memory.engine:decision
+      memory_runs: kickside.memory.persist:runs
+      memory_ledger: kickside.memory.engine:ledger
       measured_db: app.suites:measured_db
       memory_writer: kickside.memory.engine:writer
       memory_items: kickside.memory.persist:items
+      memory_payloads: kickside.memory.persist:payloads
+      memory_fold: kickside.memory.persist:fold
       memory_models: kickside.memory.engine:models
       search_index: kickside.search_index:index
       types: kickside.memory:types
 
-  - name: rework_test
+  - name: erasure_test
     kind: function.lua
     meta:
       type: test
-      suite: memory_rework
+      suite: memory_erasure
       timeout: 300s
-    source: file://rework_test.lua
+    source: file://erasure_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: search_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: memory_search
+      timeout: 300s
+    source: file://search_test.lua
     method: run
     modules: [json]
     imports:
@@ -165,7 +240,7 @@ entries:
       timeout: 300s
     source: file://concurrency_test.lua
     method: run
-    modules: [sql, time]
+    modules: [time]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
@@ -176,16 +251,50 @@ entries:
     imports:
       memory_db: kickside.memory.persist:db
 
-  - name: legacy_document
-    kind: contract.binding
-    meta: {comment: Document-backed queryable KB fixture; no typed Memory store exists.}
-    contracts:
-      - contract: kickside.contract:queryable
-        context_required: [component_id]
-        methods:
-          query: app.suites:legacy_document_query
-  - name: legacy_document_query
+  - name: models_test
     kind: function.lua
-    source: file://legacy_document.lua
-    method: query
-    modules: [ctx]
+    meta: { type: test, suite: memory_models, timeout: 300s }
+    source: file://models_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: support_test
+    kind: function.lua
+    meta: { type: test, suite: memory_support, timeout: 300s }
+    source: file://support_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: capture_history_test
+    kind: function.lua
+    meta: { type: test, suite: memory_capture_history, timeout: 300s }
+    source: file://capture_history_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: model_normalization_test
+    kind: function.lua
+    meta: { type: test, suite: memory_model_normalization, timeout: 300s }
+    source: file://model_normalization_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: model_calls_test
+    kind: function.lua
+    source: file://model_calls_test.lua
+    method: run
+    meta: { type: test, suite: memory_model_calls }
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture

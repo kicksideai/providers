@@ -2,11 +2,6 @@
 version: '1.0'
 namespace: kickside.memory.security
 
-# Module access for Memory. The public policy composes discovery of the module
-# with its private runtime policy and the exact member endpoints; the host binds
-# user_security_scope to the group whose members use the memory surface.
-# Component ACL decides access to each memory knowledge base.
-
 entries:
 - name: module_access
   kind: security.policy
@@ -89,7 +84,6 @@ entries:
     actions: access
     effect: allow
 
-# The deferred workers re-admit the identity their run records hold.
 - name: deferred_owner
   kind: security.policy
   meta:

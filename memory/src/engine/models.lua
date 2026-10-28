@@ -1,21 +1,13 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Model calls of the memory engine: candidate extraction from a captured span,
--- the closed-set reconcile judge, reflection over stored items, vectors, and
--- the working summary a checkpoint hands back to its host. Every failure is a
--- typed error that keeps a transient provider's kind and records a
--- deterministic provider failure as an internal memory failure; malformed
--- model output is never read as "nothing to remember".
 
 local llm = require("llm")
 local json = require("json")
+local uuid = require("uuid")
 local types = require("types")
 local error_envelope = require("error_envelope")
 
 local M = {}
 
--- A model request is an implementation detail of memory. Only transient provider
--- failures remain retryable in the provider's vocabulary; every other provider
--- failure is an internal memory failure that retains its diagnostic cause.
 local TRANSIENT_KINDS = {
     [errors.UNAVAILABLE] = true,
     [errors.TIMEOUT] = true,
@@ -23,9 +15,16 @@ local TRANSIENT_KINDS = {
 }
 
 local function model_error(step: string, err: any): error
-    local message = step .. " failed: " .. tostring(err)
+    local message = step .. " failed"
     if type(err) ~= "userdata" then
         return types.internal(message, { step = step, cause = { message = tostring(err), retryable = false } })
+    end
+    local details = err:details() or {}
+    if details.error_type == "model_error" and type(details.raw_content) == "string" then
+        local _, decode_err = json.decode(details.raw_content)
+        if decode_err then
+            return types.unavailable(step .. " returned malformed output", { step = step, code = "model_output_malformed" })
+        end
     end
     local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
     return errors.new({
@@ -36,71 +35,134 @@ local function model_error(step: string, err: any): error
     })
 end
 
--- Span roles that state something: memories cite one of these messages.
--- Assistant text is context only and is shown without an id.
 local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
-local EXTRACTION_PROMPT = [[You extract durable memory about the user from a conversation span.
+function M.is_statement(message: any): boolean
+    return STATEMENT_ROLES[message.role] == true
+end
 
-Keep only what the user states about themselves, their work and their world that will
-still matter in a later conversation: facts, preferences, decisions, corrections, and
-outcomes of finished work. A correction is a new item with the corrected value.
+local EXTRACTION_PROMPT = [[You extract personal attributes and actionable goals from new conversation statements.
 
-Each item must be stated in the message it cites, in the user's own words. Skip:
-- requests, questions and instructions to the assistant ("find me...", "where do I live?",
-  "one trip idea please"): asking states nothing about the user; a request that also states
-  something durable ("find a quiet hotel, I can't sleep with noise") keeps only that part;
-- the current task's chatter: options picked, things to check later, scheduling of the
-  work at hand;
-- statements too vague to act on later ("I've traveled before", "I forgot where I was");
-- greetings, thanks, acknowledgements and small talk;
-- the assistant's suggestions, answers and narration, raw tool output, and anything inside
-  recalled-memory notes - none of these is the user stating anything.
+Treat memory-management requests as instructions about stored memory. Requests to forget,
+delete or stop remembering information establish no personal attribute or actionable
+goal. Extract only separately stated assertions about the person or their work.
+
+First identify requests, intentions and ongoing work. Each request to accomplish a task
+is an open plan from its first statement. A task needs no date, audience, destination,
+method or other details to qualify. The requested outcome itself supplies value.details;
+leave next_step empty when no next action is agreed. A request phrased as a question
+still opens a plan. Later task answers add to the same goal's complete state. Carry
+forward its known decisions and constraints. Mark completion or cancellation done.
+Different goals coexist under distinct keys. Do not invent any missing information.
+
+Then identify stated personal attributes, preferences, decisions, corrections, skills,
+lessons and outcomes that help future conversations. Split independent attributes into
+separate items whenever they can change independently, even when they share one statement. Assign each
+stated value only to the attribute the statement names; a change of one attribute leaves related
+attributes unchanged and never copies its value into them. A correction supplies a new value;
+reconciliation determines its relationship to earlier values.
+
+Interpret each statement in its preceding conversation and existing memory context.
+Answers about a task change that goal's details, not stable personal attributes.
+Hypotheticals do not establish personal attributes. Change a stable attribute only
+when the user directly states it or its change.
+
+Cite only new user, tool or document statements that supply evidence. Preceding context
+and existing memories explain meaning but supply no new evidence. Assistant suggestions,
+answers, narration and recalled-memory notes are not user statements. Raw tool output
+alone is not a durable claim. Omit greetings, thanks, acknowledgements, questions that
+request no task and state no useful information, and narration that changes neither a
+goal nor an attribute. An actionable task qualifies even if it is short-lived or vague.
 
 Each item has:
-- kind: fact | preference | profile_slot | skill | lesson
-  (profile_slot = a stable single-valued attribute such as name, home city, employer, role,
-  diet, timezone)
-- key: a short stable topic, e.g. "home_city", "preferred_language", "employer"
-- cardinality: "single" when the person holds one value at a time (name, home city, diet,
-  employer, birth date), "multi" when several hold together (allergies, children, pets)
-- value: the value only, e.g. "Berlin"
-- content: one self-contained sentence in the third person about the user
-- event_id: the id of the user, tool or document message that states it
-- valid_at: when it became true if the span says so (RFC3339), else ""
-- confidence: 0..1
+- kind: fact | preference | profile_slot | skill | lesson | plan.
+  profile_slot is a stable personal attribute with one value at a time.
+- key: a short canonical topic, never its value or sentence: lowercase letters, digits
+  and underscores, starting with a letter, at most 64 characters. Reuse an existing
+  topic key for the same attribute or goal. Keep one key for an attribute throughout
+  the batch. Plans and lessons keep their own keys.
+- cardinality: single for one value at a time; multi for independent simultaneous values.
+  Plans use single under their own goal key.
+- value: the newly stated attribute value alone, never a union with an earlier value.
+  When one phrase combines values of attributes that can change independently, such as
+  one thing at or for another, each attribute gets its own item, key and value.
+  A plan uses an object with status (open or done), next_step (agreed action or empty),
+  and details (the requested outcome plus known decisions and constraints).
+- content: one self-contained third-person sentence about this attribute or goal.
+- event_id: the new user, tool or document message id supplying the evidence.
+- valid_at: RFC3339 time when a personal attribute became true as stated by the person,
+  otherwise empty. A plan version takes the time of the statement that updates it;
+  leave valid_at empty for plans. Event dates, schedules and deadlines are goal content
+  in value.details or value.next_step, never the plan's effective time.
+- confidence: a number from 0 to 1.
 
-Return {"items": []} when nothing durable is stated.]]
+Return scalar attributes in items, lessons in lessons, and goals in plans. All three arrays
+are required. Return {"items": [], "lessons": [], "plans": []} only when nothing qualifies.]]
 
 local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of the same person.
 
-Choose exactly one action:
-- ADD: the new memory is about something none of the existing memories cover.
-- NOOP: an existing memory already says the same thing, even under another kind or key.
-- SUPERSEDE: the new memory updates or corrects existing memories about the same thing. A
-  statement that something changed ("I moved", "now", "since", "no longer", "actually") is
-  an update.
-- MERGE: the new memory and existing memories are the same memory phrased differently and the new one is the most complete.
-- CONFLICT: the new memory contradicts existing memories and nothing says which is right:
-  the person says they are unsure, or two sources disagree.
+Return one relation for every numbered existing memory:
+- unrelated: the new memory covers a distinct attribute, independent value or goal.
+- same: the existing memory already says it, even under another kind or key.
+- updates: the new memory updates or corrects the same attribute or goal. A direct
+  statement that a single-valued attribute changed replaces its earlier value.
+  Joining, leaving, moving, switching, starting or stopping states a change, even
+  without an explicit correction or a reference to the previous value.
+  The new value must belong to the existing memory's own attribute; a value of a
+  related attribute is unrelated, never an update.
+- rephrases: the memories express the same claim and the new wording is more complete.
+- contradicts: the claims conflict with no basis to select one, such as uncertainty
+  expressed by the person or disagreement between sources. Different values before
+  and after an explicitly stated change are updates, not contradictions.
 
-new_memory.stated, when present, is what the person said; it tells an update from a contradiction.
-target_ids lists the existing memory ids the action applies to (empty for ADD).
-Use only ids from the list. Decide only the relationship; do not judge which value is newer.]]
+Use only the relations allowed by each numbered property's enum.
+new_memory.stated is the original statement when available. Read it in conversation
+context. An answer about a task supplies that task's detail; it never changes a stable
+personal attribute. Hypotheticals do not establish attributes either. A stable attribute
+changes only through a direct assertion about it. Plans for the same goal update as
+their details or next step progress. Different attributes or goals remain separate.
+Compare the attribute named by each key and its typed value, not incidental mentions
+in content. Independently changeable attributes do not conflict merely because they
+mention the same entity. A value and the time when it changes are separate attributes.
+Decide the relationship from the statements; do not infer an update from record order.]]
 
-local REFLECTION_PROMPT = [[You review a person's numbered memories and derive lessons: concrete
-ways to help this person that no single memory says. A lesson combines at least two
-memories into guidance for acting, e.g. memories "the dog hates long car rides" and "always
-travels with the dog" give "propose rail routes that allow dogs and avoid long car
-transfers".
+local NORMALIZATION_PROMPT = [[Normalize candidate memories into independently changeable attributes before reconciliation.
 
-Never restate, rephrase or summarise one memory ("as the user is vegan, plan vegan food"),
-never repeat a profile attribute, and never guess beyond what the memories say. Most
-memory sets support no lesson; return {"items": []} then.
+For every numbered candidate return a nonempty array of attributes. Split compound
+statements into separate attributes whenever either can change independently. Give
+each its own topic key, kind, cardinality, value and self-contained content describing
+only that attribute. All parts keep the candidate's evidence. Do not discard an
+attribute when splitting or add information absent from the candidate.
 
-Each lesson has kind "lesson", key (a short stable topic), cardinality "multi", value (the
-guidance in a few words), content (one sentence of guidance), based_on (the numbers of the memories it draws
-on, at least two), event_id "", valid_at "", confidence.]]
+Keys name topics, never their values, instructions or whole sentences. Use lowercase
+letters, digits and underscores, starting with a letter, at most 64 characters. Reuse
+an existing key for the same attribute regardless of phrasing or kind; candidates for
+the same attribute share a key within the batch too. Create new topic keys for
+independent attributes not represented by existing keys.
+
+Conversation grounds the claim. Existing values explain attribute identity but never
+authorize an unstated union of old and new values. Return only the newly stated scalar
+value. Preserve non-string typed values unchanged as one item; their value and content
+fields are not part of the mapping. Do not alter meaning.
+
+Plans never map onto personal attributes or other kinds. Each goal keeps its own key
+and complete typed state. Stable personal attributes use profile_slot and single.
+Independent simultaneous values use multi. Lessons remain lessons.]]
+
+local REFLECTION_PROMPT = [[Derive concrete guidance for helping this person from their numbered memories.
+Each lesson must combine at least two memories into guidance that no single memory
+already states. Never restate or summarize one memory, repeat a profile attribute, or
+guess beyond the evidence. Return {"items": []} when no grounded lesson follows.
+
+Keys name a reusable guidance topic, never the recommended action, a value, a person,
+or the lesson sentence. Use lowercase letters, digits and underscores, starting with
+a letter, at most 64 characters. The same guidance topic keeps its key as advice changes.
+
+Each lesson has kind lesson, a short stable topic key, cardinality multi, value (guidance in a
+few words), content (one sentence of guidance), based_on (at least two distinct memory
+numbers), empty event_id and valid_at, and confidence from 0 to 1.]]
+
+local JSON_FORMAT = "\n\nReturn one compact JSON object on one line, with no whitespace outside strings, reasoning or extra text."
 
 local WORKING_SUMMARY_PROMPT = [[Summarize the conversation so far as working state for continuing it:
 goals, decisions, open questions, constraints and the next step. Be compact and factual.]]
@@ -112,56 +174,227 @@ local function messages(system: string, user: string): { any }
     }
 end
 
--- Kinds a model may propose; identity and rules are set by people.
-local CANDIDATE_KINDS = { types.KIND.FACT, types.KIND.PREFERENCE, types.KIND.PROFILE_SLOT, types.KIND.SKILL, types.KIND.LESSON }
+local LIMITS = { per_statement = 4, parts = 4, lessons = 4,
+    key = 64, value = 160, content = 240, details = 400, next_step = 160, valid_at = 35, reason = 192 }
 
-local function candidate_schema(event_ids: { string }?, kinds: { string }?): any
-    local event_id: any = { type = "string" }
-    if event_ids then event_id = { type = "string", enum = event_ids } end
-    return {
-        type = "object",
-        additionalProperties = false,
-        required = { "items" },
-        properties = {
-            items = {
-                type = "array",
-                items = {
-                    type = "object",
-                    additionalProperties = false,
-                    required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
-                    properties = {
-                        kind = { type = "string", enum = kinds or CANDIDATE_KINDS },
-                        key = { type = "string" },
-                        cardinality = { type = "string", enum = { types.CARDINALITY.SINGLE, types.CARDINALITY.MULTI } },
-                        value = { type = "string" },
-                        content = { type = "string" },
-                        event_id = event_id,
-                        valid_at = { type = "string" },
-                        confidence = { type = "number" },
-                    },
-                },
-            },
-        },
-    }
+local function codepoints(text: string): integer
+    local _, count = text:gsub("[^\128-\191]", "")
+    return count
 end
 
-local function read_candidates(response: any, step: string): (any?, error?)
-    local data = response and response.result
-    if type(data) ~= "table" or type(data.items) ~= "table" then
-        return nil, types.unavailable(step .. " returned malformed output")
+local CONTROL_FREE = "^[^\\u0000-\\u001F]*$"
+
+local function bounded_string(maximum: integer, minimum: integer?): any
+    return { type = "string", maxLength = maximum, minLength = minimum, pattern = CONTROL_FREE }
+end
+
+local function enum_string(values: { string }): any
+    local maximum = 0
+    for _, value in ipairs(values) do maximum = math.max(maximum, codepoints(value)) end
+    return { type = "string", enum = values, maxLength = maximum, pattern = CONTROL_FREE }
+end
+
+local CANDIDATE_KINDS = types.MEMORY_KINDS
+local CANDIDATE_KIND_SET = {}
+for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
+
+-- Kind compatibility with existing topics is validated after decoding.
+local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0,63}$" }
+
+local function candidate_schema(event_ids: { string }?, kinds: { string }?, count: integer): any
+    local event_id = enum_string(event_ids or { "" })
+    local scalar_kinds = {}
+    for _, kind in ipairs(kinds or CANDIDATE_KINDS) do
+        if kind ~= types.KIND.PLAN and (kinds or kind ~= types.KIND.LESSON) then scalar_kinds[#scalar_kinds + 1] = kind end
     end
-    local out: { any } = {}
-    for index, item in ipairs(data.items) do
-        if type(item) ~= "table" or not types.KIND_SET[item.kind] or types.trim(item.key) == ""
-            or types.trim(item.content) == "" or not types.CARDINALITY_SET[item.cardinality] then
-            return nil, types.unavailable(step .. " returned a malformed item at " .. tostring(index))
+    local function item(allowed: { string }, value: any, cardinalities: { string }): any
+        local shape = { type = "object", additionalProperties = false,
+            required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" },
+            properties = {
+                kind = enum_string(allowed), key = TOPIC_SCHEMA,
+                cardinality = enum_string(cardinalities), value = value,
+                content = bounded_string(LIMITS.content, 1), event_id = event_id,
+                valid_at = bounded_string(LIMITS.valid_at), confidence = { type = "number", minimum = 0, maximum = 1 },
+            },
+        }
+        return shape
+    end
+    local scalar = item(scalar_kinds, bounded_string(LIMITS.value, 1), { "single", "multi" })
+    local schema = { type = "object", additionalProperties = false, required = { "items" }, properties = {
+        items = { type = "array", maxItems = kinds and count or count * LIMITS.per_statement, items = scalar },
+    } }
+    if not kinds then
+        schema.properties.lessons = { type = "array", maxItems = count * LIMITS.per_statement,
+            items = item({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }),
+        }
+        schema.required[#schema.required + 1] = "lessons"
+        local goal = item({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
+            required = { "status", "next_step", "details" }, properties = {
+                status = enum_string({ "open", "done" }),
+                next_step = bounded_string(LIMITS.next_step), details = bounded_string(LIMITS.details, 1),
+            },
+        }, { "single" })
+        schema.properties.plans = { type = "array", maxItems = count, items = goal }
+        schema.required[#schema.required + 1] = "plans"
+    end
+    return schema
+end
+
+-- Control-free compact UTF-8 JSON uses at most four bytes per code point,
+-- including quote/backslash escapes. One token per byte bounds byte-level tokenizers.
+local function schema_bytes(schema: any, bytes_per_character: integer): integer
+    local function size(node: any): integer
+        if node.enum then
+            local longest = 0
+            for _, value in ipairs(node.enum) do longest = math.max(longest, #json.encode(value)) end
+            return longest
+        elseif node.type == "object" then
+            local total, count = 2, 0
+            for key, child in pairs(node.properties) do
+                total = total + #json.encode(key) + 1 + size(child)
+                count = count + 1
+            end
+            return total + math.max(0, count - 1)
+        elseif node.type == "array" then
+            return 2 + node.maxItems * size(node.items) + math.max(0, node.maxItems - 1)
+        elseif node.type == "string" then
+            return 2 + bytes_per_character * node.maxLength
+        elseif node.type == "number" then
+            return 24
         end
-        out[#out + 1] = item
+        error("Unbounded memory result schema: " .. tostring(node.type))
+    end
+    return size(schema)
+end
+
+local function output_budget(schema: any, model: string): (integer?, error?)
+    local card, err = llm.resolve_model(model)
+    if err then return nil, err end
+    local limit = tonumber(card and card.output_tokens)
+    if not limit or limit < 1 then
+        return nil, types.invalid("memory model " .. model .. " requires a positive output limit")
+    end
+    return math.floor(math.min(limit, schema_bytes(schema, 4))), nil
+end
+
+function M.extraction_capacity(model: string, span: { any }?): (integer?, error?)
+    local card, err = llm.resolve_model(model)
+    if err then return nil, err end
+    local limit = tonumber(card and card.output_tokens)
+    local ids = {}
+    for _, message in ipairs(span or {}) do
+        if M.is_statement(message) then ids[#ids + 1] = message.id end
+    end
+    if #ids == 0 then ids[1] = uuid.v7() end
+    local count = 0
+    -- Capacity uses typical compact ASCII output so 8,192-token models remain usable;
+    -- call budgets cover the four-byte bound up to the model card limit.
+    while limit and schema_bytes(candidate_schema(ids, nil, count + 1), 1) <= limit do count = count + 1 end
+    if count == 0 then
+        return nil, types.invalid("memory extraction model " .. model .. " output limit cannot hold one statement")
+    end
+    return count, nil
+end
+
+local function exceeds_bounds(value: any, schema: any): boolean
+    if type(value) == "string" and value:find("[%z\1-\31]") then return true end
+    if schema.enum then
+        for _, option in ipairs(schema.enum) do if value == option then return false end end
+        return true
+    end
+    if schema.type == "object" and type(value) ~= "table" then return true end
+    if type(value) == "string" and schema.maxLength then
+        return codepoints(value) > schema.maxLength
+    elseif type(value) == "table" and schema.type == "array" then
+        if #value > schema.maxItems then return true end
+        for _, item in ipairs(value) do if exceeds_bounds(item, schema.items) then return true end end
+    elseif type(value) == "table" and schema.type == "object" then
+        for _, key in ipairs(schema.required or {}) do if value[key] == nil then return true end end
+        for key, child in pairs(value) do
+            local property = schema.properties[key]
+            if not property or exceeds_bounds(child, property) then return true end
+        end
+    end
+    return false
+end
+
+local function is_array(value: any): boolean
+    if type(value) ~= "table" then return false end
+    for key in pairs(value) do
+        if type(key) ~= "number" or key < 1 or key > #value or key ~= math.floor(key) then return false end
+    end
+    return true
+end
+
+local function response_error(response: any, step: string, schema: any): error?
+    if response and response.finish_reason == "length" then
+        return types.unavailable(step .. " output is truncated", { code = "model_output_truncated", step = step })
+    end
+    if not response or type(response.result) ~= "table" or exceeds_bounds(response.result, schema) then
+        return types.unavailable(step .. " returned malformed output", { code = "model_output_malformed", step = step })
+    end
+    return nil
+end
+
+local function validation_error(step: string, reason: string): error
+    local code = "model_output_invalid_" .. step .. "_" .. reason
+    return types.unavailable("memory " .. step .. " returned invalid output: " .. code, { step = step, code = code })
+end
+
+local function candidate_reason(item: any, typed: boolean?): string?
+    if type(item) ~= "table" or not CANDIDATE_KIND_SET[item.kind] or types.trim(item.key) == ""
+        or types.trim(item.content) == "" or not types.CARDINALITY_SET[item.cardinality] then return "shape" end
+    if item.kind == types.KIND.PLAN then
+        if types.validate_value(item.kind, item.value) or item.cardinality ~= types.CARDINALITY.SINGLE
+            or types.trim(item.value.details) == "" then return "value" end
+    elseif not typed and (type(item.value) ~= "string" or types.trim(item.value) == "") then return "value" end
+    if item.confidence ~= nil and (type(item.confidence) ~= "number" or item.confidence ~= item.confidence
+        or item.confidence < 0 or item.confidence > 1) then return "confidence" end
+    if item.valid_at ~= nil and item.valid_at ~= "" and not types.utc(item.valid_at) then return "time" end
+    local _, key_err = types.topic_key(item.key, item.content, item.value, item.kind)
+    if key_err then return "topic_key" end
+    return nil
+end
+
+local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any): (any?, error?)
+    local err = response_error(response, "memory " .. step, schema)
+    if err then return nil, err end
+    local data = response.result
+    if not is_array(data.items) or (step == "extraction" and (not is_array(data.plans) or not is_array(data.lessons))) then
+        return nil, types.unavailable("memory " .. step .. " returned malformed output", { code = "model_output_malformed" })
+    end
+    local known = {}
+    for _, row in ipairs(keys or {}) do known[row.key] = row end
+    local out = {}
+    local function read(collection: any, plans: boolean): error?
+        for _, item in ipairs(collection) do
+            if type(item) == "table" and type(item.key) == "string" then item.key = types.normalize_key(item.key) end
+            local reason = candidate_reason(item)
+            local existing = not reason and known[types.normalize_key(item.key)] or nil
+            if existing then
+                if not types.compatible_kinds(existing.kind, item.kind) then reason = "kind"
+                else item.cardinality = existing.cardinality end
+            end
+            if not reason and step == "extraction" then
+                if (item.kind == types.KIND.PLAN) ~= plans then reason = "kind"
+                elseif not event_ids[item.event_id] then reason = "evidence" end
+            elseif not reason and step == "reflection" and item.kind ~= types.KIND.LESSON then reason = "kind" end
+            if reason then return validation_error(step, reason) end
+            out[#out + 1] = item
+        end
+        return nil
+    end
+    local item_err = read(data.items, false)
+    if item_err then return nil, item_err end
+    if step == "extraction" then
+        local lesson_err = read(data.lessons, false)
+        if lesson_err then return nil, lesson_err end
+        local plan_err = read(data.plans, true)
+        if plan_err then return nil, plan_err end
     end
     return out, nil
 end
 
--- Lists the keys a person's memories already use, grouped by kind.
 local function key_listing(keys: { any }): string
     local lines: { string } = {}
     local kind, names = nil, {}
@@ -170,26 +403,35 @@ local function key_listing(keys: { any }): string
     end
     for _, row in ipairs(keys) do
         if row.kind ~= kind then flush(); kind, names = row.kind, {} end
-        names[#names + 1] = row.key .. " (" .. tostring(row.cardinality) .. ")"
+        local description = row.key .. " (" .. tostring(row.cardinality) .. ")"
+        if row.content then description = description .. ": " .. row.content end
+        if row.value ~= nil then description = description .. " State: " .. json.encode(row.value) end
+        names[#names + 1] = description
     end
     flush()
     return table.concat(lines, "\n")
 end
 
--- span: { { id, role, text, created_at } }; keys: the { kind, key } pairs the
--- person's memories use. A span in which nobody states anything yields no
--- candidates without a model call.
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?): (any?, error?)
+function M.conversation(span: { any }, context: { any }?): string
     local lines: { string } = {}
-    local ids: { string } = {}
+    for _, message in ipairs(context or {}) do
+        lines[#lines + 1] = string.format("(%s, preceding context only) %s", message.role, message.text)
+    end
     for _, message in ipairs(span) do
-        if STATEMENT_ROLES[message.role] then
-            ids[#ids + 1] = message.id
+        if M.is_statement(message) then
             lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
         else
-            -- Context lines carry no id: nothing can cite them.
             lines[#lines + 1] = string.format("(%s, context only) %s", message.role, message.text)
         end
+    end
+    return table.concat(lines, "\n")
+end
+
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?): (any?, error?)
+    local ids: { string } = {}
+    local allowed = {}
+    for _, message in ipairs(span) do
+        if M.is_statement(message) then ids[#ids + 1] = message.id; allowed[message.id] = true end
     end
     if #ids == 0 then return {}, nil end
     local system = EXTRACTION_PROMPT
@@ -197,88 +439,213 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
         system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. key_listing(keys)
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
-    local response, err = llm.structured_output(candidate_schema(ids), messages(system, table.concat(lines, "\n")), { model = model })
+    local conversation = M.conversation(span, context)
+    local schema = candidate_schema(ids, nil, #ids)
+    local budget, budget_err = output_budget(schema, model)
+    if budget_err then return nil, budget_err end
+    local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory extraction", err) end
-    return read_candidates(response, "memory extraction")
+    local candidates, read_err = read_candidates(response, "extraction", allowed, keys, schema)
+    if read_err then return nil, read_err end
+    return candidates, nil
 end
 
--- items: { { id, kind, key, content } }
--- Reflection may only propose lessons, each drawing on at least two of the
--- listed memories; a lesson that leans on one memory restates it and is dropped
--- here, whatever the model says.
+function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?): (any?, error?)
+    if #candidates == 0 then return candidates, nil end
+    local known: { [string]: any } = {}
+    for _, row in ipairs(keys) do known[row.key] = row end
+    local properties, required = {}, {}
+    for i, candidate in ipairs(candidates) do
+        local kinds = {}
+        for _, kind in ipairs(CANDIDATE_KINDS) do
+            if types.compatible_kinds(kind, candidate.kind) then
+                kinds[#kinds + 1] = kind
+            end
+        end
+        local mapping_properties = {
+            key = TOPIC_SCHEMA, kind = enum_string(kinds),
+            cardinality = enum_string({ "single", "multi" }),
+        }
+        local mapping_required = { "key", "kind", "cardinality" }
+        local mappings: any = { type = "array", minItems = 1, maxItems = LIMITS.parts }
+        if type(candidate.value) == "string" then
+            mapping_properties.value = bounded_string(LIMITS.value, 1)
+            mapping_properties.content = bounded_string(LIMITS.content, 1)
+            mapping_required[#mapping_required + 1] = "value"
+            mapping_required[#mapping_required + 1] = "content"
+        else
+            mappings.maxItems = 1
+        end
+        mappings.items = { type = "object", additionalProperties = false,
+            required = mapping_required, properties = mapping_properties,
+        }
+        properties[tostring(i)] = mappings
+        required[#required + 1] = tostring(i)
+    end
+    local schema = { type = "object", additionalProperties = false, required = { "mappings" }, properties = {
+        mappings = { type = "object", additionalProperties = false, properties = properties, required = required },
+    } }
+    local budget, budget_err = output_budget(schema, model)
+    if budget_err then return nil, budget_err end
+    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })), { model = model, max_tokens = budget })
+    if err then return nil, model_error("memory normalization", err) end
+    local response_err = response_error(response, "memory normalization", schema)
+    if response_err then return nil, response_err end
+    local mappings = response and response.result and response.result.mappings
+    if type(mappings) ~= "table" then
+        return nil, types.unavailable("memory normalization returned malformed output", { code = "model_output_malformed" })
+    end
+    local out = {}
+    for i, candidate in ipairs(candidates) do
+        local parts = mappings[tostring(i)]
+        if type(parts) ~= "table" then
+            return nil, types.unavailable("memory normalization returned malformed mappings", { code = "model_output_malformed" })
+        end
+        if not is_array(parts) or #parts == 0 or (type(candidate.value) ~= "string" and #parts ~= 1) then
+            return nil, validation_error("normalization", "mapping")
+        end
+        for _, mapping in ipairs(parts) do
+            local reason = nil
+            local normalized = {}
+            for k, v in pairs(candidate) do normalized[k] = v end
+            if type(mapping) ~= "table" or type(mapping.key) ~= "string"
+                or not types.CARDINALITY_SET[mapping.cardinality] then reason = "shape"
+            else
+                local mapped_key = types.normalize_key(mapping.key)
+                local existing = known[mapped_key]
+                normalized.kind = mapping.kind
+                normalized.key = mapped_key
+                normalized.cardinality = existing and existing.cardinality or mapping.cardinality
+                if type(candidate.value) == "string" then
+                    normalized.value = mapping.value
+                    normalized.content = mapping.content
+                end
+                reason = candidate_reason(normalized, type(candidate.value) ~= "string")
+                if not reason and (not types.compatible_kinds(mapping.kind, candidate.kind)
+                    or (existing and not types.compatible_kinds(existing.kind, mapping.kind))) then reason = "kind" end
+            end
+            if reason then return nil, validation_error("normalization", reason) end
+            normalized.content = types.trim(normalized.content)
+            if type(normalized.value) == "string" then normalized.value = types.trim(normalized.value) end
+            out[#out + 1] = normalized
+        end
+    end
+    return out, nil
+end
+
 local REFLECTION_MIN_SOURCES = 2
 
 function M.reflect(model: string, items: { any }): (any?, error?)
+    if #items < REFLECTION_MIN_SOURCES then return {}, nil end
     local lines: { string } = {}
     local numbers: { integer } = {}
     for index, item in ipairs(items) do
         lines[#lines + 1] = string.format("%d. (%s/%s) %s", index, item.kind, item.key, item.content)
         numbers[index] = index
     end
-    local schema = candidate_schema(nil, { types.KIND.LESSON })
+    local schema = candidate_schema(nil, { types.KIND.LESSON }, math.min(LIMITS.lessons, math.floor(#items / REFLECTION_MIN_SOURCES)))
     local item_schema = schema.properties.items.items
-    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES }
+    item_schema.properties.event_id = enum_string({ "" })
+    item_schema.properties.valid_at = enum_string({ "" })
+    item_schema.properties.cardinality.enum = { "multi" }
+    item_schema.properties.based_on = { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES, maxItems = #items }
     item_schema.required[#item_schema.required + 1] = "based_on"
-    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT, table.concat(lines, "\n")), { model = model })
+    local budget, budget_err = output_budget(schema, model)
+    if budget_err then return nil, budget_err end
+    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory reflection", err) end
-    local candidates, read_err = read_candidates(response, "memory reflection")
+    local candidates, read_err = read_candidates(response, "reflection", nil, nil, schema)
     if read_err then return nil, read_err end
     local grounded: { any } = {}
     for _, candidate in ipairs(candidates :: any) do
         local sources: { [integer]: boolean } = {}
-        local count = 0
-        for _, number in ipairs(type(candidate.based_on) == "table" and candidate.based_on or {}) do
-            local n = math.floor(tonumber(number) or 0)
-            if items[n] and not sources[n] then sources[n] = true; count = count + 1 end
+        local source_ids: { string } = {}
+        local valid = is_array(candidate.based_on)
+        for _, number in ipairs(valid and candidate.based_on or {}) do
+            if type(number) ~= "number" or number ~= math.floor(number) or not items[number] or sources[number] then
+                valid = false
+            else
+                sources[number] = true
+                source_ids[#source_ids + 1] = items[number].id
+            end
         end
-        if candidate.kind == types.KIND.LESSON and count >= REFLECTION_MIN_SOURCES then grounded[#grounded + 1] = candidate end
+        if valid and #source_ids >= REFLECTION_MIN_SOURCES and candidate.cardinality == types.CARDINALITY.MULTI then
+            candidate.source_ids = source_ids
+            grounded[#grounded + 1] = candidate
+        else return nil, validation_error("reflection", "grounding") end
     end
-    return grounded, nil
+    return M.normalize(model, grounded, items, nil)
 end
 
--- Returns { action, target_ids } over the stable ids of `neighbors`, choosing
--- among `actions`.
+-- First matching relation wins. An update selects the first updated single-valued
+-- key and keeps only that key's single-valued targets, preserving attribute identity.
+local RELATION_ACTIONS = {
+    { relation = "same", action = types.ACTION.NOOP },
+    { relation = "updates", action = types.ACTION.SUPERSEDE },
+    { relation = "rephrases", action = types.ACTION.MERGE },
+    { relation = "contradicts", action = types.ACTION.CONFLICT },
+    { relation = "unrelated", action = types.ACTION.ADD },
+}
+
 function M.judge(model: string, candidate: any, neighbors: { any }, actions: { string }): (any?, error?)
-    local ids: { string } = {}
-    local known: { [string]: boolean } = {}
-    local listing: { any } = {}
-    for _, item in ipairs(neighbors) do
-        ids[#ids + 1] = item.id
-        known[item.id] = true
-        listing[#listing + 1] = { id = item.id, kind = item.kind, key = item.key, content = item.content, valid_at = item.valid_at }
+    local allowed: { string } = {}
+    for _, choice in ipairs(RELATION_ACTIONS) do
+        for _, action in ipairs(actions) do
+            if choice.action == action then allowed[#allowed + 1] = choice.relation end
+        end
+    end
+    local required: { string } = {}
+    local properties, listing = {}, {}
+    for index, item in ipairs(neighbors) do
+        local number = tostring(index)
+        required[#required + 1] = number
+        properties[number] = enum_string(types.compatible_kinds(candidate.kind, item.kind) and allowed or { "unrelated" })
+        listing[number] = { id = item.id, kind = item.kind, key = item.key, cardinality = item.cardinality,
+            value = item.value, content = item.content, valid_at = item.valid_at }
     end
     local schema = {
         type = "object",
         additionalProperties = false,
-        required = { "action", "target_ids", "reason" },
+        required = { "relations", "reason" },
         properties = {
-            action = { type = "string", enum = actions },
-            target_ids = { type = "array", items = { type = "string", enum = ids } },
-            reason = { type = "string" },
+            relations = { type = "object", additionalProperties = false, required = required, properties = properties },
+            reason = bounded_string(LIMITS.reason),
         },
     }
-    local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT, json.encode({
-            new_memory = { kind = candidate.kind, key = candidate.key, content = candidate.content, valid_at = candidate.valid_at,
-                stated = candidate.stated },
+    local budget, budget_err = output_budget(schema, model)
+    if budget_err then return nil, budget_err end
+    local response, err = llm.structured_output(schema, messages(JUDGE_PROMPT .. JSON_FORMAT, json.encode({
+            new_memory = { kind = candidate.kind, key = candidate.key, cardinality = candidate.cardinality, value = candidate.value,
+                content = candidate.content, valid_at = candidate.valid_at,
+                stated = candidate.stated }, conversation = candidate.conversation,
             existing_memories = listing,
-        })), { model = model })
+        })), { model = model, max_tokens = budget })
     if err then return nil, model_error("memory reconcile judge", err) end
-    local data = response and response.result
-    if type(data) ~= "table" or type(data.action) ~= "string" or type(data.target_ids) ~= "table" then
-        return nil, types.unavailable("memory reconcile judge returned malformed output")
+    local response_err = response_error(response, "memory reconcile judge", schema)
+    if response_err then return nil, response_err end
+    local relations = response.result.relations
+    for _, choice in ipairs(RELATION_ACTIONS) do
+        local targets: { string } = {}
+        local single_key = nil
+        if choice.action == types.ACTION.SUPERSEDE then
+            for index, item in ipairs(neighbors) do
+                if relations[tostring(index)] == choice.relation and item.cardinality == types.CARDINALITY.SINGLE then
+                    single_key = item.key
+                    break
+                end
+            end
+        end
+        for index, item in ipairs(neighbors) do
+            if relations[tostring(index)] == choice.relation and
+                (choice.action ~= types.ACTION.SUPERSEDE or item.cardinality ~= types.CARDINALITY.SINGLE or item.key == single_key) then
+                targets[#targets + 1] = item.id
+            end
+        end
+        if #targets > 0 then
+            return { action = choice.action, target_ids = choice.action == types.ACTION.ADD and {} or targets }, nil
+        end
     end
-    local valid_action = false
-    for _, action in ipairs(actions) do if action == data.action then valid_action = true end end
-    if not valid_action then return nil, types.unavailable("memory reconcile judge returned an unknown action") end
-    local targets: { string } = {}
-    for _, id in ipairs(data.target_ids) do
-        if not known[id] then return nil, types.unavailable("memory reconcile judge returned an unknown memory id") end
-        targets[#targets + 1] = id
-    end
-    if data.action ~= types.ACTION.ADD and #targets == 0 then
-        return nil, types.unavailable("memory reconcile judge returned " .. data.action .. " without targets")
-    end
-    return { action = data.action, target_ids = targets }, nil
+    return { action = types.ACTION.ADD, target_ids = {} }, nil
 end
 
 function M.embed(model: string, texts: { string }): (any?, error?)

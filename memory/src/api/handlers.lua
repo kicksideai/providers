@@ -1,10 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- HTTP surface of the memory web component, under /memory/{id}. Every route
--- authorizes the memory component for the action, then reads the read model or
--- appends typed operations through the engine.
 
 local http = require("http")
-local json = require("json")
 local security = require("security")
 local http_errors = require("http_errors")
 local component = require("component")
@@ -35,8 +31,6 @@ local function fail(res: any, err: any)
     refuse(res, status, (type(err) == "userdata" and classification.kind ~= nil) and err:message() or tostring(err))
 end
 
--- Request preamble: HTTP context, actor, memory id, access, and the memory's
--- store, which also proves the knowledge base is a memory.
 local function open(access: integer): (any?, any?, string?, any?)
     local res = http.response()
     local req = http.request()
@@ -60,8 +54,8 @@ end
 local function body_of(req: any): any
     local raw = req:body()
     if type(raw) ~= "string" or raw == "" then return {} end
-    local decoded, err = json.decode(raw)
-    if err or type(decoded) ~= "table" then return nil end
+    local decoded, decode_err = types.decode_json(raw)
+    if decode_err or not raw:match("^%s*{") or type(decoded) ~= "table" then return nil end
     return decoded
 end
 
@@ -129,7 +123,7 @@ function M.list_memories()
     local more = false
     while true do
         local rows, err = component.query({
-            impl_ids = { "kickside.memory:memory_kb" }, include = { meta = true }, access_mask = component.ACCESS.READ,
+            impl_ids = { "kickside.memory:memory_store" }, include = { meta = true }, access_mask = component.ACCESS.READ,
             text = query, order_by = { field = "created_at", direction = "DESC" }, limit = MAX_PAGE, offset = scanned,
         })
         if err then return fail(res, err) end
@@ -244,7 +238,6 @@ function M.resolve_conflict()
     end)
 end
 
--- Conflict groups, a page of whole groups at a time.
 function M.list_conflicts()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end

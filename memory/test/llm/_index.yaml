@@ -2,10 +2,6 @@
 version: "1.0"
 namespace: app.llm
 
-# Deterministic model provider for the memory suites. Vectors are hashed bags
-# of words; structured outputs and generations are scripted per test through
-# the app_llm_script table, and an unscripted call is a provider error.
-
 entries:
   - name: script
     kind: library.lua
@@ -16,7 +12,7 @@ entries:
     kind: function.lua
     source: file://provider.lua
     method: embed
-    modules: [sql, json, hash]
+    modules: [hash, ctx]
     imports:
       script: app.llm:script
 
@@ -24,7 +20,7 @@ entries:
     kind: function.lua
     source: file://provider.lua
     method: structured_output
-    modules: [sql, json, hash]
+    modules: [hash, ctx]
     imports:
       script: app.llm:script
 
@@ -32,7 +28,7 @@ entries:
     kind: function.lua
     source: file://provider.lua
     method: generate
-    modules: [sql, json, hash]
+    modules: [hash, ctx]
     imports:
       script: app.llm:script
 
@@ -68,7 +64,7 @@ entries:
       class: [default, fast]
       priority: 100
     max_tokens: 100000
-    output_tokens: 8000
+    output_tokens: 32768
     providers:
       - id: app.llm:provider
         provider_model: test-fast
@@ -86,3 +82,29 @@ entries:
     providers:
       - id: app.llm:provider
         provider_model: test-embed
+
+  - name: test-small
+    kind: registry.entry
+    meta:
+      type: llm.model
+      name: test-small
+      title: Small output test model
+      capabilities: [generate, structured_output]
+    max_tokens: 100000
+    output_tokens: 256
+    providers:
+      - id: app.llm:provider
+        provider_model: test-small
+
+  - name: test-bounded
+    kind: registry.entry
+    meta:
+      type: llm.model
+      name: test-bounded
+      title: Bounded output test model
+      capabilities: [generate, structured_output]
+    max_tokens: 100000
+    output_tokens: 8192
+    providers:
+      - id: app.llm:provider
+        provider_model: test-bounded

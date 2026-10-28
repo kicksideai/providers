@@ -1,12 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Memory storage. The ledger holds structure only; memory text and typed
--- values live in kickside_memory_kb_payloads, committed with the event that adds
--- the item and erased on forget. kickside_memory_kb_items is the projection of the
--- ledger with a searchable copy of each payload, so a rebuild restores
--- structure from the ledger and text from the payloads. kickside_memory_kb_keys
--- holds each key's cardinality per scope, set by the first item of the key. kickside_memory_kb_runs and
--- kickside_memory_kb_cursors hold the frozen identity and progress of deferred
--- capture work.
 
 local function run(db: any, statements: { string })
     for _, statement in ipairs(statements) do
@@ -17,7 +9,7 @@ end
 
 local POSTGRES = {
     [=[CREATE EXTENSION IF NOT EXISTS vector]=],
-    [=[CREATE TABLE kickside_memory_kb_stores (
+    [=[CREATE TABLE kickside_memory_stores (
         component_id text PRIMARY KEY,
         kb_type text NOT NULL,
         embedding_model text NOT NULL,
@@ -25,7 +17,7 @@ local POSTGRES = {
         created_at text NOT NULL,
         updated_at text NOT NULL
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_items (
+    [=[CREATE TABLE kickside_memory_items (
         id text PRIMARY KEY,
         component_id text NOT NULL,
         claim_id text NOT NULL,
@@ -52,30 +44,32 @@ local POSTGRES = {
         last_seq bigint NOT NULL,
         search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', regexp_replace(COALESCE(content, ''), '[^[:alnum:]]+', ' ', 'g'))) STORED
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_scope ON kickside_memory_kb_items (component_id, scope_key, kind, status)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_key ON kickside_memory_kb_items (component_id, scope_key, key, status)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_claim ON kickside_memory_kb_items (component_id, claim_id)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_conflict ON kickside_memory_kb_items (component_id, conflict_group)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_successor ON kickside_memory_kb_items (component_id, superseded_by)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_fts ON kickside_memory_kb_items USING gin (search_vector)]=],
-    [=[CREATE TABLE kickside_memory_kb_payloads (
+    [=[CREATE INDEX idx_kickside_memory_items_scope ON kickside_memory_items (component_id, scope_key, kind, status)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_key ON kickside_memory_items (component_id, scope_key, key, status)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_claim ON kickside_memory_items (component_id, claim_id)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_conflict ON kickside_memory_items (component_id, conflict_group)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_successor ON kickside_memory_items (component_id, superseded_by)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_fts ON kickside_memory_items USING gin (search_vector)]=],
+    [=[CREATE TABLE kickside_memory_payloads (
         item_id text PRIMARY KEY,
         component_id text NOT NULL,
         owner_item_id text NOT NULL,
         content text NOT NULL,
         value jsonb,
         content_hash text NOT NULL,
+        embedding text,
         created_at text NOT NULL
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_payloads_owner ON kickside_memory_kb_payloads (component_id, owner_item_id)]=],
-    [=[CREATE TABLE kickside_memory_kb_keys (
+    [=[CREATE INDEX idx_kickside_memory_payloads_owner ON kickside_memory_payloads (component_id, owner_item_id)]=],
+    [=[CREATE TABLE kickside_memory_keys (
+        id TEXT NOT NULL UNIQUE,
         component_id text NOT NULL,
         scope_key text NOT NULL,
         key text NOT NULL,
         cardinality text NOT NULL,
         PRIMARY KEY (component_id, scope_key, key)
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_provenance (
+    [=[CREATE TABLE kickside_memory_provenance (
         item_id text NOT NULL,
         component_id text NOT NULL,
         host_kind text NOT NULL,
@@ -84,16 +78,16 @@ local POSTGRES = {
         recorded_at text NOT NULL,
         PRIMARY KEY (item_id, host_kind, host_id, event_id)
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_provenance_component ON kickside_memory_kb_provenance (component_id)]=],
-    [=[CREATE TABLE kickside_memory_kb_embeddings (
+    [=[CREATE INDEX idx_kickside_memory_provenance_component ON kickside_memory_provenance (component_id)]=],
+    [=[CREATE TABLE kickside_memory_embeddings (
         item_id text PRIMARY KEY,
         component_id text NOT NULL,
         content_hash text NOT NULL,
         embedding vector(512) NOT NULL
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_embeddings_component ON kickside_memory_kb_embeddings (component_id)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_embeddings_vector ON kickside_memory_kb_embeddings USING hnsw (embedding vector_cosine_ops)]=],
-    [=[CREATE TABLE kickside_memory_kb_cursors (
+    [=[CREATE INDEX idx_kickside_memory_embeddings_component ON kickside_memory_embeddings (component_id)]=],
+    [=[CREATE INDEX idx_kickside_memory_embeddings_vector ON kickside_memory_embeddings USING hnsw (embedding vector_cosine_ops)]=],
+    [=[CREATE TABLE kickside_memory_cursors (
         component_id text NOT NULL,
         host_kind text NOT NULL,
         host_id text NOT NULL,
@@ -105,12 +99,12 @@ local POSTGRES = {
         updated_at text NOT NULL,
         PRIMARY KEY (component_id, host_kind, host_id)
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_runs (
+    [=[CREATE TABLE kickside_memory_runs (
         id text PRIMARY KEY,
         component_id text NOT NULL,
         run_type text NOT NULL,
         status text NOT NULL,
-        job_id text,
+        job_id uuid,
         host_kind text,
         host_id text,
         agent_id text,
@@ -125,11 +119,18 @@ local POSTGRES = {
         started_at text,
         finished_at text
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_runs_component ON kickside_memory_kb_runs (component_id, run_type, created_at)]=],
+    [=[CREATE INDEX idx_kickside_memory_runs_by_component ON kickside_memory_runs (component_id, run_type, created_at)]=],
+    [=[CREATE TABLE kickside_memory_run_sources (
+        component_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        PRIMARY KEY (component_id, run_id, event_id)
+    )]=],
+    [=[CREATE INDEX idx_kickside_memory_run_sources_event ON kickside_memory_run_sources (component_id, event_id, run_id)]=],
 }
 
 local SQLITE = {
-    [=[CREATE TABLE kickside_memory_kb_stores (
+    [=[CREATE TABLE kickside_memory_stores (
         component_id TEXT PRIMARY KEY,
         kb_type TEXT NOT NULL,
         embedding_model TEXT NOT NULL,
@@ -137,7 +138,7 @@ local SQLITE = {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_items (
+    [=[CREATE TABLE kickside_memory_items (
         id TEXT PRIMARY KEY,
         component_id TEXT NOT NULL,
         claim_id TEXT NOT NULL,
@@ -163,33 +164,35 @@ local SQLITE = {
         priority INTEGER NOT NULL DEFAULT 0,
         last_seq INTEGER NOT NULL
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_scope ON kickside_memory_kb_items (component_id, scope_key, kind, status)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_key ON kickside_memory_kb_items (component_id, scope_key, key, status)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_claim ON kickside_memory_kb_items (component_id, claim_id)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_conflict ON kickside_memory_kb_items (component_id, conflict_group)]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_items_successor ON kickside_memory_kb_items (component_id, superseded_by)]=],
-    [=[CREATE VIRTUAL TABLE kickside_memory_kb_fts USING fts5(
+    [=[CREATE INDEX idx_kickside_memory_items_scope ON kickside_memory_items (component_id, scope_key, kind, status)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_key ON kickside_memory_items (component_id, scope_key, key, status)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_claim ON kickside_memory_items (component_id, claim_id)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_conflict ON kickside_memory_items (component_id, conflict_group)]=],
+    [=[CREATE INDEX idx_kickside_memory_items_successor ON kickside_memory_items (component_id, superseded_by)]=],
+    [=[CREATE VIRTUAL TABLE kickside_memory_fts USING fts5(
         item_id UNINDEXED, content,
         tokenize = 'unicode61 remove_diacritics 2'
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_payloads (
+    [=[CREATE TABLE kickside_memory_payloads (
         item_id TEXT PRIMARY KEY,
         component_id TEXT NOT NULL,
         owner_item_id TEXT NOT NULL,
         content TEXT NOT NULL,
         value TEXT,
         content_hash TEXT NOT NULL,
+        embedding TEXT,
         created_at TEXT NOT NULL
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_payloads_owner ON kickside_memory_kb_payloads (component_id, owner_item_id)]=],
-    [=[CREATE TABLE kickside_memory_kb_keys (
+    [=[CREATE INDEX idx_kickside_memory_payloads_owner ON kickside_memory_payloads (component_id, owner_item_id)]=],
+    [=[CREATE TABLE kickside_memory_keys (
+        id TEXT NOT NULL UNIQUE,
         component_id TEXT NOT NULL,
         scope_key TEXT NOT NULL,
         key TEXT NOT NULL,
         cardinality TEXT NOT NULL,
         PRIMARY KEY (component_id, scope_key, key)
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_provenance (
+    [=[CREATE TABLE kickside_memory_provenance (
         item_id TEXT NOT NULL,
         component_id TEXT NOT NULL,
         host_kind TEXT NOT NULL,
@@ -198,14 +201,14 @@ local SQLITE = {
         recorded_at TEXT NOT NULL,
         PRIMARY KEY (item_id, host_kind, host_id, event_id)
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_provenance_component ON kickside_memory_kb_provenance (component_id)]=],
-    [=[CREATE VIRTUAL TABLE kickside_memory_kb_embeddings USING vec0(
+    [=[CREATE INDEX idx_kickside_memory_provenance_component ON kickside_memory_provenance (component_id)]=],
+    [=[CREATE VIRTUAL TABLE kickside_memory_embeddings USING vec0(
         item_id TEXT PRIMARY KEY,
         component_id TEXT PARTITION KEY,
         embedding float[512],
         +content_hash TEXT
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_cursors (
+    [=[CREATE TABLE kickside_memory_cursors (
         component_id TEXT NOT NULL,
         host_kind TEXT NOT NULL,
         host_id TEXT NOT NULL,
@@ -217,7 +220,7 @@ local SQLITE = {
         updated_at TEXT NOT NULL,
         PRIMARY KEY (component_id, host_kind, host_id)
     )]=],
-    [=[CREATE TABLE kickside_memory_kb_runs (
+    [=[CREATE TABLE kickside_memory_runs (
         id TEXT PRIMARY KEY,
         component_id TEXT NOT NULL,
         run_type TEXT NOT NULL,
@@ -237,18 +240,26 @@ local SQLITE = {
         started_at TEXT,
         finished_at TEXT
     )]=],
-    [=[CREATE INDEX idx_kickside_memory_kb_runs_component ON kickside_memory_kb_runs (component_id, run_type, created_at)]=],
+    [=[CREATE INDEX idx_kickside_memory_runs_by_component ON kickside_memory_runs (component_id, run_type, created_at)]=],
+    [=[CREATE TABLE kickside_memory_run_sources (
+        component_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        PRIMARY KEY (component_id, run_id, event_id)
+    )]=],
+    [=[CREATE INDEX idx_kickside_memory_run_sources_event ON kickside_memory_run_sources (component_id, event_id, run_id)]=],
 }
 
 local DROP = {
-    "DROP TABLE kickside_memory_kb_runs",
-    "DROP TABLE kickside_memory_kb_cursors",
-    "DROP TABLE kickside_memory_kb_embeddings",
-    "DROP TABLE kickside_memory_kb_provenance",
-    "DROP TABLE kickside_memory_kb_payloads",
-    "DROP TABLE kickside_memory_kb_keys",
-    "DROP TABLE kickside_memory_kb_items",
-    "DROP TABLE kickside_memory_kb_stores",
+    "DROP TABLE kickside_memory_run_sources",
+    "DROP TABLE kickside_memory_runs",
+    "DROP TABLE kickside_memory_cursors",
+    "DROP TABLE kickside_memory_embeddings",
+    "DROP TABLE kickside_memory_provenance",
+    "DROP TABLE kickside_memory_payloads",
+    "DROP TABLE kickside_memory_keys",
+    "DROP TABLE kickside_memory_items",
+    "DROP TABLE kickside_memory_stores",
 }
 
 return require("migration").define(function()
@@ -260,7 +271,7 @@ return require("migration").define(function()
         database("sqlite", function()
             up(function(db) run(db, SQLITE) end)
             down(function(db)
-                run(db, { "DROP TABLE kickside_memory_kb_fts" })
+                run(db, { "DROP TABLE kickside_memory_fts" })
                 run(db, DROP)
             end)
         end)

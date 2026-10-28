@@ -2,7 +2,7 @@
 organization: kickside
 module: memory
 type: plugin
-description: Memory knowledge bases with typed, versioned long-term memory, and its explicitly selected agent trait and memory provider that capture, recall and render it.
+description: Memory knowledge bases with typed, versioned long-term memory, and its explicitly selected agent trait that captures, recalls and renders it.
 license: LicenseRef-KickSide-Community-1.0
 repository: https://github.com/kicksideai/providers
 homepage: https://wippy.ai

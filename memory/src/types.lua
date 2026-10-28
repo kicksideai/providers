@@ -1,6 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Shared vocabulary of the memory engine: item kinds, scopes, statuses, ledger
--- event types, run types, and the small value helpers every layer uses.
 
 local time = require("time")
 local json = require("json")
@@ -9,7 +7,7 @@ local security = require("security")
 
 local M = {}
 
-M.KB_TYPE = "memory"
+M.STORE_TYPE = "memory"
 M.THREAD_KIND = "kickside.memory.ledger"
 M.SOURCE = "kickside.memory"
 M.EMBEDDING_DIMENSIONS = 512
@@ -22,22 +20,21 @@ M.KIND = {
     PREFERENCE = "preference",
     SKILL = "skill",
     LESSON = "lesson",
+    PLAN = "plan",
 }
+
+M.MEMORY_KINDS = { M.KIND.FACT, M.KIND.PREFERENCE, M.KIND.PROFILE_SLOT, M.KIND.SKILL, M.KIND.LESSON, M.KIND.PLAN }
 
 M.SCOPE = {
     AGENT = "agent",
     OWNER = "owner",
 }
 
--- How many current values a key holds in one scope. Kind is a presentation
--- label; cardinality and the canonical key decide uniqueness.
 M.CARDINALITY = {
     SINGLE = "single",
     MULTI = "multi",
 }
 
--- archived is reversible; forgotten is an erase: the item keeps its place in
--- the history but no text, value, vector or provenance.
 M.STATUS = {
     CURRENT = "current",
     SUPERSEDED = "superseded",
@@ -48,7 +45,6 @@ M.STATUS = {
 
 M.ITEM_SOURCE = {
     CAPTURE = "capture",
-    TOOL = "tool",
     REFLECTION = "reflection",
     OWNER = "owner",
 }
@@ -80,6 +76,7 @@ M.RUN_STATUS = {
     RUNNING = "running",
     SUCCEEDED = "succeeded",
     FAILED = "failed",
+    REJECTED = "rejected",
 }
 
 M.ACTION = {
@@ -110,12 +107,11 @@ function M.now(): string
     return time.now():utc():format(time.RFC3339)
 end
 
--- Normalize an RFC3339 instant to UTC seconds; nil when it does not parse.
+-- SQLite datetime text represents UTC; both database formats normalize to seconds.
 function M.utc(value: any): string?
     if type(value) ~= "string" or value == "" then return nil end
     local text = value
     if text:match("^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d:%d%d") then
-        -- SQLite datetime() text is UTC without a zone designator.
         text = text:sub(1, 10) .. "T" .. text:sub(12, 19) .. "Z"
     end
     local parsed, err = time.parse(time.RFC3339, text)
@@ -123,7 +119,6 @@ function M.utc(value: any): string?
     return parsed:utc():format(time.RFC3339)
 end
 
--- RFC3339 instant `seconds` after now.
 function M.after_seconds(seconds: number): string
     return time.now():add(math.floor(seconds) * time.SECOND):utc():format(time.RFC3339)
 end
@@ -134,31 +129,50 @@ function M.normalize_key(value: any): string
     return text
 end
 
--- One input budget for capture and both ingestion entry points, applied before
--- a run persists the span or offers it to extraction.
-function M.bounded_span(span: { any }): { any }
-    local remaining = 24000
-    local out: { any } = {}
-    for _, message in ipairs(span) do
-        if remaining == 0 then break end
-        local text = type(message.text) == "string" and message.text:sub(1, remaining) or ""
-        if text ~= "" then
-            local entry: { [string]: any } = {}
-            for k, v in pairs(message) do entry[k] = v end
-            entry.text = text
-            remaining = remaining - #text
-            out[#out + 1] = entry
-        end
-    end
-    return out
+function M.compatible_kinds(left: string, right: string): boolean
+    if not M.KIND_SET[left] or not M.KIND_SET[right] then return false end
+    if left == M.KIND.PLAN or right == M.KIND.PLAN then return left == right end
+    if left == M.KIND.LESSON or right == M.KIND.LESSON then return left == right end
+    return true
 end
 
--- Topic identity is independent of the text and value it labels.
-function M.topic_key(value: any, content: string, claim_value: any?): (string?, error?)
-    local key = M.normalize_key(value)
-    if #key == 0 or #key > 64 or not key:match("^[a-z][a-z0-9_]*$") then
+function M.cosine_similarity(left: { number }, right: { number }): number
+    local dot, left_norm, right_norm = 0, 0, 0
+    for i, value in ipairs(left) do
+        dot = dot + value * right[i]
+        left_norm = left_norm + value * value
+        right_norm = right_norm + right[i] * right[i]
+    end
+    if left_norm == 0 or right_norm == 0 then return 0 end
+    return dot / math.sqrt(left_norm * right_norm)
+end
+
+function M.default_cardinality(kind: string): string
+    return kind == M.KIND.PLAN and M.CARDINALITY.SINGLE or M.CARDINALITY.MULTI
+end
+
+function M.render_content(row: any): string
+    if row.kind ~= M.KIND.PLAN then return row.content end
+    return row.content .. " Details: " .. row.value.details .. " Next step: " .. row.value.next_step .. " Status: " .. row.value.status .. "."
+end
+
+function M.validate_value(kind: string, value: any): error?
+    if value == nil then return M.invalid("memory value is required") end
+    local _, encode_err = json.encode(value)
+    if encode_err then return M.invalid("memory value must be JSON") end
+    if kind ~= M.KIND.PLAN then return nil end
+    if type(value) ~= "table" or (value.status ~= "open" and value.status ~= "done")
+        or type(value.next_step) ~= "string" or type(value.details) ~= "string" then
+        return M.invalid("a plan requires status open or done, next_step and details")
+    end
+    return nil
+end
+
+function M.topic_key(value: any, content: string, claim_value: any?, kind: string?): (string?, error?)
+    if type(value) ~= "string" or #value > 64 or not value:match("^[a-z][a-z0-9_]*$") then
         return nil, M.invalid("a topic key of up to 64 letters, digits and underscores is required")
     end
+    local key = value
     local tokens: { string } = {}
     for token in key:gmatch("[^_]+") do tokens[#tokens + 1] = token end
     local function copied(text: string): boolean
@@ -184,12 +198,13 @@ function M.topic_key(value: any, content: string, claim_value: any?): (string?, 
             end
             return leaf ~= nil and copied(tostring(leaf))
         end
-        if copied_leaf(claim_value) then return nil, M.invalid("topic key must not contain the memory value") end
+        if kind ~= M.KIND.PLAN and copied_leaf(claim_value) then
+            return nil, M.invalid("topic key must not contain the memory value")
+        end
     end
     return key, nil
 end
 
--- The calling actor's id, or "" without one.
 function M.actor_id(): string
     local actor = security.actor()
     return actor and actor:id() or ""
@@ -199,45 +214,50 @@ function M.scope_key(scope_family: string, scope_id: string): string
     return scope_family .. ":" .. scope_id
 end
 
--- A value as a tagged tuple, so an absent value hashes apart from every
--- present one.
-local function typed(value: any): { any }
+-- The tag distinguishes an absent value from every JSON value in a canonical hash.
+local function value_tuple(value: any): { any }
     if value == nil then return { "none" } end
     return { "value", value }
 end
 
--- Canonical hash of a typed tuple: value types and object keys are kept, so
--- true, "true", 1 and "1" are four different claims.
-function M.digest(parts: any): (string?, error?)
-    local digest, err = canonical_json.hash(parts)
-    if err then return nil, err end
-    return digest, nil
-end
-
--- A claim: one typed value of a key in a scope. The same claim made again is
--- the same claim, whenever and however it is phrased; a text value compares
--- without case or spacing differences.
+-- Repeated string claims share identity after case and whitespace normalization.
 function M.claim_id(component_id: string, scope_key: string, key: string, value: any): (string?, error?)
     if type(value) == "string" then value = (M.trim(value):lower():gsub("%s+", " ")) end
-    return M.digest({ "claim", component_id, scope_key, key, typed(value) })
+    return canonical_json.hash({ "claim", component_id, scope_key, key, value_tuple(value) })
 end
 
--- Hash of an item's text and value, kept with the structure so erasure can
--- find every stored copy without the ledger holding the text.
 function M.content_hash(component_id: string, content: string, value: any): (string?, error?)
-    return M.digest({ "content", component_id, content, typed(value) })
+    return canonical_json.hash({ "content", component_id, content, value_tuple(value) })
 end
 
-function M.decode_json(value: any): any
-    if type(value) == "table" then return value end
-    if type(value) ~= "string" or value == "" then return nil end
+function M.decode_json(value: any): (any?, error?)
+    if type(value) == "table" then return value, nil end
+    if type(value) ~= "string" then return nil, M.internal("memory JSON value is missing or invalid") end
     local decoded, err = json.decode(value)
-    if err then return nil end
-    return decoded
+    if err then return nil, M.failed("memory JSON decode failed", err) end
+    return decoded, nil
+end
+
+function M.encode_object(value: any, name: string): (string?, error?)
+    if type(value) ~= "table" then return nil, M.internal("memory " .. name .. " must be a JSON object") end
+    for key in pairs(value) do
+        if type(key) ~= "string" then return nil, M.internal("memory " .. name .. " must be a JSON object") end
+    end
+    if next(value) == nil then return "{}", nil end
+    return json.encode(value)
+end
+
+function M.decode_object(value: any, name: string): (any?, error?)
+    local decoded, err = M.decode_json(value)
+    if err then return nil, err end
+    if type(value) ~= "string" or not value:match("^%s*{") or type(decoded) ~= "table" then
+        return nil, M.internal("memory " .. name .. " must be a JSON object")
+    end
+    return decoded, nil
 end
 
 function M.invalid(message: string, details: any?): error
-    return errors.new({ kind = errors.INVALID, message = message, details = details })
+    return errors.new({ kind = errors.INVALID, retryable = false, message = message, details = details })
 end
 
 function M.not_found(message: string): error
@@ -248,13 +268,22 @@ function M.unavailable(message: string, details: any?): error
     return errors.new({ kind = errors.UNAVAILABLE, message = message, retryable = true, details = details })
 end
 
--- A failed dependency call: what failed, with the dependency's own kind and
--- retry flag. An error without a kind is internal and not retried.
 function M.failed(message: string, err: any): error
     if type(err) == "userdata" then
-        return errors.new({ kind = err:kind(), retryable = err:retryable() == true, message = message .. ": " .. err:message(), details = err:details() })
+        return errors.new({ kind = err:kind(), retryable = err:retryable() == true, message = message, details = err:details() })
     end
-    return errors.new({ kind = errors.INTERNAL, retryable = false, message = message .. ": " .. tostring(err) })
+    return errors.new({ kind = errors.INTERNAL, retryable = false, message = message })
+end
+
+function M.failure(err: any): (string?, error?)
+    local failure = { kind = errors.INTERNAL, code = errors.INTERNAL, explanation = "Memory operation violates an internal invariant.", retryable = false }
+    if type(err) == "userdata" then
+        local details = err:details() or {}
+        failure.kind, failure.code = err:kind(), details.code or details.cause_kind or err:kind()
+        failure.explanation = err:message()
+        failure.retryable = err:retryable() == true
+    end
+    return json.encode(failure)
 end
 
 function M.internal(message: string, details: any?): error

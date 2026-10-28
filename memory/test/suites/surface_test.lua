@@ -36,13 +36,110 @@ end
 
 local function define_tests()
     test.describe("memory surfaces", function()
-        test.before_each(function() fixture.script.reset() end)
+        test.it("exposes oversized source rejections through runs and activity without source text", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { extraction_model = "test-bounded" })
+            local session_id = "s-" .. user
+            local source = string.rep("private-source-", 2000)
+            fixture.history.record(session_id, { { id = "oversized", role = "user", content = source } })
+            local _, err = fixture.apply(user, "before_step", id, session_id, "agent-a")
+            test.is_nil(err, tostring(err))
+            local finished = fixture.wait_runs(user, id, "derive", 1)[1]
+            local response = get_path(user, "/memory/" .. id .. "/status")
+            test.eq(response.status, 200, response.raw)
+            local found = false
+            for _, run in ipairs(response.body.runs) do
+                if run.id == finished.id then
+                    found = true
+                    test.eq(run.status, "rejected")
+                    test.eq(run.stats.rejected_source_too_large, 1)
+                    test.eq(run.stats.source_bytes, #source)
+                    test.is_true(run.last_error:find("source_too_large", 1, true) ~= nil)
+                end
+            end
+            test.is_true(found)
+            test.is_nil((response.raw:find("private-source-", 1, true)))
+            test.eq(#fixture.script.requests(id, "structured_output"), 0)
+        end)
+
+        test.it("exposes exhausted model validation failures through run activity without partial writes", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session_id = "s-" .. user
+            local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "event")
+            local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", "event")
+            for i = 1, 3 do fixture.extraction(id, { good, bad }) end
+            fixture.history.record(session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
+            local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") },
+                fixture.agent_context(id, session_id, "agent-a"))
+            test.is_nil(err, tostring(err))
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            local job = fixture.wait_job(runs[1].job_id, "dead")
+            test.eq(job.attempts, 3)
+            test.eq(fixture.op(user, "run", { run_id = runs[1].id }).status, "failed")
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session_id })
+            test.is_true(cursor == nil or cursor.last_event_id == "")
+            local response = get_path(user, "/memory/" .. id .. "/status")
+            test.eq(response.status, 200, response.raw)
+            local found = false
+            for _, run in ipairs(response.body.runs) do
+                if run.id == runs[1].id then
+                    found = true
+                    test.eq(run.status, "failed")
+                    test.eq(json.decode(run.last_error).code, "model_output_invalid_extraction_topic_key")
+                    test.is_nil(run.stats.rejected)
+                    test.is_nil((json.encode(run.stats):find("private", 1, true)))
+                end
+            end
+            test.is_true(found)
+            fixture.settle(user, id)
+            local items = fixture.items(user, id)
+            test.eq(#items, 0)
+        end)
+
+        test.it("assigns conversation learning only to automatic capture", function()
+            local trait = registry.get("kickside.memory:memory").data.prompt
+            test.is_true(trait:find("Memory learns from the conversation automatically", 1, true) ~= nil, trait)
+            test.is_true(trait:find("Use SearchMemory to look things up", 1, true) ~= nil, trait)
+            test.is_true(trait:find("Use ForgetMemory only when the user asks to forget", 1, true) ~= nil, trait)
+            local forget = registry.get("kickside.memory.agent:forget_tool").meta.llm_description
+            test.is_true(forget:find("only when the user explicitly asks to forget", 1, true) ~= nil, forget)
+        end)
+
+        test.it("publishes the same typed tool contracts that the runtime implements", function()
+            local forget = json.decode(registry.get("kickside.memory.agent:forget_tool").meta.input_schema)
+            test.eq(forget.required[1], "key")
+            test.is_nil(forget.properties.item_id)
+            local search = registry.get("kickside.memory.agent:search_tool")
+            test.is_nil(json.decode(search.meta.input_schema).properties.fields)
+            local shape = json.decode(search.meta.output_schema).properties.items.items
+            test.eq(#shape.required, 9)
+            test.is_false(shape.additionalProperties)
+            test.not_nil(shape.properties.key)
+            test.not_nil(shape.properties.value)
+        end)
+
+        test.it("rejects non-object JSON request bodies", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local gateway = assert(registry.get("app:gateway"))
+            local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
+            local minted = assert(session.mint(assert(groups.get_user_with_groups(user))))
+            for _, raw in ipairs({ "[]", "null", "{", "false" }) do
+                local response, err = http_client.request("POST", "http://127.0.0.1:" .. port .. "/api/memory/" .. id .. "/items", {
+                    headers = { Authorization = "Bearer " .. minted.token, ["Content-Type"] = "application/json" }, body = raw,
+                })
+                test.is_nil(err, tostring(err))
+                test.eq(response.status_code, 400)
+                test.eq(json.decode(response.body).error, "body must be a JSON object")
+            end
+        end)
 
         test.it("serves each driver's declared web component from its own static mount", function()
             local gateway = assert(registry.get("app:gateway"))
             local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
             for _, surface in ipairs({
-                {id = "kickside.memory:knowledge_memory_component", base = "kickside-memory"},
+                {id = "kickside.memory:memory_settings", base = "kickside-memory"},
                 {id = "kickside.memory:memory_create_view", base = "kickside-memory"},
                 {id = "kickside.memory:memory_view", base = "kickside-memory"},
             }) do
@@ -149,7 +246,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local function seed(key: string, n: integer)
-                local _, err = fixture.call_as(user, "app.suites:rework_call", {
+                local _, err = fixture.call_as(user, "app.suites:persistence_call", {
                     op = "seed", component_id = id, user = user, count = n, conflict = true, key = key, idempotency = key, content = key == "first_topic" and "Synthetic evidence." or "Distant evidence.",
                 })
                 test.is_nil(err, tostring(err))
@@ -170,31 +267,6 @@ local function define_tests()
             test.eq(#first.alternatives[1].options + #second.alternatives[1].options, 62)
         end)
 
-        test.it("requires Remember to name a topic and retains a false value", function()
-            local user = fixture.user()
-            local component_id = fixture.memory(user)
-            local context = fixture.agent_context(component_id, "surface-" .. user, "agent-a")
-
-            local missing = fixture.op(user, "tool_remember", { input = {
-                content = "The user enables notifications.", value = true,
-            } }, context)
-            test.eq(missing.success, false)
-
-            local content_key = fixture.op(user, "tool_remember", { input = {
-                content = "The user enables notifications.", key = "The user enables notifications.", value = true,
-            } }, context)
-            test.eq(content_key.success, false)
-
-            local stored = fixture.op(user, "tool_remember", { input = {
-                content = "The user disables notifications.", key = "notification_setting", value = false,
-            } }, context)
-            test.eq(stored.success, true, json.encode(stored))
-            fixture.settle(user, component_id)
-            local rows = live_for_key(user, component_id, "notification_setting")
-            test.eq(#rows, 1)
-            test.eq(rows[1].value, false)
-        end)
-
         test.it("returns each authorized member of an unresolved alternative group when the search page holds one group", function()
             local user = fixture.user()
             local component_id = fixture.memory(user)
@@ -204,9 +276,9 @@ local function define_tests()
             for index, value in ipairs(values) do
                 local held = live_for_key(user, component_id, "cat_name")
                 if #held > 0 then
-                    local ids = {}
-                    for _, item in ipairs(held) do ids[#ids + 1] = item.id end
-                    fixture.verdict("CONFLICT", ids)
+                    local relations = {}
+                    for _ = 1, #held do relations[#relations + 1] = "contradicts" end
+                    fixture.relations(component_id, relations)
                 end
                 fixture.remember(user, component_id, {
                     fixture.candidate("fact", "cat_name", value, "The user's cat is called " .. value .. ".", "cat-" .. index),
@@ -277,12 +349,12 @@ local function define_tests()
             } })
             fixture.settle(user, component_id)
             fixture.op(user, "apply", { payload = fixture.payload("activate", session, "agent-a") }, context)
-            test.is_true(fixture.op(user, "prompt", {}, context):find("drinks tea", 1, true) ~= nil)
+            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink [drink]: tea", 1, true) ~= nil)
 
             local _, archive_err = fixture.op(user, "archive", { component_id = component_id, item_id = added.item_id })
             test.is_nil(archive_err, tostring(archive_err))
             fixture.settle(user, component_id)
-            test.is_true(fixture.op(user, "prompt", {}, context):find("drinks tea", 1, true) == nil)
+            test.is_true(fixture.op(user, "prompt", {}, context):find("Drink [drink]: tea", 1, true) == nil)
         end)
 
         test.it("rejects a pin whose rendered text was revised before its transaction", function()

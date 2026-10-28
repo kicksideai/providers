@@ -8,7 +8,6 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import ModelPicker from './ModelPicker.vue'
 import type { SchemaField } from './types'
 
-// One engine setting, rendered from its config_schema field.
 const props = defineProps<{ name: string; field: SchemaField; value: unknown }>()
 const emit = defineEmits<{ (e: 'update', v: unknown): void }>()
 const title = computed(() => props.field.title || props.name)
