@@ -8,11 +8,10 @@ local models = require("memory_models")
 local context = require("agent_context")
 local funcs = require("funcs")
 local prompt = require("agent_prompt")
-local recall = require("agent_recall")
-local tools = require("agent_tools")
 local items = require("memory_items")
 local runs = require("memory_runs")
 local ledger = require("memory_ledger")
+local db = require("memory_db")
 local jobs = require("memory_jobs")
 local bindings = require("memory_bindings")
 local component = require("component")
@@ -83,11 +82,10 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return id, err
     end,
     checkpoint = function(a: any) return funcs.call("kickside.memory.agent:checkpoint", a.payload) end,
-    recall = function(a: any) return recall.recall(a.input) end,
+    recall = function(a: any) return funcs.call("kickside.memory.agent:memory_provider_recall", a.input) end,
     build = function(a: any) return prompt.build(nil, a.context) end,
     prompt = function(_a: any) return prompt.prompt() end,
-    tool_search = function(a: any) return tools.search(a.input) end,
-    registered_tool_search = function(a: any) return funcs.call("kickside.memory.agent:search_tool", a.input) end,
+    tool_search = function(a: any) return funcs.call("kickside.memory.agent:search_tool", a.input) end,
     migrate = function(a: any) return funcs.call("kickside.memory.migrations:" .. a.name,
         { database_id = "app:migration_db", id = a.id, direction = "up" }) end,
     migration_exec = function(a: any): (any?, any?)
@@ -104,7 +102,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
         db:release()
         return result, err
     end,
-    tool_forget = function(a: any) return tools.forget(a.input) end,
+    tool_forget = function(a: any) return funcs.call("kickside.memory.agent:forget_tool", a.input) end,
     list = function(a: any) return items.list(a.component_id, a.filter or {}) end,
     get = function(a: any) return items.get(a.component_id, a.item_id) end,
     provenance = function(a: any) return items.provenance(a.component_id, a.item_id) end,
@@ -118,6 +116,13 @@ local OPS: { [string]: (any) -> (any, any) } = {
         local bodies = {}
         for _, event in ipairs(page.events or {}) do bodies[#bodies + 1] = { type = event.type, body = event.body } end
         return bodies, nil
+    end,
+    ledger_encode_failure = function(a: any): (any?, any?)
+        local body: any = {}
+        body.self = body
+        return db.write(a.component_id, function(tx: any, _sqlite: boolean): (any?, error?)
+            return ledger.append_tx(tx, a.component_id, { { type = types.EVENT.CONSOLIDATION_COMPLETED, body = body } }, nil, "encode-failure")
+        end)
     end,
     stored_text = function(a: any): (any, any)
         local db, db_err = sql.get("app:db")

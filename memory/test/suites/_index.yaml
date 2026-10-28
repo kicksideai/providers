@@ -25,11 +25,10 @@ entries:
       memory_models: kickside.memory.engine:models
       agent_context: kickside.memory.agent:context
       agent_prompt: kickside.memory.agent:prompt
-      agent_recall: kickside.memory.agent:recall
-      agent_tools: kickside.memory.agent:tools
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
       memory_ledger: kickside.memory.engine:ledger
+      memory_db: kickside.memory.persist:db
       memory_jobs: kickside.memory.engine:jobs
       memory_bindings: kickside.memory.engine:bindings
       component: kickside.component:component

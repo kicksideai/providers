@@ -44,8 +44,10 @@ entries:
       memory_jobs: kickside.memory.engine:jobs
       memory_models: kickside.memory.engine:models
 
-  - name: recall
-    kind: library.lua
+  - name: memory_provider_recall
+    kind: function.lua
+    meta:
+      comment: Scoped hybrid recall of current memories for each agent step.
     source: file://recall.lua
     modules: &recall_modules [ctx]
     imports: &recall_imports
@@ -53,26 +55,6 @@ entries:
       types: kickside.memory:types
       agent_context: kickside.memory.agent:context
       memory_recall: kickside.memory.engine:recall
-
-  - name: tools
-    kind: library.lua
-    source: file://tools.lua
-    modules: &tools_modules [ctx]
-    imports: &tools_imports
-      component: kickside.component:component
-      types: kickside.memory:types
-      agent_context: kickside.memory.agent:context
-      memory_items: kickside.memory.persist:items
-      memory_ops: kickside.memory.engine:ops
-      memory_recall: kickside.memory.engine:recall
-
-  - name: memory_provider_recall
-    kind: function.lua
-    meta:
-      comment: Scoped hybrid recall of current memories for each agent step.
-    source: file://recall.lua
-    modules: *recall_modules
-    imports: *recall_imports
     method: recall
 
   - name: memory_build
@@ -106,8 +88,14 @@ entries:
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "key": {"type": "string"}, "forgotten": {"type": "integer"}}, "required": ["success"]}
     source: file://tools.lua
-    modules: *tools_modules
-    imports: *tools_imports
+    modules: &tools_modules [ctx]
+    imports: &tools_imports
+      component: kickside.component:component
+      types: kickside.memory:types
+      agent_context: kickside.memory.agent:context
+      memory_items: kickside.memory.persist:items
+      memory_ops: kickside.memory.engine:ops
+      memory_recall: kickside.memory.engine:recall
     method: forget
 
   - name: memory_binding
