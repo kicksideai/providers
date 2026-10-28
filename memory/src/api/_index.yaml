@@ -6,7 +6,7 @@ entries:
   - name: list_items
     kind: function.lua
     meta:
-      comment: Lists a memory's items filtered by kind, status and scope family (READ).
+      comment: Lists memory items by kind, status, topic key and search query (READ).
     source: file://handlers.lua
     method: list_items
     modules: [http, security]
@@ -25,7 +25,7 @@ entries:
     kind: http.endpoint
     meta:
       router: ""
-      comment: Lists a memory's items filtered by kind, status and scope family (READ).
+      comment: Lists memory items by kind, status, topic key and search query (READ).
     method: GET
     func: list_items
     path: /memory/{id}/items
@@ -51,7 +51,7 @@ entries:
   - name: create_item
     kind: function.lua
     meta:
-      comment: Adds an identity, rule, skill or lesson item through the ledger (WRITE).
+      comment: Creates a typed memory item through the ledger (WRITE).
     source: file://handlers.lua
     method: create_item
     modules: [http, security]
@@ -61,7 +61,7 @@ entries:
     kind: http.endpoint
     meta:
       router: ""
-      comment: Adds an identity, rule, skill or lesson item through the ledger (WRITE).
+      comment: Creates a typed memory item through the ledger (WRITE).
     method: POST
     func: create_item
     path: /memory/{id}/items
@@ -69,7 +69,7 @@ entries:
   - name: edit_item
     kind: function.lua
     meta:
-      comment: Replaces an item's content with a new version that supersedes it (WRITE).
+      comment: Revises item content in place or supersedes it when its value changes (WRITE).
     source: file://handlers.lua
     method: edit_item
     modules: [http, security]
@@ -79,7 +79,7 @@ entries:
     kind: http.endpoint
     meta:
       router: ""
-      comment: Replaces an item's content with a new version that supersedes it (WRITE).
+      comment: Revises item content in place or supersedes it when its value changes (WRITE).
     method: PUT
     func: edit_item
     path: /memory/{id}/items/{item_id}
