@@ -5,8 +5,8 @@ local uuid = require("uuid")
 local types = require("types")
 local context = require("agent_context")
 local history = require("agent_history")
-local runs = require("memory_runs")
 local jobs = require("memory_jobs")
+local runs = require("memory_runs")
 local models = require("memory_models")
 
 local M = {}
@@ -96,7 +96,7 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     while first_entry <= #span and #span[first_entry].text > jobs.INPUT_BYTES do
         local entry = span[first_entry]
         local to_id = first_entry == #span and tostring(events[#events].id) or entry.id
-        local rejected, reject_err = runs.reject_capture({
+        local rejected, reject_err = jobs.reject_capture({
             id = uuid.v7(), component_id = memory_id :: string, run_type = types.RUN_TYPE.DERIVE,
             status = types.RUN_STATUS.REJECTED, finished_at = types.now(), actor_id = types.actor_id(),
             host_kind = host_kind, host_id = host_id, agent_id = types.trim(payload.agent and payload.agent.id),
