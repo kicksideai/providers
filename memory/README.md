@@ -23,7 +23,8 @@ into the shared memory binding plan and recalls that plan on each step. It suppl
 SearchMemory and ForgetMemory. Background capture learns from conversation automatically. Corrections supersede values and retain history.
 SearchMemory returns canonical keys and typed values. ForgetMemory selects the
 caller's attribute by key and erases its versions, payloads, vectors, provenance
-and retained source input; a multi-valued key also requires the selected value. Owner-scoped
+and retained source input. A value narrows it to that value's versions, so the
+value that replaced it stays current; a multi-valued key requires the value. Owner-scoped
 items belong to the signed-in user; agent identity and rules are managed on
 the memory page.
 

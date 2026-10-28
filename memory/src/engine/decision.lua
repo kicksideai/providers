@@ -390,8 +390,12 @@ function Decision:restore(item: any): error?
     return nil
 end
 
-function Decision:forget(item: any): error?
+-- Erases item with its versions and everything derived from them. With
+-- value_only, the first wave is the item's value alone: the versions holding
+-- the same claim, without the values that replaced it on a single key.
+function Decision:forget(item: any, value_only: boolean?): error?
     local visited, pending = {}, { item }
+    local first = true
     while #pending > 0 do
         local sources, identities = {}, {}
         for _, source in ipairs(pending) do
@@ -402,7 +406,13 @@ function Decision:forget(item: any): error?
             end
         end
         if #sources == 0 then break end
-        local versions, err = items.lineage(self.component_id, sources)
+        local versions, err
+        if first and value_only then
+            versions, err = self:claimed(item.scope_key, item.claim_id, types.RETAINED_STATUSES)
+        else
+            versions, err = items.lineage(self.component_id, sources)
+        end
+        first = false
         if err then return err end
         local ids = {}
         for _, version in ipairs(versions) do

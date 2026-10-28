@@ -114,6 +114,35 @@ local function define_tests()
             for _, item in ipairs(fixture.items(user, id, { key = "colors" })) do test.eq(item.status, "forgotten") end
         end)
 
+        test.it("erases only the named value of a single key and keeps the value that replaced it", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.op(user, "create", { component_id = id, fields = {
+                kind = "profile_slot", scope_family = "owner", key = "pet_name", cardinality = "single", value = "Biscuit", content = "The user's pet is Biscuit.",
+            } })
+            fixture.settle(user, id)
+            fixture.op(user, "create", { component_id = id, fields = {
+                kind = "profile_slot", scope_family = "owner", key = "pet_name", cardinality = "single", value = "Pepper", content = "The user's pet is Pepper.",
+            } })
+            fixture.settle(user, id)
+            local context = fixture.agent_context(id, "s-" .. user, "agent-a")
+            local missing, missing_err = fixture.op(user, "tool_forget", { input = { key = "pet_name", value = "Rex" } }, context)
+            test.is_nil(missing_err, tostring(missing_err))
+            test.is_false(missing.success)
+            test.is_true(missing.error:find("memory value not found", 1, true) ~= nil, missing.error)
+            local result, err = fixture.op(user, "tool_forget", { input = { key = "pet_name", value = "Biscuit" } }, context)
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, result.error)
+            test.eq(result.forgotten, 1)
+            fixture.settle(user, id)
+            local statuses = {}
+            for _, item in ipairs(fixture.items(user, id, { key = "pet_name" })) do
+                statuses[#statuses + 1] = item.status .. ":" .. tostring(item.value)
+            end
+            table.sort(statuses)
+            test.eq(table.concat(statuses, ","), "current:Pepper,forgotten:nil")
+        end)
+
         test.it("reports existing keys closest to an unknown key without exposing another scope", function()
             local user, other = fixture.user(), fixture.user()
             local id = fixture.memory(user)
@@ -130,6 +159,10 @@ local function define_tests()
             test.is_false(result.success)
             test.is_true(result.error:find("color, timezone", 1, true) ~= nil, result.error)
             test.is_nil((result.error:find("private_key", 1, true)))
+            local valued = fixture.op(user, "tool_forget", { input = { key = "colour", value = "configured" } },
+                fixture.agent_context(id, "s-" .. user, "agent-a"))
+            test.is_false(valued.success)
+            test.is_true(valued.error:find("color, timezone", 1, true) ~= nil, valued.error)
         end)
 
         test.it("reconciles extracted attributes independently after one attribute changes", function()

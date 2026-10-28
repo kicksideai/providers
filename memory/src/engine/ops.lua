@@ -220,21 +220,21 @@ function M.forget_key(component_id: string, key: string, value: any): (any?, err
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
         local cardinality, card_err = items.key_cardinality(component_id, scope_key, key)
         if card_err then return nil, card_err end
-        local multi = cardinality == types.CARDINALITY.MULTI
-        if multi and value == nil then return nil, types.invalid("value is required for a multi-valued key") end
+        if cardinality == types.CARDINALITY.MULTI and value == nil then
+            return nil, types.invalid("value is required for a multi-valued key")
+        end
         local claim, claim_err
-        if multi then
+        if value ~= nil then
             claim, claim_err = types.claim_id(component_id, scope_key, key, value)
             if claim_err then return nil, claim_err end
         end
         local rows, read_err = items.list(component_id, { scope_keys = { scope_key }, key = key,
-            statuses = { types.STATUS.CURRENT, types.STATUS.CONFLICT, types.STATUS.SUPERSEDED, types.STATUS.ARCHIVED },
-            claim_ids = claim and { claim } or nil, limit = 1,
+            statuses = types.RETAINED_STATUSES, claim_ids = claim and { claim } or nil, limit = 1,
         })
         if read_err then return nil, read_err end
         local selected = rows[1]
         if not selected then
-            if multi then return nil, types.not_found("memory value not found for key: " .. key) end
+            if claim and cardinality then return nil, types.not_found("memory value not found for key: " .. key) end
             local known, known_err = items.key_names(component_id, scope_key, SUGGESTION_SCAN)
             if known_err then return nil, known_err end
             local ranked = {}
@@ -249,7 +249,7 @@ function M.forget_key(component_id: string, key: string, value: any): (any?, err
             for i = 1, math.min(SUGGESTIONS, #ranked) do closest[i] = ranked[i].key end
             return nil, types.not_found("unknown memory key: " .. key .. ". Existing keys, closest first: " .. table.concat(closest, ", "))
         end
-        local forget_err = d:forget(selected)
+        local forget_err = d:forget(selected, cardinality == types.CARDINALITY.SINGLE and value ~= nil)
         if forget_err then return nil, forget_err end
         return { key = key, forgotten = d.stats.forgotten }, nil
     end)
