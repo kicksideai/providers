@@ -15,7 +15,8 @@ ui-kit:
 	  wapp=$$(ls build-inputs/.wippy/vendor/kickside/ui-kit-*.wapp 2>/dev/null | grep -v sha256 | sort | tail -1); \
 	fi; \
 	test -n "$$wapp" || { echo "no kickside/ui-kit .wapp; is the module published?"; exit 1; }; \
-	$(WIPPY_BIN) artifacts materialize "$$wapp" kickside.ui_kit:package_fs --root ui/.wippy
+	$(WIPPY_BIN) artifacts materialize "$$wapp" kickside.ui_kit:package_fs --root ui/.wippy; \
+	cd ui && npm install --no-audit --no-fund
 ui-install: ui-kit
 	cd ui && npm ci
 build: ui-install
