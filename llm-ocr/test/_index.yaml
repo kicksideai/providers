@@ -271,3 +271,13 @@ entries:
       test: wippy.test:test
       migration_registry: wippy.migration:registry
     method: run
+
+  - name: model_compatibility_test
+    kind: function.lua
+    meta: {type: test, suite: llm_ocr}
+    source: file://model_compatibility_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      llm: wippy.llm:llm
+      ocr: kickside.llm_ocr:ocr
