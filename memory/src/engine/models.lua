@@ -182,14 +182,16 @@ local function codepoints(text: string): integer
     return count
 end
 
-local function bounded_string(maximum: integer): any
-    return { type = "string", maxLength = maximum }
+local CONTROL_FREE = "^[^\\u0000-\\u001F]*$"
+
+local function bounded_string(maximum: integer, minimum: integer?): any
+    return { type = "string", maxLength = maximum, minLength = minimum, pattern = CONTROL_FREE }
 end
 
 local function enum_string(values: { string }): any
     local maximum = 0
     for _, value in ipairs(values) do maximum = math.max(maximum, codepoints(value)) end
-    return { type = "string", enum = values, maxLength = maximum }
+    return { type = "string", enum = values, maxLength = maximum, pattern = CONTROL_FREE }
 end
 
 local CANDIDATE_KINDS = types.MEMORY_KINDS
@@ -211,25 +213,25 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?, coun
             properties = {
                 kind = enum_string(allowed), key = TOPIC_SCHEMA,
                 cardinality = enum_string(cardinalities), value = value,
-                content = { type = "string", minLength = 1, maxLength = LIMITS.content }, event_id = event_id,
+                content = bounded_string(LIMITS.content, 1), event_id = event_id,
                 valid_at = bounded_string(LIMITS.valid_at), confidence = { type = "number", minimum = 0, maximum = 1 },
             },
         }
         return shape
     end
-    local scalar = item(scalar_kinds, { type = "string", minLength = 1, maxLength = LIMITS.value }, { "single", "multi" })
+    local scalar = item(scalar_kinds, bounded_string(LIMITS.value, 1), { "single", "multi" })
     local schema = { type = "object", additionalProperties = false, required = { "items" }, properties = {
         items = { type = "array", maxItems = kinds and count or count * LIMITS.per_statement, items = scalar },
     } }
     if not kinds then
         schema.properties.lessons = { type = "array", maxItems = count * LIMITS.per_statement,
-            items = item({ types.KIND.LESSON }, { type = "string", minLength = 1, maxLength = LIMITS.value }, { "multi" }),
+            items = item({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }),
         }
         schema.required[#schema.required + 1] = "lessons"
         local goal = item({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
             required = { "status", "next_step", "details" }, properties = {
                 status = enum_string({ "open", "done" }),
-                next_step = bounded_string(LIMITS.next_step), details = { type = "string", minLength = 1, maxLength = LIMITS.details },
+                next_step = bounded_string(LIMITS.next_step), details = bounded_string(LIMITS.details, 1),
             },
         }, { "single" })
         schema.properties.plans = { type = "array", maxItems = count, items = goal }
@@ -238,10 +240,8 @@ local function candidate_schema(event_ids: { string }?, kinds: { string }?, coun
     return schema
 end
 
--- Bound compact UTF-8 JSON bytes: each code point uses at most four bytes,
--- including two-byte quote/backslash and short control escapes. One token per byte
--- covers byte-level tokenizers. Longer Unicode escapes exhaust the bound visibly
--- as retryable truncation; the existing job attempt limit owns retries.
+-- Control-free compact UTF-8 JSON uses at most four bytes per code point,
+-- including quote/backslash escapes. One token per byte bounds byte-level tokenizers.
 local function schema_bytes(schema: any, bytes_per_character: integer): integer
     local function size(node: any): integer
         if node.enum then
@@ -287,8 +287,8 @@ function M.extraction_capacity(model: string, span: { any }?): (integer?, error?
     end
     if #ids == 0 then ids[1] = uuid.v7() end
     local count = 0
-    -- Size typical compact ASCII answers; answers exceeding the model output limit fail
-    -- visibly as model_output_truncated and the job system retries the sampling failure.
+    -- Capacity uses typical compact ASCII output so 8,192-token models remain usable;
+    -- call budgets cover the four-byte bound up to the model card limit.
     while limit and schema_bytes(candidate_schema(ids, nil, count + 1), 1) <= limit do count = count + 1 end
     if count == 0 then
         return nil, types.invalid("memory extraction model " .. model .. " output limit cannot hold one statement")
@@ -297,6 +297,7 @@ function M.extraction_capacity(model: string, span: { any }?): (integer?, error?
 end
 
 local function exceeds_bounds(value: any, schema: any): boolean
+    if type(value) == "string" and value:find("[%z\1-\31]") then return true end
     if schema.enum then
         for _, option in ipairs(schema.enum) do if value == option then return false end end
         return true
@@ -468,8 +469,8 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
         local mapping_required = { "key", "kind", "cardinality" }
         local mappings: any = { type = "array", minItems = 1, maxItems = LIMITS.parts }
         if type(candidate.value) == "string" then
-            mapping_properties.value = { type = "string", minLength = 1, maxLength = LIMITS.value }
-            mapping_properties.content = { type = "string", minLength = 1, maxLength = LIMITS.content }
+            mapping_properties.value = bounded_string(LIMITS.value, 1)
+            mapping_properties.content = bounded_string(LIMITS.content, 1)
             mapping_required[#mapping_required + 1] = "value"
             mapping_required[#mapping_required + 1] = "content"
         else

@@ -26,7 +26,7 @@ local function maximal(node: any, text: string): any
         return value
     elseif node.type == "string" then
         test.is_true(type(node.maxLength) == "number", "String has no finite bound")
-        if node.pattern then return string.rep("a", node.maxLength) end
+        if node.pattern == "^[a-z][a-z0-9_]{0,63}$" then return string.rep("a", node.maxLength) end
         return string.rep(text, node.maxLength)
     elseif node.type == "number" then
         test.eq(node.minimum, 0)
@@ -227,7 +227,7 @@ local function define_tests()
                 local options = fixture.script.requests(user, "structured_options")
                 local schema = schemas[#schemas]
                 local budget = options[#options].max_tokens
-                for _, text in ipairs({ "𐍈", "界", '"', "\\", "\n" }) do
+                for _, text in ipairs({ "𐍈", "界", '"', "\\" }) do
                     local encoded = json.encode(maximal(schema, text))
                     test.is_true(budget <= 32768)
                     test.is_true(budget >= math.min(32768, #encoded), step .. " budget does not cover bytes up to the model limit")
@@ -248,6 +248,27 @@ local function define_tests()
             test.eq(err:details().code, "model_output_truncated")
             local options = fixture.script.requests(user, "structured_options")
             test.eq(options[#options].max_tokens, 32768)
+        end)
+
+        test.it("covers complete worst-case escaped and Unicode results when the schema fits the card", function()
+            local user = fixture.user()
+            for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
+                fixture.script.respond(user, "structured_output", {}, "length")
+                local _, err = fixture.op(user, "model_step", { step = step,
+                    span = { { id = "event", role = "user", text = "An attribute." } },
+                    candidates = { candidate("attribute", "An attribute") }, candidate = candidate("attribute", "An attribute"),
+                    items = { { id = "a", kind = "fact", key = "attribute", content = "An attribute." },
+                        { id = "b", kind = "fact", key = "other", content = "Another attribute." } } })
+                test.not_nil(err)
+                local schemas = fixture.script.requests(user, "structured_output")
+                local options = fixture.script.requests(user, "structured_options")
+                local budget = options[#options].max_tokens
+                for _, text in ipairs({ "𐍈", "界", '"', "\\" }) do
+                    local encoded = json.encode(maximal(schemas[#schemas], text))
+                    test.is_true(#encoded < 32768, step .. " fixture exceeds the card")
+                    test.is_true(budget >= #encoded, step .. " budget is smaller than its complete encoded result")
+                end
+            end
         end)
 
         test.it("fails visibly on strings and arrays exceeding the supplied schema bounds", function()
@@ -285,6 +306,41 @@ local function define_tests()
                     test.is_nil(result, step .. " accepts " .. overflow .. " overflow")
                     test.not_nil(err)
                     test.eq(err:details().code, "model_output_malformed")
+                end
+            end
+        end)
+
+        test.it("excludes control characters from every structured string and rejects decoded controls", function()
+            local user = fixture.user()
+            local function check(node)
+                if node.type == "string" then test.not_nil(node.pattern, "Structured strings require a control-free pattern") end
+                for _, child in pairs(node.properties or {}) do check(child) end
+                if node.items then check(node.items) end
+            end
+            for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
+                for control = 0, 31 do
+                    local city = candidate("home_city", "Oslo")
+                    local data = { items = { city }, plans = {}, lessons = {} }
+                    if step == "normalize" then
+                        data = { mappings = { ["1"] = { { kind = city.kind, key = city.key, cardinality = city.cardinality, value = city.value, content = "City" .. string.char(control) } } } }
+                    elseif step == "reflect" then
+                        city.kind = "lesson"; city.cardinality = "multi"; city.event_id = ""; city.based_on = { 1, 2 }
+                        city.content = "Guidance" .. string.char(control)
+                        data = { items = { city } }
+                    elseif step == "judge" then data = { relations = { ["1"] = "unrelated", ["2"] = "unrelated" }, reason = "Distinct" .. string.char(control) }
+                    else city.content = "City" .. string.char(control) end
+                    fixture.script.respond(user, "structured_output", data)
+                    local result, err = fixture.op(user, "model_step", { step = step,
+                        span = { { id = "event", role = "user", text = "A statement." } },
+                        candidates = { candidate("home_city", "Oslo") }, candidate = candidate("home_city", "Oslo"),
+                        items = { { id = "a", kind = "fact", key = "home_city", content = "Lives in Oslo." },
+                            { id = "b", kind = "fact", key = "mobility", content = "Uses trains." } },
+                    })
+                    test.is_nil(result, step .. " accepts U+" .. tostring(control))
+                    test.not_nil(err)
+                    test.eq(err:details().code, "model_output_malformed")
+                    local schemas = fixture.script.requests(user, "structured_output")
+                    check(schemas[#schemas])
                 end
             end
         end)
@@ -362,7 +418,7 @@ local function define_tests()
                     local options = fixture.script.requests(user, "structured_options")
                     local budget = options[#options].max_tokens
                     test.is_true(budget <= spec.limit)
-                    for _, text in ipairs({ "𐍈", "界", '\"', "\\", "\n" }) do
+                    for _, text in ipairs({ "𐍈", "界", '\"', "\\" }) do
                         local measured = #json.encode(maximal(schemas[#schemas], text))
                         test.is_true(budget >= math.min(spec.limit, measured))
                     end
