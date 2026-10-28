@@ -298,3 +298,12 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+
+  - name: bindings_test
+    kind: function.lua
+    meta: { type: test, suite: memory_bindings, timeout: 300s }
+    source: file://bindings_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
