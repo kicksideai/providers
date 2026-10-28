@@ -204,22 +204,19 @@ local function extraction_schema(event_ids: { string }, count: integer): any
         if kind ~= types.KIND.PLAN and kind ~= types.KIND.LESSON then scalar_kinds[#scalar_kinds + 1] = kind end
     end
     local scalar = item_schema(scalar_kinds, bounded_string(LIMITS.value, 1), { "single", "multi" }, event_id, bounded_string(LIMITS.valid_at))
-    local schema = { type = "object", additionalProperties = false, required = { "items" }, properties = {
-        items = { type = "array", maxItems = count * LIMITS.per_statement, items = scalar },
-    } }
-    schema.properties.lessons = { type = "array", maxItems = count * LIMITS.per_statement,
-        items = item_schema({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }, event_id, bounded_string(LIMITS.valid_at)),
-    }
-    schema.required[#schema.required + 1] = "lessons"
     local goal = item_schema({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
         required = { "status", "next_step", "details" }, properties = {
             status = enum_string({ "open", "done" }),
             next_step = bounded_string(LIMITS.next_step), details = bounded_string(LIMITS.details, 1),
         },
     }, { "single" }, event_id, bounded_string(LIMITS.valid_at))
-    schema.properties.plans = { type = "array", maxItems = count, items = goal }
-    schema.required[#schema.required + 1] = "plans"
-    return schema
+    return { type = "object", additionalProperties = false, required = { "items", "lessons", "plans" }, properties = {
+        items = { type = "array", maxItems = count * LIMITS.per_statement, items = scalar },
+        lessons = { type = "array", maxItems = count * LIMITS.per_statement,
+            items = item_schema({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }, event_id, bounded_string(LIMITS.valid_at)),
+        },
+        plans = { type = "array", maxItems = count, items = goal },
+    } }
 end
 
 local function reflection_schema(numbers: { integer }, count: integer): any
