@@ -48,7 +48,9 @@ local function define_tests()
                 })
                 if case.cursor then
                     fixture.extraction(id, {})
-                    fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = case.cursor } })
+                    local captured, capture_err = fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = case.cursor } })
+                    test.is_nil(capture_err, tostring(capture_err))
+                    test.is_true(captured.metadata.capture.captured)
                     local count = case.cursor == "c" and 2 or 1
                     if count == 2 then fixture.extraction(id, {}) end
                     fixture.wait_runs(user, id, "derive", count)

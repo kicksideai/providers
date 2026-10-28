@@ -255,12 +255,13 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "oversized", role = "user", content = string.rep("x", 24001) } })
+            local event_id = "oversized-" .. user
+            fixture.history.record(session, { { id = event_id, role = "user", content = string.rep("x", 24001) } })
             local db = fixture.db()
             local sqlite = db:type() == "sqlite"
             local _, setup_err = db:execute(sqlite and [[CREATE TRIGGER refuse_rejected_cursor BEFORE INSERT ON kickside_memory_cursors
-                WHEN NEW.last_event_id = 'oversized' BEGIN SELECT RAISE(ABORT, 'Cursor write refused'); END]] or
-                "ALTER TABLE kickside_memory_cursors ADD CONSTRAINT refuse_rejected_cursor CHECK (last_event_id <> 'oversized')")
+                WHEN NEW.last_event_id = ']] .. event_id .. [[' BEGIN SELECT RAISE(ABORT, 'Cursor write refused'); END]] or
+                "ALTER TABLE kickside_memory_cursors ADD CONSTRAINT refuse_rejected_cursor CHECK (last_event_id <> '" .. event_id .. "')")
             db:release()
             test.is_nil(setup_err, tostring(setup_err))
             local result, err = fixture.apply(user, "before_step", id, session, "agent-a")
@@ -280,7 +281,7 @@ local function define_tests()
             test.eq(rejected.status, "rejected")
             test.is_nil(rejected.job_id)
             test.not_nil(rejected.finished_at)
-            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "oversized")
+            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, event_id)
         end)
 
         for _, layout in ipairs({ "only", "leading", "trailing", "consecutive" }) do
