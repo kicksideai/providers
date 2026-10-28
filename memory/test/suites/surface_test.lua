@@ -11,6 +11,12 @@ local function live_for_key(user: string, component_id: string, key: string): { 
     return fixture.items(user, component_id, { key = key, statuses = { "current", "conflict" } })
 end
 
+local function json_body(body: any?): string?
+    if body == nil then return nil end
+    if type(body) == "table" and next(body) == nil then return "{}" end
+    return assert(json.encode(body))
+end
+
 local function request_with_token(token: string, method: string, path: string, body: any?): (any?, any?)
     local gateway = registry.get("app:gateway")
     local port = gateway and tostring(gateway.data.addr):match(":(%d+)$")
@@ -18,7 +24,7 @@ local function request_with_token(token: string, method: string, path: string, b
     local headers = { Authorization = "Bearer " .. token }
     if body ~= nil then headers["Content-Type"] = "application/json" end
     local response, err = http_client.request(method, "http://127.0.0.1:" .. port .. "/api" .. path,
-        { headers = headers, body = body ~= nil and assert(json.encode(body)) or nil })
+        { headers = headers, body = json_body(body) })
     if err then return nil, err end
     return response, nil
 end
@@ -34,7 +40,7 @@ local function request(user: string?, method: string, path: string, body: any?):
     else
         local gateway = assert(registry.get("app:gateway"))
         local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
-        response, err = http_client.request(method, "http://127.0.0.1:" .. port .. "/api" .. path, { body = body ~= nil and assert(json.encode(body)) or nil })
+        response, err = http_client.request(method, "http://127.0.0.1:" .. port .. "/api" .. path, { body = json_body(body) })
     end
     if err then error(tostring(err)) end
     return { status = response.status_code, body = json.decode(response.body), raw = response.body }
