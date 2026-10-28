@@ -79,8 +79,10 @@ local function call(a: any): (any?, error?)
         return writer.write(a.component_id, a.idempotency or "seed", { source = "owner" }, function(d: any): (any?, error?)
             local out = {}
             for i = 1, a.count do
+                local kind = a.kind or "fact"
+                if i == a.count and a.final_kind then kind = a.final_kind end
                 local item, add_err = d:add({ scope_family = "owner", scope_id = a.user }, {
-                    kind = a.kind or "fact", key = a.distinct_keys and "attribute_" .. tostring(i) or a.key or "interests", cardinality = a.cardinality or "multi",
+                    kind = kind, key = a.distinct_keys and "attribute_" .. tostring(i) or a.key or "interests", cardinality = a.cardinality or "multi",
                     value = a.distinct_keys and "initial" or a.same_value and "shared" or tostring(i), content = a.content or "Synthetic evidence " .. tostring(i),
                     valid_at = "2026-01-01T00:00:00Z", vector = vectors[1],
                 })
@@ -118,7 +120,7 @@ local function call(a: any): (any?, error?)
         db:release()
         local events = {}
         for _, row in ipairs(lineage) do
-            events[#events + 1] = { type = types.EVENT.ITEM_FORGOTTEN, seq = a.seq, body = { item_id = row.id } }
+            events[#events + 1] = { type = types.EVENT.ITEM_FORGOTTEN, seq = a.seq, created_at = types.now(), body = { item_id = row.id } }
         end
         local _, fold_err = fold.fold(a.component_id, events)
         if fold_err then return nil, fold_err end

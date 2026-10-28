@@ -6,7 +6,7 @@ entries:
   - name: fixture
     kind: library.lua
     source: file://fixture.lua
-    modules: [sql, contract, security, funcs, channel, uuid, time]
+    modules: [sql, contract, security, funcs, channel, uuid, time, json]
     imports:
       script: app.llm:script
       history: app.suites:history
@@ -218,6 +218,7 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+      measured_db: app.suites:measured_db
 
   - name: search_test
     kind: function.lua

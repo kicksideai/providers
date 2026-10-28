@@ -1,11 +1,9 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local fixture = require("fixture")
 
 local function u(id: string, text: string): any return { id = id, role = "user", content = text } end
 local function a(id: string, text: string): any return { id = id, role = "assistant", content = text } end
-local function c(kind: string, key: string, value: any, content: string, event_id: string): any
-    local cardinality = (kind == "profile_slot" or kind == "preference" or kind == "plan") and "single" or "multi"
-    return { kind = kind, key = key, cardinality = cardinality, value = value, content = content, event_id = event_id, valid_at = "", confidence = 0.9 }
-end
+local c = fixture.candidate
 
 local function goal(key: string, details: string, event_id: string, next_step: string?): any
     return c("plan", key, { status = "open", next_step = next_step or "", details = details },

@@ -2,6 +2,7 @@
 local test = require("test")
 local fixture = require("fixture")
 local json = require("json")
+local measured_db = require("measured_db")
 
 local DIAGNOSTIC = json.encode({ kind = errors.INTERNAL, code = errors.INTERNAL, explanation = "memory extraction failed", retryable = false })
 
@@ -14,7 +15,7 @@ local function define_tests()
             local _, seed_err = fixture.persistence_op(user, "seed", { component_id = id, user = user, count = 301 })
             test.is_nil(seed_err, tostring(seed_err))
             fixture.settle(user, id)
-            fixture.expand_versions(id, 3)
+            fixture.insert_cost_versions(id, 3)
             test.eq(fixture.count_rows("kickside_memory_items", id), 1204)
             local result, err = fixture.persistence_op(user, "forget_cost", { component_id = id, key = "interests", value = "299" })
             test.is_nil(err, tostring(err))
@@ -83,6 +84,19 @@ local function define_tests()
             test.is_true(measured.rows >= 1)
         end)
 
+        test.it("scopes query measurements to the calling coroutine", function()
+            measured_db.reset()
+            local _, read_err = measured_db.read(function(db: any): (any?, error?) return db:query("SELECT 1") end)
+            test.is_nil(read_err, tostring(read_err))
+            local worker = coroutine.create(function()
+                local _, worker_err = measured_db.read(function(db: any): (any?, error?) return db:query("SELECT 1") end)
+                if worker_err then error(tostring(worker_err)) end
+            end)
+            local resumed, resume_err = coroutine.resume(worker)
+            test.is_true(resumed, tostring(resume_err))
+            test.eq(#measured_db.statements(), 1)
+        end)
+
         test.it("erases a large lineage with indexed source ownership and no retained run scan", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -107,14 +121,11 @@ local function define_tests()
                 local _, analyze_err = db:execute(statement)
                 test.is_nil(analyze_err, tostring(analyze_err))
             end
+            db:release()
             for i = 1, 20 do
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
-                    (id, component_id, run_type, status, input, created_at)
-                    VALUES ($1, $2, 'derive', 'failed', $3, '2026-01-01T00:00:00Z')]],
-                    { "cost:" .. id .. ":" .. tostring(i), id, json.encode({ span = { { id = tostring(i), text = "shared" } } }) })
+                local insert_err = fixture.insert_run(id, "cost:" .. id .. ":" .. tostring(i), "failed", { span = { { id = tostring(i), text = "shared" } } })
                 test.is_nil(insert_err, tostring(insert_err))
             end
-            db:release()
             local result, err = fixture.persistence_op(user, "erase_cost", { component_id = id, item_id = seeded.item_ids[1], seq = 10000 })
             test.is_nil(err, tostring(err))
             test.eq(result.erased, 201)
@@ -143,12 +154,7 @@ local function define_tests()
                 fixture.settle(user, id)
                 local run_id = "unrelated:" .. id
                 local input = { owner_id = user, span = { { id = "independent-message", role = "user", text = case.text } } }
-                local db = fixture.db()
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
-                    (id, component_id, run_type, status, input, created_at)
-                    VALUES ($1, $2, 'derive', 'scheduled', $3, '2026-01-01T00:00:00Z')]],
-                    { run_id, id, json.encode(input) })
-                db:release()
+                local insert_err = fixture.insert_run(id, run_id, "scheduled", input)
                 test.is_nil(insert_err, tostring(insert_err))
                 local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
                 test.is_nil(forget_err, tostring(forget_err))
@@ -180,13 +186,10 @@ local function define_tests()
             fixture.settle(user, id)
             local run_id = "classified:" .. id
             local diagnostic = json.encode({ kind = errors.TIMEOUT, code = errors.TIMEOUT, explanation = "memory extraction failed", retryable = true })
-            local db = fixture.db()
-            local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at)
-                VALUES ($1, $2, 'derive', 'failed', $3, $4, '2026-01-01T00:00:00Z')]],
-                { run_id, id, json.encode({ span = { { id = "source", role = "user", text = "A private setting." } } }), diagnostic })
-            db:release()
+            local insert_err = fixture.insert_run(id, run_id, "failed", { span = { { id = "source", role = "user", text = "A private setting." } } }, diagnostic)
             test.is_nil(insert_err, tostring(insert_err))
-            fixture.persistence_op(user, "enroll_sources", { run_id = run_id })
+            local _, enrollment_err = fixture.persistence_op(user, "enroll_sources", { run_id = run_id })
+            test.is_nil(enrollment_err, tostring(enrollment_err))
             local _, err = fixture.op(user, "forget", { component_id = id, item_id = seeded.item_ids[1] })
             test.is_nil(err, tostring(err))
             fixture.settle(user, id)
@@ -203,17 +206,14 @@ local function define_tests()
             local run_id = "pending:" .. id
             local input = { span = { { id = "current-source", role = "user", text = "An ongoing goal." } },
                 context = { { id = "prior-source", role = "assistant", text = "What is the next step?" } } }
-            local db = fixture.db()
-            local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, created_at)
-                VALUES ($1, $2, 'derive', 'scheduled', $3, '2026-01-01T00:00:00Z')]], { run_id, id, json.encode(input) })
-            db:release()
+            local insert_err = fixture.insert_run(id, run_id, "scheduled", input)
             test.is_nil(insert_err, tostring(insert_err))
             for i = 1, 2 do
                 local result, err = fixture.persistence_op(user, "enroll_sources", { run_id = run_id })
                 test.is_nil(err, tostring(err))
                 test.is_true(result)
             end
-            db = fixture.db()
+            local db = fixture.db()
             local sources, sources_err = db:query("SELECT event_id FROM kickside_memory_run_sources WHERE component_id = $1 AND run_id = $2 ORDER BY event_id", { id, run_id })
             db:release()
             test.is_nil(sources_err, tostring(sources_err))
@@ -236,13 +236,7 @@ local function define_tests()
                 } })
                 test.is_nil(err, tostring(err))
                 fixture.settle(user, id)
-                local db = fixture.db()
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
-                    (id, component_id, run_type, status, input, last_error, created_at)
-                    VALUES ($1, $2, 'derive', 'failed', $3, $4, '2026-01-01T00:00:00Z')]],
-                    { "retained:" .. id, id, json.encode({ span = { { id = "uncited", text = "The setting is " .. case.mention } } }),
-                        DIAGNOSTIC })
-                db:release()
+                local insert_err = fixture.insert_run(id, "retained:" .. id, "failed", { span = { { id = "uncited", text = "The setting is " .. case.mention } } }, DIAGNOSTIC)
                 test.is_nil(insert_err, tostring(insert_err))
                 fixture.remember(user, id, { fixture.candidate("fact", "setting", case.value, "The setting is configured.", "uncited") }, "source-link")
                 fixture.settle(user, id)
@@ -269,12 +263,7 @@ local function define_tests()
                 test.is_nil(create_err, tostring(create_err))
                 fixture.settle(user, id)
                 local run_id = "repeat:" .. id
-                local db = fixture.db()
-                local _, insert_err = db:execute([[INSERT INTO kickside_memory_runs
-                    (id, component_id, run_type, status, input, last_error, created_at)
-                    VALUES ($1, $2, 'derive', 'failed', $3, $4, '2026-01-01T00:00:00Z')]],
-                    { run_id, id, json.encode({ span = { { id = "repeat-message", text = "It stays unchanged." } } }), DIAGNOSTIC })
-                db:release()
+                local insert_err = fixture.insert_run(id, run_id, "failed", { span = { { id = "repeat-message", text = "It stays unchanged." } } }, DIAGNOSTIC)
                 test.is_nil(insert_err, tostring(insert_err))
                 local repeated, repeat_err = fixture.remember(user, id, { {
                     kind = "fact", key = "setting", cardinality = "multi", value = value,
@@ -302,7 +291,8 @@ local function define_tests()
             local seeded, seed_err = fixture.persistence_op(user, "seed", { component_id = id, user = user, count = 1 })
             test.is_nil(seed_err, tostring(seed_err))
             fixture.settle(user, id)
-            fixture.op(user, "forget", { component_id = id, item_id = seeded.item_ids[1] })
+            local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = seeded.item_ids[1] })
+            test.is_nil(forget_err, tostring(forget_err))
             fixture.settle(user, id)
             local duplicate, duplicate_err = fixture.persistence_op(user, "seed", { component_id = id, user = user, count = 1 })
             test.is_nil(duplicate_err, tostring(duplicate_err))
@@ -326,12 +316,7 @@ local function define_tests()
             } })
             test.is_nil(add_err, tostring(add_err))
             fixture.settle(user, id)
-            local db = fixture.db()
-            local _, insert_err = db:execute("INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", {
-                "retained-" .. id, id, "derive", "failed", json.encode({ span = { { id = "uncited", text = "Another mention: Kestrel-42", role = "user" } } }),
-                DIAGNOSTIC, "2026-01-01T00:00:00Z",
-            })
-            db:release()
+            local insert_err = fixture.insert_run(id, "retained-" .. id, "failed", { span = { { id = "uncited", text = "Another mention: Kestrel-42", role = "user" } } }, DIAGNOSTIC)
             test.is_nil(insert_err, tostring(insert_err))
             fixture.remember(user, id, { fixture.candidate("fact", "access_code", "Kestrel-42", "The access code is Kestrel-42.", "uncited") }, "source-link")
             fixture.settle(user, id)
@@ -347,7 +332,7 @@ local function define_tests()
             test.eq(found.count, 0)
             test.eq(fixture.count_rows("kickside_memory_embeddings", id), 0)
             test.eq(fixture.count_rows("kickside_memory_payloads", id), 0)
-            db = fixture.db()
+            local db = fixture.db()
             local rows, fts_err = db:query(db:type() == "sqlite" and
                 "SELECT COUNT(*) AS n FROM kickside_memory_fts WHERE item_id = $1" or
                 "SELECT COUNT(*) AS n FROM kickside_memory_items WHERE id = $1 AND search_vector <> ''::tsvector", { added.item_id })
@@ -360,12 +345,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local run_id = "input-owner-" .. id
-            local db = fixture.db()
-            local _, insert_err = db:execute("INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)", {
-                run_id, id, "derive", "failed", json.encode({ span = { { id = "uncited", role = "user", text = "Opaque input" } } }),
-                DIAGNOSTIC, "2026-01-01T00:00:00Z",
-            })
-            db:release()
+            local insert_err = fixture.insert_run(id, run_id, "failed", { span = { { id = "uncited", role = "user", text = "Opaque input" } } }, DIAGNOSTIC)
             test.is_nil(insert_err, tostring(insert_err))
             local added = fixture.remember(user, id, { fixture.candidate("fact", "access_code", "Kestrel-42", "The access code is Kestrel-42.") }, "owned-input", { run_id = run_id })
             fixture.settle(user, id)

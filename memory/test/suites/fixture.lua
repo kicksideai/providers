@@ -9,6 +9,7 @@ local uuid = require("uuid")
 local time = require("time")
 local script = require("script")
 local history = require("history")
+local json = require("json")
 
 local M = { script = script, history = history }
 
@@ -239,7 +240,7 @@ function M.count_rows(table_name: string, id: string): number
     return tonumber(rows[1].n) or 0
 end
 
-function M.expand_versions(id: string, count: integer)
+function M.insert_cost_versions(id: string, count: integer)
     local db = M.db()
     local _, err = db:execute([[WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM sequence WHERE n < $1)
         INSERT INTO kickside_memory_items (id, component_id, claim_id, kind, scope_family, scope_id, scope_key, key, cardinality,
@@ -250,6 +251,20 @@ function M.expand_versions(id: string, count: integer)
         FROM kickside_memory_items i CROSS JOIN sequence WHERE i.component_id = $2]], { count, id })
     db:release()
     if err then error(tostring(err)) end
+end
+
+function M.insert_run(id: string, run_id: string, status: string, input: any, last_error: string?): error?
+    local db = M.db()
+    local _, err
+    if last_error then
+        _, err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at)
+            VALUES ($1, $2, 'derive', $3, $4, $5, '2026-01-01T00:00:00Z')]], { run_id, id, status, json.encode(input), last_error })
+    else
+        _, err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, created_at)
+            VALUES ($1, $2, 'derive', $3, $4, '2026-01-01T00:00:00Z')]], { run_id, id, status, json.encode(input) })
+    end
+    db:release()
+    return err
 end
 
 function M.create_claim(user: string, id: string, value: any, cardinality: string?): any
