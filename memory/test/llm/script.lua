@@ -110,23 +110,26 @@ function M.record(scope: string, method: string, schema: any, messages: any)
     if write_err then error(tostring(write_err)) end
 end
 
+function M.requests_from(conn: any, scope: string, method: string): ({ any }?, any?)
+    local rows, read_err = conn:query("SELECT schema FROM app_llm_requests WHERE scope = $1 AND method = $2 ORDER BY seq", { scope, method })
+    if read_err then return nil, read_err end
+    local out = {}
+    for _, row in ipairs(rows) do out[#out + 1] = assert(json.decode(row.schema)) end
+    return out, nil
+end
+
 function M.requests(scope: string, method: string): { any }
     M.ensure()
     local conn = db()
-    local rows, read_err = conn:query("SELECT schema FROM app_llm_requests WHERE scope = $1 AND method = $2 ORDER BY seq", { scope, method })
+    local result, err = M.requests_from(conn, scope, method)
     conn:release()
-    if read_err then error(tostring(read_err)) end
-    local out = {}
-    for _, row in ipairs(rows) do out[#out + 1] = assert(json.decode(row.schema)) end
-    return out
+    if err then error(tostring(err)) end
+    return result :: { any }
 end
 
-function M.prompts(scope: string, method: string): { any }
-    M.ensure()
-    local conn = db()
+function M.prompts_from(conn: any, scope: string, method: string): ({ any }?, any?)
     local rows, read_err = conn:query("SELECT messages FROM app_llm_requests WHERE scope = $1 AND method = $2 ORDER BY seq", { scope, method })
-    conn:release()
-    if read_err then error(tostring(read_err)) end
+    if read_err then return nil, read_err end
     local out = {}
     for _, row in ipairs(rows) do
         local texts = {}
@@ -135,16 +138,31 @@ function M.prompts(scope: string, method: string): { any }
         end
         out[#out + 1] = texts
     end
-    return out
+    return out, nil
+end
+
+function M.prompts(scope: string, method: string): { any }
+    M.ensure()
+    local conn = db()
+    local result, err = M.prompts_from(conn, scope, method)
+    conn:release()
+    if err then error(tostring(err)) end
+    return result :: { any }
+end
+
+function M.pending_from(conn: any, scope: string, method: string): (integer?, any?)
+    local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_script WHERE scope = $1 AND method = $2", { scope, method })
+    if read_err then return nil, read_err end
+    return math.floor(assert(tonumber(rows[1].n))), nil
 end
 
 function M.pending(scope: string, method: string): integer
     M.ensure()
     local conn = db()
-    local rows, read_err = conn:query("SELECT COUNT(*) AS n FROM app_llm_script WHERE scope = $1 AND method = $2", { scope, method })
+    local result, err = M.pending_from(conn, scope, method)
     conn:release()
-    if read_err then error(tostring(read_err)) end
-    return math.floor(assert(tonumber(rows[1].n)))
+    if err then error(tostring(err)) end
+    return result :: integer
 end
 
 return M
