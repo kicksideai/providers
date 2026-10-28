@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 # kickside/memory
 
 The typed memory engine and agent memory capability.
