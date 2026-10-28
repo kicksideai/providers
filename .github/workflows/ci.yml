@@ -608,6 +608,7 @@ jobs:
             source_root="$PWD"
             export TMPDIR="$source_root/.scratch"
             mkdir -p "$TMPDIR"
+            python3 -m unittest discover -s tests -p test_memory_package.py
             make -C memory typecheck test-ui build
             make -C memory lockrefresh
             cd memory/test
@@ -625,6 +626,7 @@ jobs:
             source_root="$PWD"
             export TMPDIR="$source_root/.scratch"
             mkdir -p "$TMPDIR"
+            python3 -m unittest discover -s tests -p test_memory_package.py
             make -C memory typecheck test-ui build
             make -C memory lockrefresh
             cd memory/test
@@ -632,10 +634,12 @@ jobs:
             cleanup_databases() { for database in "${databases[@]}"; do dropdb "$database"; done; }
             trap cleanup_databases EXIT
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
+            migration_database="${database}_migration"
             createdb "$database"
-            databases+=("$database")
-            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            createdb "$migration_database"
+            databases+=("$database" "$migration_database")
+            wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=$database" --set "vars.pg_migration_database=$migration_database" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
+            wippy test --profile postgres --set "vars.pg_database=$database" --set "vars.pg_migration_database=$migration_database" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
