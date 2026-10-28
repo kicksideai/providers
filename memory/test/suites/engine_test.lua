@@ -4,25 +4,6 @@ local fixture = require("fixture")
 local json = require("json")
 local registry = require("registry")
 
-local function rows(statement: string, params: { any }): { any }
-    local db = fixture.db()
-    local result, err = db:query(statement, params)
-    db:release()
-    if err then error(tostring(err)) end
-    return result or {}
-end
-
-local function by_key(items: { any }): { [string]: any }
-    local out = {}
-    for _, item in ipairs(items) do out[item.value .. ""] = item end
-    return out
-end
-
-local function count(statement: string, params: { any }): integer
-    local result = rows(statement, params)
-    return math.floor(tonumber(result[1] and result[1].n) or 0)
-end
-
 local function define_tests()
     test.describe("memory knowledge base engine", function()
 
@@ -514,18 +495,18 @@ local function define_tests()
         test.it("creating a memory through the knowledge control plane provisions its store, ledger projection and consolidation slot", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local store = rows("SELECT kb_type, embedding_model FROM kickside_memory_stores WHERE component_id = $1", { id })
+            local store = fixture.rows("SELECT kb_type, embedding_model FROM kickside_memory_stores WHERE component_id = $1", { id })
             test.eq(#store, 1)
             test.eq(store[1].kb_type, "memory")
             test.eq(store[1].embedding_model, "test-embed")
-            local projections = rows("SELECT kind FROM kickside_projection WHERE thread_id = $1", { id })
+            local projections = fixture.rows("SELECT kind FROM kickside_projection WHERE thread_id = $1", { id })
             local kinds = {}
             for _, row in ipairs(projections) do kinds[row.kind] = true end
             test.is_true(kinds["kickside.memory.ledger"] == true, json.encode(projections))
-            local slot = rows("SELECT run_type, job_id FROM kickside_memory_runs WHERE id = $1", { "consolidate:" .. id })
+            local slot = fixture.rows("SELECT run_type, job_id FROM kickside_memory_runs WHERE id = $1", { "consolidate:" .. id })
             test.eq(#slot, 1)
             test.is_true(type(slot[1].job_id) == "string" and slot[1].job_id ~= "")
-            local job = rows("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { slot[1].job_id })
+            local job = fixture.rows("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { slot[1].job_id })
             test.eq(job[1].status, "pending")
         end)
 
@@ -551,7 +532,7 @@ local function define_tests()
             local _, type_err = fixture.try_memory(user, { capture_conversation = "yes" })
             test.not_nil(type_err)
             local id = fixture.memory(user, { recall_max_items = 7, judge_model = "test-fast" })
-            local store = rows("SELECT config FROM kickside_memory_stores WHERE component_id = $1", { id })
+            local store = fixture.rows("SELECT config FROM kickside_memory_stores WHERE component_id = $1", { id })
             test.eq(json.decode(store[1].config).recall_max_items, 7)
         end)
 
@@ -619,7 +600,7 @@ local function define_tests()
 
             fixture.settle(user, id)
             local items = fixture.items(user, id, { kinds = { "profile_slot" } })
-            local values = by_key(items)
+            local values = fixture.values(items)
             test.eq(values.Paris.status, "superseded")
             test.eq(values.Paris.superseded_by, berlin_id)
             test.eq(values.Berlin.status, "current")
@@ -629,7 +610,7 @@ local function define_tests()
             local third, third_err = fixture.remember(user, id, { lyon }, "t3")
             test.is_nil(third_err, tostring(third_err))
             fixture.settle(user, id)
-            values = by_key(fixture.items(user, id, { kinds = { "profile_slot" } }))
+            values = fixture.values(fixture.items(user, id, { kinds = { "profile_slot" } }))
             test.eq(values.Lyon.status, "superseded")
             test.eq(values.Lyon.superseded_by, berlin_id)
             test.eq(values.Berlin.status, "current")
@@ -659,7 +640,7 @@ local function define_tests()
             test.is_nil(resolve_err, tostring(resolve_err))
             test.eq(resolved.superseded, 1)
             fixture.settle(user, id)
-            local values = by_key(fixture.items(user, id, { kinds = { "fact" } }))
+            local values = fixture.values(fixture.items(user, id, { kinds = { "fact" } }))
             test.eq(values.Globex.status, "current")
             test.is_nil(values.Globex.conflict_group)
             test.eq(values.Acme.status, "superseded")
@@ -746,13 +727,13 @@ local function define_tests()
             test.eq(again.stats.added, 0)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id, { kinds = { "preference" } }), 1)
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { first.item_ids[1] }), 2)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { first.item_ids[1] }), 2)
 
-            local head = rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count
+            local head = fixture.rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count
             local replay, replay_err = fixture.remember(user, id, { tea }, "r1")
             test.is_nil(replay_err, tostring(replay_err))
             test.eq(replay.inserted, 0)
-            test.eq(rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count, head)
+            test.eq(fixture.rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count, head)
         end)
 
         test.it("archives an item out of query results and restores it", function()
@@ -811,7 +792,7 @@ local function define_tests()
             test.is_true(json.encode(events):find(secret, 1, true) == nil, json.encode(events))
         end)
 
-        test.it("admits embeddable writes before retaining input for readers and unrelated callers", function()
+        test.it("rejects embeddable writes from readers and unrelated callers before retaining input", function()
             local owner, reader, unrelated = fixture.user(), fixture.user(), fixture.user()
             local id = fixture.memory(owner)
             local grant, grant_err = fixture.call_as(owner, "kickside.component.binding:grant_subtree_func", {
@@ -916,15 +897,15 @@ local function define_tests()
                 fixture.candidate("fact", "b", "two", "Fact two.", "m2"),
             }, "d1")
             fixture.settle(user, id)
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1", { id }), 2)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1", { id }), 2)
             local result, err = fixture.delete_memory(user, id)
             test.is_nil(err, tostring(err))
             test.is_true(result.deleted == true, json.encode(result))
             for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_payloads", "kickside_memory_keys", "kickside_memory_provenance", "kickside_memory_embeddings",
                 "kickside_memory_cursors", "kickside_memory_run_sources", "kickside_memory_runs", "kickside_memory_stores" }) do
-                test.eq(count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
+                test.eq(fixture.count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
             end
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id = $1", { id }), 0)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id = $1", { id }), 0)
         end)
 
         test.it("records a failed derive run with the model's failure instead of storing nothing", function()

@@ -1,7 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local fixture = require("fixture")
-local time = require("time")
 
 local function force_cycle_started_at(run_id: string): () -> ()
     local db = fixture.db()
@@ -207,14 +206,9 @@ local function define_tests()
                 end
                 local _, err = fixture.op(user, "wake", { component_id = id })
                 test.is_nil(err, tostring(err))
-                local deadline = time.now():add(60 * time.SECOND)
-                local run
-                repeat
-                    run = fixture.op(user, "run", { run_id = "consolidate:" .. id })
-                    if run.cycle ~= previous_cycle and (run.status == "succeeded" or run.status == "failed") then break end
-                    if time.now():after(deadline) then error("consolidation cycle does not finish") end
-                    time.sleep(100 * time.MILLISECOND)
-                until false
+                local run = fixture.wait_run(user, "consolidate:" .. id, function(candidate)
+                    return candidate.cycle ~= previous_cycle and (candidate.status == "succeeded" or candidate.status == "failed")
+                end)
                 previous_cycle = run.cycle
                 fixture.wait_job(run.job_id, "pending")
                 test.eq(run.status, "succeeded", tostring(run.last_error))
@@ -318,14 +312,9 @@ local function define_tests()
                 local second_wake, second_err = fixture.op(user, "wake", { component_id = id })
                 test.is_nil(second_err, tostring(second_err))
                 test.is_true(second_wake.woken)
-                local deadline = time.now():add(60 * time.SECOND)
-                local second
-                repeat
-                    second = fixture.op(user, "run", { run_id = run_id })
-                    if second.cycle ~= first.cycle and second.status == "succeeded" then break end
-                    if time.now():after(deadline) then error("second consolidation cycle does not finish") end
-                    time.sleep(100 * time.MILLISECOND)
-                until false
+                local second = fixture.wait_run(user, run_id, function(candidate)
+                    return candidate.cycle ~= first.cycle and candidate.status == "succeeded"
+                end)
                 test.eq(first.started_at, second.started_at)
                 test.is_true(first.cycle ~= second.cycle, tostring(second.cycle))
                 fixture.settle(user, id)

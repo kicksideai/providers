@@ -16,7 +16,7 @@ local function duplicate_write(user: string, component_id: string): (any?, error
     })
 end
 
-local function wait_for_reflections(count: integer, component_id: string)
+local function wait_for_model_request(count: integer, component_id: string)
     local deadline = time.now():add(60 * time.SECOND)
     while #fixture.script.requests(component_id, "structured_output") < count do
         local db = fixture.db()
@@ -26,17 +26,6 @@ local function wait_for_reflections(count: integer, component_id: string)
         if jobs and jobs[1] then error("memory job failed before the model barrier: " .. tostring(jobs[1].last_error)) end
         if time.now():after(deadline) then error("reflection did not reach the scripted barrier") end
         time.sleep(10 * time.MILLISECOND)
-    end
-end
-
-local function wait_for_success(user: string, run_id: string): any
-    local deadline = time.now():add(60 * time.SECOND)
-    while true do
-        local run, err = fixture.op(user, "run", { run_id = run_id })
-        if err then error(tostring(err)) end
-        if run.status == "succeeded" then return run end
-        if time.now():after(deadline) then error("memory run did not succeed: " .. tostring(run.last_error)) end
-        time.sleep(100 * time.MILLISECOND)
     end
 end
 
@@ -88,7 +77,7 @@ local function define_tests()
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))
-            wait_for_reflections(1, id)
+            wait_for_model_request(1, id)
             local created, create_err = fixture.op(user, "create", { component_id = id, fields = {
                 scope_family = "owner",
                 key = "employer", kind = "profile_slot", cardinality = "single", value = "Northstar", content = "Employer: Northstar.",
@@ -99,7 +88,7 @@ local function define_tests()
             fixture.extraction(id, { role })
             fixture.script.release(id, "extraction")
             local runs = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
-            local run = wait_for_success(user, runs[1].id)
+            local run = fixture.wait_run(user, runs[1].id, function(run) return run.status == "succeeded" end)
             test.is_nil(run.last_error)
             fixture.wait_job(run.job_id, "done")
             local db = fixture.db()
@@ -168,14 +157,14 @@ local function define_tests()
             local woken, wake_err = fixture.op(user, "wake", { component_id = component_id })
             test.is_nil(wake_err, tostring(wake_err))
             test.is_true(woken.woken)
-            wait_for_reflections(1, component_id)
+            wait_for_model_request(1, component_id)
 
             local _, forget_err = fixture.op(user, "forget", { component_id = component_id, item_id = evidence[1].id })
             test.is_nil(forget_err, tostring(forget_err))
             fixture.settle(user, component_id)
             fixture.script.release(component_id, "structured_output")
 
-            local run = wait_for_success(user, "consolidate:" .. component_id)
+            local run = fixture.wait_run(user, "consolidate:" .. component_id, function(run) return run.status == "succeeded" end)
             test.eq(run.status, "succeeded", tostring(run.last_error))
             test.eq(#fixture.script.requests(component_id, "structured_output"), 2)
             test.eq(fixture.script.pending(component_id, "structured_output"), 0)
@@ -195,7 +184,7 @@ local function define_tests()
             } })
             test.is_nil(err, tostring(err))
             test.is_true(queued.success, tostring(queued.error))
-            wait_for_reflections(1, id)
+            wait_for_model_request(1, id)
             local captured = fixture.op(user, "run", { run_id = queued.run_id })
             fixture.remember(user, id, { fixture.candidate("fact", "access_code", "Kestrel-42", "The access code is Kestrel-42.", captured.input.span[1].id) },
                 "failure-source", { host_kind = "content", host_id = id })
@@ -228,14 +217,14 @@ local function define_tests()
             fixture.extraction(component_id, { fixture.candidate("fact", "city_knowledge", "Paris", "The user resides in Paris.", "held-message") })
             local _, capture_err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") }, fixture.agent_context(component_id, session_id, "agent-a"))
             test.is_nil(capture_err, tostring(capture_err))
-            wait_for_reflections(1, component_id)
+            wait_for_model_request(1, component_id)
             local _, forget_err = fixture.op(user, "forget", { component_id = component_id, item_id = original.id })
             test.is_nil(forget_err, tostring(forget_err))
             fixture.settle(user, component_id)
             fixture.script.release(component_id, "structured_output")
             local pending = fixture.op(user, "runs", { component_id = component_id, run_type = "derive" })
             test.eq(#pending, 1)
-            local run = wait_for_success(user, pending[1].id)
+            local run = fixture.wait_run(user, pending[1].id, function(run) return run.status == "succeeded" end)
             test.eq(run.status, "succeeded", tostring(run.last_error))
             fixture.settle(user, component_id)
             test.eq(#fixture.items(user, component_id, { statuses = { "current" } }), 0)

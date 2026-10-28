@@ -26,7 +26,7 @@ local function define_tests()
             test.eq(#fixture.script.requests(second, "structured_output"), 2)
         end)
 
-        test.it("scopes summary responses barriers and resets to their memory", function()
+        test.it("keeps scripted responses, barriers, and resets scoped to their memory", function()
             local user = fixture.user()
             local first = fixture.memory(user)
             local second = fixture.memory(user)

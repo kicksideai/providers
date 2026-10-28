@@ -206,7 +206,7 @@ local function define_tests()
             test.eq(#second.items, 2)
         end)
 
-        test.it("budgets cap maximum compact results at the model limit for every structured call", function()
+        test.it("caps compact results at the model limit for every structured call", function()
             local user = fixture.user()
             local span, candidates, sources = {}, {}, {}
             local event_id = string.rep("e", 36)

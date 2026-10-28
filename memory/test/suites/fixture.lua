@@ -36,6 +36,30 @@ function M.agent_context(memory_id: string, session_id: string, agent_id: string
     return context
 end
 
+function M.rows(statement: string, params: { any }?): { any }
+    local db = M.db()
+    local rows, err = db:query(statement, params or {})
+    db:release()
+    if err then error(tostring(err)) end
+    return rows or {}
+end
+
+function M.count(statement: string, params: { any }?): integer
+    local rows = M.rows(statement, params)
+    return math.floor(tonumber(rows[1] and rows[1].n) or 0)
+end
+
+function M.wait_run(user_id: string, run_id: string, predicate: (any) -> boolean): any
+    local deadline = time.now():add(60 * time.SECOND)
+    while true do
+        local run, err = M.op(user_id, "run", { run_id = run_id })
+        if err then error(tostring(err)) end
+        if predicate(run) then return run end
+        if time.now():after(deadline) then error("memory run did not reach its expected state: " .. tostring(run.last_error)) end
+        time.sleep(100 * time.MILLISECOND)
+    end
+end
+
 function M.wait_runs(user_id: string, component_id: string, run_type: string, count: integer, status: string?): { any }
     local deadline = time.now():add(60 * time.SECOND)
     while true do
@@ -233,11 +257,7 @@ function M.persistence_op(user: string, name: string, args: any): (any, any)
 end
 
 function M.count_rows(table_name: string, id: string): number
-    local db = M.db()
-    local rows, err = db:query("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id })
-    db:release()
-    if err then error(tostring(err)) end
-    return tonumber(rows[1].n) or 0
+    return M.count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id })
 end
 
 function M.insert_cost_versions(id: string, count: integer)
