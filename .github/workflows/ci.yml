@@ -636,8 +636,9 @@ jobs:
             database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_0"
             migration_database="${database}_migration"
             createdb "$database"
+            databases+=("$database")
             createdb "$migration_database"
-            databases+=("$database" "$migration_database")
+            databases+=("$migration_database")
             wippy lint --ns app --ns 'app.*' --ns kickside.memory --ns 'kickside.memory.*' --level error --profile postgres --set "vars.pg_database=$database" --set "vars.pg_migration_database=$migration_database" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
             wippy test --profile postgres --set "vars.pg_database=$database" --set "vars.pg_migration_database=$migration_database" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
             sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
