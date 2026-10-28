@@ -322,7 +322,6 @@ local function exceeds_bounds(value: any, schema: any): boolean
         for key in pairs(value) do
             if type(key) ~= "number" or key < 1 or key > #value or key ~= math.floor(key) then return true end
         end
-        if schema.minItems and #value < schema.minItems then return true end
         if schema.maxItems and #value > schema.maxItems then return true end
         for _, item in ipairs(value) do if exceeds_bounds(item, schema.items) then return true end end
         return false
@@ -542,6 +541,9 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     local out = {}
     for i, candidate in ipairs(candidates) do
         local parts = mappings[tostring(i)]
+        if #parts == 0 or (single_part(candidate) and #parts ~= 1) then
+            return nil, validation_error("normalization", "mapping")
+        end
         for _, mapping in ipairs(parts) do
             local reason = nil
             local normalized = {}
