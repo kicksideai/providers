@@ -23,12 +23,16 @@ return require("migration").define(function()
         database("postgres", function()
             up(function(db)
                 if not has_cycle(db, "postgres") then execute(db, "ALTER TABLE kickside_memory_runs ADD COLUMN cycle text") end
+                execute(db, "UPDATE kickside_memory_runs SET cycle = started_at WHERE cycle IS NULL AND run_type = 'consolidate' " ..
+                    "AND status IN ('running', 'failed') AND started_at IS NOT NULL")
             end)
             down(function() error("memory run cycle migration is forward-only") end)
         end)
         database("sqlite", function()
             up(function(db)
                 if not has_cycle(db, "sqlite") then execute(db, "ALTER TABLE kickside_memory_runs ADD COLUMN cycle TEXT") end
+                execute(db, "UPDATE kickside_memory_runs SET cycle = started_at WHERE cycle IS NULL AND run_type = 'consolidate' " ..
+                    "AND status IN ('running', 'failed') AND started_at IS NOT NULL")
             end)
             down(function() error("memory run cycle migration is forward-only") end)
         end)

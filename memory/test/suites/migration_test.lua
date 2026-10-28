@@ -111,11 +111,22 @@ local function define_tests()
             exec([[INSERT INTO kickside_memory_runs
                 (id, component_id, run_type, status, input, stats, created_at)
                 VALUES ('existing-run', 'memory', 'consolidate', 'succeeded', '{}', '{}', '2026-01-01T00:00:00Z')]])
+            for _, run in ipairs({
+                { "failed-run", "failed", "2026-01-01T01:00:00Z" },
+                { "running-run", "running", "2026-01-01T02:00:00Z" },
+            }) do
+                exec([[INSERT INTO kickside_memory_runs
+                    (id, component_id, run_type, status, input, stats, created_at, started_at)
+                    VALUES ($1, 'memory', 'consolidate', $2, '{}', '{}', '2026-01-01T00:00:00Z', $3)]], run)
+            end
             migrate("03_run_cycle", "memory-run-cycle-upgrade")
             local runs = query("SELECT id, status, cycle FROM kickside_memory_runs WHERE id = 'existing-run'")
             test.eq(runs[1].id, "existing-run")
             test.eq(runs[1].status, "succeeded")
             test.is_nil(runs[1].cycle)
+            local resumed = query("SELECT id, cycle FROM kickside_memory_runs WHERE id IN ('failed-run', 'running-run') ORDER BY id")
+            test.eq(resumed[1].cycle, "2026-01-01T01:00:00Z")
+            test.eq(resumed[2].cycle, "2026-01-01T02:00:00Z")
             migrate("03_run_cycle", "memory-run-cycle-reapply")
             local reapplied = query("SELECT cycle FROM kickside_memory_runs WHERE id = 'existing-run'")
             test.is_nil(reapplied[1].cycle)
