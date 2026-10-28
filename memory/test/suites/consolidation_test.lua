@@ -3,6 +3,34 @@ local test = require("test")
 local fixture = require("fixture")
 local time = require("time")
 
+local function force_cycle_started_at(run_id: string): () -> ()
+    local db = fixture.db()
+    local sqlite = db:type() == "sqlite"
+    local suffix = run_id:gsub("[^%w]", "_")
+    local trigger = "memory_cycle_started_at_" .. suffix
+    local fn = trigger .. "_fn"
+    local quoted = run_id:gsub("'", "''")
+    local statement = sqlite and
+        ("CREATE TRIGGER " .. trigger .. " AFTER UPDATE OF status ON kickside_memory_runs WHEN NEW.id = '" .. quoted ..
+            "' BEGIN UPDATE kickside_memory_runs SET started_at = '2026-01-01T00:00:00Z' WHERE id = NEW.id; END") or
+        ("CREATE FUNCTION " .. fn .. "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.started_at = '2026-01-01T00:00:00Z'; RETURN NEW; END $$")
+    local _, setup_err = db:execute(statement)
+    if not setup_err and not sqlite then
+        _, setup_err = db:execute("CREATE TRIGGER " .. trigger .. " BEFORE UPDATE OF status ON kickside_memory_runs FOR EACH ROW " ..
+            "WHEN (NEW.id = '" .. quoted .. "') EXECUTE FUNCTION " .. fn .. "()")
+    end
+    db:release()
+    if setup_err then error(tostring(setup_err)) end
+    return function()
+        local cleanup = fixture.db()
+        local _, trigger_err = cleanup:execute(sqlite and ("DROP TRIGGER " .. trigger) or
+            ("DROP TRIGGER " .. trigger .. " ON kickside_memory_runs"))
+        if not trigger_err and not sqlite then _, trigger_err = cleanup:execute("DROP FUNCTION " .. fn .. "()") end
+        cleanup:release()
+        if trigger_err then error(tostring(trigger_err)) end
+    end
+end
+
 local function define_tests()
     test.describe("memory consolidation", function()
 
@@ -183,13 +211,12 @@ local function define_tests()
                 local run
                 repeat
                     run = fixture.op(user, "run", { run_id = "consolidate:" .. id })
-                    if run.started_at ~= previous_cycle and (run.status == "succeeded" or run.status == "failed") then break end
+                    if run.cycle ~= previous_cycle and (run.status == "succeeded" or run.status == "failed") then break end
                     if time.now():after(deadline) then error("consolidation cycle does not finish") end
                     time.sleep(100 * time.MILLISECOND)
                 until false
-                previous_cycle = run.started_at
+                previous_cycle = run.cycle
                 fixture.wait_job(run.job_id, "pending")
-                time.sleep(1100 * time.MILLISECOND)
                 test.eq(run.status, "succeeded", tostring(run.last_error))
                 fixture.settle(user, id)
             end
@@ -263,23 +290,49 @@ local function define_tests()
             fixture.wait_job(runs[1].job_id, "pending")
         end)
 
-        test.it("keeps a consolidation cycle's start across retries and starts the next cycle after success", function()
+        test.it("writes reflections for separate cycles sharing a started-at timestamp", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local run_id = "consolidate:" .. id
-            local first = fixture.op(user, "claim", { run_id = run_id, repeatable = true })
-            test.is_true(first.claimed)
-            fixture.op(user, "finish", { run_id = run_id, status = "failed", error = "model unavailable" })
-            time.sleep(1100 * time.MILLISECOND)
-            local retry = fixture.op(user, "claim", { run_id = run_id, repeatable = true })
-            test.is_true(retry.claimed)
-            test.eq(retry.cycle, first.cycle)
-            fixture.op(user, "finish", { run_id = run_id, status = "succeeded" })
-            time.sleep(1100 * time.MILLISECOND)
-            local next_cycle = fixture.op(user, "claim", { run_id = run_id, repeatable = true })
-            test.is_true(next_cycle.claimed)
-            test.is_true(next_cycle.cycle ~= first.cycle, tostring(next_cycle.cycle))
-            test.eq(fixture.op(user, "run", { run_id = run_id }).started_at, next_cycle.cycle)
+            fixture.remember(user, id, {
+                fixture.candidate("fact", "work_schedule", "night", "The user works at night.", "work-source"),
+                fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
+            }, "same-second-seed", { source = "owner" })
+            fixture.settle(user, id)
+            local cleanup = force_cycle_started_at(run_id)
+            local ok, failure = pcall(function()
+                local first_lesson = fixture.candidate("lesson", "contact_window", "evening", "Contact the user in the evening.", "")
+                first_lesson.based_on = { 1, 2 }
+                fixture.script.respond(id, "structured_output", { items = { first_lesson } })
+                fixture.normalization(id, { first_lesson })
+                local first_wake, first_err = fixture.op(user, "wake", { component_id = id })
+                test.is_nil(first_err, tostring(first_err))
+                test.is_true(first_wake.woken)
+                local first = fixture.wait_runs(user, id, "consolidate", 1, "succeeded")[1]
+                fixture.wait_job(first.job_id, "pending")
+
+                local second_lesson = fixture.candidate("lesson", "delivery_channel", "email", "Send requests by email.", "")
+                second_lesson.based_on = { 1, 2 }
+                fixture.script.respond(id, "structured_output", { items = { second_lesson } })
+                fixture.normalization(id, { second_lesson })
+                local second_wake, second_err = fixture.op(user, "wake", { component_id = id })
+                test.is_nil(second_err, tostring(second_err))
+                test.is_true(second_wake.woken)
+                local deadline = time.now():add(60 * time.SECOND)
+                local second
+                repeat
+                    second = fixture.op(user, "run", { run_id = run_id })
+                    if second.cycle ~= first.cycle and second.status == "succeeded" then break end
+                    if time.now():after(deadline) then error("second consolidation cycle does not finish") end
+                    time.sleep(100 * time.MILLISECOND)
+                until false
+                test.eq(first.started_at, second.started_at)
+                test.is_true(first.cycle ~= second.cycle, tostring(second.cycle))
+                fixture.settle(user, id)
+                test.eq(#fixture.items(user, id, { kinds = { "lesson" } }), 2)
+            end)
+            cleanup()
+            if not ok then error(failure) end
         end)
     end)
 end
