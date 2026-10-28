@@ -11,6 +11,7 @@ local sql = require("sql")
 local index = require("search_index")
 local measured_db = require("measured_db")
 local runs = require("memory_runs")
+local reconcile = require("memory_reconcile")
 
 local function call(a: any): (any?, error?)
     if a.op == "record_provenance" then
@@ -26,6 +27,14 @@ local function call(a: any): (any?, error?)
                 content = "Contact in the evening.", valid_at = d.now, provenance = refs,
             })
         end)
+    elseif a.op == "decide_cost" then
+        measured_db.reset()
+        local d = decision.new(a.component_id, "decide-cost", "capture", a.user)
+        local err = reconcile.decide(d, a.candidates, {
+            embedding_model = "test-embed", judge_model = "test-fast", scope_family = "owner", scope_id = a.user,
+        })
+        if err then return nil, err end
+        return { queries = #measured_db.statements(), records = measured_db.records(), added = d.stats.added }, nil
     elseif a.op == "check_cost" then
         local d = decision.new(a.component_id, "check-cost", "owner", a.user)
         for i = 1, a.count do
@@ -60,8 +69,8 @@ local function call(a: any): (any?, error?)
             local out = {}
             for i = 1, a.count do
                 local item, add_err = d:add({ scope_family = "owner", scope_id = a.user }, {
-                    kind = "fact", key = a.key or "interests", cardinality = a.cardinality or "multi",
-                    value = a.same_value and "shared" or tostring(i), content = a.content or "Synthetic evidence " .. tostring(i),
+                    kind = "fact", key = a.distinct_keys and "attribute_" .. tostring(i) or a.key or "interests", cardinality = a.cardinality or "multi",
+                    value = a.distinct_keys and "initial" or a.same_value and "shared" or tostring(i), content = a.content or "Synthetic evidence " .. tostring(i),
                     valid_at = "2026-01-01T00:00:00Z", vector = vectors[1],
                 })
                 if add_err then return nil, add_err end

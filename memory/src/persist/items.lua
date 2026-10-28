@@ -121,6 +121,27 @@ function M.all(component_id: string, filter: ListFilter): (any?, error?)
     end
 end
 
+function M.key_metadata(component_id: string, keys: { any }): (any?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local out = {}
+        for first = 1, #keys, 100 do
+            local params, matches = { component_id }, {}
+            for i = first, math.min(first + 99, #keys) do
+                matches[#matches + 1] = "(k.scope_key = $" .. (#params + 1) .. " AND k.key = $" .. (#params + 2) .. ")"
+                params[#params + 1] = keys[i].scope_key
+                params[#params + 1] = keys[i].key
+            end
+            local rows, err = conn:query([[SELECT k.scope_key, k.key, k.cardinality, i.kind
+                FROM kickside_memory_keys k LEFT JOIN kickside_memory_items i
+                ON i.component_id = k.component_id AND i.scope_key = k.scope_key AND i.key = k.key
+                WHERE k.component_id = $1 AND (]] .. table.concat(matches, " OR ") .. ") GROUP BY k.scope_key, k.key, k.cardinality, i.kind", params)
+            if err then return nil, types.failed("memory key metadata read failed", err) end
+            for _, row in ipairs(rows) do out[#out + 1] = row end
+        end
+        return out, nil
+    end)
+end
+
 function M.key_cardinality(component_id: string, scope_key: string, key: string): (string?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query("SELECT cardinality FROM kickside_memory_keys WHERE component_id = $1 AND scope_key = $2 AND key = $3",

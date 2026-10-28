@@ -38,6 +38,7 @@ function M.new(component_id: string, key: string, source: string, actor: string?
         overlay = {},
         added = {},
         touched_keys = {},
+        key_metadata = {},
         sequence = 0,
         stats = {
             added = 0, superseded = 0, merged = 0, conflicted = 0, noop = 0, suppressed = 0, judged = 0,
@@ -97,20 +98,46 @@ function Decision:claimed(scope_key: string, claim_id: string, statuses: { strin
     end, statuses)
 end
 
+function Decision:prepare_keys(keys: { any }): error?
+    local missing, seen = {}, {}
+    for _, key in ipairs(keys) do
+        local id = key.scope_key .. "\0" .. key.key
+        if not self.key_metadata[id] and not seen[id] then
+            missing[#missing + 1] = key
+            seen[id] = true
+        end
+    end
+    if #missing == 0 then return nil end
+    local rows, err = items.key_metadata(self.component_id, missing)
+    if err then return err end
+    for id in pairs(seen) do self.key_metadata[id] = { kinds = {} } end
+    for _, row in ipairs(rows) do
+        local meta = self.key_metadata[row.scope_key .. "\0" .. row.key]
+        meta.cardinality = row.cardinality
+        if row.kind then meta.kinds[row.kind] = true end
+    end
+    return nil
+end
+
 function Decision:cardinality_of(scope_key: string, key: string): (string?, error?)
     for _, state in pairs(self.overlay) do
         if state.scope_key == scope_key and state.key == key then return state.cardinality, nil end
     end
-    return items.key_cardinality(self.component_id, scope_key, key)
+    local err = self:prepare_keys({ { scope_key = scope_key, key = key } })
+    if err then return nil, err end
+    return self.key_metadata[scope_key .. "\0" .. key].cardinality, nil
 end
 
 function Decision:check_key_kind(scope_key: string, key: string, kind: string): error?
-    local rows, err = self:rows({ scope_keys = { scope_key }, key = key }, function(state: any): boolean
-        return state.scope_key == scope_key and state.key == key
-    end, { types.STATUS.CURRENT, types.STATUS.CONFLICT, types.STATUS.SUPERSEDED, types.STATUS.ARCHIVED, types.STATUS.FORGOTTEN })
+    local err = self:prepare_keys({ { scope_key = scope_key, key = key } })
     if err then return err end
-    for _, row in ipairs(rows :: any) do
-        if not types.compatible_kinds(kind, row.kind) then return types.invalid("memory key kind is incompatible") end
+    for historical in pairs(self.key_metadata[scope_key .. "\0" .. key].kinds) do
+        if not types.compatible_kinds(kind, historical) then return types.invalid("memory key kind is incompatible") end
+    end
+    for _, state in pairs(self.overlay) do
+        if state.scope_key == scope_key and state.key == key and not types.compatible_kinds(kind, state.kind) then
+            return types.invalid("memory key kind is incompatible")
+        end
     end
     return nil
 end

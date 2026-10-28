@@ -43,6 +43,26 @@ end
 local function define_tests()
     test.describe("memory concurrency", function()
 
+        for _, count in ipairs({ 1, 20, 101 }) do
+            for _, versions in ipairs({ 1, 201 }) do
+                test.it("bounds complete reconciliation reads for " .. count .. " candidates and " .. versions .. " historical versions", function()
+                    local user = fixture.user()
+                    local id = fixture.memory(user)
+                    local _, seed_err = fixture.persistence_op(user, "seed", { component_id = id, user = user, count = count, distinct_keys = true, cardinality = "single" })
+                    test.is_nil(seed_err, tostring(seed_err))
+                    fixture.settle(user, id)
+                    fixture.expand_versions(id, versions)
+                    test.eq(fixture.count_rows("kickside_memory_items", id), count * (versions + 1))
+                    local candidates = {}
+                    for i = 1, count do candidates[i] = fixture.candidate("fact", "attribute_" .. tostring(i), "changed", "A changed attribute.", "event", nil, "single") end
+                    local result, err = fixture.persistence_op(user, "decide_cost", { component_id = id, user = user, candidates = candidates })
+                    test.is_nil(err, tostring(err))
+                    test.eq(result.added, count)
+                    test.is_true(result.queries <= 3 * count + math.ceil(count / 100), "Complete reconciliation performs " .. tostring(result.queries) .. " queries")
+                end)
+            end
+        end
+
         test.it("checks single-value write invariants with bounded set queries and skips multi-value keys", function()
             local user = fixture.user()
             local id = fixture.memory(user)

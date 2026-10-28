@@ -239,6 +239,19 @@ function M.count_rows(table_name: string, id: string): number
     return tonumber(rows[1].n) or 0
 end
 
+function M.expand_versions(id: string, count: integer)
+    local db = M.db()
+    local _, err = db:execute([[WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM sequence WHERE n < $1)
+        INSERT INTO kickside_memory_items (id, component_id, claim_id, kind, scope_family, scope_id, scope_key, key, cardinality,
+            content, value, content_hash, status, version, valid_at, recorded_at, source, last_seq)
+        SELECT i.id || ':' || n, i.component_id, i.claim_id, i.kind, i.scope_family, i.scope_id, i.scope_key, i.key, i.cardinality,
+            i.content, i.value, i.content_hash, CASE WHEN n % 2 = 0 THEN 'forgotten' ELSE 'superseded' END,
+            i.version + n, i.valid_at, i.recorded_at, i.source, i.last_seq
+        FROM kickside_memory_items i CROSS JOIN sequence WHERE i.component_id = $2]], { count, id })
+    db:release()
+    if err then error(tostring(err)) end
+end
+
 function M.create_claim(user: string, id: string, value: any, cardinality: string?): any
     local result, err = M.op(user, "create", { component_id = id, fields = {
         kind = "fact", scope_family = "owner", key = "home_city", value = value, content = "The current city is " .. tostring(value) .. ".",
