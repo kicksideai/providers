@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import SelectButton from 'primevue/selectbutton'
 import SearchField from './chrome/SearchField.vue'
@@ -24,6 +24,8 @@ watch(query, (q) => {
   clearTimeout(timer)
   timer = setTimeout(() => { debounced.value = q.trim() }, 250)
 })
+
+onUnmounted(() => clearTimeout(timer))
 
 const list = usePaged<MemoryItem>(() => {
   if (!props.memory.memoryId.value) return null

@@ -166,4 +166,4 @@
 .mm-grid > .wide { grid-column: 1 / -1; }
 @media (max-width: 560px) { .mm-grid { grid-template-columns: minmax(0, 1fr); } }
 .mm-grid .p-inputnumber, .mm-grid .p-inputnumber-input { width: 100%; }
-.mm-row-ic.plans, .mm-head-ic.plans { color: var(--p-warn-500); background: var(--kx-wash-warn); }
+.mm-row-ic.plans, .mm-head-ic.plans { color: var(--kx-tone-amber); background: color-mix(in srgb, var(--kx-tone-amber) 12%, transparent); }
