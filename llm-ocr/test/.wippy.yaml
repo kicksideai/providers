@@ -24,7 +24,6 @@ workspace:
     kickside/doc2md: ../../../converters/doc2md
     kickside/execution: ../../../kickside/core/execution
     kickside/jobs: ../../../kickside/core/jobs
-    kickside/settings: ../../../kickside/platform/settings
     kickside/uploads: ../../../kickside/platform/uploads
     kickside/users: ../../../kickside/platform/users
 registry:
