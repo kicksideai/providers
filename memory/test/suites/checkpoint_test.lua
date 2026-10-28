@@ -15,7 +15,7 @@ local function define_tests()
             local payload = fixture.payload("checkpoint", session, "agent-a", {
                 agent = { id = "agent-a", model = "missing-agent-model" }, options = { model = "class:fast", max_tokens = 73 },
             })
-            local result, err = fixture.op(user, "checkpoint", { payload = payload }, fixture.agent_context(id, session, "agent-a", { write_enabled = false }))
+            local result, err = fixture.op(user, "checkpoint", { payload = payload }, fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))
             test.eq(result.summary, "Continue the working task.")
             test.eq(fixture.script.requests(id, "generate")[1].options.max_tokens, 73)
@@ -52,6 +52,54 @@ local function define_tests()
             fixture.wait_runs(user, id, "derive", 1)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id), 1)
+        end)
+
+        test.it("clamps checkpoint source text through the run context selector", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.history.record(session, {
+                { id = "first", role = "user", content = string.rep("first ", 1000) },
+                { id = "second", role = "user", content = string.rep("second", 1000) },
+                { id = "third", role = "user", content = "third must not reach the checkpoint summary" },
+            })
+            local history, history_err = fixture.history.get_prompt({ host = { kind = "session", session_id = session },
+                selector = { mode = "all", max_chars = 12000 }, format = "text" })
+            test.is_nil(history_err, tostring(history_err))
+            test.is_true(history.truncated)
+            test.eq(history.range.to_id, "second")
+            test.is_nil(history.text:find("third must not", 1, true))
+
+            fixture.script.respond(id, "generate", "A bounded summary.")
+            local result, err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
+                fixture.agent_context(id, session, "agent-a"))
+            test.is_nil(err, tostring(err))
+            test.eq(result.summary, "A bounded summary.")
+            local prompt = fixture.script.prompts(id, "generate")[1].user
+            test.is_nil(prompt:find("third must not", 1, true))
+        end)
+
+        test.it("mirrors the run context selector contract for checkpoints windows and open ranges", function()
+            local session = "history-" .. fixture.user()
+            fixture.history.record(session, {
+                { id = "a", role = "user", content = "first" },
+                { id = "b", role = "assistant", content = "second" },
+                { id = "c", role = "user", content = "third" },
+            })
+            fixture.history.set_checkpoint(session, "a")
+            local after, after_err = fixture.history.get_history({ host = { session_id = session } })
+            test.is_nil(after_err, tostring(after_err))
+            test.eq(after.count, 2)
+            test.eq(after.range.from_id, "b")
+            local window, window_err = fixture.history.get_history({ host = { session_id = session }, selector = { mode = "window", last = 1 } })
+            test.is_nil(window_err, tostring(window_err))
+            test.eq(window.events[1].id, "c")
+            local open, open_err = fixture.history.get_history({ host = { session_id = session }, selector = { mode = "range", from_id = "b" } })
+            test.is_nil(open_err, tostring(open_err))
+            test.eq(open.events[1].id, "c")
+            local invalid, invalid_err = fixture.history.get_history({ host = { session_id = session }, selector = { mode = "window", last = 0 } })
+            test.is_nil(invalid)
+            test.is_true(tostring(invalid_err):find("selector.last must be positive", 1, true) ~= nil)
         end)
 
         test.it("classifies deterministic and transient model failures through checkpoint and derive surfaces", function()
