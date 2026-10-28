@@ -12,7 +12,9 @@ This module owns:
   `kickside_memory_runs` and `kickside_memory_run_sources`.
   `kickside.memory.migrations:02_cursor_owner_scope` adds the owner scope to
   pinned host profiles. `kickside.memory.migrations:03_run_cycle` adds the
-  consolidation cycle identity to runs. SQLite also uses
+  consolidation cycle identity to runs.
+  `kickside.memory.migrations:04_memory_trait_context` removes retired
+  per-agent settings from stored Memory trait contexts. SQLite also uses
   `kickside_memory_fts`; PostgreSQL indexes the items' generated search vector.
 - `kickside.memory:engine_memory` describes the Memory knowledge-base engine.
   `kickside.memory:store_lifecycle` implements its store lifecycle;
