@@ -3,6 +3,11 @@ version: "1.0"
 namespace: app.suites
 
 entries:
+  - name: ledger_json
+    kind: library.lua
+    source: file://ledger_json.lua
+    modules: [json]
+
   - name: fixture
     kind: library.lua
     source: file://fixture.lua

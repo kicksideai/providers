@@ -6,7 +6,7 @@ local types = require("types")
 local threads_append = require("threads_append")
 local retention_notifier = require("retention_notifier")
 local jobs_wake = require("jobs_wake")
-local json = require("json")
+local json = require("json_encoder")
 
 local M = {}
 

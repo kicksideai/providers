@@ -8,12 +8,20 @@ entries:
     meta:
       comment: Typed ledger events on the memory thread with expected-head appends in the writer's transaction.
     source: file://ledger.lua
-    modules: [contract, security, json]
+    modules: [contract, security]
     imports:
+      json_encoder: kickside.memory.engine:json_encoder
       types: kickside.memory:types
       threads_append: kickside.core.threads.persist:append
       retention_notifier: kickside.core.retention:notifier
       jobs_wake: kickside.core.jobs.persist:wake
+
+  - name: json_encoder
+    kind: library.lua
+    meta:
+      comment: JSON encoding used by ledger event writes.
+    source: file://json_encoder.lua
+    modules: [json]
 
   - name: models
     kind: library.lua

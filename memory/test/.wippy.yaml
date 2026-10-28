@@ -8,6 +8,7 @@ vars:
   pg_username: kickside
   pg_password: kickside
 override:
+  kickside.memory.engine:ledger:imports.json_encoder: app.suites:ledger_json
   kickside.memory.persist:items:imports.memory_db: app.suites:measured_db
   kickside.memory.persist:payloads:imports.memory_db: app.suites:measured_db
   kickside.memory.persist:fold:imports.memory_db: app.suites:measured_db
