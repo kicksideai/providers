@@ -157,7 +157,7 @@ local function call(a: any): (any?, error?)
         local _, commit_err = tx:commit()
         db:release()
         if commit_err then return nil, commit_err end
-        local event = { type = types.EVENT.ITEM_REVISED, seq = item.last_seq + 1,
+        local event = { type = types.EVENT.ITEM_REVISED, seq = item.last_seq + 1, created_at = types.now(),
             body = { item_id = item.id, payload_id = payload_id, content_hash = hash } }
         if a.op == "revision_race" then
             db = assert(sql.get("app:db"))
@@ -185,7 +185,7 @@ local function call(a: any): (any?, error?)
         local _, latest_commit_err = tx:commit()
         db:release()
         if latest_commit_err then return nil, latest_commit_err end
-        local latest = { type = types.EVENT.ITEM_REVISED, seq = item.last_seq + 2,
+        local latest = { type = types.EVENT.ITEM_REVISED, seq = item.last_seq + 2, created_at = types.now(),
             body = { item_id = item.id, payload_id = payload_id .. ":latest", content_hash = revised_hash } }
         local _, latest_fold_err = fold.fold(a.component_id, { latest, event, latest, event })
         return true, latest_fold_err
