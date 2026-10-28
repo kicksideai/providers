@@ -204,6 +204,7 @@ entries:
       artifact_cleanup_repo: kickside.uploads.persist:artifact_cleanup_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       upload_record_repo: kickside.uploads.persist:upload_record_repo
+      upload_types: kickside.uploads:types
       agent_fetch_url: kickside.knowledge.traits.kb_ingest:fetch_url
       agent_embed_content: kickside.knowledge.traits.kb_ingest:embed_content
       agent_delete_content: kickside.knowledge.traits.kb_ingest:delete_content
