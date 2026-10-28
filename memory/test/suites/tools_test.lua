@@ -238,6 +238,8 @@ local function define_tests()
             } })
             test.is_nil(result)
             test.not_nil(err)
+            test.eq(err:kind(), errors.INVALID)
+            test.eq(err:message(), "a plan requires status open or done, next_step and details")
             test.eq(#fixture.items(user, id), 0)
         end)
 

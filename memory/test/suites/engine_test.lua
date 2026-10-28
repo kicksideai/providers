@@ -179,9 +179,10 @@ local function define_tests()
             for _, status in ipairs({ "current", "archived", "forgotten" }) do
                 for _, same in ipairs({ true, false }) do
                     local id = fixture.memory(user)
-                    local seeded = fixture.remember(user, id, {
+                    local seeded, seed_err = fixture.remember(user, id, {
                         fixture.candidate("profile_slot", "contact_time", "evening", "Contact in the evening.", "seed"),
                     }, "boundary-seed")
+                    test.is_nil(seed_err, tostring(seed_err))
                     fixture.settle(user, id)
                     if status ~= "current" then
                         local _, err = fixture.op(user, status == "archived" and "archive" or "forget", { component_id = id, item_id = seeded.item_ids[1] })
@@ -196,6 +197,8 @@ local function define_tests()
                                 scope_family = "owner", scope_id = user, source = source } })
                         test.is_nil(result)
                         test.not_nil(err)
+                        test.eq(err:kind(), errors.INVALID)
+                        test.eq(err:message(), "memory key kind is incompatible")
                     end
                     local result, err = fixture.op(user, "create", { component_id = id, fields = {
                         kind = "lesson", scope_family = "owner", key = "contact_time", cardinality = "single",
@@ -203,6 +206,8 @@ local function define_tests()
                     } })
                     test.is_nil(result)
                     test.not_nil(err)
+                    test.eq(err:kind(), errors.INVALID)
+                    test.eq(err:message(), "memory key kind is incompatible")
                     fixture.settle(user, id)
                     test.eq(#fixture.items(user, id), 1)
                     local refs = fixture.op(user, "provenance", { component_id = id, item_id = seeded.item_ids[1] })
@@ -947,26 +952,31 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local fields = { kind = "fact", scope_family = "owner", content = "The access code is Kestrel-42.", value = "Kestrel-42" }
+            local function assert_invalid(err, message)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.INVALID)
+                test.eq(err:message(), message)
+            end
             local _, missing = fixture.op(user, "create", { component_id = id, fields = fields })
-            test.not_nil(missing)
+            assert_invalid(missing, "a topic key of up to 64 letters, digits and underscores is required")
             fields.key = "the_access_code_is_kestrel_42"
             local _, rewritten = fixture.op(user, "create", { component_id = id, fields = fields })
-            test.not_nil(rewritten)
+            assert_invalid(rewritten, "topic key must not contain memory content")
             fields.key = "access_code_kestrel_42"
             local _, encoded = fixture.op(user, "create", { component_id = id, fields = fields })
-            test.not_nil(encoded)
+            assert_invalid(encoded, "topic key must not contain the memory value")
             fields.key = "access_code_kestrel42"
             local _, compact = fixture.op(user, "create", { component_id = id, fields = fields })
-            test.not_nil(compact)
+            assert_invalid(compact, "topic key must not contain the memory value")
             fields.key = "access_code_12345"
             fields.content = "The access code is 12345."
             fields.value = 12345
             local _, number_key = fixture.op(user, "create", { component_id = id, fields = fields })
-            test.not_nil(number_key)
+            assert_invalid(number_key, "topic key must not contain the memory value")
             fields.key = "access_code_code_12345"
             fields.value = { code = 12345 }
             local _, object_key = fixture.op(user, "create", { component_id = id, fields = fields })
-            test.not_nil(object_key)
+            assert_invalid(object_key, "topic key must not contain the memory value")
             fields.key = "notification_false"
             fields.content = "The user disables notifications."
             fields.value = false

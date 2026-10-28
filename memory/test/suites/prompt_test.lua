@@ -113,8 +113,11 @@ local function define_tests()
             for _, memory in ipairs(skipped.memories) do test.neq(memory.id, lisbon.id) end
             test.eq(#skipped.memories, #recalled.memories - 1)
 
-            local bobs = fixture.op(bob, "recall", { input = input }, { memory_id = id, agent_id = "agent-b" })
+            local bobs, bob_err = fixture.op(bob, "recall", { input = input }, { memory_id = id, agent_id = "agent-b" })
             test.is_nil(bobs, "bob has no access to alice's memory")
+            test.not_nil(bob_err)
+            test.eq(bob_err:kind(), errors.PERMISSION_DENIED)
+            test.eq(bob_err:message(), "Component not found or access denied")
         end)
 
         test.it("renders the pinned owner slice byte-identically until the next activation", function()
