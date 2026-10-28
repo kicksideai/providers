@@ -175,6 +175,28 @@ local function define_tests()
             end
         end)
 
+        test.it("keeps a lesson as one multi-valued guidance item", function()
+            local user = fixture.user()
+            local lesson = fixture.candidate("lesson", "meal_planning", "vegan meals", "Choose vegan meals when booking.")
+            fixture.script.respond(user, "structured_output", { mappings = { ["1"] = {
+                { key = "meal_planning", kind = "lesson", cardinality = "multi", value = "vegan meals", content = "Choose vegan meals when booking." },
+                { key = "booking_meals", kind = "lesson", cardinality = "multi", value = "vegan options", content = "Choose vegan meals when booking." },
+            } } })
+            local result, err = fixture.op(user, "normalize", { candidates = { lesson } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_malformed")
+            local schema = fixture.script.requests(user, "structured_output")[1].properties.mappings.properties["1"]
+            test.eq(schema.maxItems, 1)
+            test.eq(json.encode(schema.items.properties.cardinality.enum), '["multi"]')
+            fixture.script.respond(user, "structured_output", { mappings = { ["1"] = {
+                { key = "meal_planning", kind = "lesson", cardinality = "single", value = "vegan meals", content = "Choose vegan meals when booking." },
+            } } })
+            local single, single_err = fixture.op(user, "normalize", { candidates = { lesson } })
+            test.is_nil(single)
+            test.eq(single_err:details().code, "model_output_malformed")
+        end)
+
         test.it("normalizes typed values without asking for a discarded string substitute", function()
             local user = fixture.user()
             fixture.script.respond(user, "structured_output", { mappings = {

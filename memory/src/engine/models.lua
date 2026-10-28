@@ -450,6 +450,12 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     return candidates, nil
 end
 
+-- A typed value or a lesson maps to exactly one topic; a scalar attribute may
+-- split into independent parts.
+local function single_part(candidate: any): boolean
+    return type(candidate.value) ~= "string" or candidate.kind == types.KIND.LESSON
+end
+
 function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?): (any?, error?)
     if #candidates == 0 then return candidates, nil end
     local known: { [string]: any } = {}
@@ -462,19 +468,18 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
                 kinds[#kinds + 1] = kind
             end
         end
+        local lesson = candidate.kind == types.KIND.LESSON
         local mapping_properties = {
             key = TOPIC_SCHEMA, kind = enum_string(kinds),
-            cardinality = enum_string({ "single", "multi" }),
+            cardinality = enum_string(lesson and { "multi" } or { "single", "multi" }),
         }
         local mapping_required = { "key", "kind", "cardinality" }
-        local mappings: any = { type = "array", minItems = 1, maxItems = LIMITS.parts }
+        local mappings: any = { type = "array", minItems = 1, maxItems = single_part(candidate) and 1 or LIMITS.parts }
         if type(candidate.value) == "string" then
             mapping_properties.value = bounded_string(LIMITS.value, 1)
             mapping_properties.content = bounded_string(LIMITS.content, 1)
             mapping_required[#mapping_required + 1] = "value"
             mapping_required[#mapping_required + 1] = "content"
-        else
-            mappings.maxItems = 1
         end
         mappings.items = { type = "object", additionalProperties = false,
             required = mapping_required, properties = mapping_properties,
@@ -501,7 +506,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
         if type(parts) ~= "table" then
             return nil, types.unavailable("memory normalization returned malformed mappings", { code = "model_output_malformed" })
         end
-        if not is_array(parts) or #parts == 0 or (type(candidate.value) ~= "string" and #parts ~= 1) then
+        if not is_array(parts) or #parts == 0 or (single_part(candidate) and #parts ~= 1) then
             return nil, validation_error("normalization", "mapping")
         end
         for _, mapping in ipairs(parts) do
