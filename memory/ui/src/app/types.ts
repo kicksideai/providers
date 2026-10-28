@@ -48,12 +48,12 @@ export interface SchemaField {
   section?: string
 }
 
-export interface ConfigSchema { properties?: Record<string, SchemaField> }
+export interface ConfigSchema {
+  type: 'object'
+  properties: Record<string, SchemaField>
+}
 
 export interface MemoryStatusView {
-  config: Record<string, unknown>
-  defaults: Record<string, unknown>
-  config_schema: ConfigSchema
   counts: Partial<Record<MemoryStatus | 'total' | 'conflict_groups', number>>
   runs: MemoryRun[]
 }
@@ -82,11 +82,7 @@ export function pageOf<T>(data: unknown, field: string): Page<T> {
   return { rows: data[field] as T[], next: typeof next === 'number' ? next : null }
 }
 
-export interface MemoryContext {
-  memory_id: string
-  write_enabled: boolean
-  [key: string]: unknown
-}
+export interface MemoryContext { memory_id: string }
 
 export interface MemoryEvents {
   'config-changed': { context: MemoryContext }
@@ -101,4 +97,20 @@ export function parseConfig(raw: unknown): Record<string, unknown> {
   if (typeof raw === 'string') raw = JSON.parse(raw)
   if (!isRecord(raw)) throw new Error('Memory configuration must be an object')
   return raw
+}
+
+export function parseCreateSchema(raw: unknown): ConfigSchema {
+  if (!isRecord(raw) || raw.type !== 'object' || !isRecord(raw.properties) || !Object.keys(raw.properties).length) {
+    throw new Error('Memory create schema must supply object properties')
+  }
+  for (const field of Object.values(raw.properties)) {
+    if (!isRecord(field) || !['string', 'integer', 'number', 'boolean'].includes(String(field.type))) {
+      throw new Error('Memory create schema must supply object properties')
+    }
+  }
+  return { type: 'object', properties: raw.properties as Record<string, SchemaField> }
+}
+
+export interface MemoryCreateEvents {
+  'config-changed': { embedding_model: string; config: Record<string, unknown> }
 }

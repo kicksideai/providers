@@ -2,9 +2,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import { api } from '@wippy-fe/proxy'
 import InputText from 'primevue/inputtext'
-import Message from 'primevue/message'
 import SelectButton from 'primevue/selectbutton'
 import Textarea from 'primevue/textarea'
 import { KIND_META, topicLabel } from './format'
@@ -12,6 +10,7 @@ import { canonicalTopicKey, isCanonicalTopicKey } from './topic'
 import { eventDetail, type MemoryKind } from './types'
 import { usePaged, type Memory } from './useMemory'
 import { useWidget } from './useWidget'
+import { memoryApi } from './api'
 
 const props = defineProps<{ memory: Memory }>()
 const emit = defineEmits<{ (e: 'added', id: string): void }>()
@@ -49,13 +48,10 @@ function onAgent(event: Event) {
 async function add() {
   if (!ready.value) return
   let created: string | null = null
-  const target = `${props.memory.base.value}/items`
   const ok = await props.memory.act(async () => {
-    const { data } = await api.post(target, {
+    created = await memoryApi(props.memory.memoryId.value).create({
       kind: kind.value, scope_family: 'agent', scope_id: agent.value, key: topicKey.value, value: text.value.trim(), content: text.value.trim(),
     })
-    if (!data || typeof data.item_id !== 'string' || !data.item_id) throw new Error('Memory create response is missing item_id')
-    created = data.item_id
   })
   if (ok && created !== null) emit('added', created)
 }
@@ -72,14 +68,14 @@ async function add() {
       <span id="add_agent" class="mm-label">Agent</span>
       <wc-agent-picker v-if="picker.ready.value" aria-labelledby="add_agent" multi="false" placeholder="Pick the agent"
         :selected="agent ? JSON.stringify([agent]) : '[]'" @change="onAgent"></wc-agent-picker>
-      <Message v-else-if="picker.failed.value" severity="error" size="small">The agent picker could not load: {{ picker.failed.value }}</Message>
+      <div v-else-if="picker.failed.value" class="kx-notice error">The agent picker could not load: {{ picker.failed.value }}</div>
     </div>
     <div class="mm-field">
       <label class="mm-label" for="add_topic">Topic</label>
       <InputText id="add_topic" v-model="topic" placeholder="e.g. response style" :invalid="!!topicError" autocomplete="off" />
       <span v-if="topicError" class="mm-hint mm-hint-err">{{ topicError }}</span>
       <span v-else class="mm-hint">What this is about, not what it says. A topic that already exists gets a new version.</span>
-      <Message v-if="topics.error.value" severity="error" size="small">{{ topics.error.value }}</Message>
+      <div v-if="topics.error.value" class="kx-notice error">{{ topics.error.value }}</div>
       <div v-if="suggestions.length" class="mm-suggest" aria-label="Topics in use">
         <button v-for="key in suggestions" :key="key" type="button" class="mm-suggest-chip" @click="topic = topicLabel(key)">{{ topicLabel(key) }}</button>
       </div>

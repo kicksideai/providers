@@ -1,94 +1,252 @@
-import { openBlock as c, createElementBlock as h, mergeProps as g, createElementVNode as v, resolveComponent as q, createVNode as F, normalizeStyle as de, normalizeClass as R, renderSlot as w, createCommentVNode as $, toHandlers as V, createBlock as y, resolveDynamicComponent as A, defineComponent as U, unref as C, withCtx as ne, createTextVNode as ie, toDisplayString as x, computed as L, Fragment as O, renderList as Z, ref as E, watch as J } from "vue";
-import { Icon as pe } from "@iconify/vue";
-import { define as me } from "@wippy-fe/proxy";
-import { B as fe, f as he, p as be, M as Q, l as X, s as Y, u as ge, a as ye, b as ve, i as T, e as we, m as Ie } from "./types-yNEBYydW.js";
-import { s as re, a as $e, b as ae, c as Ce, u as xe, d as Se, e as Be } from "./useWidget-CvUXiKK3.js";
-import { s as De } from "./index-Bu08HCpl.js";
-var ue = {
-  name: "AngleDownIcon",
-  extends: re
-};
-function ke(t) {
-  return Ae(t) || Ve(t) || Pe(t) || Me();
+import { openBlock as u, createElementBlock as m, mergeProps as g, createElementVNode as b, resolveComponent as X, createVNode as L, normalizeStyle as fe, normalizeClass as N, renderSlot as w, createCommentVNode as k, toHandlers as V, createBlock as $, resolveDynamicComponent as O, defineComponent as F, unref as S, toDisplayString as I, computed as E, Fragment as U, renderList as Y, createTextVNode as ge, ref as T, watch as be, withCtx as ye } from "vue";
+import { Icon as ve } from "@iconify/vue";
+import { define as we } from "@wippy-fe/proxy";
+import { B as H, l as R, p as $e, M as ee, s as te, u as Ce, a as Ie, b as ke, c as Se, e as xe, m as Be } from "./types-CkAlvrJt.js";
+import { s as De, a as oe, b as Pe, f as se, c as Me, u as Ae, d as Ve } from "./useWidget-g7eM-AnE.js";
+var Oe = `
+.p-icon {
+    display: inline-block;
+    vertical-align: baseline;
+    flex-shrink: 0;
 }
-function Me() {
+
+.p-icon-spin {
+    -webkit-animation: p-icon-spin 2s infinite linear;
+    animation: p-icon-spin 2s infinite linear;
+}
+
+@-webkit-keyframes p-icon-spin {
+    0% {
+        -webkit-transform: rotate(0deg);
+        transform: rotate(0deg);
+    }
+    100% {
+        -webkit-transform: rotate(359deg);
+        transform: rotate(359deg);
+    }
+}
+
+@keyframes p-icon-spin {
+    0% {
+        -webkit-transform: rotate(0deg);
+        transform: rotate(0deg);
+    }
+    100% {
+        -webkit-transform: rotate(359deg);
+        transform: rotate(359deg);
+    }
+}
+`, Te = H.extend({
+  name: "baseicon",
+  css: Oe
+});
+function D(e) {
+  "@babel/helpers - typeof";
+  return D = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(t) {
+    return typeof t;
+  } : function(t) {
+    return t && typeof Symbol == "function" && t.constructor === Symbol && t !== Symbol.prototype ? "symbol" : typeof t;
+  }, D(e);
+}
+function ne(e, t) {
+  var n = Object.keys(e);
+  if (Object.getOwnPropertySymbols) {
+    var i = Object.getOwnPropertySymbols(e);
+    t && (i = i.filter(function(a) {
+      return Object.getOwnPropertyDescriptor(e, a).enumerable;
+    })), n.push.apply(n, i);
+  }
+  return n;
+}
+function ie(e) {
+  for (var t = 1; t < arguments.length; t++) {
+    var n = arguments[t] != null ? arguments[t] : {};
+    t % 2 ? ne(Object(n), !0).forEach(function(i) {
+      Le(e, i, n[i]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(n)) : ne(Object(n)).forEach(function(i) {
+      Object.defineProperty(e, i, Object.getOwnPropertyDescriptor(n, i));
+    });
+  }
+  return e;
+}
+function Le(e, t, n) {
+  return (t = Ee(t)) in e ? Object.defineProperty(e, t, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : e[t] = n, e;
+}
+function Ee(e) {
+  var t = Fe(e, "string");
+  return D(t) == "symbol" ? t : t + "";
+}
+function Fe(e, t) {
+  if (D(e) != "object" || !e) return e;
+  var n = e[Symbol.toPrimitive];
+  if (n !== void 0) {
+    var i = n.call(e, t);
+    if (D(i) != "object") return i;
+    throw new TypeError("@@toPrimitive must return a primitive value.");
+  }
+  return (t === "string" ? String : Number)(e);
+}
+var q = {
+  name: "BaseIcon",
+  extends: De,
+  props: {
+    label: {
+      type: String,
+      default: void 0
+    },
+    spin: {
+      type: Boolean,
+      default: !1
+    }
+  },
+  style: Te,
+  provide: function() {
+    return {
+      $pcIcon: this,
+      $parentInstance: this
+    };
+  },
+  methods: {
+    pti: function() {
+      var t = R(this.label);
+      return ie(ie({}, !this.isUnstyled && {
+        class: ["p-icon", {
+          "p-icon-spin": this.spin
+        }]
+      }), {}, {
+        role: t ? void 0 : "img",
+        "aria-label": t ? void 0 : this.label,
+        "aria-hidden": t
+      });
+    }
+  }
+}, le = {
+  name: "AngleDownIcon",
+  extends: q
+};
+function je(e) {
+  return ze(e) || Re(e) || Ne(e) || Ue();
+}
+function Ue() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function Pe(t, e) {
-  if (t) {
-    if (typeof t == "string") return j(t, e);
-    var n = {}.toString.call(t).slice(8, -1);
-    return n === "Object" && t.constructor && (n = t.constructor.name), n === "Map" || n === "Set" ? Array.from(t) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? j(t, e) : void 0;
+function Ne(e, t) {
+  if (e) {
+    if (typeof e == "string") return z(e, t);
+    var n = {}.toString.call(e).slice(8, -1);
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? z(e, t) : void 0;
   }
 }
-function Ve(t) {
-  if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
+function Re(e) {
+  if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
-function Ae(t) {
-  if (Array.isArray(t)) return j(t);
+function ze(e) {
+  if (Array.isArray(e)) return z(e);
 }
-function j(t, e) {
-  (e == null || e > t.length) && (e = t.length);
-  for (var n = 0, i = Array(e); n < e; n++) i[n] = t[n];
+function z(e, t) {
+  (t == null || t > e.length) && (t = e.length);
+  for (var n = 0, i = Array(t); n < t; n++) i[n] = e[n];
   return i;
 }
-function Ee(t, e, n, i, a, r) {
-  return c(), h("svg", g({
+function Ke(e, t, n, i, a, r) {
+  return u(), m("svg", g({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), ke(e[0] || (e[0] = [v("path", {
+  }, e.pti()), je(t[0] || (t[0] = [b("path", {
     d: "M3.58659 4.5007C3.68513 4.50023 3.78277 4.51945 3.87379 4.55723C3.9648 4.59501 4.04735 4.65058 4.11659 4.7207L7.11659 7.7207L10.1166 4.7207C10.2619 4.65055 10.4259 4.62911 10.5843 4.65956C10.7427 4.69002 10.8871 4.77074 10.996 4.88976C11.1049 5.00877 11.1726 5.15973 11.1889 5.32022C11.2052 5.48072 11.1693 5.6422 11.0866 5.7807L7.58659 9.2807C7.44597 9.42115 7.25534 9.50004 7.05659 9.50004C6.85784 9.50004 6.66722 9.42115 6.52659 9.2807L3.02659 5.7807C2.88614 5.64007 2.80725 5.44945 2.80725 5.2507C2.80725 5.05195 2.88614 4.86132 3.02659 4.7207C3.09932 4.64685 3.18675 4.58911 3.28322 4.55121C3.37969 4.51331 3.48305 4.4961 3.58659 4.5007Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-ue.render = Ee;
-var se = {
+le.render = Ke;
+var ue = {
   name: "AngleUpIcon",
-  extends: re
+  extends: q
 };
-function Te(t) {
-  return Ne(t) || Ue(t) || Le(t) || Fe();
+function _e(e) {
+  return qe(e) || He(e) || Ge(e) || We();
 }
-function Fe() {
+function We() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function Le(t, e) {
-  if (t) {
-    if (typeof t == "string") return z(t, e);
-    var n = {}.toString.call(t).slice(8, -1);
-    return n === "Object" && t.constructor && (n = t.constructor.name), n === "Map" || n === "Set" ? Array.from(t) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? z(t, e) : void 0;
+function Ge(e, t) {
+  if (e) {
+    if (typeof e == "string") return K(e, t);
+    var n = {}.toString.call(e).slice(8, -1);
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? K(e, t) : void 0;
   }
 }
-function Ue(t) {
-  if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
+function He(e) {
+  if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
-function Ne(t) {
-  if (Array.isArray(t)) return z(t);
+function qe(e) {
+  if (Array.isArray(e)) return K(e);
 }
-function z(t, e) {
-  (e == null || e > t.length) && (e = t.length);
-  for (var n = 0, i = Array(e); n < e; n++) i[n] = t[n];
+function K(e, t) {
+  (t == null || t > e.length) && (t = e.length);
+  for (var n = 0, i = Array(t); n < t; n++) i[n] = e[n];
   return i;
 }
-function Oe(t, e, n, i, a, r) {
-  return c(), h("svg", g({
+function Ze(e, t, n, i, a, r) {
+  return u(), m("svg", g({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), Te(e[0] || (e[0] = [v("path", {
+  }, e.pti()), _e(t[0] || (t[0] = [b("path", {
     d: "M10.4134 9.49931C10.3148 9.49977 10.2172 9.48055 10.1262 9.44278C10.0352 9.405 9.95263 9.34942 9.88338 9.27931L6.88338 6.27931L3.88338 9.27931C3.73811 9.34946 3.57409 9.3709 3.41567 9.34044C3.25724 9.30999 3.11286 9.22926 3.00395 9.11025C2.89504 8.99124 2.82741 8.84028 2.8111 8.67978C2.79478 8.51928 2.83065 8.35781 2.91338 8.21931L6.41338 4.71931C6.55401 4.57886 6.74463 4.49997 6.94338 4.49997C7.14213 4.49997 7.33276 4.57886 7.47338 4.71931L10.9734 8.21931C11.1138 8.35994 11.1927 8.55056 11.1927 8.74931C11.1927 8.94806 11.1138 9.13868 10.9734 9.27931C10.9007 9.35315 10.8132 9.41089 10.7168 9.44879C10.6203 9.48669 10.5169 9.5039 10.4134 9.49931Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-se.render = Oe;
-var Re = `
+ue.render = Ze;
+var ce = {
+  name: "TimesIcon",
+  extends: q
+};
+function Je(e) {
+  return et(e) || Ye(e) || Xe(e) || Qe();
+}
+function Qe() {
+  throw new TypeError(`Invalid attempt to spread non-iterable instance.
+In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
+}
+function Xe(e, t) {
+  if (e) {
+    if (typeof e == "string") return _(e, t);
+    var n = {}.toString.call(e).slice(8, -1);
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? _(e, t) : void 0;
+  }
+}
+function Ye(e) {
+  if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
+}
+function et(e) {
+  if (Array.isArray(e)) return _(e);
+}
+function _(e, t) {
+  (t == null || t > e.length) && (t = e.length);
+  for (var n = 0, i = Array(t); n < t; n++) i[n] = e[n];
+  return i;
+}
+function tt(e, t, n, i, a, r) {
+  return u(), m("svg", g({
+    width: "14",
+    height: "14",
+    viewBox: "0 0 14 14",
+    fill: "none",
+    xmlns: "http://www.w3.org/2000/svg"
+  }, e.pti()), Je(t[0] || (t[0] = [b("path", {
+    d: "M8.01186 7.00933L12.27 2.75116C12.341 2.68501 12.398 2.60524 12.4375 2.51661C12.4769 2.42798 12.4982 2.3323 12.4999 2.23529C12.5016 2.13827 12.4838 2.0419 12.4474 1.95194C12.4111 1.86197 12.357 1.78024 12.2884 1.71163C12.2198 1.64302 12.138 1.58893 12.0481 1.55259C11.9581 1.51625 11.8617 1.4984 11.7647 1.50011C11.6677 1.50182 11.572 1.52306 11.4834 1.56255C11.3948 1.60204 11.315 1.65898 11.2488 1.72997L6.99067 5.98814L2.7325 1.72997C2.59553 1.60234 2.41437 1.53286 2.22718 1.53616C2.03999 1.53946 1.8614 1.61529 1.72901 1.74767C1.59663 1.88006 1.5208 2.05865 1.5175 2.24584C1.5142 2.43303 1.58368 2.61419 1.71131 2.75116L5.96948 7.00933L1.71131 11.2675C1.576 11.403 1.5 11.5866 1.5 11.7781C1.5 11.9696 1.576 12.1532 1.71131 12.2887C1.84679 12.424 2.03043 12.5 2.2219 12.5C2.41338 12.5 2.59702 12.424 2.7325 12.2887L6.99067 8.03052L11.2488 12.2887C11.3843 12.424 11.568 12.5 11.7594 12.5C11.9509 12.5 12.1346 12.424 12.27 12.2887C12.4053 12.1532 12.4813 11.9696 12.4813 11.7781C12.4813 11.5866 12.4053 11.403 12.27 11.2675L8.01186 7.00933Z",
+    fill: "currentColor"
+  }, null, -1)])), 16);
+}
+ce.render = tt;
+var nt = `
     .p-inputnumber {
         display: inline-flex;
         position: relative;
@@ -280,9 +438,9 @@ var Re = `
     .p-inputnumber-horizontal .p-inputnumber-clear-icon {
         inset-inline-end: calc(dt('inputnumber.button.width') + dt('form.field.padding.x'));
     }
-`, je = {
-  root: function(e) {
-    var n = e.instance, i = e.props;
+`, it = {
+  root: function(t) {
+    var n = t.instance, i = t.props;
     return ["p-inputnumber p-component p-inputwrapper", {
       "p-invalid": n.$invalid,
       "p-inputwrapper-filled": n.$filled || i.allowEmpty === !1,
@@ -296,25 +454,25 @@ var Re = `
   pcInputText: "p-inputnumber-input",
   clearIcon: "p-inputnumber-clear-icon",
   buttonGroup: "p-inputnumber-button-group",
-  incrementButton: function(e) {
-    var n = e.instance, i = e.props;
+  incrementButton: function(t) {
+    var n = t.instance, i = t.props;
     return ["p-inputnumber-button p-inputnumber-increment-button", {
       "p-disabled": i.showButtons && i.max !== null && n.maxBoundry()
     }];
   },
-  decrementButton: function(e) {
-    var n = e.instance, i = e.props;
+  decrementButton: function(t) {
+    var n = t.instance, i = t.props;
     return ["p-inputnumber-button p-inputnumber-decrement-button", {
       "p-disabled": i.showButtons && i.min !== null && n.minBoundry()
     }];
   }
-}, ze = fe.extend({
+}, rt = H.extend({
   name: "inputnumber",
-  style: Re,
-  classes: je
-}), Ke = {
+  style: nt,
+  classes: it
+}), at = {
   name: "BaseInputNumber",
-  extends: Ce,
+  extends: Pe,
   props: {
     format: {
       type: Boolean,
@@ -395,8 +553,8 @@ var Re = `
     roundingMode: {
       type: String,
       default: "halfExpand",
-      validator: function(e) {
-        return ["ceil", "floor", "expand", "trunc", "halfCeil", "halfFloor", "halfExpand", "halfTrunc", "halfEven"].includes(e);
+      validator: function(t) {
+        return ["ceil", "floor", "expand", "trunc", "halfCeil", "halfFloor", "halfExpand", "halfTrunc", "halfEven"].includes(t);
       }
     },
     min: {
@@ -456,7 +614,7 @@ var Re = `
       default: !1
     }
   },
-  style: ze,
+  style: rt,
   provide: function() {
     return {
       $pcInputNumber: this,
@@ -464,80 +622,80 @@ var Re = `
     };
   }
 };
-function D(t) {
+function P(e) {
   "@babel/helpers - typeof";
-  return D = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
-    return typeof e;
-  } : function(e) {
-    return e && typeof Symbol == "function" && e.constructor === Symbol && e !== Symbol.prototype ? "symbol" : typeof e;
-  }, D(t);
+  return P = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(t) {
+    return typeof t;
+  } : function(t) {
+    return t && typeof Symbol == "function" && t.constructor === Symbol && t !== Symbol.prototype ? "symbol" : typeof t;
+  }, P(e);
 }
-function ee(t, e) {
-  var n = Object.keys(t);
+function re(e, t) {
+  var n = Object.keys(e);
   if (Object.getOwnPropertySymbols) {
-    var i = Object.getOwnPropertySymbols(t);
-    e && (i = i.filter(function(a) {
-      return Object.getOwnPropertyDescriptor(t, a).enumerable;
+    var i = Object.getOwnPropertySymbols(e);
+    t && (i = i.filter(function(a) {
+      return Object.getOwnPropertyDescriptor(e, a).enumerable;
     })), n.push.apply(n, i);
   }
   return n;
 }
-function te(t) {
-  for (var e = 1; e < arguments.length; e++) {
-    var n = arguments[e] != null ? arguments[e] : {};
-    e % 2 ? ee(Object(n), !0).forEach(function(i) {
-      K(t, i, n[i]);
-    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(t, Object.getOwnPropertyDescriptors(n)) : ee(Object(n)).forEach(function(i) {
-      Object.defineProperty(t, i, Object.getOwnPropertyDescriptor(n, i));
+function ae(e) {
+  for (var t = 1; t < arguments.length; t++) {
+    var n = arguments[t] != null ? arguments[t] : {};
+    t % 2 ? re(Object(n), !0).forEach(function(i) {
+      W(e, i, n[i]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(n)) : re(Object(n)).forEach(function(i) {
+      Object.defineProperty(e, i, Object.getOwnPropertyDescriptor(n, i));
     });
   }
-  return t;
+  return e;
 }
-function K(t, e, n) {
-  return (e = _e(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
+function W(e, t, n) {
+  return (t = ot(t)) in e ? Object.defineProperty(e, t, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : e[t] = n, e;
 }
-function _e(t) {
-  var e = We(t, "string");
-  return D(e) == "symbol" ? e : e + "";
+function ot(e) {
+  var t = st(e, "string");
+  return P(t) == "symbol" ? t : t + "";
 }
-function We(t, e) {
-  if (D(t) != "object" || !t) return t;
-  var n = t[Symbol.toPrimitive];
+function st(e, t) {
+  if (P(e) != "object" || !e) return e;
+  var n = e[Symbol.toPrimitive];
   if (n !== void 0) {
-    var i = n.call(t, e);
-    if (D(i) != "object") return i;
+    var i = n.call(e, t);
+    if (P(i) != "object") return i;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
-  return (e === "string" ? String : Number)(t);
+  return (t === "string" ? String : Number)(e);
 }
-function Ge(t) {
-  return Je(t) || Ze(t) || qe(t) || He();
+function lt(e) {
+  return pt(e) || dt(e) || ct(e) || ut();
 }
-function He() {
+function ut() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function qe(t, e) {
-  if (t) {
-    if (typeof t == "string") return _(t, e);
-    var n = {}.toString.call(t).slice(8, -1);
-    return n === "Object" && t.constructor && (n = t.constructor.name), n === "Map" || n === "Set" ? Array.from(t) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? _(t, e) : void 0;
+function ct(e, t) {
+  if (e) {
+    if (typeof e == "string") return G(e, t);
+    var n = {}.toString.call(e).slice(8, -1);
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? G(e, t) : void 0;
   }
 }
-function Ze(t) {
-  if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
+function dt(e) {
+  if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
-function Je(t) {
-  if (Array.isArray(t)) return _(t);
+function pt(e) {
+  if (Array.isArray(e)) return G(e);
 }
-function _(t, e) {
-  (e == null || e > t.length) && (e = t.length);
-  for (var n = 0, i = Array(e); n < e; n++) i[n] = t[n];
+function G(e, t) {
+  (t == null || t > e.length) && (t = e.length);
+  for (var n = 0, i = Array(t); n < t; n++) i[n] = e[n];
   return i;
 }
-var oe = {
+var de = {
   name: "InputNumber",
-  extends: Ke,
+  extends: at,
   inheritAttrs: !1,
   emits: ["input", "focus", "blur"],
   inject: {
@@ -569,48 +727,48 @@ var oe = {
   watch: {
     d_value: {
       immediate: !0,
-      handler: function(e) {
+      handler: function(t) {
         var n;
-        this.d_modelValue = e, (n = this.$refs.clearIcon) !== null && n !== void 0 && (n = n.$el) !== null && n !== void 0 && n.style && (this.$refs.clearIcon.$el.style.display = X(e) ? "none" : "block");
+        this.d_modelValue = t, (n = this.$refs.clearIcon) !== null && n !== void 0 && (n = n.$el) !== null && n !== void 0 && n.style && (this.$refs.clearIcon.$el.style.display = R(t) ? "none" : "block");
       }
     },
-    locale: function(e, n) {
-      this.updateConstructParser(e, n);
+    locale: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    localeMatcher: function(e, n) {
-      this.updateConstructParser(e, n);
+    localeMatcher: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    mode: function(e, n) {
-      this.updateConstructParser(e, n);
+    mode: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    currency: function(e, n) {
-      this.updateConstructParser(e, n);
+    currency: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    currencyDisplay: function(e, n) {
-      this.updateConstructParser(e, n);
+    currencyDisplay: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    useGrouping: function(e, n) {
-      this.updateConstructParser(e, n);
+    useGrouping: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    minFractionDigits: function(e, n) {
-      this.updateConstructParser(e, n);
+    minFractionDigits: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    maxFractionDigits: function(e, n) {
-      this.updateConstructParser(e, n);
+    maxFractionDigits: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    suffix: function(e, n) {
-      this.updateConstructParser(e, n);
+    suffix: function(t, n) {
+      this.updateConstructParser(t, n);
     },
-    prefix: function(e, n) {
-      this.updateConstructParser(e, n);
+    prefix: function(t, n) {
+      this.updateConstructParser(t, n);
     }
   },
   created: function() {
     this.constructParser();
   },
   mounted: function() {
-    var e;
-    (e = this.$refs.clearIcon) !== null && e !== void 0 && (e = e.$el) !== null && e !== void 0 && e.style && (this.$refs.clearIcon.$el.style.display = this.$filled ? "block" : "none");
+    var t;
+    (t = this.$refs.clearIcon) !== null && t !== void 0 && (t = t.$el) !== null && t !== void 0 && t.style && (this.$refs.clearIcon.$el.style.display = this.$filled ? "block" : "none");
   },
   methods: {
     getOptions: function() {
@@ -627,42 +785,42 @@ var oe = {
     },
     constructParser: function() {
       this.numberFormat = new Intl.NumberFormat(this.locale, this.getOptions());
-      var e = Ge(new Intl.NumberFormat(this.locale, {
+      var t = lt(new Intl.NumberFormat(this.locale, {
         useGrouping: !1
-      }).format(9876543210)).reverse(), n = new Map(e.map(function(i, a) {
+      }).format(9876543210)).reverse(), n = new Map(t.map(function(i, a) {
         return [i, a];
       }));
-      this._numeral = new RegExp("[".concat(e.join(""), "]"), "g"), this._group = this.getGroupingExpression(), this._minusSign = this.getMinusSignExpression(), this._currency = this.getCurrencyExpression(), this._decimal = this.getDecimalExpression(), this._suffix = this.getSuffixExpression(), this._prefix = this.getPrefixExpression(), this._index = function(i) {
+      this._numeral = new RegExp("[".concat(t.join(""), "]"), "g"), this._group = this.getGroupingExpression(), this._minusSign = this.getMinusSignExpression(), this._currency = this.getCurrencyExpression(), this._decimal = this.getDecimalExpression(), this._suffix = this.getSuffixExpression(), this._prefix = this.getPrefixExpression(), this._index = function(i) {
         return n.get(i);
       };
     },
-    updateConstructParser: function(e, n) {
-      e !== n && this.constructParser();
+    updateConstructParser: function(t, n) {
+      t !== n && this.constructParser();
     },
-    escapeRegExp: function(e) {
-      return e.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+    escapeRegExp: function(t) {
+      return t.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
     },
     getDecimalExpression: function() {
-      var e = new Intl.NumberFormat(this.locale, te(te({}, this.getOptions()), {}, {
+      var t = new Intl.NumberFormat(this.locale, ae(ae({}, this.getOptions()), {}, {
         useGrouping: !1
-      })), n = e.format(1.1);
-      return n === e.format(1) ? new RegExp("[]", "g") : new RegExp("[".concat(n.replace(this._currency, "").trim().replace(this._numeral, ""), "]"), "g");
+      })), n = t.format(1.1);
+      return n === t.format(1) ? new RegExp("[]", "g") : new RegExp("[".concat(n.replace(this._currency, "").trim().replace(this._numeral, ""), "]"), "g");
     },
     getGroupingExpression: function() {
-      var e = new Intl.NumberFormat(this.locale, {
+      var t = new Intl.NumberFormat(this.locale, {
         useGrouping: !0
       });
-      return this.groupChar = e.format(1e6).trim().replace(this._numeral, "").charAt(0), new RegExp("[".concat(this.groupChar, "]"), "g");
+      return this.groupChar = t.format(1e6).trim().replace(this._numeral, "").charAt(0), new RegExp("[".concat(this.groupChar, "]"), "g");
     },
     getMinusSignExpression: function() {
-      var e = new Intl.NumberFormat(this.locale, {
+      var t = new Intl.NumberFormat(this.locale, {
         useGrouping: !1
       });
-      return new RegExp("[".concat(e.format(-1).trim().replace(this._numeral, ""), "]"), "g");
+      return new RegExp("[".concat(t.format(-1).trim().replace(this._numeral, ""), "]"), "g");
     },
     getCurrencyExpression: function() {
       if (this.currency) {
-        var e = new Intl.NumberFormat(this.locale, {
+        var t = new Intl.NumberFormat(this.locale, {
           style: "currency",
           currency: this.currency,
           currencyDisplay: this.currencyDisplay,
@@ -670,7 +828,7 @@ var oe = {
           maximumFractionDigits: 0,
           roundingMode: this.roundingMode
         });
-        return new RegExp("[".concat(e.format(1).replace(/\s/g, "").replace(this._numeral, "").replace(this._group, ""), "]"), "g");
+        return new RegExp("[".concat(t.format(1).replace(/\s/g, "").replace(this._numeral, "").replace(this._group, ""), "]"), "g");
       }
       return new RegExp("[]", "g");
     },
@@ -678,12 +836,12 @@ var oe = {
       if (this.prefix)
         this.prefixChar = this.prefix;
       else {
-        var e = new Intl.NumberFormat(this.locale, {
+        var t = new Intl.NumberFormat(this.locale, {
           style: this.mode,
           currency: this.currency,
           currencyDisplay: this.currencyDisplay
         });
-        this.prefixChar = e.format(1).split("1")[0];
+        this.prefixChar = t.format(1).split("1")[0];
       }
       return new RegExp("".concat(this.escapeRegExp(this.prefixChar || "")), "g");
     },
@@ -691,7 +849,7 @@ var oe = {
       if (this.suffix)
         this.suffixChar = this.suffix;
       else {
-        var e = new Intl.NumberFormat(this.locale, {
+        var t = new Intl.NumberFormat(this.locale, {
           style: this.mode,
           currency: this.currency,
           currencyDisplay: this.currencyDisplay,
@@ -699,24 +857,24 @@ var oe = {
           maximumFractionDigits: 0,
           roundingMode: this.roundingMode
         });
-        this.suffixChar = e.format(1).split("1")[1];
+        this.suffixChar = t.format(1).split("1")[1];
       }
       return new RegExp("".concat(this.escapeRegExp(this.suffixChar || "")), "g");
     },
-    formatValue: function(e) {
-      if (e != null) {
-        if (e === "-")
-          return e;
+    formatValue: function(t) {
+      if (t != null) {
+        if (t === "-")
+          return t;
         if (this.format) {
-          var n = new Intl.NumberFormat(this.locale, this.getOptions()), i = n.format(e);
+          var n = new Intl.NumberFormat(this.locale, this.getOptions()), i = n.format(t);
           return this.prefix && (i = this.prefix + i), this.suffix && (i = i + this.suffix), i;
         }
-        return e.toString();
+        return t.toString();
       }
       return "";
     },
-    parseValue: function(e) {
-      var n = e.replace(this._suffix, "").replace(this._prefix, "").trim().replace(/\s/g, "").replace(this._currency, "").replace(this._group, "").replace(this._minusSign, "-").replace(this._decimal, ".").replace(this._numeral, this._index);
+    parseValue: function(t) {
+      var n = t.replace(this._suffix, "").replace(this._prefix, "").trim().replace(/\s/g, "").replace(this._currency, "").replace(this._group, "").replace(this._minusSign, "-").replace(this._decimal, ".").replace(this._numeral, this._index);
       if (n) {
         if (n === "-")
           return n;
@@ -725,27 +883,27 @@ var oe = {
       }
       return null;
     },
-    repeat: function(e, n, i) {
+    repeat: function(t, n, i) {
       var a = this;
       if (!this.readonly) {
         var r = n || 500;
         this.clearTimer(), this.timer = setTimeout(function() {
-          a.repeat(e, 40, i);
-        }, r), this.spin(e, i);
+          a.repeat(t, 40, i);
+        }, r), this.spin(t, i);
       }
     },
-    addWithPrecision: function(e, n) {
-      var i = e.toString(), a = n.toString(), r = i.includes(".") ? i.split(".")[1].length : 0, u = a.includes(".") ? a.split(".")[1].length : 0, s = Math.max(r, u), d = Math.pow(10, s);
-      return Math.round((e + n) * d) / d;
+    addWithPrecision: function(t, n) {
+      var i = t.toString(), a = n.toString(), r = i.includes(".") ? i.split(".")[1].length : 0, o = a.includes(".") ? a.split(".")[1].length : 0, s = Math.max(r, o), d = Math.pow(10, s);
+      return Math.round((t + n) * d) / d;
     },
-    spin: function(e, n) {
+    spin: function(t, n) {
       if (this.$refs.input) {
         var i = this.step * n, a = this.parseValue(this.$refs.input.$el.value) || 0, r = this.validateValue(this.addWithPrecision(a, i));
-        this.updateInput(r, null, "spin"), this.updateModel(e, r), this.handleOnInput(e, a, r);
+        this.updateInput(r, null, "spin"), this.updateModel(t, r), this.handleOnInput(t, a, r);
       }
     },
-    onUpButtonMouseDown: function(e) {
-      this.disabled || (this.$refs.input.$el.focus(), this.repeat(e, null, 1), e.preventDefault());
+    onUpButtonMouseDown: function(t) {
+      this.disabled || (this.$refs.input.$el.focus(), this.repeat(t, null, 1), t.preventDefault());
     },
     onUpButtonMouseUp: function() {
       this.disabled || this.clearTimer();
@@ -756,11 +914,11 @@ var oe = {
     onUpButtonKeyUp: function() {
       this.disabled || this.clearTimer();
     },
-    onUpButtonKeyDown: function(e) {
-      (e.code === "Space" || e.code === "Enter" || e.code === "NumpadEnter") && this.repeat(e, null, 1);
+    onUpButtonKeyDown: function(t) {
+      (t.code === "Space" || t.code === "Enter" || t.code === "NumpadEnter") && this.repeat(t, null, 1);
     },
-    onDownButtonMouseDown: function(e) {
-      this.disabled || (this.$refs.input.$el.focus(), this.repeat(e, null, -1), e.preventDefault());
+    onDownButtonMouseDown: function(t) {
+      this.disabled || (this.$refs.input.$el.focus(), this.repeat(t, null, -1), t.preventDefault());
     },
     onDownButtonMouseUp: function() {
       this.disabled || this.clearTimer();
@@ -771,143 +929,143 @@ var oe = {
     onDownButtonKeyUp: function() {
       this.disabled || this.clearTimer();
     },
-    onDownButtonKeyDown: function(e) {
-      (e.code === "Space" || e.code === "Enter" || e.code === "NumpadEnter") && this.repeat(e, null, -1);
+    onDownButtonKeyDown: function(t) {
+      (t.code === "Space" || t.code === "Enter" || t.code === "NumpadEnter") && this.repeat(t, null, -1);
     },
     onUserInput: function() {
       this.isSpecialChar && (this.$refs.input.$el.value = this.lastValue), this.isSpecialChar = !1;
     },
-    onInputKeyDown: function(e) {
-      if (!this.readonly && !e.isComposing) {
-        if (e.altKey || e.ctrlKey || e.metaKey) {
+    onInputKeyDown: function(t) {
+      if (!this.readonly && !t.isComposing) {
+        if (t.altKey || t.ctrlKey || t.metaKey) {
           this.isSpecialChar = !0, this.lastValue = this.$refs.input.$el.value;
           return;
         }
-        this.lastValue = e.target.value;
-        var n = e.target.selectionStart, i = e.target.selectionEnd, a = i - n, r = e.target.value, u = null, s = e.code || e.key;
+        this.lastValue = t.target.value;
+        var n = t.target.selectionStart, i = t.target.selectionEnd, a = i - n, r = t.target.value, o = null, s = t.code || t.key;
         switch (s) {
           case "ArrowUp":
-            this.spin(e, 1), e.preventDefault();
+            this.spin(t, 1), t.preventDefault();
             break;
           case "ArrowDown":
-            this.spin(e, -1), e.preventDefault();
+            this.spin(t, -1), t.preventDefault();
             break;
           case "ArrowLeft":
             if (a > 1) {
               var d = this.isNumeralChar(r.charAt(n)) ? n + 1 : n + 2;
               this.$refs.input.$el.setSelectionRange(d, d);
-            } else this.isNumeralChar(r.charAt(n - 1)) || e.preventDefault();
+            } else this.isNumeralChar(r.charAt(n - 1)) || t.preventDefault();
             break;
           case "ArrowRight":
             if (a > 1) {
               var p = i - 1;
               this.$refs.input.$el.setSelectionRange(p, p);
-            } else this.isNumeralChar(r.charAt(n)) || e.preventDefault();
+            } else this.isNumeralChar(r.charAt(n)) || t.preventDefault();
             break;
           case "Tab":
           case "Enter":
           case "NumpadEnter":
-            u = this.validateValue(this.parseValue(r)), this.$refs.input.$el.value = this.formatValue(u), this.$refs.input.$el.setAttribute("aria-valuenow", u), this.updateModel(e, u);
+            o = this.validateValue(this.parseValue(r)), this.$refs.input.$el.value = this.formatValue(o), this.$refs.input.$el.setAttribute("aria-valuenow", o), this.updateModel(t, o);
             break;
           case "Backspace": {
-            if (e.preventDefault(), n === i) {
+            if (t.preventDefault(), n === i) {
               n >= r.length && this.suffixChar !== null && (n = r.length - this.suffixChar.length, this.$refs.input.$el.setSelectionRange(n, n));
-              var m = r.charAt(n - 1), f = this.getDecimalCharIndexes(r), o = f.decimalCharIndex, l = f.decimalCharIndexWithoutPrefix;
-              if (this.isNumeralChar(m)) {
-                var b = this.getDecimalLength(r);
-                if (this._group.test(m))
-                  this._group.lastIndex = 0, u = r.slice(0, n - 2) + r.slice(n - 1);
-                else if (this._decimal.test(m))
-                  this._decimal.lastIndex = 0, b ? this.$refs.input.$el.setSelectionRange(n - 1, n - 1) : u = r.slice(0, n - 1) + r.slice(n);
-                else if (o > 0 && n > o) {
-                  var S = this.isDecimalMode() && (this.minFractionDigits || 0) < b ? "" : "0";
-                  u = r.slice(0, n - 1) + S + r.slice(n);
-                } else l === 1 ? (u = r.slice(0, n - 1) + "0" + r.slice(n), u = this.parseValue(u) > 0 ? u : "") : u = r.slice(0, n - 1) + r.slice(n);
+              var h = r.charAt(n - 1), f = this.getDecimalCharIndexes(r), l = f.decimalCharIndex, c = f.decimalCharIndexWithoutPrefix;
+              if (this.isNumeralChar(h)) {
+                var y = this.getDecimalLength(r);
+                if (this._group.test(h))
+                  this._group.lastIndex = 0, o = r.slice(0, n - 2) + r.slice(n - 1);
+                else if (this._decimal.test(h))
+                  this._decimal.lastIndex = 0, y ? this.$refs.input.$el.setSelectionRange(n - 1, n - 1) : o = r.slice(0, n - 1) + r.slice(n);
+                else if (l > 0 && n > l) {
+                  var x = this.isDecimalMode() && (this.minFractionDigits || 0) < y ? "" : "0";
+                  o = r.slice(0, n - 1) + x + r.slice(n);
+                } else c === 1 ? (o = r.slice(0, n - 1) + "0" + r.slice(n), o = this.parseValue(o) > 0 ? o : "") : o = r.slice(0, n - 1) + r.slice(n);
               }
-              this.updateValue(e, u, null, "delete-single");
+              this.updateValue(t, o, null, "delete-single");
             } else
-              u = this.deleteRange(r, n, i), this.updateValue(e, u, null, "delete-range");
+              o = this.deleteRange(r, n, i), this.updateValue(t, o, null, "delete-range");
             break;
           }
           case "Delete":
-            if (e.preventDefault(), n === i) {
-              var B = r.charAt(n), I = this.getDecimalCharIndexes(r), k = I.decimalCharIndex, M = I.decimalCharIndexWithoutPrefix;
-              if (this.isNumeralChar(B)) {
-                var P = this.getDecimalLength(r);
-                if (this._group.test(B))
-                  this._group.lastIndex = 0, u = r.slice(0, n) + r.slice(n + 2);
-                else if (this._decimal.test(B))
-                  this._decimal.lastIndex = 0, P ? this.$refs.input.$el.setSelectionRange(n + 1, n + 1) : u = r.slice(0, n) + r.slice(n + 1);
-                else if (k > 0 && n > k) {
-                  var N = this.isDecimalMode() && (this.minFractionDigits || 0) < P ? "" : "0";
-                  u = r.slice(0, n) + N + r.slice(n + 1);
-                } else M === 1 ? (u = r.slice(0, n) + "0" + r.slice(n + 1), u = this.parseValue(u) > 0 ? u : "") : u = r.slice(0, n) + r.slice(n + 1);
+            if (t.preventDefault(), n === i) {
+              var v = r.charAt(n), C = this.getDecimalCharIndexes(r), B = C.decimalCharIndex, M = C.decimalCharIndexWithoutPrefix;
+              if (this.isNumeralChar(v)) {
+                var A = this.getDecimalLength(r);
+                if (this._group.test(v))
+                  this._group.lastIndex = 0, o = r.slice(0, n) + r.slice(n + 2);
+                else if (this._decimal.test(v))
+                  this._decimal.lastIndex = 0, A ? this.$refs.input.$el.setSelectionRange(n + 1, n + 1) : o = r.slice(0, n) + r.slice(n + 1);
+                else if (B > 0 && n > B) {
+                  var j = this.isDecimalMode() && (this.minFractionDigits || 0) < A ? "" : "0";
+                  o = r.slice(0, n) + j + r.slice(n + 1);
+                } else M === 1 ? (o = r.slice(0, n) + "0" + r.slice(n + 1), o = this.parseValue(o) > 0 ? o : "") : o = r.slice(0, n) + r.slice(n + 1);
               }
-              this.updateValue(e, u, null, "delete-back-single");
+              this.updateValue(t, o, null, "delete-back-single");
             } else
-              u = this.deleteRange(r, n, i), this.updateValue(e, u, null, "delete-range");
+              o = this.deleteRange(r, n, i), this.updateValue(t, o, null, "delete-range");
             break;
           case "Home":
-            e.preventDefault(), Y(this.min) && this.updateModel(e, this.min);
+            t.preventDefault(), te(this.min) && this.updateModel(t, this.min);
             break;
           case "End":
-            e.preventDefault(), Y(this.max) && this.updateModel(e, this.max);
+            t.preventDefault(), te(this.max) && this.updateModel(t, this.max);
             break;
         }
       }
     },
-    onInputKeyPress: function(e) {
+    onInputKeyPress: function(t) {
       if (!this.readonly) {
-        var n = e.key, i = this.isDecimalSign(n), a = this.isMinusSign(n);
-        e.code !== "Enter" && e.preventDefault(), (Number(n) >= 0 && Number(n) <= 9 || a || i) && this.insert(e, n, {
+        var n = t.key, i = this.isDecimalSign(n), a = this.isMinusSign(n);
+        t.code !== "Enter" && t.preventDefault(), (Number(n) >= 0 && Number(n) <= 9 || a || i) && this.insert(t, n, {
           isDecimalSign: i,
           isMinusSign: a
         });
       }
     },
-    onPaste: function(e) {
+    onPaste: function(t) {
       if (!(this.readonly || this.disabled)) {
-        e.preventDefault();
-        var n = (e.clipboardData || window.clipboardData).getData("Text");
+        t.preventDefault();
+        var n = (t.clipboardData || window.clipboardData).getData("Text");
         if (!(this.inputId === "integeronly" && /[^\d-]/.test(n)) && n) {
           var i = this.parseValue(n);
-          i != null && this.insert(e, i.toString());
+          i != null && this.insert(t, i.toString());
         }
       }
     },
-    onClearClick: function(e) {
-      this.updateModel(e, null), this.$refs.input.$el.focus();
+    onClearClick: function(t) {
+      this.updateModel(t, null), this.$refs.input.$el.focus();
     },
     allowMinusSign: function() {
       return this.min === null || this.min < 0;
     },
-    isMinusSign: function(e) {
-      return this._minusSign.test(e) || e === "-" ? (this._minusSign.lastIndex = 0, !0) : !1;
+    isMinusSign: function(t) {
+      return this._minusSign.test(t) || t === "-" ? (this._minusSign.lastIndex = 0, !0) : !1;
     },
-    isDecimalSign: function(e) {
+    isDecimalSign: function(t) {
       var n;
-      return (n = this.locale) !== null && n !== void 0 && n.includes("fr") && [".", ","].includes(e) || this._decimal.test(e) ? (this._decimal.lastIndex = 0, !0) : !1;
+      return (n = this.locale) !== null && n !== void 0 && n.includes("fr") && [".", ","].includes(t) || this._decimal.test(t) ? (this._decimal.lastIndex = 0, !0) : !1;
     },
     isDecimalMode: function() {
       return this.mode === "decimal";
     },
-    getDecimalCharIndexes: function(e) {
-      var n = e.search(this._decimal);
+    getDecimalCharIndexes: function(t) {
+      var n = t.search(this._decimal);
       this._decimal.lastIndex = 0;
-      var i = e.replace(this._prefix, "").trim().replace(/\s/g, "").replace(this._currency, ""), a = i.search(this._decimal);
+      var i = t.replace(this._prefix, "").trim().replace(/\s/g, "").replace(this._currency, ""), a = i.search(this._decimal);
       return this._decimal.lastIndex = 0, {
         decimalCharIndex: n,
         decimalCharIndexWithoutPrefix: a
       };
     },
-    getCharIndexes: function(e) {
-      var n = e.search(this._decimal);
+    getCharIndexes: function(t) {
+      var n = t.search(this._decimal);
       this._decimal.lastIndex = 0;
-      var i = e.search(this._minusSign);
+      var i = t.search(this._minusSign);
       this._minusSign.lastIndex = 0;
-      var a = e.search(this._suffix);
+      var a = t.search(this._suffix);
       this._suffix.lastIndex = 0;
-      var r = e.search(this._currency);
+      var r = t.search(this._currency);
       return this._currency.lastIndex = 0, {
         decimalCharIndex: n,
         minusCharIndex: i,
@@ -915,49 +1073,49 @@ var oe = {
         currencyCharIndex: r
       };
     },
-    insert: function(e, n) {
+    insert: function(t, n) {
       var i = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {
         isDecimalSign: !1,
         isMinusSign: !1
       }, a = n.search(this._minusSign);
       if (this._minusSign.lastIndex = 0, !(!this.allowMinusSign() && a !== -1)) {
-        var r = this.$refs.input.$el.selectionStart, u = this.$refs.input.$el.selectionEnd, s = this.$refs.input.$el.value.trim(), d = this.getCharIndexes(s), p = d.decimalCharIndex, m = d.minusCharIndex, f = d.suffixCharIndex, o = d.currencyCharIndex, l;
+        var r = this.$refs.input.$el.selectionStart, o = this.$refs.input.$el.selectionEnd, s = this.$refs.input.$el.value.trim(), d = this.getCharIndexes(s), p = d.decimalCharIndex, h = d.minusCharIndex, f = d.suffixCharIndex, l = d.currencyCharIndex, c;
         if (i.isMinusSign) {
-          var b = m === -1;
-          (r === 0 || r === o + 1) && (l = s, (b || u !== 0) && (l = this.insertText(s, n, 0, u)), this.updateValue(e, l, n, "insert"));
+          var y = h === -1;
+          (r === 0 || r === l + 1) && (c = s, (y || o !== 0) && (c = this.insertText(s, n, 0, o)), this.updateValue(t, c, n, "insert"));
         } else if (i.isDecimalSign)
-          p > 0 && r === p ? this.updateValue(e, s, n, "insert") : p > r && p < u ? (l = this.insertText(s, n, r, u), this.updateValue(e, l, n, "insert")) : p === -1 && this.maxFractionDigits && (l = this.insertText(s, n, r, u), this.updateValue(e, l, n, "insert"));
+          p > 0 && r === p ? this.updateValue(t, s, n, "insert") : p > r && p < o ? (c = this.insertText(s, n, r, o), this.updateValue(t, c, n, "insert")) : p === -1 && this.maxFractionDigits && (c = this.insertText(s, n, r, o), this.updateValue(t, c, n, "insert"));
         else {
-          var S = this.numberFormat.resolvedOptions().maximumFractionDigits, B = r !== u ? "range-insert" : "insert";
+          var x = this.numberFormat.resolvedOptions().maximumFractionDigits, v = r !== o ? "range-insert" : "insert";
           if (p > 0 && r > p) {
-            if (r + n.length - (p + 1) <= S) {
-              var I = o >= r ? o - 1 : f >= r ? f : s.length;
-              l = s.slice(0, r) + n + s.slice(r + n.length, I) + s.slice(I), this.updateValue(e, l, n, B);
+            if (r + n.length - (p + 1) <= x) {
+              var C = l >= r ? l - 1 : f >= r ? f : s.length;
+              c = s.slice(0, r) + n + s.slice(r + n.length, C) + s.slice(C), this.updateValue(t, c, n, v);
             }
           } else
-            l = this.insertText(s, n, r, u), this.updateValue(e, l, n, B);
+            c = this.insertText(s, n, r, o), this.updateValue(t, c, n, v);
         }
       }
     },
-    insertText: function(e, n, i, a) {
+    insertText: function(t, n, i, a) {
       var r = n === "." ? n : n.split(".");
       if (r.length === 2) {
-        var u = e.slice(i, a).search(this._decimal);
-        return this._decimal.lastIndex = 0, u > 0 ? e.slice(0, i) + this.formatValue(n) + e.slice(a) : this.formatValue(n) || e;
-      } else return a - i === e.length ? this.formatValue(n) : i === 0 ? n + e.slice(a) : a === e.length ? e.slice(0, i) + n : e.slice(0, i) + n + e.slice(a);
+        var o = t.slice(i, a).search(this._decimal);
+        return this._decimal.lastIndex = 0, o > 0 ? t.slice(0, i) + this.formatValue(n) + t.slice(a) : this.formatValue(n) || t;
+      } else return a - i === t.length ? this.formatValue(n) : i === 0 ? n + t.slice(a) : a === t.length ? t.slice(0, i) + n : t.slice(0, i) + n + t.slice(a);
     },
-    deleteRange: function(e, n, i) {
+    deleteRange: function(t, n, i) {
       var a;
-      return i - n === e.length ? a = "" : n === 0 ? a = e.slice(i) : i === e.length ? a = e.slice(0, n) : a = e.slice(0, n) + e.slice(i), a;
+      return i - n === t.length ? a = "" : n === 0 ? a = t.slice(i) : i === t.length ? a = t.slice(0, n) : a = t.slice(0, n) + t.slice(i), a;
     },
     initCursor: function() {
-      var e = this.$refs.input.$el.selectionStart, n = this.$refs.input.$el.value, i = n.length, a = null, r = (this.prefixChar || "").length;
-      n = n.replace(this._prefix, ""), e = e - r;
-      var u = n.charAt(e);
-      if (this.isNumeralChar(u))
-        return e + r;
-      for (var s = e - 1; s >= 0; )
-        if (u = n.charAt(s), this.isNumeralChar(u)) {
+      var t = this.$refs.input.$el.selectionStart, n = this.$refs.input.$el.value, i = n.length, a = null, r = (this.prefixChar || "").length;
+      n = n.replace(this._prefix, ""), t = t - r;
+      var o = n.charAt(t);
+      if (this.isNumeralChar(o))
+        return t + r;
+      for (var s = t - 1; s >= 0; )
+        if (o = n.charAt(s), this.isNumeralChar(o)) {
           a = s + r;
           break;
         } else
@@ -965,8 +1123,8 @@ var oe = {
       if (a !== null)
         this.$refs.input.$el.setSelectionRange(a + 1, a + 1);
       else {
-        for (s = e; s < i; )
-          if (u = n.charAt(s), this.isNumeralChar(u)) {
+        for (s = t; s < i; )
+          if (o = n.charAt(s), this.isNumeralChar(o)) {
             a = s + r;
             break;
           } else
@@ -976,104 +1134,104 @@ var oe = {
       return a || 0;
     },
     onInputClick: function() {
-      var e = this.$refs.input.$el.value;
-      !this.readonly && e !== Q() && this.initCursor();
+      var t = this.$refs.input.$el.value;
+      !this.readonly && t !== ee() && this.initCursor();
     },
-    isNumeralChar: function(e) {
-      return e.length === 1 && (this._numeral.test(e) || this._decimal.test(e) || this._group.test(e) || this._minusSign.test(e)) ? (this.resetRegex(), !0) : !1;
+    isNumeralChar: function(t) {
+      return t.length === 1 && (this._numeral.test(t) || this._decimal.test(t) || this._group.test(t) || this._minusSign.test(t)) ? (this.resetRegex(), !0) : !1;
     },
     resetRegex: function() {
       this._numeral.lastIndex = 0, this._decimal.lastIndex = 0, this._group.lastIndex = 0, this._minusSign.lastIndex = 0;
     },
-    updateValue: function(e, n, i, a) {
-      var r = this.$refs.input.$el.value, u = null;
-      n != null && (u = this.parseValue(n), u = !u && !this.allowEmpty ? 0 : u, this.updateInput(u, i, a, n), this.handleOnInput(e, r, u));
+    updateValue: function(t, n, i, a) {
+      var r = this.$refs.input.$el.value, o = null;
+      n != null && (o = this.parseValue(n), o = !o && !this.allowEmpty ? 0 : o, this.updateInput(o, i, a, n), this.handleOnInput(t, r, o));
     },
-    handleOnInput: function(e, n, i) {
+    handleOnInput: function(t, n, i) {
       if (this.isValueChanged(n, i)) {
         var a, r;
         this.$emit("input", {
-          originalEvent: e,
+          originalEvent: t,
           value: i,
           formattedValue: n
         }), (a = (r = this.formField).onInput) === null || a === void 0 || a.call(r, {
-          originalEvent: e,
+          originalEvent: t,
           value: i
         });
       }
     },
-    isValueChanged: function(e, n) {
-      if (n === null && e !== null)
+    isValueChanged: function(t, n) {
+      if (n === null && t !== null)
         return !0;
       if (n != null) {
-        var i = typeof e == "string" ? this.parseValue(e) : e;
+        var i = typeof t == "string" ? this.parseValue(t) : t;
         return n !== i;
       }
       return !1;
     },
-    validateValue: function(e) {
-      return e === "-" || e == null ? null : this.min != null && e < this.min ? this.min : this.max != null && e > this.max ? this.max : e;
+    validateValue: function(t) {
+      return t === "-" || t == null ? null : this.min != null && t < this.min ? this.min : this.max != null && t > this.max ? this.max : t;
     },
-    updateInput: function(e, n, i, a) {
+    updateInput: function(t, n, i, a) {
       var r;
       n = n || "";
-      var u = this.$refs.input.$el.value, s = this.formatValue(e), d = u.length;
+      var o = this.$refs.input.$el.value, s = this.formatValue(t), d = o.length;
       if (s !== a && (s = this.concatValues(s, a)), d === 0) {
         this.$refs.input.$el.value = s, this.$refs.input.$el.setSelectionRange(0, 0);
-        var p = this.initCursor(), m = p + n.length;
-        this.$refs.input.$el.setSelectionRange(m, m);
+        var p = this.initCursor(), h = p + n.length;
+        this.$refs.input.$el.setSelectionRange(h, h);
       } else {
-        var f = this.$refs.input.$el.selectionStart, o = this.$refs.input.$el.selectionEnd;
+        var f = this.$refs.input.$el.selectionStart, l = this.$refs.input.$el.selectionEnd;
         this.$refs.input.$el.value = s;
-        var l = s.length;
+        var c = s.length;
         if (i === "range-insert") {
-          var b = this.parseValue((u || "").slice(0, f)), S = b !== null ? b.toString() : "", B = S.split("").join("(".concat(this.groupChar, ")?")), I = new RegExp(B, "g");
-          I.test(s);
-          var k = n.split("").join("(".concat(this.groupChar, ")?")), M = new RegExp(k, "g");
-          M.test(s.slice(I.lastIndex)), o = I.lastIndex + M.lastIndex, this.$refs.input.$el.setSelectionRange(o, o);
-        } else if (l === d)
-          i === "insert" || i === "delete-back-single" ? this.$refs.input.$el.setSelectionRange(o + 1, o + 1) : i === "delete-single" ? this.$refs.input.$el.setSelectionRange(o - 1, o - 1) : (i === "delete-range" || i === "spin") && this.$refs.input.$el.setSelectionRange(o, o);
+          var y = this.parseValue((o || "").slice(0, f)), x = y !== null ? y.toString() : "", v = x.split("").join("(".concat(this.groupChar, ")?")), C = new RegExp(v, "g");
+          C.test(s);
+          var B = n.split("").join("(".concat(this.groupChar, ")?")), M = new RegExp(B, "g");
+          M.test(s.slice(C.lastIndex)), l = C.lastIndex + M.lastIndex, this.$refs.input.$el.setSelectionRange(l, l);
+        } else if (c === d)
+          i === "insert" || i === "delete-back-single" ? this.$refs.input.$el.setSelectionRange(l + 1, l + 1) : i === "delete-single" ? this.$refs.input.$el.setSelectionRange(l - 1, l - 1) : (i === "delete-range" || i === "spin") && this.$refs.input.$el.setSelectionRange(l, l);
         else if (i === "delete-back-single") {
-          var P = u.charAt(o - 1), N = u.charAt(o), W = d - l, G = this._group.test(N);
-          G && W === 1 ? o += 1 : !G && this.isNumeralChar(P) && (o += -1 * W + 1), this._group.lastIndex = 0, this.$refs.input.$el.setSelectionRange(o, o);
-        } else if (u === "-" && i === "insert") {
+          var A = o.charAt(l - 1), j = o.charAt(l), Z = d - c, J = this._group.test(j);
+          J && Z === 1 ? l += 1 : !J && this.isNumeralChar(A) && (l += -1 * Z + 1), this._group.lastIndex = 0, this.$refs.input.$el.setSelectionRange(l, l);
+        } else if (o === "-" && i === "insert") {
           this.$refs.input.$el.setSelectionRange(0, 0);
-          var ce = this.initCursor(), H = ce + n.length + 1;
-          this.$refs.input.$el.setSelectionRange(H, H);
+          var me = this.initCursor(), Q = me + n.length + 1;
+          this.$refs.input.$el.setSelectionRange(Q, Q);
         } else
-          o = o + (l - d), this.$refs.input.$el.setSelectionRange(o, o);
+          l = l + (c - d), this.$refs.input.$el.setSelectionRange(l, l);
       }
-      this.$refs.input.$el.setAttribute("aria-valuenow", e), (r = this.$refs.clearIcon) !== null && r !== void 0 && (r = r.$el) !== null && r !== void 0 && r.style && (this.$refs.clearIcon.$el.style.display = X(s) ? "none" : "block");
+      this.$refs.input.$el.setAttribute("aria-valuenow", t), (r = this.$refs.clearIcon) !== null && r !== void 0 && (r = r.$el) !== null && r !== void 0 && r.style && (this.$refs.clearIcon.$el.style.display = R(s) ? "none" : "block");
     },
-    concatValues: function(e, n) {
-      if (e && n) {
+    concatValues: function(t, n) {
+      if (t && n) {
         var i = n.search(this._decimal);
-        return this._decimal.lastIndex = 0, this.suffixChar ? i !== -1 ? e.replace(this.suffixChar, "").split(this._decimal)[0] + n.replace(this.suffixChar, "").slice(i) + this.suffixChar : e : i !== -1 ? e.split(this._decimal)[0] + n.slice(i) : e;
+        return this._decimal.lastIndex = 0, this.suffixChar ? i !== -1 ? t.replace(this.suffixChar, "").split(this._decimal)[0] + n.replace(this.suffixChar, "").slice(i) + this.suffixChar : t : i !== -1 ? t.split(this._decimal)[0] + n.slice(i) : t;
       }
-      return e;
+      return t;
     },
-    getDecimalLength: function(e) {
-      if (e) {
-        var n = e.split(this._decimal);
+    getDecimalLength: function(t) {
+      if (t) {
+        var n = t.split(this._decimal);
         if (n.length === 2)
           return n[1].replace(this._suffix, "").trim().replace(/\s/g, "").replace(this._currency, "").length;
       }
       return 0;
     },
-    updateModel: function(e, n) {
-      this.writeValue(n, e);
+    updateModel: function(t, n) {
+      this.writeValue(n, t);
     },
-    onInputFocus: function(e) {
-      this.focused = !0, !this.disabled && !this.readonly && this.$refs.input.$el.value !== Q() && this.highlightOnFocus && e.target.select(), this.$emit("focus", e);
+    onInputFocus: function(t) {
+      this.focused = !0, !this.disabled && !this.readonly && this.$refs.input.$el.value !== ee() && this.highlightOnFocus && t.target.select(), this.$emit("focus", t);
     },
-    onInputBlur: function(e) {
+    onInputBlur: function(t) {
       var n, i;
       this.focused = !1;
-      var a = e.target, r = this.validateValue(this.parseValue(a.value));
+      var a = t.target, r = this.validateValue(this.parseValue(a.value));
       this.$emit("blur", {
-        originalEvent: e,
+        originalEvent: t,
         value: a.value
-      }), (n = (i = this.formField).onBlur) === null || n === void 0 || n.call(i, e), a.value = this.formatValue(r), a.setAttribute("aria-valuenow", r), this.updateModel(e, r), !this.disabled && !this.readonly && this.highlightOnFocus && be();
+      }), (n = (i = this.formField).onBlur) === null || n === void 0 || n.call(i, t), a.value = this.formatValue(r), a.setAttribute("aria-valuenow", r), this.updateModel(t, r), !this.disabled && !this.readonly && this.highlightOnFocus && $e();
     },
     clearTimer: function() {
       this.timer && clearTimeout(this.timer);
@@ -1087,54 +1245,54 @@ var oe = {
   },
   computed: {
     upButtonListeners: function() {
-      var e = this;
+      var t = this;
       return {
         mousedown: function(i) {
-          return e.onUpButtonMouseDown(i);
+          return t.onUpButtonMouseDown(i);
         },
         mouseup: function(i) {
-          return e.onUpButtonMouseUp(i);
+          return t.onUpButtonMouseUp(i);
         },
         mouseleave: function(i) {
-          return e.onUpButtonMouseLeave(i);
+          return t.onUpButtonMouseLeave(i);
         },
         keydown: function(i) {
-          return e.onUpButtonKeyDown(i);
+          return t.onUpButtonKeyDown(i);
         },
         keyup: function(i) {
-          return e.onUpButtonKeyUp(i);
+          return t.onUpButtonKeyUp(i);
         }
       };
     },
     downButtonListeners: function() {
-      var e = this;
+      var t = this;
       return {
         mousedown: function(i) {
-          return e.onDownButtonMouseDown(i);
+          return t.onDownButtonMouseDown(i);
         },
         mouseup: function(i) {
-          return e.onDownButtonMouseUp(i);
+          return t.onDownButtonMouseUp(i);
         },
         mouseleave: function(i) {
-          return e.onDownButtonMouseLeave(i);
+          return t.onDownButtonMouseLeave(i);
         },
         keydown: function(i) {
-          return e.onDownButtonKeyDown(i);
+          return t.onDownButtonKeyDown(i);
         },
         keyup: function(i) {
-          return e.onDownButtonKeyUp(i);
+          return t.onDownButtonKeyUp(i);
         }
       };
     },
     formattedValue: function() {
-      var e = !this.d_value && !this.allowEmpty ? 0 : this.d_value;
-      return this.formatValue(e);
+      var t = !this.d_value && !this.allowEmpty ? 0 : this.d_value;
+      return this.formatValue(t);
     },
     getFormatter: function() {
       return this.numberFormat;
     },
     dataP: function() {
-      return he(K(K({
+      return se(W(W({
         invalid: this.$invalid,
         fluid: this.$fluid,
         filled: this.$variant === "filled"
@@ -1142,39 +1300,39 @@ var oe = {
     }
   },
   components: {
-    InputText: ae,
-    AngleUpIcon: se,
-    AngleDownIcon: ue,
-    TimesIcon: $e
+    InputText: oe,
+    AngleUpIcon: ue,
+    AngleDownIcon: le,
+    TimesIcon: ce
   }
-}, Qe = ["data-p"], Xe = ["data-p"], Ye = ["disabled", "data-p"], et = ["disabled", "data-p"], tt = ["disabled", "data-p"], nt = ["disabled", "data-p"];
-function it(t, e, n, i, a, r) {
-  var u = q("InputText"), s = q("TimesIcon");
-  return c(), h("span", g({
-    class: t.cx("root")
-  }, t.ptmi("root"), {
+}, ht = ["data-p"], mt = ["data-p"], ft = ["disabled", "data-p"], gt = ["disabled", "data-p"], bt = ["disabled", "data-p"], yt = ["disabled", "data-p"];
+function vt(e, t, n, i, a, r) {
+  var o = X("InputText"), s = X("TimesIcon");
+  return u(), m("span", g({
+    class: e.cx("root")
+  }, e.ptmi("root"), {
     "data-p": r.dataP
-  }), [F(u, {
+  }), [L(o, {
     ref: "input",
-    id: t.inputId,
-    name: t.$formName,
+    id: e.inputId,
+    name: e.$formName,
     role: "spinbutton",
-    class: R([t.cx("pcInputText"), t.inputClass]),
-    style: de(t.inputStyle),
+    class: N([e.cx("pcInputText"), e.inputClass]),
+    style: fe(e.inputStyle),
     defaultValue: r.formattedValue,
-    "aria-valuemin": t.min,
-    "aria-valuemax": t.max,
-    "aria-valuenow": t.d_value,
-    inputmode: t.mode === "decimal" && !t.minFractionDigits ? "numeric" : "decimal",
-    disabled: t.disabled,
-    readonly: t.readonly,
-    placeholder: t.placeholder,
-    "aria-labelledby": t.ariaLabelledby,
-    "aria-label": t.ariaLabel,
-    required: t.required,
-    size: t.size,
-    invalid: t.invalid,
-    variant: t.variant,
+    "aria-valuemin": e.min,
+    "aria-valuemax": e.max,
+    "aria-valuenow": e.d_value,
+    inputmode: e.mode === "decimal" && !e.minFractionDigits ? "numeric" : "decimal",
+    disabled: e.disabled,
+    readonly: e.readonly,
+    placeholder: e.placeholder,
+    "aria-labelledby": e.ariaLabelledby,
+    "aria-label": e.ariaLabel,
+    required: e.required,
+    size: e.size,
+    invalid: e.invalid,
+    variant: e.variant,
     onInput: r.onUserInput,
     onKeydown: r.onInputKeyDown,
     onKeypress: r.onInputKeyPress,
@@ -1182,106 +1340,378 @@ function it(t, e, n, i, a, r) {
     onClick: r.onInputClick,
     onFocus: r.onInputFocus,
     onBlur: r.onInputBlur,
-    pt: t.ptm("pcInputText"),
-    unstyled: t.unstyled,
+    pt: e.ptm("pcInputText"),
+    unstyled: e.unstyled,
     "data-p": r.dataP
-  }, null, 8, ["id", "name", "class", "style", "defaultValue", "aria-valuemin", "aria-valuemax", "aria-valuenow", "inputmode", "disabled", "readonly", "placeholder", "aria-labelledby", "aria-label", "required", "size", "invalid", "variant", "onInput", "onKeydown", "onKeypress", "onPaste", "onClick", "onFocus", "onBlur", "pt", "unstyled", "data-p"]), t.showClear && t.buttonLayout !== "vertical" ? w(t.$slots, "clearicon", {
+  }, null, 8, ["id", "name", "class", "style", "defaultValue", "aria-valuemin", "aria-valuemax", "aria-valuenow", "inputmode", "disabled", "readonly", "placeholder", "aria-labelledby", "aria-label", "required", "size", "invalid", "variant", "onInput", "onKeydown", "onKeypress", "onPaste", "onClick", "onFocus", "onBlur", "pt", "unstyled", "data-p"]), e.showClear && e.buttonLayout !== "vertical" ? w(e.$slots, "clearicon", {
     key: 0,
-    class: R(t.cx("clearIcon")),
+    class: N(e.cx("clearIcon")),
     clearCallback: r.onClearClick
   }, function() {
-    return [F(s, g({
+    return [L(s, g({
       ref: "clearIcon",
-      class: [t.cx("clearIcon")],
+      class: [e.cx("clearIcon")],
       onClick: r.onClearClick
-    }, t.ptm("clearIcon")), null, 16, ["class", "onClick"])];
-  }) : $("", !0), t.showButtons && t.buttonLayout === "stacked" ? (c(), h("span", g({
+    }, e.ptm("clearIcon")), null, 16, ["class", "onClick"])];
+  }) : k("", !0), e.showButtons && e.buttonLayout === "stacked" ? (u(), m("span", g({
     key: 1,
-    class: t.cx("buttonGroup")
-  }, t.ptm("buttonGroup"), {
+    class: e.cx("buttonGroup")
+  }, e.ptm("buttonGroup"), {
     "data-p": r.dataP
-  }), [w(t.$slots, "incrementbutton", {
+  }), [w(e.$slots, "incrementbutton", {
     listeners: r.upButtonListeners
   }, function() {
-    return [v("button", g({
-      class: [t.cx("incrementButton"), t.incrementButtonClass]
+    return [b("button", g({
+      class: [e.cx("incrementButton"), e.incrementButtonClass]
     }, V(r.upButtonListeners, !0), {
-      disabled: t.disabled,
+      disabled: e.disabled,
       tabindex: -1,
       "aria-hidden": "true",
       type: "button"
-    }, t.ptm("incrementButton"), {
+    }, e.ptm("incrementButton"), {
       "data-p": r.dataP
-    }), [w(t.$slots, t.$slots.incrementicon ? "incrementicon" : "incrementbuttonicon", {}, function() {
-      return [(c(), y(A(t.incrementIcon || t.incrementButtonIcon ? "span" : "AngleUpIcon"), g({
-        class: [t.incrementIcon, t.incrementButtonIcon]
-      }, t.ptm("incrementIcon"), {
+    }), [w(e.$slots, e.$slots.incrementicon ? "incrementicon" : "incrementbuttonicon", {}, function() {
+      return [(u(), $(O(e.incrementIcon || e.incrementButtonIcon ? "span" : "AngleUpIcon"), g({
+        class: [e.incrementIcon, e.incrementButtonIcon]
+      }, e.ptm("incrementIcon"), {
         "data-pc-section": "incrementicon"
       }), null, 16, ["class"]))];
-    })], 16, Ye)];
-  }), w(t.$slots, "decrementbutton", {
+    })], 16, ft)];
+  }), w(e.$slots, "decrementbutton", {
     listeners: r.downButtonListeners
   }, function() {
-    return [v("button", g({
-      class: [t.cx("decrementButton"), t.decrementButtonClass]
+    return [b("button", g({
+      class: [e.cx("decrementButton"), e.decrementButtonClass]
     }, V(r.downButtonListeners, !0), {
-      disabled: t.disabled,
+      disabled: e.disabled,
       tabindex: -1,
       "aria-hidden": "true",
       type: "button"
-    }, t.ptm("decrementButton"), {
+    }, e.ptm("decrementButton"), {
       "data-p": r.dataP
-    }), [w(t.$slots, t.$slots.decrementicon ? "decrementicon" : "decrementbuttonicon", {}, function() {
-      return [(c(), y(A(t.decrementIcon || t.decrementButtonIcon ? "span" : "AngleDownIcon"), g({
-        class: [t.decrementIcon, t.decrementButtonIcon]
-      }, t.ptm("decrementIcon"), {
+    }), [w(e.$slots, e.$slots.decrementicon ? "decrementicon" : "decrementbuttonicon", {}, function() {
+      return [(u(), $(O(e.decrementIcon || e.decrementButtonIcon ? "span" : "AngleDownIcon"), g({
+        class: [e.decrementIcon, e.decrementButtonIcon]
+      }, e.ptm("decrementIcon"), {
         "data-pc-section": "decrementicon"
       }), null, 16, ["class"]))];
-    })], 16, et)];
-  })], 16, Xe)) : $("", !0), w(t.$slots, "incrementbutton", {
+    })], 16, gt)];
+  })], 16, mt)) : k("", !0), w(e.$slots, "incrementbutton", {
     listeners: r.upButtonListeners
   }, function() {
-    return [t.showButtons && t.buttonLayout !== "stacked" ? (c(), h("button", g({
+    return [e.showButtons && e.buttonLayout !== "stacked" ? (u(), m("button", g({
       key: 0,
-      class: [t.cx("incrementButton"), t.incrementButtonClass]
+      class: [e.cx("incrementButton"), e.incrementButtonClass]
     }, V(r.upButtonListeners, !0), {
-      disabled: t.disabled,
+      disabled: e.disabled,
       tabindex: -1,
       "aria-hidden": "true",
       type: "button"
-    }, t.ptm("incrementButton"), {
+    }, e.ptm("incrementButton"), {
       "data-p": r.dataP
-    }), [w(t.$slots, t.$slots.incrementicon ? "incrementicon" : "incrementbuttonicon", {}, function() {
-      return [(c(), y(A(t.incrementIcon || t.incrementButtonIcon ? "span" : "AngleUpIcon"), g({
-        class: [t.incrementIcon, t.incrementButtonIcon]
-      }, t.ptm("incrementIcon"), {
+    }), [w(e.$slots, e.$slots.incrementicon ? "incrementicon" : "incrementbuttonicon", {}, function() {
+      return [(u(), $(O(e.incrementIcon || e.incrementButtonIcon ? "span" : "AngleUpIcon"), g({
+        class: [e.incrementIcon, e.incrementButtonIcon]
+      }, e.ptm("incrementIcon"), {
         "data-pc-section": "incrementicon"
       }), null, 16, ["class"]))];
-    })], 16, tt)) : $("", !0)];
-  }), w(t.$slots, "decrementbutton", {
+    })], 16, bt)) : k("", !0)];
+  }), w(e.$slots, "decrementbutton", {
     listeners: r.downButtonListeners
   }, function() {
-    return [t.showButtons && t.buttonLayout !== "stacked" ? (c(), h("button", g({
+    return [e.showButtons && e.buttonLayout !== "stacked" ? (u(), m("button", g({
       key: 0,
-      class: [t.cx("decrementButton"), t.decrementButtonClass]
+      class: [e.cx("decrementButton"), e.decrementButtonClass]
     }, V(r.downButtonListeners, !0), {
-      disabled: t.disabled,
+      disabled: e.disabled,
       tabindex: -1,
       "aria-hidden": "true",
       type: "button"
-    }, t.ptm("decrementButton"), {
+    }, e.ptm("decrementButton"), {
       "data-p": r.dataP
-    }), [w(t.$slots, t.$slots.decrementicon ? "decrementicon" : "decrementbuttonicon", {}, function() {
-      return [(c(), y(A(t.decrementIcon || t.decrementButtonIcon ? "span" : "AngleDownIcon"), g({
-        class: [t.decrementIcon, t.decrementButtonIcon]
-      }, t.ptm("decrementIcon"), {
+    }), [w(e.$slots, e.$slots.decrementicon ? "decrementicon" : "decrementbuttonicon", {}, function() {
+      return [(u(), $(O(e.decrementIcon || e.decrementButtonIcon ? "span" : "AngleDownIcon"), g({
+        class: [e.decrementIcon, e.decrementButtonIcon]
+      }, e.ptm("decrementIcon"), {
         "data-pc-section": "decrementicon"
       }), null, 16, ["class"]))];
-    })], 16, nt)) : $("", !0)];
-  })], 16, Qe);
+    })], 16, yt)) : k("", !0)];
+  })], 16, ht);
 }
-oe.render = it;
-const rt = ["aria-labelledby", "value", "capability"], le = /* @__PURE__ */ U({
+de.render = vt;
+var wt = `
+    .p-toggleswitch {
+        display: inline-block;
+        width: dt('toggleswitch.width');
+        height: dt('toggleswitch.height');
+    }
+
+    .p-toggleswitch-input {
+        cursor: pointer;
+        appearance: none;
+        position: absolute;
+        top: 0;
+        inset-inline-start: 0;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
+        opacity: 0;
+        z-index: 1;
+        outline: 0 none;
+        border-radius: dt('toggleswitch.border.radius');
+    }
+
+    .p-toggleswitch-slider {
+        cursor: pointer;
+        width: 100%;
+        height: 100%;
+        border-width: dt('toggleswitch.border.width');
+        border-style: solid;
+        border-color: dt('toggleswitch.border.color');
+        background: dt('toggleswitch.background');
+        transition:
+            background dt('toggleswitch.transition.duration'),
+            color dt('toggleswitch.transition.duration'),
+            border-color dt('toggleswitch.transition.duration'),
+            outline-color dt('toggleswitch.transition.duration'),
+            box-shadow dt('toggleswitch.transition.duration');
+        border-radius: dt('toggleswitch.border.radius');
+        outline-color: transparent;
+        box-shadow: dt('toggleswitch.shadow');
+    }
+
+    .p-toggleswitch-handle {
+        position: absolute;
+        top: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: dt('toggleswitch.handle.background');
+        color: dt('toggleswitch.handle.color');
+        width: dt('toggleswitch.handle.size');
+        height: dt('toggleswitch.handle.size');
+        inset-inline-start: dt('toggleswitch.gap');
+        margin-block-start: calc(-1 * calc(dt('toggleswitch.handle.size') / 2));
+        border-radius: dt('toggleswitch.handle.border.radius');
+        transition:
+            background dt('toggleswitch.transition.duration'),
+            color dt('toggleswitch.transition.duration'),
+            inset-inline-start dt('toggleswitch.slide.duration'),
+            box-shadow dt('toggleswitch.slide.duration');
+    }
+
+    .p-toggleswitch.p-toggleswitch-checked .p-toggleswitch-slider {
+        background: dt('toggleswitch.checked.background');
+        border-color: dt('toggleswitch.checked.border.color');
+    }
+
+    .p-toggleswitch.p-toggleswitch-checked .p-toggleswitch-handle {
+        background: dt('toggleswitch.handle.checked.background');
+        color: dt('toggleswitch.handle.checked.color');
+        inset-inline-start: calc(dt('toggleswitch.width') - calc(dt('toggleswitch.handle.size') + dt('toggleswitch.gap')));
+    }
+
+    .p-toggleswitch:not(.p-disabled):has(.p-toggleswitch-input:hover) .p-toggleswitch-slider {
+        background: dt('toggleswitch.hover.background');
+        border-color: dt('toggleswitch.hover.border.color');
+    }
+
+    .p-toggleswitch:not(.p-disabled):has(.p-toggleswitch-input:hover) .p-toggleswitch-handle {
+        background: dt('toggleswitch.handle.hover.background');
+        color: dt('toggleswitch.handle.hover.color');
+    }
+
+    .p-toggleswitch:not(.p-disabled):has(.p-toggleswitch-input:hover).p-toggleswitch-checked .p-toggleswitch-slider {
+        background: dt('toggleswitch.checked.hover.background');
+        border-color: dt('toggleswitch.checked.hover.border.color');
+    }
+
+    .p-toggleswitch:not(.p-disabled):has(.p-toggleswitch-input:hover).p-toggleswitch-checked .p-toggleswitch-handle {
+        background: dt('toggleswitch.handle.checked.hover.background');
+        color: dt('toggleswitch.handle.checked.hover.color');
+    }
+
+    .p-toggleswitch:not(.p-disabled):has(.p-toggleswitch-input:focus-visible) .p-toggleswitch-slider {
+        box-shadow: dt('toggleswitch.focus.ring.shadow');
+        outline: dt('toggleswitch.focus.ring.width') dt('toggleswitch.focus.ring.style') dt('toggleswitch.focus.ring.color');
+        outline-offset: dt('toggleswitch.focus.ring.offset');
+    }
+
+    .p-toggleswitch.p-invalid > .p-toggleswitch-slider {
+        border-color: dt('toggleswitch.invalid.border.color');
+    }
+
+    .p-toggleswitch.p-disabled {
+        opacity: 1;
+    }
+
+    .p-toggleswitch.p-disabled .p-toggleswitch-slider {
+        background: dt('toggleswitch.disabled.background');
+    }
+
+    .p-toggleswitch.p-disabled .p-toggleswitch-handle {
+        background: dt('toggleswitch.handle.disabled.background');
+    }
+`, $t = {
+  root: {
+    position: "relative"
+  }
+}, Ct = {
+  root: function(t) {
+    var n = t.instance, i = t.props;
+    return ["p-toggleswitch p-component", {
+      "p-toggleswitch-checked": n.checked,
+      "p-disabled": i.disabled,
+      "p-invalid": n.$invalid
+    }];
+  },
+  input: "p-toggleswitch-input",
+  slider: "p-toggleswitch-slider",
+  handle: "p-toggleswitch-handle"
+}, It = H.extend({
+  name: "toggleswitch",
+  style: wt,
+  classes: Ct,
+  inlineStyles: $t
+}), kt = {
+  name: "BaseToggleSwitch",
+  extends: Me,
+  props: {
+    trueValue: {
+      type: null,
+      default: !0
+    },
+    falseValue: {
+      type: null,
+      default: !1
+    },
+    readonly: {
+      type: Boolean,
+      default: !1
+    },
+    tabindex: {
+      type: Number,
+      default: null
+    },
+    inputId: {
+      type: String,
+      default: null
+    },
+    inputClass: {
+      type: [String, Object],
+      default: null
+    },
+    inputStyle: {
+      type: Object,
+      default: null
+    },
+    ariaLabelledby: {
+      type: String,
+      default: null
+    },
+    ariaLabel: {
+      type: String,
+      default: null
+    }
+  },
+  style: It,
+  provide: function() {
+    return {
+      $pcToggleSwitch: this,
+      $parentInstance: this
+    };
+  }
+}, pe = {
+  name: "ToggleSwitch",
+  extends: kt,
+  inheritAttrs: !1,
+  emits: ["change", "focus", "blur"],
+  methods: {
+    getPTOptions: function(t) {
+      var n = t === "root" ? this.ptmi : this.ptm;
+      return n(t, {
+        context: {
+          checked: this.checked,
+          disabled: this.disabled
+        }
+      });
+    },
+    onChange: function(t) {
+      if (!this.disabled && !this.readonly) {
+        var n = this.checked ? this.falseValue : this.trueValue;
+        this.writeValue(n, t), this.$emit("change", t);
+      }
+    },
+    onFocus: function(t) {
+      this.$emit("focus", t);
+    },
+    onBlur: function(t) {
+      var n, i;
+      this.$emit("blur", t), (n = (i = this.formField).onBlur) === null || n === void 0 || n.call(i, t);
+    }
+  },
+  computed: {
+    checked: function() {
+      return this.d_value === this.trueValue;
+    },
+    dataP: function() {
+      return se({
+        checked: this.checked,
+        disabled: this.disabled,
+        invalid: this.$invalid
+      });
+    }
+  }
+}, St = ["data-p-checked", "data-p-disabled", "data-p"], xt = ["id", "checked", "tabindex", "disabled", "readonly", "aria-checked", "aria-labelledby", "aria-label", "aria-invalid"], Bt = ["data-p"], Dt = ["data-p"];
+function Pt(e, t, n, i, a, r) {
+  return u(), m("div", g({
+    class: e.cx("root"),
+    style: e.sx("root")
+  }, r.getPTOptions("root"), {
+    "data-p-checked": r.checked,
+    "data-p-disabled": e.disabled,
+    "data-p": r.dataP
+  }), [b("input", g({
+    id: e.inputId,
+    type: "checkbox",
+    role: "switch",
+    class: [e.cx("input"), e.inputClass],
+    style: e.inputStyle,
+    checked: r.checked,
+    tabindex: e.tabindex,
+    disabled: e.disabled,
+    readonly: e.readonly,
+    "aria-checked": r.checked,
+    "aria-labelledby": e.ariaLabelledby,
+    "aria-label": e.ariaLabel,
+    "aria-invalid": e.invalid || void 0,
+    onFocus: t[0] || (t[0] = function() {
+      return r.onFocus && r.onFocus.apply(r, arguments);
+    }),
+    onBlur: t[1] || (t[1] = function() {
+      return r.onBlur && r.onBlur.apply(r, arguments);
+    }),
+    onChange: t[2] || (t[2] = function() {
+      return r.onChange && r.onChange.apply(r, arguments);
+    })
+  }, r.getPTOptions("input")), null, 16, xt), b("div", g({
+    class: e.cx("slider")
+  }, r.getPTOptions("slider"), {
+    "data-p": r.dataP
+  }), [b("div", g({
+    class: e.cx("handle")
+  }, r.getPTOptions("handle"), {
+    "data-p": r.dataP
+  }), [w(e.$slots, "handle", {
+    checked: r.checked
+  })], 16, Dt)], 16, Bt)], 16, St);
+}
+pe.render = Pt;
+const Mt = ["aria-labelledby", "value", "capability"], At = {
+  key: 1,
+  class: "kx-notice error"
+}, he = /* @__PURE__ */ F({
   __name: "ModelPicker",
   props: {
     value: {},
@@ -1289,42 +1719,33 @@ const rt = ["aria-labelledby", "value", "capability"], le = /* @__PURE__ */ U({
     labelledBy: {}
   },
   emits: ["select"],
-  setup(t, { emit: e }) {
-    const n = e, i = xe("wc-model-picker");
+  setup(e, { emit: t }) {
+    const n = t, i = Ae("wc-model-picker");
     function a(r) {
-      const u = r instanceof CustomEvent ? r.detail : void 0;
-      typeof u == "string" && u && n("select", u);
+      const o = r instanceof CustomEvent ? r.detail : void 0;
+      typeof o == "string" && o && n("select", o);
     }
-    return (r, u) => C(i).ready.value ? (c(), h("wc-model-picker", {
+    return (r, o) => S(i).ready.value ? (u(), m("wc-model-picker", {
       key: 0,
-      "aria-labelledby": t.labelledBy,
-      value: t.value,
-      capability: t.capability,
+      "aria-labelledby": e.labelledBy,
+      value: e.value,
+      capability: e.capability,
       onSelect: a
-    }, null, 40, rt)) : C(i).failed.value ? (c(), y(C(Se), {
-      key: 1,
-      severity: "error",
-      size: "small"
-    }, {
-      default: ne(() => [
-        ie("The model picker could not load: " + x(C(i).failed.value), 1)
-      ]),
-      _: 1
-    })) : $("", !0);
+    }, null, 40, Mt)) : S(i).failed.value ? (u(), m("div", At, "The model picker could not load: " + I(S(i).failed.value), 1)) : k("", !0);
   }
-}), at = {
+}), Vt = {
   key: 0,
   class: "mm-toggle"
-}, ut = { class: "mm-field" }, st = { class: "mm-label" }, ot = {
+}, Ot = { class: "mm-field" }, Tt = { class: "mm-label" }, Lt = {
   key: 0,
   class: "mm-hint"
-}, lt = {
+}, Et = {
   key: 1,
   class: "mm-field"
-}, ct = ["id", "for"], dt = {
-  key: 4,
+}, Ft = ["id"], jt = ["id", "for"], Ut = {
+  key: 6,
   class: "mm-hint"
-}, pt = /* @__PURE__ */ U({
+}, Nt = /* @__PURE__ */ F({
   __name: "ConfigField",
   props: {
     name: {},
@@ -1332,176 +1753,179 @@ const rt = ["aria-labelledby", "value", "capability"], le = /* @__PURE__ */ U({
     value: {}
   },
   emits: ["update"],
-  setup(t, { emit: e }) {
-    const n = t, i = e, a = L(() => n.field.title || n.name);
-    return (r, u) => t.field.type === "boolean" ? (c(), h("div", at, [
-      v("span", ut, [
-        v("span", st, x(a.value), 1),
-        t.field.description ? (c(), h("span", ot, x(t.field.description), 1)) : $("", !0)
+  setup(e, { emit: t }) {
+    const n = e, i = t, a = E(() => n.field.title || n.name);
+    return (r, o) => e.field.type === "boolean" ? (u(), m("div", Vt, [
+      b("span", Ot, [
+        b("span", Tt, I(a.value), 1),
+        e.field.description ? (u(), m("span", Lt, I(e.field.description), 1)) : k("", !0)
       ]),
-      F(C(De), {
-        "model-value": t.value === !0,
+      L(S(pe), {
+        "model-value": e.value === !0,
         "aria-label": a.value,
-        "onUpdate:modelValue": u[0] || (u[0] = (s) => i("update", s))
+        "onUpdate:modelValue": o[0] || (o[0] = (s) => i("update", s))
       }, null, 8, ["model-value", "aria-label"])
-    ])) : (c(), h("div", lt, [
-      v("label", {
-        id: `${t.name}_label`,
-        class: "mm-label",
-        for: t.name
-      }, x(a.value), 9, ct),
-      t.field.web_component === "wc-model-picker" ? (c(), y(le, {
+    ])) : (u(), m("div", Et, [
+      e.field.web_component ? (u(), m("span", {
         key: 0,
-        "labelled-by": `${t.name}_label`,
-        value: String(t.value || ""),
-        capability: "generate",
-        onSelect: u[1] || (u[1] = (s) => i("update", s))
-      }, null, 8, ["labelled-by", "value"])) : t.field.type === "integer" || t.field.type === "number" ? (c(), y(C(oe), {
+        id: `${e.name}_label`,
+        class: "mm-label"
+      }, I(a.value), 9, Ft)) : (u(), m("label", {
         key: 1,
-        "input-id": t.name,
-        "model-value": typeof t.value == "number" ? t.value : null,
-        min: t.field.minimum,
-        max: t.field.maximum,
-        "max-fraction-digits": t.field.type === "integer" ? 0 : 6,
-        "onUpdate:modelValue": u[2] || (u[2] = (s) => s !== null && i("update", s))
-      }, null, 8, ["input-id", "model-value", "min", "max", "max-fraction-digits"])) : t.field.format === "textarea" ? (c(), y(C(Be), {
+        id: `${e.name}_label`,
+        class: "mm-label",
+        for: e.name
+      }, I(a.value), 9, jt)),
+      e.field.web_component === "wc-model-picker" ? (u(), $(he, {
         key: 2,
-        id: t.name,
-        "model-value": String(t.value ?? ""),
-        "auto-resize": "",
-        "onUpdate:modelValue": u[3] || (u[3] = (s) => i("update", s))
-      }, null, 8, ["id", "model-value"])) : (c(), y(C(ae), {
+        "labelled-by": `${e.name}_label`,
+        value: String(e.value || ""),
+        capability: "generate",
+        onSelect: o[1] || (o[1] = (s) => i("update", s))
+      }, null, 8, ["labelled-by", "value"])) : e.field.type === "integer" || e.field.type === "number" ? (u(), $(S(de), {
         key: 3,
-        id: t.name,
-        "model-value": String(t.value ?? ""),
-        "onUpdate:modelValue": u[4] || (u[4] = (s) => i("update", s))
+        "input-id": e.name,
+        "model-value": typeof e.value == "number" ? e.value : null,
+        min: e.field.minimum,
+        max: e.field.maximum,
+        "max-fraction-digits": e.field.type === "integer" ? 0 : 6,
+        "onUpdate:modelValue": o[2] || (o[2] = (s) => i("update", s ?? void 0))
+      }, null, 8, ["input-id", "model-value", "min", "max", "max-fraction-digits"])) : e.field.format === "textarea" ? (u(), $(S(Ve), {
+        key: 4,
+        id: e.name,
+        "model-value": String(e.value ?? ""),
+        "auto-resize": "",
+        "onUpdate:modelValue": o[3] || (o[3] = (s) => i("update", s))
+      }, null, 8, ["id", "model-value"])) : (u(), $(S(oe), {
+        key: 5,
+        id: e.name,
+        "model-value": String(e.value ?? ""),
+        "onUpdate:modelValue": o[4] || (o[4] = (s) => i("update", s))
       }, null, 8, ["id", "model-value"])),
-      t.field.description ? (c(), h("span", dt, x(t.field.description), 1)) : $("", !0)
+      e.field.description ? (u(), m("span", Ut, I(e.field.description), 1)) : k("", !0)
     ]));
   }
-}), mt = { class: "mm-sections" }, ft = { class: "mm-section-h" }, ht = { class: "mm-section-hint" }, bt = { class: "mm-grid" }, gt = /* @__PURE__ */ U({
+}), Rt = { class: "mm-sections" }, zt = { class: "mm-section-h" }, Kt = { class: "mm-section-hint" }, _t = { class: "mm-grid" }, Wt = /* @__PURE__ */ F({
   __name: "ConfigFields",
   props: {
     schema: {},
     modelValue: {}
   },
   emits: ["update:modelValue"],
-  setup(t, { emit: e }) {
-    const n = t, i = e, a = {
+  setup(e, { emit: t }) {
+    const n = e, i = t, a = {
       models: { title: "Models", icon: "tabler:cpu", hint: "Which models read conversations and decide what changes in the memory." },
       learning: { title: "What it learns", icon: "tabler:school", hint: "What agents that use this memory capture into it." },
       recall: { title: "What agents see", icon: "tabler:eye", hint: "How much of the memory goes into an agent's instructions and each step." },
       upkeep: { title: "Upkeep", icon: "tabler:refresh", hint: "Background work that keeps the memory tidy." }
-    }, r = L(() => {
-      const d = Object.entries(n.schema.properties || {}).sort((m, f) => (m[1].order ?? 1e3) - (f[1].order ?? 1e3)), p = [];
-      for (const m of d) {
-        const f = m[1].section || "other", o = p.find((l) => l.id === f);
-        o ? o.fields.push(m) : p.push({ id: f, fields: [m] });
+    }, r = E(() => {
+      const d = Object.entries(n.schema.properties || {}).sort((h, f) => (h[1].order ?? 1e3) - (f[1].order ?? 1e3)), p = [];
+      for (const h of d) {
+        const f = h[1].section || "other", l = p.find((c) => c.id === f);
+        l ? l.fields.push(h) : p.push({ id: f, fields: [h] });
       }
       return p;
     });
-    function u(d) {
+    function o(d) {
       return d.type === "boolean" || d.format === "textarea";
     }
     function s(d, p) {
       i("update:modelValue", { ...n.modelValue, [d]: p });
     }
-    return (d, p) => (c(), h("div", mt, [
-      (c(!0), h(O, null, Z(r.value, (m) => (c(), h("section", {
-        key: m.id,
+    return (d, p) => (u(), m("div", Rt, [
+      (u(!0), m(U, null, Y(r.value, (h) => (u(), m("section", {
+        key: h.id,
         class: "mm-section"
       }, [
-        a[m.id] ? (c(), h(O, { key: 0 }, [
-          v("h3", ft, [
-            F(C(pe), {
-              icon: a[m.id].icon,
+        a[h.id] ? (u(), m(U, { key: 0 }, [
+          b("h3", zt, [
+            L(S(ve), {
+              icon: a[h.id].icon,
               "aria-hidden": "true"
             }, null, 8, ["icon"]),
-            ie(x(a[m.id].title), 1)
+            ge(I(a[h.id].title), 1)
           ]),
-          v("p", ht, x(a[m.id].hint), 1)
-        ], 64)) : $("", !0),
-        v("div", bt, [
-          w(d.$slots, `before-${m.id}`),
-          (c(!0), h(O, null, Z(m.fields, ([f, o]) => (c(), y(pt, {
+          b("p", Kt, I(a[h.id].hint), 1)
+        ], 64)) : k("", !0),
+        b("div", _t, [
+          w(d.$slots, `before-${h.id}`),
+          (u(!0), m(U, null, Y(h.fields, ([f, l]) => (u(), $(Nt, {
             key: f,
-            class: R({ wide: u(o) }),
+            class: N({ wide: o(l) }),
             name: f,
-            field: o,
-            value: t.modelValue[f],
-            onUpdate: (l) => s(f, l)
+            field: l,
+            value: e.modelValue[f],
+            onUpdate: (c) => s(f, c)
           }, null, 8, ["class", "name", "field", "value", "onUpdate"]))), 128))
         ])
       ]))), 128))
     ]));
   }
-}), yt = {
+}), Gt = {
   key: 0,
   class: "kx-notice error"
-}, vt = { class: "mm-field wide" }, wt = {
+}, Ht = { class: "mm-field wide" }, qt = {
   key: 0,
   class: "mm-hint"
-}, It = {
+}, Zt = {
   key: 2,
   class: "mm-hint"
-}, $t = /* @__PURE__ */ U({
+}, Jt = /* @__PURE__ */ F({
   __name: "MemoryCreate",
-  setup(t) {
-    const e = ge(), n = ye(), i = E(""), a = E({});
-    J(() => e.value.config, (o) => {
+  setup(e) {
+    const t = Ce(), n = Ie(), i = T(""), a = T({}), r = T("class:embed"), o = T({});
+    be(() => t.value.config, (l) => {
       try {
-        const l = ve(o), b = T(l.config) ? l.config.config_schema : void 0;
-        if (!T(b) || b.type !== "object" || !T(b.properties) || !Object.keys(b.properties).length || Object.values(b.properties).some((S) => !T(S) || !["string", "integer", "number", "boolean"].includes(String(S.type))))
-          throw new Error("Memory create schema must supply object properties");
-        a.value = l, i.value = "";
-      } catch (l) {
-        i.value = we(l);
+        const c = ke(l), y = c.config;
+        if (!y || typeof y != "object") throw new Error("Memory create schema must supply object properties");
+        const x = Se(y.config_schema), v = { ...y, config_schema: x };
+        a.value = { ...c, config: v };
+        const { config_schema: C, ...B } = v;
+        o.value = { ...B }, r.value = a.value.embedding_model || "class:embed", i.value = "", p();
+      } catch (c) {
+        i.value = xe(c);
       }
     }, { immediate: !0 });
-    const r = L(() => !!a.value.edit), u = L(() => a.value.config.config_schema), s = E("class:embed"), d = E({});
-    J(a, (o) => {
-      const { config_schema: l, ...b } = o.config || {};
-      d.value = { ...b }, o.embedding_model && (s.value = o.embedding_model), p();
-    }, { immediate: !0 });
+    const s = E(() => !!a.value.edit), d = E(() => a.value.config?.config_schema);
     function p() {
-      n("config-changed", { embedding_model: s.value, config: { ...d.value } });
+      n("config-changed", { embedding_model: r.value, config: { ...o.value } });
     }
-    function m(o) {
-      s.value = o, p();
+    function h(l) {
+      r.value = l, p();
     }
-    function f(o) {
-      d.value = o, p();
+    function f(l) {
+      o.value = l, p();
     }
-    return (o, l) => i.value ? (c(), h("div", yt, x(i.value), 1)) : (c(), y(gt, {
+    return (l, c) => i.value ? (u(), m("div", Gt, I(i.value), 1)) : (u(), $(Wt, {
       key: 1,
-      schema: u.value,
-      "model-value": d.value,
+      schema: d.value,
+      "model-value": o.value,
       "onUpdate:modelValue": f
     }, {
-      "before-models": ne(() => [
-        v("div", vt, [
-          l[0] || (l[0] = v("span", {
+      "before-models": ye(() => [
+        b("div", Ht, [
+          c[0] || (c[0] = b("span", {
             id: "embedding_label",
             class: "mm-label"
           }, "Embedding model", -1)),
-          r.value ? (c(), h("span", wt, x(s.value) + ", fixed when the memory was created.", 1)) : (c(), y(le, {
+          s.value ? (u(), m("span", qt, I(r.value) + ", fixed when the memory was created.", 1)) : (u(), $(he, {
             key: 1,
             "labelled-by": "embedding_label",
-            value: s.value,
+            value: r.value,
             capability: "embed",
-            onSelect: m
+            onSelect: h
           }, null, 8, ["value"])),
-          r.value ? $("", !0) : (c(), h("span", It, "Turns memories into vectors for search. It cannot change after the memory is created."))
+          s.value ? k("", !0) : (u(), m("span", Zt, "Turns memories into vectors for search. It cannot change after the memory is created."))
         ])
       ]),
       _: 1
     }, 8, ["schema", "model-value"]));
   }
-}), Ct = Ie($t, {
+}), Qt = Be(Jt, {
   type: "object",
   properties: {
     config: { type: "object", description: "Create context: { kb_type, id?, embedding_model?, config? (with config_schema), edit? }" }
   }
 });
-me(import.meta.url, Ct);
+we(import.meta.url, Qt);
 //# sourceMappingURL=memory_create.js.map

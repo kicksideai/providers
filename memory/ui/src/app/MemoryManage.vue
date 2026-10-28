@@ -29,24 +29,31 @@ type View = 'item' | 'conflicts' | 'activity'
 const view = ref<View>('item')
 const selectedId = ref(String(context.value.route || ''))
 const adding = ref(false)
+const activeStatus = ref<'current' | 'superseded' | 'archived'>('current')
 
-const total = computed(() => memory.status.value?.counts.current)
+const total = computed(() => memory.status.value?.counts[activeStatus.value])
 const conflictCount = computed(() => memory.status.value?.counts.conflict_groups || 0)
 const failedRuns = computed(() => (memory.status.value?.runs || []).filter((run) => run.status === 'failed').length)
 
 watch(() => context.value.route, (route) => {
-  if (typeof route === 'string' && route && route !== selectedId.value) {
-    selectedId.value = route
-    view.value = 'item'
+  const next = typeof route === 'string' ? route : ''
+  if (next !== selectedId.value) {
+    routeUpdate = true
+    selectedId.value = next
+    if (next) view.value = 'item'
   }
 })
 watch(memory.memoryId, () => { selectedId.value = ''; view.value = 'item' })
+let routeUpdate = false
+watch(selectedId, (id) => {
+  if (routeUpdate) { routeUpdate = false; return }
+  emit('navigate', id || '')
+})
 
 function open(id: string) {
   view.value = 'item'
   if (id === selectedId.value) return
   selectedId.value = id
-  emit('navigate', id)
 }
 
 function select(item: MemoryItem) { open(item.id) }
@@ -73,15 +80,15 @@ function added(id: string) {
           <span class="kx-railhead-title">Memories<b v-if="total !== undefined">{{ total }}</b></span>
           <div class="kx-railhead-acts">
             <IconButton icon="tabler:activity" :label="failedRuns ? `Activity, ${failedRuns} failed` : 'Activity'" :active="view === 'activity'" @click="toggle('activity')" />
-            <IconButton icon="tabler:plus" label="Add agent memory" :active="adding" @click="adding = true" />
+            <IconButton icon="tabler:plus" label="Add agent memory" @click="adding = true" />
           </div>
         </div>
         <button v-if="conflictCount" type="button" class="mm-conflict-bar" :class="{ on: view === 'conflicts' }" @click="toggle('conflicts')">
           <Icon icon="tabler:arrows-split-2" aria-hidden="true" />
           <span>{{ conflictCount === 1 ? '1 conflict to resolve' : `${conflictCount} conflicts to resolve` }}</span>
-          <Icon class="mm-conflict-chev" icon="tabler:chevron-right" aria-hidden="true" />
+          <Icon icon="tabler:chevron-right" aria-hidden="true" />
         </button>
-        <MemoryRail :memory="memory" :selected-id="view === 'item' ? selectedId : ''" @select="select" @filtered="selectedId = ''" />
+        <MemoryRail :memory="memory" :selected-id="view === 'item' ? selectedId : ''" @select="select" @filtered="selectedId = ''" @status-change="activeStatus = $event as 'current' | 'superseded' | 'archived'" />
       </aside>
       <main class="kx-main">
         <div class="kx-main-scroll mm-main">

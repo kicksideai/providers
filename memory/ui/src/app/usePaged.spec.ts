@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { describe, expect, it, vi } from 'vitest'
-import { nextTick, ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 
 type Reply = Promise<{ data: unknown }>
 const calls: string[] = []
@@ -12,6 +12,7 @@ vi.mock('@wippy-fe/proxy', () => ({
 vi.mock('@wippy-fe/webcomponent-vue', () => ({ useHostVisibilityRefresh: () => {} }))
 
 const { usePaged, useMemory } = await import('./useMemory')
+const { useDebounced } = await import('./usePaged')
 
 function deferred() {
   let resolve!: (v: { data: unknown }) => void
@@ -24,6 +25,18 @@ async function flush() {
 }
 
 describe('usePaged', () => {
+  it('cancels a pending debounce when its owner stops', async () => {
+    vi.useFakeTimers()
+    const source = ref('')
+    const scope = effectScope()
+    const value = scope.run(() => useDebounced(source, 250))!
+    source.value = 'query'
+    await flush()
+    expect(vi.getTimerCount()).toBe(1)
+    scope.stop()
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
   it('drops a response for filters that are no longer on screen', async () => {
     const slow = deferred()
     const fast = deferred()

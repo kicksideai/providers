@@ -18,7 +18,7 @@ it('shows model validation as failed activity with a visible reason', () => {
   })
   expect(wrapper.text()).toContain(reason)
   expect(wrapper.text()).not.toContain('No changes')
-  expect(wrapper.findComponent({ name: 'Tag' }).props('value')).toBe('failed')
+  expect(wrapper.findComponent({ name: 'Tag' }).props('value')).toBe('Failed')
   wrapper.unmount()
 })
 
@@ -32,6 +32,6 @@ it('shows a rejected source with its content-free reason and byte limits', () =>
   })
   expect(wrapper.text()).toContain('1 rejected')
   expect(wrapper.text()).toContain(reason)
-  expect(wrapper.findComponent({ name: 'Tag' }).props('value')).toBe('rejected')
+  expect(wrapper.findComponent({ name: 'Tag' }).props('value')).toBe('Rejected')
   wrapper.unmount()
 })

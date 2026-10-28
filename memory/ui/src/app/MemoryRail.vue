@@ -1,15 +1,16 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import SelectButton from 'primevue/selectbutton'
 import SearchField from './chrome/SearchField.vue'
 import { GROUPS, KIND_META, relativeTime, topicLabel, type KindGroup } from './format'
 import type { MemoryItem, MemoryStatus } from './types'
-import { usePaged, type Memory } from './useMemory'
+import { usePaged, useDebounced } from './usePaged'
+import type { Memory } from './useMemory'
 
 const props = defineProps<{ memory: Memory; selectedId: string }>()
-const emit = defineEmits<{ (e: 'select', item: MemoryItem): void; (e: 'filtered'): void }>()
+const emit = defineEmits<{ (e: 'select', item: MemoryItem): void; (e: 'filtered'): void; (e: 'status-change', status: MemoryStatus): void }>()
 
 const VIEWS: { value: MemoryStatus; label: string }[] = [
   { value: 'current', label: 'Current' },
@@ -18,14 +19,7 @@ const VIEWS: { value: MemoryStatus; label: string }[] = [
 ]
 const status = ref<MemoryStatus>('current')
 const query = ref('')
-const debounced = ref('')
-let timer: ReturnType<typeof setTimeout> | undefined
-watch(query, (q) => {
-  clearTimeout(timer)
-  timer = setTimeout(() => { debounced.value = q.trim() }, 250)
-})
-
-onUnmounted(() => clearTimeout(timer))
+const debounced = useDebounced(query, 250, (value) => value.trim())
 
 const list = usePaged<MemoryItem>(() => {
   if (!props.memory.memoryId.value) return null
@@ -34,11 +28,11 @@ const list = usePaged<MemoryItem>(() => {
   return `${props.memory.base.value}/items?${params.toString()}`
 }, 'items', props.memory.revision)
 
-watch([status, debounced], () => emit('filtered'))
+watch([status, debounced], () => { emit('filtered'); emit('status-change', status.value) }, { immediate: true })
 
 const closed = ref<Record<KindGroup, boolean>>({ instructions: false, knowhow: false, plans: false, people: false })
 const sections = computed(() => GROUPS
-  .map((group) => ({ ...group, items: list.rows.value.filter((item) => KIND_META[item.kind]?.group === group.id) }))
+  .map((group) => ({ ...group, items: list.rows.value.filter((item) => KIND_META[item.kind].group === group.id) }))
   .filter((group) => group.items.length))
 
 const emptyText = computed(() => {
@@ -64,12 +58,11 @@ const emptyText = computed(() => {
         <Icon class="kx-railsec-chev" icon="tabler:chevron-right" aria-hidden="true" />
         <Icon class="kx-railsec-ic" :icon="section.icon" aria-hidden="true" />
         <span class="kx-railsec-t">{{ section.title }}</span>
-        <span class="count">{{ section.items.length }}</span>
       </button>
       <div v-show="!closed[section.id]" class="kx-railsec-b">
         <button v-for="item in section.items" :key="item.id" type="button" class="mm-row" :class="{ on: selectedId === item.id }"
           :aria-current="selectedId === item.id ? 'true' : undefined" @click="emit('select', item)">
-          <span class="mm-row-ic" :class="KIND_META[item.kind]?.group"><Icon :icon="KIND_META[item.kind]?.icon || 'tabler:note'" aria-hidden="true" /></span>
+          <span class="mm-row-ic" :class="KIND_META[item.kind].tone"><Icon :icon="KIND_META[item.kind].icon" aria-hidden="true" /></span>
           <span class="mm-row-main">
             <span class="mm-row-t">{{ item.content }}</span>
             <span class="mm-row-s">{{ topicLabel(item.key) }} · {{ relativeTime(item.valid_at) }}</span>

@@ -1,6 +1,5 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
-import Message from 'primevue/message'
 import { useWidget } from './useWidget'
 
 defineProps<{ value: string; capability: 'embed' | 'generate'; labelledBy?: string }>()
@@ -15,5 +14,5 @@ function onSelect(event: Event) {
 
 <template>
   <wc-model-picker v-if="picker.ready.value" :aria-labelledby="labelledBy" :value="value" :capability="capability" @select="onSelect"></wc-model-picker>
-  <Message v-else-if="picker.failed.value" severity="error" size="small">The model picker could not load: {{ picker.failed.value }}</Message>
+  <div v-else-if="picker.failed.value" class="kx-notice error">The model picker could not load: {{ picker.failed.value }}</div>
 </template>

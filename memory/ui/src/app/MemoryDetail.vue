@@ -2,13 +2,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import { api } from '@wippy-fe/proxy'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from './chrome/ConfirmDialog.vue'
-import { KIND_META, aboutLabel, fullTime, relativeTime, sourceLabel, topicLabel } from './format'
-import { errorText, isRecord, pageOf, type MemoryItem, type Provenance } from './types'
-import { severity, type Memory } from './useMemory'
+import { KIND_META, aboutLabel, fullTime, relativeTime, sourceLabel, topicLabel, STATUS_LABEL, severity } from './format'
+import { errorText, type MemoryItem, type Provenance } from './types'
+import { type Memory } from './useMemory'
+import { httpStatus, memoryApi } from './api'
 
 const props = defineProps<{ memory: Memory; itemId: string }>()
 const emit = defineEmits<{ (e: 'replaced', id: string): void; (e: 'gone'): void }>()
@@ -21,34 +21,32 @@ const loadError = ref('')
 const editing = ref<string | null>(null)
 const forgetting = ref(false)
 
-const url = computed(() => `${props.memory.base.value}/items/${encodeURIComponent(props.itemId)}`)
 const meta = computed(() => (item.value ? KIND_META[item.value.kind] : null))
+const icon = computed(() => item.value ? KIND_META[item.value.kind].icon : 'tabler:brain')
 const live = computed(() => item.value?.status === 'current' || item.value?.status === 'conflict')
 
 let generation = 0
-async function load(offset = 0) {
+async function load(offset = 0, limit?: number) {
   const current = ++generation
-  const target = url.value
   try {
-    const { data } = await api.get(offset ? `${target}?offset=${offset}` : target)
+    const data = await memoryApi(props.memory.memoryId.value).item(props.itemId, offset, limit)
     if (current !== generation) return
-    if (!isRecord(data) || !isRecord(data.item) || !Array.isArray(data.provenance)) throw new Error('Memory detail response is malformed')
     if (!offset) {
-      const loaded = data.item as unknown as MemoryItem
+      const loaded = data.item
       if (loaded.status === 'forgotten') {
         emit('gone')
         return
       }
       item.value = loaded
-      provenance.value = data.provenance as Provenance[]
+      provenance.value = data.provenance
     }
-    const page = pageOf<MemoryItem>(data, 'versions')
+    const page = data.versions
     versions.value = offset ? [...versions.value, ...page.rows] : page.rows
     nextVersions.value = page.next
     loadError.value = ''
   } catch (err) {
     if (current !== generation) return
-    if (isRecord(err) && isRecord(err.response) && err.response.status === 404) emit('gone')
+    if (httpStatus(err) === 404) emit('gone')
     else loadError.value = errorText(err)
   }
 }
@@ -60,20 +58,18 @@ watch(() => props.itemId, () => {
   forgetting.value = false
   void load()
 }, { immediate: true })
-watch(props.memory.revision, () => { void load() })
+watch(props.memory.revision, () => { void load(0, Math.max(50, versions.value.length)) })
 
-function post(action: string) {
-  const target = `${url.value}/${action}`
-  return props.memory.act(() => api.post(target, {}))
+function post(action: 'archive' | 'restore' | 'forget') {
+  return props.memory.act(() => memoryApi(props.memory.memoryId.value).act(props.itemId, action))
 }
 
 async function save() {
   const content = (editing.value || '').trim()
   if (!content || !item.value) return
-  const target = url.value
   const ok = await props.memory.act(async () => {
-    const { data } = await api.put(target, { content })
-    if (isRecord(data) && typeof data.item_id === 'string' && data.item_id !== props.itemId) emit('replaced', data.item_id)
+    const replacement = await memoryApi(props.memory.memoryId.value).edit(props.itemId, content)
+    if (replacement && replacement !== props.itemId) emit('replaced', replacement)
   })
   if (ok) editing.value = null
 }
@@ -85,11 +81,11 @@ async function forget() {
   }
 }
 
-function sourceOf(ref: Provenance): string {
-  if (ref.host_kind === 'session') return 'Conversation'
-  if (ref.host_kind === 'dataflow') return 'Workflow run'
-  if (ref.host_kind === 'content') return 'Document'
-  return ref.host_kind
+function sourceOf(origin: Provenance): { label: string; icon: string } {
+  if (origin.host_kind === 'session') return { label: 'Conversation', icon: 'tabler:message-circle' }
+  if (origin.host_kind === 'dataflow') return { label: 'Workflow run', icon: 'tabler:route' }
+  if (origin.host_kind === 'content') return { label: 'Document', icon: 'tabler:file-text' }
+  return { label: origin.host_kind, icon: 'tabler:database' }
 }
 </script>
 
@@ -98,12 +94,12 @@ function sourceOf(ref: Provenance): string {
   <div v-else-if="!item" class="mm-skel-reader"><div v-for="i in 4" :key="i" class="mm-skel-line" /></div>
   <article v-else class="mm-reader">
     <header class="mm-head">
-      <span class="mm-head-ic" :class="meta?.group"><Icon :icon="meta?.icon || 'tabler:note'" aria-hidden="true" /></span>
+      <span class="mm-head-ic" :class="meta?.tone"><Icon :icon="icon" aria-hidden="true" /></span>
       <div class="mm-head-body">
         <div class="mm-head-top">
           <span class="kx-chip">{{ meta?.label }}</span>
           <span class="mm-topic">{{ topicLabel(item.key) }}</span>
-          <Tag v-if="item.status !== 'current'" class="kx-tag-sm" :severity="severity(item.status)" :value="item.status" />
+          <Tag v-if="item.status !== 'current'" class="kx-tag-sm" :severity="severity(item.status)" :value="STATUS_LABEL[item.status]" />
           <span class="mm-head-acts">
             <button v-if="live && editing === null" type="button" class="kx-btn kx-btn-ghost sm" @click="editing = item.content">
               <Icon icon="tabler:pencil" aria-hidden="true" />Edit
@@ -146,7 +142,7 @@ function sourceOf(ref: Provenance): string {
           <span class="mm-dot" aria-hidden="true" />
           <span class="mm-tl-body">
             <span class="mm-tl-t">{{ version.content }}</span>
-            <span class="mm-tl-s">v{{ version.version }} · {{ relativeTime(version.valid_at) }}<template v-if="version.status !== 'current'"> · {{ version.status }}</template></span>
+            <span class="mm-tl-s">v{{ version.version }} · {{ relativeTime(version.valid_at) }}<template v-if="version.status !== 'current'"> · {{ STATUS_LABEL[version.status] }}</template></span>
           </span>
         </li>
       </ol>
@@ -157,10 +153,10 @@ function sourceOf(ref: Provenance): string {
       <h3 id="mm-sources" class="mm-sec-h">Learned from</h3>
       <p v-if="!provenance.length" class="mm-muted">{{ item.source === 'owner' ? 'Added by a person on this page.' : 'No conversation recorded for this memory.' }}</p>
       <ul v-else class="mm-sources">
-        <li v-for="ref in provenance" :key="ref.host_kind + ref.host_id + ref.event_id">
-          <Icon icon="tabler:message-circle" aria-hidden="true" />
-          <span>{{ sourceOf(ref) }}</span>
-          <span v-if="ref.recorded_at" class="mm-muted" :title="fullTime(ref.recorded_at)">{{ relativeTime(ref.recorded_at) }}</span>
+        <li v-for="origin in provenance" :key="origin.host_kind + origin.host_id + origin.event_id">
+          <Icon :icon="sourceOf(origin).icon" aria-hidden="true" />
+          <span>{{ sourceOf(origin).label }}</span>
+          <span v-if="origin.recorded_at" class="mm-muted" :title="fullTime(origin.recorded_at)">{{ relativeTime(origin.recorded_at) }}</span>
         </li>
       </ul>
     </section>

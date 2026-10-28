@@ -3,9 +3,9 @@
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import Tag from 'primevue/tag'
-import { fullTime, relativeTime } from './format'
+import { fullTime, relativeTime, severity, STATUS_LABEL } from './format'
 import type { MemoryRun } from './types'
-import { severity, type Memory } from './useMemory'
+import { type Memory } from './useMemory'
 
 const props = defineProps<{ memory: Memory }>()
 const runs = computed<MemoryRun[]>(() => props.memory.status.value?.runs || [])
@@ -48,7 +48,7 @@ function changes(run: MemoryRun): string {
         </span>
         <span v-if="run.last_error" class="mm-run-err">{{ run.last_error }}</span>
       </div>
-      <Tag v-if="run.status !== 'succeeded'" class="kx-tag-sm" :severity="severity(run.status)" :value="run.status" />
+      <Tag v-if="run.status !== 'succeeded'" class="kx-tag-sm" :severity="severity(run.status)" :value="STATUS_LABEL[run.status]" />
     </li>
   </ol>
 </template>

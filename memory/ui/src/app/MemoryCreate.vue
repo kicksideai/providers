@@ -4,44 +4,38 @@ import { computed, ref, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import ConfigFields from './ConfigFields.vue'
 import ModelPicker from './ModelPicker.vue'
-import { errorText, isRecord, parseConfig, type ConfigSchema } from './types'
+import { errorText, parseConfig, parseCreateSchema, type ConfigSchema, type MemoryCreateEvents } from './types'
 
 interface CreateContext {
   embedding_model?: string
   config?: Record<string, unknown> & { config_schema?: ConfigSchema }
   edit?: boolean
 }
-interface E { 'config-changed': { embedding_model: string; config: Record<string, unknown> } }
 
 const props = useProps<{ config?: unknown }>()
-const emit = useEvents<E>()
+const emit = useEvents<MemoryCreateEvents>()
 
 const configError = ref('')
 const ctx = ref<CreateContext>({})
+const embeddingModel = ref('class:embed')
+const values = ref<Record<string, unknown>>({})
 watch(() => props.value.config, (raw) => {
   try {
     const next = parseConfig(raw)
-    const supplied = isRecord(next.config) ? next.config.config_schema : undefined
-    if (!isRecord(supplied) || supplied.type !== 'object' || !isRecord(supplied.properties)
-      || !Object.keys(supplied.properties).length || Object.values(supplied.properties).some((field) => !isRecord(field) || !['string', 'integer', 'number', 'boolean'].includes(String(field.type)))) {
-      throw new Error('Memory create schema must supply object properties')
-    }
-    ctx.value = next as CreateContext
+    const config = next.config
+    if (!config || typeof config !== 'object') throw new Error('Memory create schema must supply object properties')
+    const schema = parseCreateSchema((config as Record<string, unknown>).config_schema)
+    const valueConfig = { ...(config as Record<string, unknown>), config_schema: schema }
+    ctx.value = { ...next, config: valueConfig } as CreateContext
+    const { config_schema: _schema, ...initialValues } = valueConfig
+    values.value = { ...initialValues }
+    embeddingModel.value = ctx.value.embedding_model || 'class:embed'
     configError.value = ''
+    publish()
   } catch (err) { configError.value = errorText(err) }
 }, { immediate: true })
 const isEdit = computed(() => !!ctx.value.edit)
-const schema = computed(() => ctx.value.config!.config_schema!)
-
-const embeddingModel = ref('class:embed')
-const values = ref<Record<string, unknown>>({})
-
-watch(ctx, (next) => {
-  const { config_schema: _schema, ...config } = next.config || {}
-  values.value = { ...config }
-  if (next.embedding_model) embeddingModel.value = next.embedding_model
-  publish()
-}, { immediate: true })
+const schema = computed(() => ctx.value.config?.config_schema as ConfigSchema)
 
 function publish() {
   emit('config-changed', { embedding_model: embeddingModel.value, config: { ...values.value } })
