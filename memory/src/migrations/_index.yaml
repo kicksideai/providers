@@ -23,3 +23,45 @@ entries:
     source: file://01_memory_schema.lua
     imports:
       migration: wippy.migration:migration
+
+  - name: 02_cursor_owner_scope
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, memory, schema]
+      comment: Add the owner scope recorded by each pinned host profile.
+      target_db: ""
+      timestamp: "2026-10-28T00:00:00Z"
+    source: file://_fn_02_cursor_owner_scope.lua
+    imports:
+      operation_impl: kickside.memory.migrations:02_cursor_owner_scope_implementation
+    method: migrate
+
+  - name: 02_cursor_owner_scope_implementation
+    kind: library.lua
+    meta:
+      comment: Implementation for kickside.memory.migrations:02_cursor_owner_scope.
+    source: file://02_cursor_owner_scope.lua
+    imports:
+      migration: wippy.migration:migration
+
+  - name: 03_run_cycle
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, memory, schema]
+      comment: Add a unique identity for each consolidation cycle.
+      target_db: ""
+      timestamp: "2026-10-28T00:00:01Z"
+    source: file://_fn_03_run_cycle.lua
+    imports:
+      operation_impl: kickside.memory.migrations:03_run_cycle_implementation
+    method: migrate
+
+  - name: 03_run_cycle_implementation
+    kind: library.lua
+    meta:
+      comment: Implementation for kickside.memory.migrations:03_run_cycle.
+    source: file://03_run_cycle_implementation.lua
+    imports:
+      migration: wippy.migration:migration

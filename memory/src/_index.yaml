@@ -114,6 +114,10 @@ entries:
     targets:
       - entry: kickside.memory.migrations:01_memory_schema
         path: .meta.target_db
+      - entry: kickside.memory.migrations:02_cursor_owner_scope
+        path: .meta.target_db
+      - entry: kickside.memory.migrations:03_run_cycle
+        path: .meta.target_db
       - entry: kickside.memory:db_config
         path: .meta.db_id
 
@@ -414,6 +418,7 @@ entries:
       type: view.component
       name: memory_settings
       title: Memory Settings
+      comment: Memory trait settings - selects the agent's memory.
       tag_name: kickside-memory-settings
       base_path: kickside-memory
       entry_point: memory_settings.js
@@ -427,7 +432,7 @@ entries:
       public: true
       title: Memory
       icon: tabler:brain
-      comment: Captures conversations, pins identity and profile, and supplies memory tools.
+      comment: Captures conversations, adds agent identity and rules, pins the user's profile and supplies SearchMemory and ForgetMemory.
       tags: [memory, checkpoint]
       web_component: kickside-memory-settings
       context_schema:
@@ -440,29 +445,15 @@ entries:
             title: Memory
             description: The memory this agent captures into and recalls from.
             role: picker
-          read_enabled:
-            type: boolean
-            title: Recall memory
-            role: value
-          write_enabled:
-            type: boolean
-            title: Capture memory
-            role: value
-          recall_limit:
-            type: integer
-            minimum: 1
-            maximum: 50
-            title: Search result limit
-            role: value
-        additionalProperties: false
+        additionalProperties: true
     prompt: |
-      Use known profile attributes as defaults and resume open goals from memory.
       Memory learns from the conversation automatically, including facts, corrections
       and goal progress. Use SearchMemory to look things up.
       Use ForgetMemory only when the user asks to forget.
       Memories come from conversations and may be incomplete or out of date.
     tools:
       - kickside.memory.agent:search_tool
+      - kickside.memory.agent:forget_tool
     build_func_id: kickside.memory.agent:memory_build
     prompt_func_id: kickside.memory.agent:memory_prompt
     behaviors:

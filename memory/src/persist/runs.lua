@@ -163,6 +163,8 @@ function M.cursor(component_id: string, host_kind: string, host_id: string): (an
 end
 
 function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, selected: { any }, owner_scope_key: string?): (any?, error?)
+    local scope_key = types.trim(owner_scope_key)
+    if scope_key == "" then scope_key = types.scope_key(types.SCOPE.OWNER, types.actor_id()) end
     return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
         local item_ids: { string } = {}
         for _, item in ipairs(selected) do
@@ -183,7 +185,7 @@ function M.pin(component_id: string, host_kind: string, host_id: string, agent_i
             "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at) " ..
             "VALUES ($1, $2, $3, $4, $5, '', $6, $7, $8, $9) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
             "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, owner_scope_key = excluded.owner_scope_key, updated_at = excluded.updated_at",
-            { component_id, host_kind, host_id, agent_id, owner_scope_key or sql.NULL, head, prompt, item_ids_json, types.now() })
+            { component_id, host_kind, host_id, agent_id, scope_key, head, prompt, item_ids_json, types.now() })
         if err then return nil, types.failed("memory pin failed", err) end
         return true, nil
     end)

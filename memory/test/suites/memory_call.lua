@@ -43,8 +43,6 @@ local OPS: { [string]: (any) -> (any, any) } = {
     end,
     extraction_capacity = function(a: any) return models.extraction_capacity(a.model or "test-fast", a.span or {}) end,
     update_config = function(a: any) return bindings.update_config(a) end,
-    normalize = function(a: any) return models.normalize("test-fast", a.candidates, a.keys or {}) end,
-    extract = function(a: any) return models.extract("test-fast", a.span, {}, nil) end,
     create = function(a: any) return ops.create(a.component_id, a.fields) end,
     edit = function(a: any) return ops.edit(a.component_id, a.item_id, a.fields) end,
     forget = function(a: any) return ops.forget(a.component_id, a.item_id) end,
@@ -55,22 +53,6 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return writer.write(a.opts.component_id, a.idempotency, { source = a.opts.source }, function(d: any): (any?, error?)
             return nil, reconcile.decide(d, a.candidates, a.opts)
         end)
-    end,
-    seed_history = function(a: any)
-        local written, write_err = writer.write(a.component_id, "history:" .. a.component_id, { source = "owner" }, function(d: any): (any?, error?)
-            local ids: { string } = {}
-            for i = 1, a.count do
-                local item, add_err = d:add({ scope_family = "owner", scope_id = a.user_id }, {
-                    kind = i == a.count and "profile_slot" or "fact", key = "history_topic", cardinality = "multi",
-                    value = "value-" .. tostring(i), content = "History entry " .. tostring(i) .. ".", valid_at = d.now,
-                })
-                if add_err then return nil, add_err end
-                ids[#ids + 1] = item.id
-            end
-            return ids, nil
-        end)
-        if write_err then return nil, write_err end
-        return (written :: any).result, nil
     end,
     settle = function(a: any) return ledger.settled_head(a.component_id) end,
     apply = function(a: any) return funcs.call("kickside.memory.agent:lifecycle", a.payload) end,
@@ -105,6 +87,23 @@ local OPS: { [string]: (any) -> (any, any) } = {
     build = function(a: any) return prompt.build(nil, a.context) end,
     prompt = function(_a: any) return prompt.prompt() end,
     tool_search = function(a: any) return tools.search(a.input) end,
+    registered_tool_search = function(a: any) return funcs.call("kickside.memory.agent:search_tool", a.input) end,
+    migrate = function(a: any) return funcs.call("kickside.memory.migrations:" .. a.name,
+        { database_id = "app:migration_db", id = a.id, direction = "up" }) end,
+    migration_exec = function(a: any): (any?, any?)
+        local db, db_err = sql.get("app:migration_db")
+        if db_err then return nil, db_err end
+        local result, err = db:execute(a.statement, a.params or {})
+        db:release()
+        return result, err
+    end,
+    migration_query = function(a: any): (any?, any?)
+        local db, db_err = sql.get("app:migration_db")
+        if db_err then return nil, db_err end
+        local result, err = db:query(a.statement, a.params or {})
+        db:release()
+        return result, err
+    end,
     tool_forget = function(a: any) return tools.forget(a.input) end,
     list = function(a: any) return items.list(a.component_id, a.filter or {}) end,
     get = function(a: any) return items.get(a.component_id, a.item_id) end,
@@ -146,7 +145,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
         local failed = types.failed("dependency failed", cause)
         return { details = details, cause_details = cause:details(),
             invalid_details = invalid:details(), unavailable_details = unavailable:details(), failed_details = failed:details(),
-            failure = types.decode_json(types.failure(failed)), failed_message = failed:message() }, nil
+            failure = types.failure(failed), failed_message = failed:message() }, nil
     end,
     classify = function(a: any): (any, any)
         local cause: any = "plain failure"
@@ -166,7 +165,8 @@ local OPS: { [string]: (any) -> (any, any) } = {
         return rows and rows[1] and rows[1].pinned_ids, nil
     end,
     pin = function(a: any)
-        return runs.pin(a.component_id, a.host_kind, a.host_id, a.agent_id, a.head, a.prompt, a.selected)
+        return runs.pin(a.component_id, a.host_kind, a.host_id, a.agent_id,
+            a.head, a.prompt, a.selected, a.owner_scope_key)
     end,
     derive_worker = function(a: any) return jobs.derive_run({ payload = a, job = {} }), nil end,
     claim = function(a: any) return runs.claim(a.run_id, a.repeatable) end,

@@ -14,7 +14,7 @@ local AGENT_SOUL_KINDS = { types.KIND.IDENTITY, types.KIND.RULE, types.KIND.SKIL
 local OWNER_SOUL_KINDS = { types.KIND.PROFILE_SLOT, types.KIND.PREFERENCE, types.KIND.PLAN }
 
 local KIND_ORDER: { [string]: integer } = {
-    identity = 1, rule = 2, profile_slot = 3, preference = 4, plan = 5, skill = 6, lesson = 7, fact = 8,
+    identity = 1, rule = 2, profile_slot = 3, preference = 4, plan = 5, skill = 6, lesson = 7,
 }
 
 local function sort_soul(rows: { any })
@@ -77,10 +77,11 @@ function M.pin(payload: any): (any?, error?)
     local text, pinned = render(visible, "## What you know about the user\nUse these facts as defaults. Do not ask the user to repeat or confirm an attribute shown here. Apply it when relevant, state the assumption and let the user correct it. Ask only for missing details.", (store :: any).effective.soul_owner_max_chars)
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
-    return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent.id), head :: integer, text, pinned)
+    return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent and payload.agent.id),
+        head :: integer, text, pinned, types.scope_key(types.SCOPE.OWNER, types.actor_id()))
 end
 
--- A host keeps its activation snapshot until an item transition invalidates the pin.
+-- A host keeps its activation snapshot until archive, restore or forget clears the pin.
 local function owner_prompt(payload: any): (string?, error?)
     local run = ctx.get("agent_run")
     local host_kind, host_id = context.host_ref(type(run) == "table" and run.host or nil)
@@ -102,14 +103,11 @@ function M.build(_prompt: any, trait_context: any): (any?, error?)
     if types.trim(context.setting({ context = trait_context }, "memory_id")) == "" then
         return nil, types.invalid("the Memory capability has no memory selected")
     end
-    local tools = {
-        { id = "kickside.memory.agent:forget_tool" },
-    }
     local agent_id = types.trim(type(trait_context) == "table" and trait_context.agent_id or ctx.get("agent_id"))
-    if agent_id == "" then return { tools = tools }, nil end
+    if agent_id == "" then return {}, nil end
     local text, err = agent_soul({ context = trait_context }, agent_id)
     if err then return nil, err end
-    return { prompt = text ~= "" and text or nil, tools = tools }, nil
+    return { prompt = text ~= "" and text or nil }, nil
 end
 
 function M.prompt(): (string?, error?)

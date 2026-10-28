@@ -25,6 +25,12 @@ entries:
   meta:
     comment: In-memory database for memory tests.
   file: ':memory:'
+- name: migration_db
+  kind: db.sql.sqlite
+  foreign_keys: true
+  meta:
+    comment: Isolated database for migration upgrade tests.
+  file: ':memory:'
 - name: uploads
   kind: fs.directory
   meta:
@@ -125,12 +131,6 @@ entries:
     value: app:gateway
   - name: kickside.knowledge.security:user_security_scope
     value: app:user
-  - name: kickside.automation:ui_server
-    value: app:gateway
-  - name: kickside.automation:api_router
-    value: app:api
-  - name: kickside.automation:target_db
-    value: app:db
   - name: kickside.settings:target_db
     value: app:db
   - name: kickside.settings:api_router

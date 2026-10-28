@@ -142,6 +142,102 @@ local function define_tests()
             test.is_true(second:find("Format [format]: bullets", 1, true) ~= nil)
         end)
 
+        test.it("invalidates only the affected owner's pins when items archive, restore or forget", function()
+            local owner, other = fixture.user(), fixture.user()
+            local id = fixture.memory(owner)
+            local owner_scope, other_scope = "owner:" .. owner, "owner:" .. other
+            local function add(scope_id: string, key: string, value: string)
+                if scope_id ~= owner then
+                    fixture.remember(owner, id, { fixture.candidate("preference", key, value, key .. ": " .. value, key) }, key,
+                        { scope_id = scope_id })
+                    return
+                end
+                local _, err = fixture.op(owner, "create", { component_id = id, fields = {
+                    kind = "preference", scope_family = "owner", scope_id = scope_id,
+                    key = key, value = value, content = key .. ": " .. value,
+                } })
+                test.is_nil(err, tostring(err))
+            end
+            add(owner, "target", "one")
+            add(owner, "owner_anchor", "two")
+            add(other, "other_anchor", "three")
+            fixture.settle(owner, id)
+
+            local function item(key: string, scope_key: string): any
+                local rows = fixture.items(owner, id, { key = key, scope_keys = { scope_key } })
+                test.eq(#rows, 1)
+                return rows[1]
+            end
+
+            local function pin(host_id: string, scope_key: string, item_id: string, prompt: string)
+                local item = fixture.op(owner, "get", { component_id = id, item_id = item_id })
+                local pinned, pin_err = fixture.op(owner, "pin", {
+                    component_id = id, host_kind = "session", host_id = host_id, agent_id = "agent-a", owner_scope_key = scope_key,
+                    head = 1, prompt = prompt, selected = { { id = item.id, version = item.version, content_hash = item.content_hash } },
+                })
+                test.is_true(pinned, tostring(pin_err))
+            end
+            local function assert_action(action: string)
+                local owner_host, other_host = action .. "-owner", action .. "-other"
+                local target = item("target", owner_scope)
+                if action == "restore" then
+                    local _, archive_err = fixture.op(owner, "archive", { component_id = id, item_id = target.id })
+                    test.is_nil(archive_err, tostring(archive_err))
+                    fixture.settle(owner, id)
+                end
+                local owner_anchor = item("owner_anchor", owner_scope)
+                local other_anchor = item("other_anchor", other_scope)
+                pin(owner_host, owner_scope, owner_anchor.id, "owner " .. action)
+                pin(other_host, other_scope, other_anchor.id, "other " .. action)
+                local result, action_err
+                if action == "archive" then
+                    result, action_err = fixture.op(owner, "archive", { component_id = id, item_id = target.id })
+                elseif action == "restore" then
+                    result, action_err = fixture.op(owner, "restore", { component_id = id, item_id = target.id })
+                else
+                    result, action_err = fixture.op(owner, "forget", { component_id = id, item_id = target.id })
+                end
+                test.is_nil(action_err, tostring(action_err))
+                test.not_nil(result)
+                fixture.settle(owner, id)
+                local owner_cursor = fixture.op(owner, "cursor", { component_id = id, host_kind = "session", host_id = owner_host })
+                local other_cursor = fixture.op(owner, "cursor", { component_id = id, host_kind = "session", host_id = other_host })
+                test.is_nil(owner_cursor.pinned_prompt)
+                test.eq(other_cursor.pinned_prompt, "other " .. action)
+                local expected_ids, encode_err = json.encode({ other_anchor.id })
+                test.is_nil(encode_err, tostring(encode_err))
+                test.eq(fixture.op(owner, "pinned_ids", { component_id = id, host_kind = "session", host_id = other_host }), expected_ids)
+            end
+            assert_action("archive")
+            local target = item("target", owner_scope)
+            local _, restore_err = fixture.op(owner, "restore", { component_id = id, item_id = target.id })
+            test.is_nil(restore_err, tostring(restore_err))
+            fixture.settle(owner, id)
+            assert_action("restore")
+            assert_action("forget")
+        end)
+
+        test.it("invalidates a pin made through the previous pin signature", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local item, create_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "preference", scope_family = "owner", key = "timezone", value = "UTC", content = "The user uses UTC.",
+            } })
+            test.is_nil(create_err, tostring(create_err))
+            fixture.settle(user, id)
+            local current = fixture.op(user, "get", { component_id = id, item_id = item.item_id })
+            local pinned, pin_err = fixture.op(user, "pin", {
+                component_id = id, host_kind = "session", host_id = "legacy-pin", agent_id = "agent-a", head = 1,
+                prompt = "legacy prompt", selected = { { id = current.id, version = current.version, content_hash = current.content_hash } },
+            })
+            test.is_true(pinned, tostring(pin_err))
+            local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = item.item_id })
+            test.is_nil(forget_err, tostring(forget_err))
+            fixture.settle(user, id)
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = "legacy-pin" })
+            test.is_nil(cursor.pinned_prompt)
+        end)
+
         test.it("contributes the agent's identity and rules in a deterministic order", function()
             local user = fixture.user()
             local id = fixture.memory(user)
