@@ -164,6 +164,37 @@ local function define_tests()
             test.not_nil(restore_err)
         end)
 
+        test.it("forgets an item with the versions it replaced and keeps the value that replaced it", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local function set_pet(value: string): string
+                local created = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "profile_slot", scope_family = "owner", key = "pet_name", cardinality = "single", value = value, content = "The user's pet is " .. value .. ".",
+                } })
+                fixture.settle(user, id)
+                return created.item_id
+            end
+            set_pet("Rex")
+            local biscuit = set_pet("Biscuit")
+            local pepper = set_pet("Pepper")
+            local function statuses(): string
+                local out = {}
+                for _, item in ipairs(fixture.items(user, id, { key = "pet_name" })) do out[#out + 1] = item.status .. ":" .. tostring(item.value) end
+                table.sort(out)
+                return table.concat(out, ",")
+            end
+            local earlier, earlier_err = fixture.op(user, "forget", { component_id = id, item_id = biscuit })
+            test.is_nil(earlier_err, tostring(earlier_err))
+            test.eq(earlier.forgotten, 2)
+            fixture.settle(user, id)
+            test.eq(statuses(), "current:Pepper,forgotten:nil,forgotten:nil")
+            local latest, latest_err = fixture.op(user, "forget", { component_id = id, item_id = pepper })
+            test.is_nil(latest_err, tostring(latest_err))
+            test.eq(latest.forgotten, 1)
+            fixture.settle(user, id)
+            test.eq(statuses(), "forgotten:nil,forgotten:nil,forgotten:nil")
+        end)
+
         test.it("re-renders the pinned slice when an item in it is forgotten", function()
             local user = fixture.user()
             local id = fixture.memory(user)

@@ -203,6 +203,27 @@ function M.lineage(component_id: string, sources: { any }): (any?, error?)
     end)
 end
 
+-- Every occurrence of the roots' claims and the versions those occurrences replaced.
+function M.history(component_id: string, roots: { any }): (any?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local out = {}
+        for first = 1, #roots, 100 do
+            local params = { component_id }
+            for i = first, math.min(first + 99, #roots) do params[#params + 1] = roots[i].claim_id end
+            local rows, err = conn:query([[WITH RECURSIVE history(id) AS (
+                SELECT id FROM kickside_memory_items WHERE component_id = $1 AND claim_id IN (]] .. index.placeholders(#params - 1, 2) .. [[)
+                UNION SELECT p.id FROM history h JOIN kickside_memory_items p ON p.component_id = $1 AND p.superseded_by = h.id)
+                SELECT i.id, i.]] .. table.concat(COLUMNS, ", i.") .. [[ FROM history h JOIN kickside_memory_items i
+                ON i.component_id = $1 AND i.id = h.id ORDER BY i.id]], params)
+            if err then return nil, types.failed("memory history read failed", err) end
+            local decoded, decode_err = decode_all(rows)
+            if decode_err then return nil, decode_err end
+            for _, row in ipairs(decoded) do out[#out + 1] = row end
+        end
+        return out, nil
+    end)
+end
+
 function M.derived(component_id: string, source_ids: { string }): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local out = {}

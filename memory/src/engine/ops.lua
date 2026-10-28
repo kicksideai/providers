@@ -188,7 +188,7 @@ function M.forget(component_id: string, item_id: string): (any?, error?)
         local item, err = load(d, item_id)
         if err then return nil, err end
         if item.status == types.STATUS.FORGOTTEN then return { item_id = item.id, unchanged = true }, nil end
-        local forget_err = d:forget(item)
+        local forget_err = d:forget({ item })
         if forget_err then return nil, forget_err end
         return { item_id = item.id, forgotten = d.stats.forgotten }, nil
     end)
@@ -249,7 +249,7 @@ function M.forget_key(component_id: string, key: string, value: any): (any?, err
             for i = 1, math.min(SUGGESTIONS, #ranked) do closest[i] = ranked[i].key end
             return nil, types.not_found("unknown memory key: " .. key .. ". Existing keys, closest first: " .. table.concat(closest, ", "))
         end
-        local forget_err = d:forget(selected, cardinality == types.CARDINALITY.SINGLE and value ~= nil)
+        local forget_err = d:forget({ selected }, claim == nil)
         if forget_err then return nil, forget_err end
         return { key = key, forgotten = d.stats.forgotten }, nil
     end)

@@ -390,32 +390,21 @@ function Decision:restore(item: any): error?
     return nil
 end
 
--- Erases item with its versions and everything derived from them. With
--- value_only, the first wave is the item's value alone: the versions holding
--- the same claim, without the values that replaced it on a single key.
-function Decision:forget(item: any, value_only: boolean?): error?
-    local visited, pending = {}, { item }
-    local first = true
-    while #pending > 0 do
-        local sources, identities = {}, {}
-        for _, source in ipairs(pending) do
-            local identity = source.scope_key .. "\0" .. (source.cardinality == types.CARDINALITY.SINGLE and source.key or source.claim_id)
-            if not visited[source.id] and not identities[identity] then
-                sources[#sources + 1] = source
-                identities[identity] = true
-            end
-        end
-        if #sources == 0 then break end
-        local versions, err
-        if first and value_only then
-            versions, err = self:claimed(item.scope_key, item.claim_id, types.RETAINED_STATUSES)
-        else
-            versions, err = items.lineage(self.component_id, sources)
-        end
-        first = false
+-- Erases every occurrence of the roots' claims, the versions they replaced and
+-- everything derived from the erased versions. With attribute, every version of
+-- the roots' attributes is erased, including the values that replaced them.
+function Decision:forget(roots: { any }, attribute: boolean?): error?
+    local visited = {}
+    local versions, err
+    if attribute then
+        versions, err = items.lineage(self.component_id, roots)
+    else
+        versions, err = items.history(self.component_id, roots)
+    end
+    while true do
         if err then return err end
         local ids = {}
-        for _, version in ipairs(versions) do
+        for _, version in ipairs(versions :: any) do
             if not visited[version.id] then
                 visited[version.id] = true
                 ids[#ids + 1] = version.id
@@ -429,9 +418,17 @@ function Decision:forget(item: any, value_only: boolean?): error?
         end
         local derived, derived_err = items.derived(self.component_id, ids)
         if derived_err then return derived_err end
-        pending = derived
+        local sources, identities = {}, {}
+        for _, source in ipairs(derived) do
+            local identity = source.scope_key .. "\0" .. (source.cardinality == types.CARDINALITY.SINGLE and source.key or source.claim_id)
+            if not visited[source.id] and not identities[identity] then
+                sources[#sources + 1] = source
+                identities[identity] = true
+            end
+        end
+        if #sources == 0 then return nil end
+        versions, err = items.lineage(self.component_id, sources)
     end
-    return nil
 end
 
 function Decision:check(tx: any): error?

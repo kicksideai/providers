@@ -25,8 +25,10 @@ This module owns:
 The writer appends structural events and stores erasable payloads in one
 transaction. Item-added events reference the key row by `key_id`; topic text,
 item content and values stay outside the ledger. The projection folds accepted
-items and their vectors into the read model. Forgetting erases all versions
-and their retained source input while keeping content-free run diagnostics.
+items and their vectors into the read model. Forgetting an item or value erases
+every occurrence of it, the versions it replaced and their retained source input;
+forgetting an attribute by key erases all its versions. Content-free run
+diagnostics remain.
 
 A capture records its span and source ownership in a derive run. Its cursor
 advances through `capture.advanced` only after the derive commits. An active

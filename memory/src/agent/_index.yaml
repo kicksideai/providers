@@ -100,9 +100,9 @@ entries:
       mcp: { required_scopes: [state.write] }
       title: Forget Memory
       llm_alias: ForgetMemory
-      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Ordinary corrections and changed values belong to background capture. Use the canonical key shown in the profile or SearchMemory. Supply value to erase only that value and its versions; a multi-valued key requires it."
+      llm_description: "Erase a memory and all its versions only when the user explicitly asks to forget or delete that attribute. Ordinary corrections and changed values belong to background capture. Use the canonical key shown in the profile or SearchMemory. Supply value to erase only that value and the versions it replaced; a multi-valued key requires it."
       input_schema: |
-        {"type": "object", "additionalProperties": false, "properties": {"key": {"type": "string", "description": "Canonical topic key of your own attribute to erase"}, "value": {"description": "The typed value to erase with its versions; required for a multi-valued key. Without it, a single-valued attribute is erased with its whole history"}}, "required": ["key"]}
+        {"type": "object", "additionalProperties": false, "properties": {"key": {"type": "string", "description": "Canonical topic key of your own attribute to erase"}, "value": {"description": "The typed value to erase with the versions it replaced; required for a multi-valued key. Without it, a single-valued attribute is erased with its whole history"}}, "required": ["key"]}
       output_schema: |
         {"type": "object", "properties": {"success": {"type": "boolean"}, "error": {"type": "string"}, "memory_id": {"type": "string"}, "key": {"type": "string"}, "forgotten": {"type": "integer"}}, "required": ["success"]}
     source: file://tools.lua
