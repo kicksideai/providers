@@ -34,8 +34,7 @@ const topicError = computed(() => (topic.value && !isCanonicalTopicKey(topicKey.
 const ready = computed(() => !!agent.value && isCanonicalTopicKey(topicKey.value) && !!text.value.trim())
 
 const topics = usePaged<{ key: string; cardinality: 'single' | 'multi'; current_count: number }>(
-  () => (props.memory.memoryId.value ? `${props.memory.base.value}/topics?scope_family=agent&kind=${kind.value}` : null),
-  'topics', props.memory.revision)
+  () => props.memory.memoryId.value ? [props.memory.memoryId.value, kind.value] : null, (offset) => memoryApi(props.memory.memoryId.value).topics({ kind: kind.value, offset }), props.memory.revision)
 const suggestions = computed(() => topics.rows.value.map((t) => t.key).filter((key) => key !== topicKey.value).slice(0, 8))
 
 watch(kind, () => { topic.value = '' })

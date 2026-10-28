@@ -40,9 +40,8 @@ describe('usePaged', () => {
   it('drops a response for filters that are no longer on screen', async () => {
     const slow = deferred()
     const fast = deferred()
-    respond = (url) => (url.includes('status=current') ? slow.promise : fast.promise)
     const status = ref('current')
-    const list = usePaged<{ id: string }>(() => `/items?status=${status.value}`, 'items', ref(0))
+    const list = usePaged<{ id: string }>(() => status.value, () => status.value === 'current' ? slow.promise.then((reply) => ({ rows: (reply.data as { items: { id: string }[] }).items, next: null })) : fast.promise.then((reply) => ({ rows: (reply.data as { items: { id: string }[] }).items, next: null })), ref(0))
     await flush()
     status.value = 'archived'
     await flush()
@@ -54,24 +53,21 @@ describe('usePaged', () => {
   })
 
   it('appends the next page at the returned offset and stops when there is none', async () => {
-    respond = (url) => Promise.resolve(url.includes('offset=2')
-      ? { data: { items: [{ id: 'c' }] } }
-      : { data: { items: [{ id: 'a' }, { id: 'b' }], next_offset: 2 } })
-    const list = usePaged<{ id: string }>(() => '/items?limit=2', 'items', ref(0))
+    const offsets: number[] = []
+    const list = usePaged<{ id: string }>(() => 'items', async (offset) => { offsets.push(offset); return offset ? { rows: [{ id: 'c' }], next: null } : { rows: [{ id: 'a' }, { id: 'b' }], next: 2 } }, ref(0))
     await flush()
     expect(list.next.value).toBe(2)
     list.more()
     await flush()
-    expect(calls[calls.length - 1]).toBe('/items?limit=2&offset=2')
+    expect(offsets).toEqual([0, 2])
     expect(list.rows.value.map((r) => r.id)).toEqual(['a', 'b', 'c'])
     expect(list.next.value).toBeNull()
   })
 
   it('reloads from the first page when the revision moves', async () => {
     let n = 0
-    respond = () => Promise.resolve({ data: { items: [{ id: `row-${++n}` }] } })
     const revision = ref(0)
-    const list = usePaged<{ id: string }>(() => '/items', 'items', revision)
+    const list = usePaged<{ id: string }>(() => 'items', async () => ({ rows: [{ id: `row-${++n}` }], next: null }), revision)
     await flush()
     revision.value++
     await flush()
@@ -79,8 +75,7 @@ describe('usePaged', () => {
   })
 
   it('reports a failed load instead of showing an empty list', async () => {
-    respond = () => Promise.reject({ response: { data: { error: 'memory unavailable' } } })
-    const list = usePaged<{ id: string }>(() => '/items', 'items', ref(0))
+    const list = usePaged<{ id: string }>(() => 'items', async () => { throw { response: { data: { error: 'memory unavailable' } } } }, ref(0))
     await flush()
     expect(list.error.value).toBe('memory unavailable')
   })

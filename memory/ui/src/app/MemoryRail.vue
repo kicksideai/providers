@@ -8,6 +8,7 @@ import { GROUPS, KIND_META, relativeTime, topicLabel, type KindGroup } from './f
 import type { MemoryItem, MemoryStatus } from './types'
 import { usePaged, useDebounced } from './usePaged'
 import type { Memory } from './useMemory'
+import { memoryApi } from './api'
 
 const props = defineProps<{ memory: Memory; selectedId: string }>()
 const emit = defineEmits<{ (e: 'select', item: MemoryItem): void; (e: 'filtered'): void; (e: 'status-change', status: MemoryStatus): void }>()
@@ -21,14 +22,9 @@ const status = ref<MemoryStatus>('current')
 const query = ref('')
 const debounced = useDebounced(query, 250, (value) => value.trim())
 
-const list = usePaged<MemoryItem>(() => {
-  if (!props.memory.memoryId.value) return null
-  const params = new URLSearchParams({ status: status.value, limit: '100' })
-  if (debounced.value) params.set('q', debounced.value)
-  return `${props.memory.base.value}/items?${params.toString()}`
-}, 'items', props.memory.revision)
+const list = usePaged<MemoryItem>(() => props.memory.memoryId.value ? [props.memory.memoryId.value, status.value, debounced.value] : null, (offset) => memoryApi(props.memory.memoryId.value).items({ status: status.value, query: debounced.value, offset }), props.memory.revision)
 
-watch([status, debounced], () => { emit('filtered'); emit('status-change', status.value) }, { immediate: true })
+watch([status, debounced], () => { emit('filtered'); emit('status-change', status.value) })
 
 const closed = ref<Record<KindGroup, boolean>>({ instructions: false, knowhow: false, plans: false, people: false })
 const sections = computed(() => GROUPS

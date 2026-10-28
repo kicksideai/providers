@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useEvents, useProps } from '@wippy-fe/webcomponent-vue'
 import SearchField from './chrome/SearchField.vue'
-import { httpStatus, resolveMemory } from './api'
+import { httpStatus, listMemories, resolveMemory } from './api'
 import { errorText, parseConfig, type MemoryEvents } from './types'
 import { useDebounced, usePaged } from './usePaged'
 
@@ -26,7 +26,7 @@ watch(() => props.value.config, (raw) => {
   } catch (err) { configError.value = errorText(err) }
 }, { immediate: true, deep: true })
 
-const choices = usePaged<MemoryChoice>(() => `/api/v1/memory?limit=20${debounced.value ? `&q=${encodeURIComponent(debounced.value)}` : ''}`, 'items')
+const choices = usePaged<MemoryChoice>(() => debounced.value, (offset) => listMemories(debounced.value, offset))
 const current = ref<MemoryChoice | null>(null)
 const resolving = ref(false)
 const resolveError = ref('')

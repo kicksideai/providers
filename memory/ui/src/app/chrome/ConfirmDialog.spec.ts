@@ -10,10 +10,10 @@ vi.mock('@iconify/vue', () => ({ Icon: { template: '<span />' } }))
 let wrapper: ReturnType<typeof mount> | undefined
 afterEach(() => { wrapper?.unmount(); document.body.innerHTML = '' })
 
-it('focuses confirmation controls when initially open and handles Escape', async () => {
+it('focuses the memory cancel control and handles Escape', async () => {
   const cancel = vi.fn()
   wrapper = mount(ConfirmDialog, {
-    props: { open: true, title: 'Erase an attribute', onCancel: cancel },
+    props: { open: true, title: 'Forget this memory', onCancel: cancel },
     attachTo: document.body,
     global: { plugins: [[PrimeVue, { unstyled: true }]], stubs: { transition: false } },
   })
@@ -24,4 +24,13 @@ it('focuses confirmation controls when initially open and handles Escape', async
   window.document.dispatchEvent(new window.KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }))
   await flushPromises()
   expect(cancel).toHaveBeenCalledOnce()
+})
+
+it('blocks mask and Escape dismissal while the memory action is busy', async () => {
+  const cancel = vi.fn()
+  wrapper = mount(ConfirmDialog, { props: { open: true, busy: true, title: 'Forget this memory', onCancel: cancel }, attachTo: document.body, global: { stubs: { transition: false } } })
+  await flushPromises()
+  await wrapper.get('.kx-modal-mask').trigger('click')
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  expect(cancel).not.toHaveBeenCalled()
 })

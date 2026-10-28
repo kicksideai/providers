@@ -8,7 +8,7 @@ import { memoryApi } from './api'
 
 const props = defineProps<{ memory: Memory }>()
 
-const groups = usePaged<ConflictGroup>(() => (props.memory.memoryId.value ? `${props.memory.base.value}/conflicts` : null), 'groups', props.memory.revision)
+const groups = usePaged<ConflictGroup>(() => props.memory.memoryId.value || null, (offset) => memoryApi(props.memory.memoryId.value).conflicts(offset), props.memory.revision)
 
 function keep(group: ConflictGroup, winner: MemoryItem) {
   void props.memory.act(() => memoryApi(props.memory.memoryId.value).resolve(group.group_id, winner.id))

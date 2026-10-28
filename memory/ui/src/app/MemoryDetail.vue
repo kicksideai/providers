@@ -58,7 +58,35 @@ watch(() => props.itemId, () => {
   forgetting.value = false
   void load()
 }, { immediate: true })
-watch(props.memory.revision, () => { void load(0, Math.max(50, versions.value.length)) })
+async function reloadVersions(): Promise<void> {
+  const current = ++generation
+  const wanted = versions.value.length
+  try {
+    let offset = 0
+    let next: number | null = null
+    const rows: MemoryItem[] = []
+    let first = true
+    do {
+      const size = Math.min(100, Math.max(1, wanted - rows.length))
+      const page = await memoryApi(props.memory.memoryId.value).item(props.itemId, offset, size)
+      if (current !== generation) return
+      if (first) {
+        if (page.item.status === 'forgotten') { emit('gone'); return }
+        item.value = page.item; provenance.value = page.provenance; first = false
+      }
+      rows.push(...page.versions.rows)
+      next = page.versions.next
+      offset = next ?? 0
+    } while (rows.length < wanted && next !== null)
+    versions.value = rows; nextVersions.value = next; loadError.value = ''
+  } catch (err) {
+    if (current === generation) {
+      if (httpStatus(err) === 404) emit('gone')
+      else loadError.value = errorText(err)
+    }
+  }
+}
+watch(props.memory.revision, () => { void reloadVersions() })
 
 function post(action: 'archive' | 'restore' | 'forget') {
   return props.memory.act(() => memoryApi(props.memory.memoryId.value).act(props.itemId, action))

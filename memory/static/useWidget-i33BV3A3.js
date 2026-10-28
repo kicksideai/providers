@@ -1,5 +1,5 @@
 import { useId as W, mergeProps as g, openBlock as A, createElementBlock as U, ref as z, onMounted as K } from "vue";
-import { h as L, f as F, C as q, s as N, g as S, F as J, N as b, S as _, B as m, d as Q, z as X, w as Y, e as Z } from "./types-CkAlvrJt.js";
+import { h as L, f as F, C as q, s as N, g as S, F as J, N as b, S as _, B as m, d as Q, z as X, w as Y, e as Z } from "./types-ClUwdCNm.js";
 import { loadByTagName as ee } from "@wippy-fe/proxy";
 function I(...t) {
   if (t) {
@@ -1045,4 +1045,4 @@ export {
   le as s,
   Fe as u
 };
-//# sourceMappingURL=useWidget-g7eM-AnE.js.map
+//# sourceMappingURL=useWidget-i33BV3A3.js.map
