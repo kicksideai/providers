@@ -62,7 +62,8 @@ function onChoiceKeydown(event: KeyboardEvent, index: number): void {
   const step = event.key === 'ArrowDown' ? 1 : -1
   const next = choicesList.value[(index + step + choicesList.value.length) % choicesList.value.length]
   pick(next)
-  requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-memory-choice="${CSS.escape(next.id)}"]`)?.focus())
+  const buttons = (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('.mm-choice')
+  buttons?.[(index + step + choicesList.value.length) % choicesList.value.length]?.focus()
 }
 
 function pick(choice: MemoryChoice): void {
