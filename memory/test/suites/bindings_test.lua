@@ -8,7 +8,7 @@ local function define_tests()
         test.it("rejects an oversized document without blocking later projection events", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local projected, project_err = fixture.call_as(user, "kickside.memory.engine:ledger_projection", {
+            local input = {
                 thread_id = id, range = { to_seq = 2 }, events = {
                     { id = "large-document", seq = 1, created_at = "2026-10-01T10:00:00Z",
                         type = "kickside.knowledge.events:content.upserted", body = { content = string.rep("x", 24001) } },
@@ -18,9 +18,13 @@ local function define_tests()
                             from_event_id = "", last_event_id = "tail-event",
                         } },
                 },
-            })
+            }
+            local projected, project_err = fixture.call_as(user, "kickside.memory.engine:ledger_projection", input)
             test.is_nil(project_err, tostring(project_err))
             test.eq(projected.last_seq, 2)
+            local redelivered, redeliver_err = fixture.call_as(user, "kickside.memory.engine:ledger_projection", input)
+            test.is_nil(redeliver_err, tostring(redeliver_err))
+            test.eq(redelivered.last_seq, 2)
             local rejected, runs_err = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
             test.is_nil(runs_err, tostring(runs_err))
             test.eq(#rejected, 1)

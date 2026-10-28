@@ -65,7 +65,6 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
     if read_err then return nil, types.failed("memory run lookup failed", read_err) end
     if existing and #existing > 0 then
         local job_id = existing[1].job_id
-        if type(job_id) ~= "string" or job_id == "" then return nil, types.internal("memory run has no queue enrollment") end
         return { created = false, job_id = job_id }, nil
     end
     local input, input_err = types.encode_object(run.input or {}, "input")
@@ -137,6 +136,8 @@ function M.schedule(run: RunInput, params: any, expected: string?, following: { 
                 job_id = queued.id
                 local _, attach_err = tx:execute("UPDATE kickside_memory_runs SET job_id = $1 WHERE id = $2", { job_id, current.id })
                 if attach_err then return nil, types.failed("memory run enrollment failed", attach_err) end
+            elseif type(job_id) ~= "string" or job_id == "" then
+                return nil, types.internal("memory run has no queue enrollment")
             end
             if not first then first = { scheduled = proof.created, run_id = current.id, job_id = job_id } end
         end
