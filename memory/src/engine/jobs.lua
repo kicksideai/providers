@@ -57,7 +57,7 @@ local function enrollment(run: any, identity: any, run_type: string, extra: any)
 end
 
 local function new_derive_run(run_id: string, component_id: string, host_kind: string, host_id: string, agent_id: string?,
-    from_event_id: string, to_event_id: string, span: { any }, context: { any }?, rejection: any?): (any?, any?, error?)
+    from_event_id: string, to_event_id: string, span: { any }, context: { any }?): (any?, any?, error?)
     local size = 0
     for _, message in ipairs(span) do size = size + #(message.text or "") end
     if size > M.INPUT_BYTES then
@@ -66,18 +66,12 @@ local function new_derive_run(run_id: string, component_id: string, host_kind: s
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, nil, id_err end
     local input: any = { span = span, context = context, owner_id = (identity :: any).principal.id }
-    local stats, reason = {}, nil
-    if rejection then
-        input = { owner_id = (identity :: any).principal.id, rejection = rejection }
-        stats = { rejected = 1, rejected_source_too_large = 1, source_bytes = rejection.bytes, input_limit_bytes = rejection.limit_bytes }
-        reason = rejection.code .. ": memory source event exceeds " .. tostring(rejection.limit_bytes) .. " bytes (" .. tostring(rejection.bytes) .. " bytes)"
-    end
     return {
         id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
-        status = rejection and types.RUN_STATUS.REJECTED or types.RUN_STATUS.SCHEDULED,
+        status = types.RUN_STATUS.SCHEDULED,
         host_kind = host_kind, host_id = host_id, agent_id = agent_id,
         from_event_id = from_event_id, to_event_id = to_event_id,
-        input = input, stats = stats, last_error = reason,
+        input = input,
         actor_id = (row :: any).actor_id, actor_context = (row :: any).actor_context,
     }, identity, nil
 end
@@ -91,23 +85,22 @@ type Capture = {
     to_event_id: string,
     span: { any },
     context: { any }?,
-    rejection: any?,
 }
 
 function M.capture(capture: Capture, following: { Capture }?): (any?, error?)
     local run, identity, err = new_derive_run(uuid.v7(), capture.component_id, capture.host_kind, capture.host_id, capture.agent_id,
-        capture.from_event_id, capture.to_event_id, capture.span, capture.context, capture.rejection)
+        capture.from_event_id, capture.to_event_id, capture.span, capture.context)
     if err then return nil, err end
     local rest = {}
     for _, part in ipairs(following or {}) do
         local next_run, next_identity, next_err = new_derive_run(uuid.v7(), part.component_id, part.host_kind, part.host_id, part.agent_id,
-            part.from_event_id, part.to_event_id, part.span, part.context, part.rejection)
+            part.from_event_id, part.to_event_id, part.span, part.context)
         if next_err then return nil, next_err end
         rest[#rest + 1] = { run = next_run, params = enrollment(next_run, next_identity, types.RUN_TYPE.DERIVE,
-            { max_attempts = next_run.input.rejection and 1 or DERIVE_ATTEMPTS }) }
+            { max_attempts = DERIVE_ATTEMPTS }) }
     end
     return runs.schedule(run, enrollment(run, identity, types.RUN_TYPE.DERIVE,
-        { max_attempts = run.input.rejection and 1 or DERIVE_ATTEMPTS }), capture.from_event_id, rest)
+        { max_attempts = DERIVE_ATTEMPTS }), capture.from_event_id, rest)
 end
 
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
@@ -253,10 +246,6 @@ function M.derive_authorized(value: any): any
             end
         end
         local input = fresh.input
-        if input.rejection then
-            for key, count in pairs(fresh.stats) do d.stats[key] = count end
-            return nil, nil
-        end
         local span = input.span or {}
         local events: { [string]: any } = {}
         for _, message in ipairs(span) do
@@ -282,9 +271,7 @@ function M.derive_authorized(value: any): any
     local _, settle_err = ledger.settled_head(run.component_id, deadline)
     if settle_err then return fail(run.id, settle_err) end
     local stats = (result :: any).stats
-    local rejected = run.input.rejection ~= nil
-    local _, close_err = runs.finish(run.id, rejected and types.RUN_STATUS.REJECTED or types.RUN_STATUS.SUCCEEDED,
-        rejected and run.last_error or nil, stats)
+    local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, stats)
     if close_err then return fail(run.id, close_err) end
     return { ok = true, record = { status = "completed" }, stats = stats }
 end

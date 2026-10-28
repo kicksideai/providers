@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
 local component = require("component")
+local uuid = require("uuid")
 local types = require("types")
 local context = require("agent_context")
 local history = require("agent_history")
@@ -28,7 +29,7 @@ local function context_window(entries: { any }): { any }
     return out
 end
 
--- The derive commit advances the cursor; capture reads the unconsumed host history.
+-- Capture reads history after the last committed derive or rejected source.
 function M.capture(payload: any, to_event_id: string?): (any?, error?)
     if context.setting(payload, "write_enabled") == false then return { captured = false, reason = "capture_disabled" }, nil end
     local memory_id, store, store_err = context.memory(payload, component.ACCESS.WRITE)
@@ -92,38 +93,52 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
         local entry = history.span_entry(prior[i], cfg)
         if entry then entries[#entries + 1] = entry end
     end
+    local first_entry, rejected_run = 1, nil
+    while first_entry <= #span and #span[first_entry].text > jobs.INPUT_BYTES do
+        local entry = span[first_entry]
+        local to_id = first_entry == #span and tostring(events[#events].id) or entry.id
+        local rejected, reject_err = runs.reject_capture({
+            id = uuid.v7(), component_id = memory_id :: string, run_type = types.RUN_TYPE.DERIVE,
+            status = types.RUN_STATUS.REJECTED, finished_at = types.now(), actor_id = types.actor_id(),
+            host_kind = host_kind, host_id = host_id, agent_id = types.trim(payload.agent and payload.agent.id),
+            from_event_id = from, to_event_id = to_id,
+            stats = { rejected = 1, rejected_source_too_large = 1, source_bytes = #entry.text, input_limit_bytes = jobs.INPUT_BYTES },
+            last_error = "source_too_large: memory source event exceeds " .. tostring(jobs.INPUT_BYTES) .. " bytes (" .. tostring(#entry.text) .. " bytes)",
+        })
+        if reject_err then return nil, reject_err end
+        if not rejected.recorded then return { captured = rejected_run ~= nil, run_id = rejected_run or rejected.run_id, memory_id = memory_id }, nil end
+        rejected_run = rejected.run_id
+        from = to_id
+        first_entry = first_entry + 1
+    end
+    if first_entry > #span then return { captured = true, run_id = rejected_run, memory_id = memory_id }, nil end
     local maximum, capacity_err = models.extraction_capacity(cfg.extraction_model, span)
     if capacity_err then return nil, capacity_err end
     local captures: { any } = {}
     local part: { any } = {}
     local count, size, prior_context = 0, 0, context_window(entries)
-    local function append(to_id: string, rejection: any?)
+    local function append(to_id: string)
         captures[#captures + 1] = {
             component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
             agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
             to_event_id = to_id, span = part, context = prior_context,
-            rejection = rejection,
         }
         from = to_id
         part, count, size, prior_context = {}, 0, 0, context_window(entries)
     end
-    for _, entry in ipairs(span) do
-        if #entry.text > jobs.INPUT_BYTES then
-            if #part > 0 then append(part[#part].id) end
-            prior_context = {}
-            append(entry.id, { code = "source_too_large", event_id = entry.id, bytes = #entry.text, limit_bytes = jobs.INPUT_BYTES })
-        else
-            if #part > 0 and (size + #entry.text > jobs.INPUT_BYTES or (models.is_statement(entry) and count == maximum)) then
-                append(part[#part].id)
-            end
-            part[#part + 1] = entry
-            size = size + #entry.text
-            entries[#entries + 1] = entry
-            if models.is_statement(entry) then count = count + 1 end
+    local stopped = false
+    for i = first_entry, #span do
+        local entry = span[i]
+        if #entry.text > jobs.INPUT_BYTES then stopped = true; break end
+        if #part > 0 and (size + #entry.text > jobs.INPUT_BYTES or (models.is_statement(entry) and count == maximum)) then
+            append(part[#part].id)
         end
+        part[#part + 1] = entry
+        size = size + #entry.text
+        entries[#entries + 1] = entry
+        if models.is_statement(entry) then count = count + 1 end
     end
-    if #part > 0 then append(tostring(events[#events].id))
-    else captures[#captures].to_event_id = tostring(events[#events].id) end
+    append(stopped and part[#part].id or tostring(events[#events].id))
     local first: any = table.remove(captures, 1)
     local scheduled, schedule_err = jobs.capture(first, captures)
     if schedule_err then return nil, schedule_err end

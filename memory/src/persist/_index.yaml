@@ -62,6 +62,7 @@ entries:
     source: file://runs.lua
     modules: [sql, json]
     imports:
+      memory_ledger: kickside.memory.engine:ledger
       jobs: kickside.core.jobs:jobs
       jobs_wake: kickside.core.jobs.persist:wake
       memory_db: kickside.memory.persist:db

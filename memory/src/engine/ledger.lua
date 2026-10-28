@@ -56,7 +56,7 @@ end
 
 type LedgerEvent = { type: string, body: any }
 
-function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, expected_head: integer, idempotency: string): (any?, error?)
+function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, expected_head: integer?, idempotency: string): (any?, error?)
     local writes: { any } = {}
     for index, event in ipairs(events) do
         writes[index] = {
@@ -66,7 +66,7 @@ function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, exp
             external = { external_source = types.SOURCE, external_id = idempotency .. ":" .. tostring(index) },
         }
     end
-    local result, append_err = threads_append.append_events_tx(tx, component_id, writes, { expect = { head = expected_head } })
+    local result, append_err = threads_append.append_events_tx(tx, component_id, writes, { expect = expected_head ~= nil and { head = expected_head } or nil })
     if append_err then return nil, append_err end
     return result, nil
 end

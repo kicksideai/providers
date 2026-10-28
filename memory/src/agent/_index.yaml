@@ -34,7 +34,7 @@ entries:
   - name: capture
     kind: library.lua
     source: file://capture.lua
-    modules: []
+    modules: [uuid]
     imports:
       component: kickside.component:component
       types: kickside.memory:types
