@@ -34,7 +34,7 @@ type Options = {
     conversation: string?,
 }
 
-local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
+local LIVE = types.LIVE_STATUSES
 
 local REFLECTION_ACTIONS = { types.ACTION.ADD, types.ACTION.NOOP }
 
