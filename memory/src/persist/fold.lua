@@ -13,6 +13,20 @@ local M = {}
 local PROVENANCE_INSERT = "INSERT INTO kickside_memory_provenance (item_id, component_id, host_kind, host_id, event_id, recorded_at) "
 
 local CLEAR = {}
+
+local function event_string(body: any, name: string): (string?, error?)
+    local value = body[name]
+    if type(value) ~= "string" or value == "" then return nil, types.internal("malformed ledger event") end
+    return value, nil
+end
+
+local function event_ids(body: any): ({ string }?, error?)
+    if type(body.item_ids) ~= "table" then return nil, types.internal("malformed ledger event") end
+    for _, id in ipairs(body.item_ids) do
+        if type(id) ~= "string" or id == "" then return nil, types.internal("malformed ledger event") end
+    end
+    return body.item_ids, nil
+end
 local function set_fts_tx(tx: any, sqlite: boolean, item_id: string, content: string?): error?
     if not sqlite then return nil end
     local _, del_err = tx:execute("DELETE FROM kickside_memory_fts WHERE item_id = $1", { item_id })
@@ -25,14 +39,14 @@ local function set_fts_tx(tx: any, sqlite: boolean, item_id: string, content: st
 end
 
 local function add_provenance_tx(tx: any, component_id: string, item_id: string, refs: any, recorded_at: string): error?
-    for _, ref in ipairs(type(refs) == "table" and refs or {}) do
-        if type(ref) == "table" and (types.trim(ref.event_id) ~= "" or
-            (ref.host_kind == "item" and types.trim(ref.host_id) ~= "")) then
-            local _, err = tx:execute(
-                PROVENANCE_INSERT .. "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
-                { item_id, component_id, types.trim(ref.host_kind), types.trim(ref.host_id), types.trim(ref.event_id), recorded_at })
-            if err then return types.failed("memory provenance insert failed", err) end
-        end
+    if type(refs) ~= "table" then return types.internal("malformed ledger event") end
+    for _, ref in ipairs(refs) do
+        if type(ref) ~= "table" or type(ref.host_kind) ~= "string" or type(ref.host_id) ~= "string" or type(ref.event_id) ~= "string"
+            or (ref.event_id == "" and (ref.host_kind ~= "item" or ref.host_id == "")) then return types.internal("malformed ledger event") end
+        local _, err = tx:execute(
+            PROVENANCE_INSERT .. "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
+            { item_id, component_id, ref.host_kind, ref.host_id, ref.event_id, recorded_at })
+        if err then return types.failed("memory provenance insert failed", err) end
     end
     return nil
 end
@@ -187,10 +201,19 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
     elseif kind == types.EVENT.ITEM_REVISED then
         return apply_revised(tx, sqlite, component_id, seq, body)
     elseif kind == types.EVENT.ITEM_SUPERSEDED then
-        return supersede_tx(tx, component_id, types.trim(body.item_id), types.trim(body.by), seq, body.invalid_at or recorded_at)
+        local item_id, item_err = event_string(body, "item_id")
+        if item_err then return item_err end
+        local by, by_err = event_string(body, "by")
+        if by_err then return by_err end
+        local invalid_at = types.utc(body.invalid_at)
+        if not invalid_at then return types.internal("malformed ledger event") end
+        return supersede_tx(tx, component_id, item_id :: string, by :: string, seq, invalid_at)
     elseif kind == types.EVENT.ITEM_MERGED then
-        local into = types.trim(body.into)
-        for _, item_id in ipairs(type(body.item_ids) == "table" and body.item_ids or {}) do
+        local into, into_err = event_string(body, "into")
+        if into_err then return into_err end
+        local ids, ids_err = event_ids(body)
+        if ids_err then return ids_err end
+        for _, item_id in ipairs(ids :: { string }) do
             local _, copy_err = tx:execute(
                 PROVENANCE_INSERT .. "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance " ..
                 "WHERE component_id = $2 AND item_id = $3 ON CONFLICT DO NOTHING", { into, component_id, item_id })
@@ -200,34 +223,49 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         end
         return nil
     elseif kind == types.EVENT.ITEM_CONFLICTED then
-        for _, item_id in ipairs(type(body.item_ids) == "table" and body.item_ids or {}) do
-            local err = set_status_tx(tx, component_id, item_id, seq, { status = types.STATUS.CONFLICT, conflict_group = body.group_id })
+        local ids, ids_err = event_ids(body)
+        if ids_err then return ids_err end
+        local group_id, group_err = event_string(body, "group_id")
+        if group_err then return group_err end
+        for _, item_id in ipairs(ids :: { string }) do
+            local err = set_status_tx(tx, component_id, item_id, seq, { status = types.STATUS.CONFLICT, conflict_group = group_id })
             if err then return err end
         end
         return nil
     elseif kind == types.EVENT.ITEM_ARCHIVED then
-        local item, item_err = items.get_tx(tx, component_id, types.trim(body.item_id))
+        local item_id, id_err = event_string(body, "item_id")
+        if id_err then return id_err end
+        local item, item_err = items.get_tx(tx, component_id, item_id :: string)
         if item_err then return item_err end
         if not item then return types.internal("memory archived item is missing") end
         local pin_err = invalidate_pins_tx(tx, component_id, item.scope_key)
         if pin_err then return pin_err end
-        return set_status_tx(tx, component_id, types.trim(body.item_id), seq, {
-            status = types.STATUS.ARCHIVED, invalid_at = recorded_at, conflict_group = NULL,
+        return set_status_tx(tx, component_id, item_id :: string, seq, {
+            status = types.STATUS.ARCHIVED, invalid_at = recorded_at, conflict_group = CLEAR,
         })
     elseif kind == types.EVENT.ITEM_RESTORED then
-        local item, item_err = items.get_tx(tx, component_id, types.trim(body.item_id))
+        local item_id, id_err = event_string(body, "item_id")
+        if id_err then return id_err end
+        local item, item_err = items.get_tx(tx, component_id, item_id :: string)
         if item_err then return item_err end
         if not item then return types.internal("memory restored item is missing") end
         local pin_err = invalidate_pins_tx(tx, component_id, item.scope_key)
         if pin_err then return pin_err end
-        return set_status_tx(tx, component_id, types.trim(body.item_id), seq, {
+        return set_status_tx(tx, component_id, item_id :: string, seq, {
             status = types.STATUS.CURRENT, invalid_at = CLEAR, superseded_by = CLEAR, conflict_group = CLEAR,
         })
     elseif kind == types.EVENT.ITEM_FORGOTTEN then
-        return apply_forgotten(tx, sqlite, component_id, seq, types.trim(body.item_id), recorded_at)
+        local item_id, item_err = event_string(body, "item_id")
+        if item_err then return item_err end
+        return apply_forgotten(tx, sqlite, component_id, seq, item_id :: string, recorded_at)
     elseif kind == types.EVENT.PROVENANCE_ADDED then
-        return add_provenance_tx(tx, component_id, types.trim(body.item_id), { body }, recorded_at)
+        local item_id, item_err = event_string(body, "item_id")
+        if item_err then return item_err end
+        return add_provenance_tx(tx, component_id, item_id :: string, { body }, recorded_at)
     elseif kind == types.EVENT.CAPTURE_ADVANCED then
+        for _, name in ipairs({ "host_kind", "host_id", "agent_id", "from_event_id", "last_event_id" }) do
+            if type(body[name]) ~= "string" then return types.internal("malformed ledger event") end
+        end
         return runs.advance_cursor_tx(tx, component_id, body, recorded_at)
     elseif kind == types.EVENT.CONSOLIDATION_COMPLETED then
         return nil
@@ -241,7 +279,11 @@ function M.fold(component_id: string, events: { any }): (any?, error?)
         local forgotten: { string } = {}
         for _, event in ipairs(events) do
             if type(event) ~= "table" or type(event.body) ~= "table" then return nil, types.internal("malformed ledger event") end
-            if event.type == types.EVENT.ITEM_FORGOTTEN then forgotten[#forgotten + 1] = types.trim(event.body.item_id) end
+            if event.type == types.EVENT.ITEM_FORGOTTEN then
+                local item_id, item_err = event_string(event.body, "item_id")
+                if item_err then return nil, item_err end
+                forgotten[#forgotten + 1] = item_id :: string
+            end
         end
         local scrub_err = scrub_runs_tx(tx, component_id, forgotten)
         if scrub_err then return nil, scrub_err end

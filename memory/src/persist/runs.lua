@@ -56,6 +56,10 @@ local function sources_tx(tx: any, run: any): error?
     return nil
 end
 
+function M.sources_tx(tx: any, run: any): error?
+    return sources_tx(tx, run)
+end
+
 local function insert_tx(tx: any, run: RunInput): (any?, error?)
     local existing, read_err = tx:query("SELECT id, job_id FROM kickside_memory_runs WHERE id = $1", { run.id })
     if read_err then return nil, types.failed("memory run lookup failed", read_err) end
@@ -106,8 +110,7 @@ function M.advance_cursor_tx(tx: any, component_id: string, body: any, updated_a
         (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET agent_id = excluded.agent_id, last_event_id = excluded.last_event_id,
             updated_at = excluded.updated_at WHERE kickside_memory_cursors.last_event_id = $7]],
-        { component_id, types.trim(body.host_kind), types.trim(body.host_id), types.trim(body.agent_id), types.trim(body.last_event_id), updated_at,
-            types.trim(body.from_event_id) })
+        { component_id, body.host_kind, body.host_id, body.agent_id, body.last_event_id, updated_at, body.from_event_id })
     if err then return types.failed("memory cursor advance failed", err) end
     return nil
 end
