@@ -176,26 +176,48 @@ function M.invariant_snapshot(tx: any, component_id: string, keys: { any }, ids:
     return { counts = counts, statuses = statuses }, nil
 end
 
-function M.lineage(component_id: string, item: any): (any?, error?)
+function M.lineage(component_id: string, sources: { any }): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        local rows, err = conn:query("WITH RECURSIVE lineage(claim_id) AS (SELECT claim_id FROM kickside_memory_items WHERE component_id = $1 AND id = $2 " ..
-            "UNION SELECT n.claim_id FROM lineage l JOIN kickside_memory_items p ON p.component_id = $1 AND p.claim_id = l.claim_id " ..
-            "JOIN kickside_memory_items n ON (n.component_id = $1 AND n.superseded_by = p.id) OR " ..
-            "(n.component_id = $1 AND n.id = p.superseded_by)) " ..
-            SELECT .. " WHERE component_id = $1 AND scope_key = $3 AND claim_id IN (SELECT claim_id FROM lineage) ORDER BY id",
-            { component_id, item.id, item.scope_key })
-        if err then return nil, types.failed("memory lineage read failed", err) end
-        return decode_all(rows)
+        local out = {}
+        for first = 1, #sources, 100 do
+            local params = { component_id }
+            for i = first, math.min(first + 99, #sources) do params[#params + 1] = sources[i].id end
+            local rows, err = conn:query([[WITH RECURSIVE lineage(scope_key, key, cardinality, claim_id) AS (
+                SELECT scope_key, key, cardinality, CASE WHEN cardinality = 'single' THEN '' ELSE claim_id END
+                FROM kickside_memory_items WHERE component_id = $1 AND id IN (]] .. index.placeholders(#params - 1, 2) .. [[)
+                UNION SELECT n.scope_key, n.key, n.cardinality, CASE WHEN n.cardinality = 'single' THEN '' ELSE n.claim_id END
+                FROM lineage l JOIN kickside_memory_items p ON p.component_id = $1 AND p.claim_id = l.claim_id
+                JOIN kickside_memory_items n ON (n.component_id = $1 AND n.superseded_by = p.id)
+                    OR (n.component_id = $1 AND n.id = p.superseded_by)
+                WHERE l.cardinality = 'multi')
+                SELECT i.id, i.]] .. table.concat(COLUMNS, ", i.") .. [[ FROM lineage l JOIN kickside_memory_items i
+                ON i.component_id = $1 AND i.claim_id = l.claim_id WHERE l.cardinality = 'multi' AND i.scope_key = l.scope_key
+                UNION SELECT i.id, i.]] .. table.concat(COLUMNS, ", i.") .. [[ FROM lineage l JOIN kickside_memory_items i
+                ON i.component_id = $1 AND i.scope_key = l.scope_key AND i.key = l.key WHERE l.cardinality = 'single' ORDER BY id]], params)
+            if err then return nil, types.failed("memory lineage read failed", err) end
+            local decoded, decode_err = decode_all(rows)
+            if decode_err then return nil, decode_err end
+            for _, row in ipairs(decoded) do out[#out + 1] = row end
+        end
+        return out, nil
     end)
 end
 
-function M.derived(component_id: string, source_id: string): (any?, error?)
+function M.derived(component_id: string, source_ids: { string }): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        local rows, err = conn:query(SELECT .. " WHERE component_id = $1 AND id IN (" ..
-            "SELECT item_id FROM kickside_memory_provenance WHERE component_id = $1 AND host_kind = 'item' AND host_id = $2) ORDER BY id",
-            { component_id, source_id })
-        if err then return nil, types.failed("memory derivation read failed", err) end
-        return decode_all(rows)
+        local out = {}
+        for first = 1, #source_ids, 100 do
+            local params = { component_id }
+            for i = first, math.min(first + 99, #source_ids) do params[#params + 1] = source_ids[i] end
+            local rows, err = conn:query(SELECT .. " WHERE component_id = $1 AND id IN (" ..
+                "SELECT item_id FROM kickside_memory_provenance WHERE component_id = $1 AND host_kind = 'item' AND host_id IN (" ..
+                index.placeholders(#params - 1, 2) .. ")) ORDER BY id", params)
+            if err then return nil, types.failed("memory derivation read failed", err) end
+            local decoded, decode_err = decode_all(rows)
+            if decode_err then return nil, decode_err end
+            for _, row in ipairs(decoded) do out[#out + 1] = row end
+        end
+        return out, nil
     end)
 end
 

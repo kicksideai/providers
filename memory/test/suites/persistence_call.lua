@@ -80,7 +80,7 @@ local function call(a: any): (any?, error?)
             local out = {}
             for i = 1, a.count do
                 local item, add_err = d:add({ scope_family = "owner", scope_id = a.user }, {
-                    kind = "fact", key = a.distinct_keys and "attribute_" .. tostring(i) or a.key or "interests", cardinality = a.cardinality or "multi",
+                    kind = a.kind or "fact", key = a.distinct_keys and "attribute_" .. tostring(i) or a.key or "interests", cardinality = a.cardinality or "multi",
                     value = a.distinct_keys and "initial" or a.same_value and "shared" or tostring(i), content = a.content or "Synthetic evidence " .. tostring(i),
                     valid_at = "2026-01-01T00:00:00Z", vector = vectors[1],
                 })
@@ -104,14 +104,14 @@ local function call(a: any): (any?, error?)
         local item, err = items.get(a.component_id, a.item_id)
         if err then return nil, err end
         measured_db.reset()
-        local lineage, lineage_err = items.lineage(a.component_id, item)
+        local lineage, lineage_err = items.lineage(a.component_id, { item })
         if lineage_err then return nil, lineage_err end
         local lineage_queries = #measured_db.statements()
         local db = assert(sql.get("app:db"))
         local sqlite = db:type() == sql.type.SQLITE
         local plan = ""
         if sqlite then
-            local rows, plan_err = db:query("EXPLAIN QUERY PLAN " .. measured_db.statements()[1], { a.component_id, a.item_id, item.scope_key })
+            local rows, plan_err = db:query("EXPLAIN QUERY PLAN " .. measured_db.statements()[1], measured_db.records()[1].params)
             if plan_err then db:release(); return nil, plan_err end
             for _, row in ipairs(rows) do plan = plan .. tostring(row.detail) .. "\n" end
         end

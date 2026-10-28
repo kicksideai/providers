@@ -391,37 +391,37 @@ function Decision:restore(item: any): error?
 end
 
 function Decision:forget(item: any): error?
-    local visited: { [string]: boolean } = {}
-    local function erase(source: any): error?
-        local versions, err
-        if source.cardinality == types.CARDINALITY.SINGLE then
-            versions, err = items.all(self.component_id, { scope_keys = { source.scope_key }, key = source.key })
-        else
-            versions, err = items.lineage(self.component_id, source)
+    local visited, pending = {}, { item }
+    while #pending > 0 do
+        local sources, identities = {}, {}
+        for _, source in ipairs(pending) do
+            local identity = source.scope_key .. "\0" .. (source.cardinality == types.CARDINALITY.SINGLE and source.key or source.claim_id)
+            if not visited[source.id] and not identities[identity] then
+                sources[#sources + 1] = source
+                identities[identity] = true
+            end
         end
+        if #sources == 0 then break end
+        local versions, err = items.lineage(self.component_id, sources)
         if err then return err end
-        for _, version in ipairs(versions :: any) do
+        local ids = {}
+        for _, version in ipairs(versions) do
             if not visited[version.id] then
                 visited[version.id] = true
+                ids[#ids + 1] = version.id
                 local state = self.overlay[version.id] or version
                 if state.status ~= types.STATUS.FORGOTTEN then
                     self:emit(types.EVENT.ITEM_FORGOTTEN, { item_id = version.id, actor = self.actor })
                     self:set(version, { status = types.STATUS.FORGOTTEN, content = "", value = nil, conflict_group = false })
                     self.stats.forgotten = self.stats.forgotten + 1
                 end
-                local derived, derived_err = items.derived(self.component_id, version.id)
-                if derived_err then return derived_err end
-                for _, dependent in ipairs(derived :: any) do
-                    if not visited[dependent.id] then
-                        local erase_err = erase(dependent)
-                        if erase_err then return erase_err end
-                    end
-                end
             end
         end
-        return nil
+        local derived, derived_err = items.derived(self.component_id, ids)
+        if derived_err then return derived_err end
+        pending = derived
     end
-    return erase(item)
+    return nil
 end
 
 function Decision:check(tx: any): error?

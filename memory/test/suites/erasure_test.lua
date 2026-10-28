@@ -42,6 +42,38 @@ local function define_tests()
             test.is_true(result.selection_rows <= 2, "Suggestion rows: " .. result.selection_rows)
         end)
 
+        for _, count in ipairs({ 1, 201 }) do
+            test.it("resolves erasure once for " .. count .. " historical items and dependent lessons with cycles", function()
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local seeded, seed_err = fixture.persistence_op(user, "seed", { component_id = id, user = user, count = count, same_value = true })
+                test.is_nil(seed_err, tostring(seed_err))
+                fixture.settle(user, id)
+                local first = seeded.item_ids[1]
+                local lessons, lesson_err = fixture.persistence_op(user, "seed", { component_id = id, user = user,
+                    count = count, kind = "lesson", distinct_keys = true, idempotency = "lessons" })
+                test.is_nil(lesson_err, tostring(lesson_err))
+                fixture.settle(user, id)
+                local db = fixture.db()
+                local _, err = db:execute([[INSERT INTO kickside_memory_provenance (component_id, item_id, host_kind, host_id, event_id, recorded_at)
+                    SELECT $1, id, 'item', $2, '', '2026-01-01T00:00:00Z' FROM kickside_memory_items WHERE component_id = $1 AND kind = 'lesson']], { id, first })
+                test.is_nil(err, tostring(err))
+                local _, cycle_err = db:execute([[INSERT INTO kickside_memory_provenance (component_id, item_id, host_kind, host_id, event_id, recorded_at)
+                    VALUES ($1, $2, 'item', $3, '', '2026-01-01T00:00:00Z')]], { id, first, lessons.item_ids[1] })
+                db:release()
+                test.is_nil(cycle_err, tostring(cycle_err))
+                local result, read_err = fixture.persistence_op(user, "forget_cost", { component_id = id, key = "interests", value = "shared" })
+                test.is_nil(read_err, tostring(read_err))
+                test.is_nil(result.error, result.error)
+                test.eq(result.result.forgotten, 2 * count)
+                test.is_true(result.queries <= 3 + 3 * math.ceil(count / 100), "Forget performs " .. result.queries .. " queries")
+                fixture.settle(user, id)
+                for _, item_id in ipairs(lessons.item_ids) do
+                    test.eq(fixture.op(user, "get", { component_id = id, item_id = item_id }).status, "forgotten")
+                end
+            end)
+        end
+
         test.it("detects retained run reads independently of their projection", function()
             local user = fixture.user()
             local id = fixture.memory(user)
