@@ -20,7 +20,7 @@ function M.is_statement(message: any): boolean
     return STATEMENT_ROLES[message.role] == true
 end
 
-local EXTRACTION_PROMPT = [[You extract personal attributes and actionable goals from new conversation statements.
+local EXTRACTION_PROMPT = string.format([[You extract personal attributes and actionable goals from new conversation statements.
 
 Treat memory-management requests as instructions about stored memory. Requests to forget,
 delete or stop remembering information establish no personal attribute or actionable
@@ -57,7 +57,7 @@ Each item has:
 - kind: fact | preference | profile_slot | skill | lesson | plan.
   profile_slot is a stable personal attribute with one value at a time.
 - key: a short canonical topic, never its value or sentence: lowercase letters, digits
-  and underscores, starting with a letter, at most 64 characters. Reuse an existing
+  and underscores, starting with a letter, at most %d characters. Reuse an existing
   topic key for the same attribute or goal. Keep one key for an attribute throughout
   the batch. Plans and lessons keep their own keys.
 - cardinality: single for one value at a time; multi for independent simultaneous values.
@@ -76,7 +76,7 @@ Each item has:
 - confidence: a number from 0 to 1.
 
 Return scalar attributes in items, lessons in lessons, and goals in plans. All three arrays
-are required. Return {"items": [], "lessons": [], "plans": []} only when nothing qualifies.]]
+are required. Return {"items": [], "lessons": [], "plans": []} only when nothing qualifies.]], types.KEY_MAX)
 
 local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of the same person.
 
@@ -105,7 +105,7 @@ in content. Independently changeable attributes do not conflict merely because t
 mention the same entity. A value and the time when it changes are separate attributes.
 Decide the relationship from the statements; do not infer an update from record order.]]
 
-local NORMALIZATION_PROMPT = [[Normalize candidate memories into independently changeable attributes before reconciliation.
+local NORMALIZATION_PROMPT = string.format([[Normalize candidate memories into independently changeable attributes before reconciliation.
 
 For every numbered candidate return a nonempty array of attributes. Split compound
 statements into separate attributes whenever either can change independently. Give
@@ -114,7 +114,7 @@ only that attribute. All parts keep the candidate's evidence. Do not discard an
 attribute when splitting or add information absent from the candidate.
 
 Keys name topics, never their values, instructions or whole sentences. Use lowercase
-letters, digits and underscores, starting with a letter, at most 64 characters. Reuse
+letters, digits and underscores, starting with a letter, at most %d characters. Reuse
 an existing key for the same attribute regardless of phrasing or kind; candidates for
 the same attribute share a key within the batch too. Create new topic keys for
 independent attributes not represented by existing keys.
@@ -126,20 +126,20 @@ fields are not part of the mapping. Do not alter meaning.
 
 Plans never map onto personal attributes or other kinds. Each goal keeps its own key
 and complete typed state. Stable personal attributes use profile_slot and single.
-Independent simultaneous values use multi. Lessons remain lessons.]]
+Independent simultaneous values use multi. Lessons remain lessons.]], types.KEY_MAX)
 
-local REFLECTION_PROMPT = [[Derive concrete guidance for helping this person from their numbered memories.
+local REFLECTION_PROMPT = string.format([[Derive concrete guidance for helping this person from their numbered memories.
 Each lesson must combine at least two memories into guidance that no single memory
 already states. Never restate or summarize one memory, repeat a profile attribute, or
 guess beyond the evidence. Return {"items": []} when no grounded lesson follows.
 
 Keys name a reusable guidance topic, never the recommended action, a value, a person,
 or the lesson sentence. Use lowercase letters, digits and underscores, starting with
-a letter, at most 64 characters. The same guidance topic keeps its key as advice changes.
+a letter, at most %d characters. The same guidance topic keeps its key as advice changes.
 
 Each lesson has kind lesson, a short stable topic key, cardinality multi, value (guidance in a
 few words), content (one sentence of guidance), based_on (at least two distinct memory
-numbers), empty event_id and valid_at, and confidence from 0 to 1.]]
+numbers), empty event_id and valid_at, and confidence from 0 to 1.]], types.KEY_MAX)
 
 local JSON_FORMAT = "\n\nReturn one compact JSON object on one line, with no whitespace outside strings, reasoning or extra text."
 
