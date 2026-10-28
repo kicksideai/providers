@@ -11,28 +11,36 @@ local function live_for_key(user: string, component_id: string, key: string): { 
     return fixture.items(user, component_id, { key = key, statuses = { "current", "conflict" } })
 end
 
-local function get_item(token: string, component_id: string, item_id: string, query: string): (any?, any?)
+local function request_with_token(token: string, method: string, path: string, body: any?): (any?, any?)
     local gateway = registry.get("app:gateway")
     local port = gateway and tostring(gateway.data.addr):match(":(%d+)$")
     if not port then return nil, "test gateway is unavailable" end
-    local response, err = http_client.request("GET", "http://127.0.0.1:" .. port .. "/api/memory/" .. component_id .. "/items/" .. item_id .. query,
-        { headers = { Authorization = "Bearer " .. token } })
+    local headers = { Authorization = "Bearer " .. token }
+    if body ~= nil then headers["Content-Type"] = "application/json" end
+    local response, err = http_client.request(method, "http://127.0.0.1:" .. port .. "/api" .. path,
+        { headers = headers, body = body ~= nil and assert(json.encode(body)) or nil })
     if err then return nil, err end
     return response, nil
 end
 
-local function get_path(user: string?, path: string): any
-    local gateway = registry.get("app:gateway")
-    local port = tostring(gateway.data.addr):match(":(%d+)$")
-    local headers = {}
+local function request(user: string?, method: string, path: string, body: any?): any
+    local token = nil
     if user then
         local minted = assert(session.mint(assert(groups.get_user_with_groups(user))))
-        headers.Authorization = "Bearer " .. minted.token
+        token = minted.token
     end
-    local response, err = http_client.request("GET", "http://127.0.0.1:" .. port .. "/api" .. path, { headers = headers })
+    local response, err
+    if token then response, err = request_with_token(token, method, path, body)
+    else
+        local gateway = assert(registry.get("app:gateway"))
+        local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
+        response, err = http_client.request(method, "http://127.0.0.1:" .. port .. "/api" .. path, { body = body ~= nil and assert(json.encode(body)) or nil })
+    end
     if err then error(tostring(err)) end
     return { status = response.status_code, body = json.decode(response.body), raw = response.body }
 end
+
+local function get_path(user: string?, path: string): any return request(user, "GET", path) end
 
 local function define_tests()
     test.describe("memory surfaces", function()
@@ -135,6 +143,81 @@ local function define_tests()
             end
         end)
 
+        test.it("forgets an earlier version through the memory page endpoint", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local function create(value: string): string
+                local response = request(user, "POST", "/memory/" .. id .. "/items", {
+                    kind = "profile_slot", scope_family = "owner", key = "pet_name", cardinality = "single", value = value,
+                    content = "The user's pet is " .. value .. ".",
+                })
+                test.eq(response.status, 200, response.raw)
+                fixture.settle(user, id)
+                return response.body.item_id
+            end
+            create("Rex")
+            local biscuit = create("Biscuit")
+            create("Pepper")
+            local forgotten = request(user, "POST", "/memory/" .. id .. "/items/" .. biscuit .. "/forget", {})
+            test.eq(forgotten.status, 200, forgotten.raw)
+            test.eq(forgotten.body.forgotten, 2)
+            fixture.settle(user, id)
+            local statuses = {}
+            for _, item in ipairs(fixture.items(user, id, { key = "pet_name" })) do
+                statuses[#statuses + 1] = item.status .. ":" .. tostring(item.value)
+            end
+            table.sort(statuses)
+            test.eq(table.concat(statuses, ","), "current:Pepper,forgotten:nil,forgotten:nil")
+        end)
+
+        test.it("archives restores and edits items through memory page endpoints", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local created = request(user, "POST", "/memory/" .. id .. "/items", {
+                kind = "preference", scope_family = "owner", key = "drink", cardinality = "single", value = "tea",
+                content = "The user drinks tea.",
+            })
+            test.eq(created.status, 200, created.raw)
+            local item_id = created.body.item_id
+            fixture.settle(user, id)
+            local archived = request(user, "POST", "/memory/" .. id .. "/items/" .. item_id .. "/archive", {})
+            test.eq(archived.status, 200, archived.raw)
+            fixture.settle(user, id)
+            test.eq(get_path(user, "/memory/" .. id .. "/items/" .. item_id).body.item.status, "archived")
+            local restored = request(user, "POST", "/memory/" .. id .. "/items/" .. item_id .. "/restore", {})
+            test.eq(restored.status, 200, restored.raw)
+            fixture.settle(user, id)
+            local edited = request(user, "PUT", "/memory/" .. id .. "/items/" .. item_id, { content = "The user prefers tea." })
+            test.eq(edited.status, 200, edited.raw)
+            test.is_true(edited.body.revised)
+            fixture.settle(user, id)
+            local item = get_path(user, "/memory/" .. id .. "/items/" .. item_id).body.item
+            test.eq(item.status, "current")
+            test.eq(item.content, "The user prefers tea.")
+        end)
+
+        test.it("lists and resolves conflicts through memory page endpoints", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, { fixture.candidate("fact", "birth_date", "1990-03-03", "The user was born on 1990-03-03.", "first") }, "first")
+            fixture.settle(user, id)
+            fixture.relations(id, { "contradicts" })
+            fixture.remember(user, id, { fixture.candidate("fact", "birth_date", "1990-03-05", "The user was born on 1990-03-05.", "second") }, "second")
+            fixture.settle(user, id)
+            local conflicts = get_path(user, "/memory/" .. id .. "/conflicts")
+            test.eq(conflicts.status, 200, conflicts.raw)
+            test.eq(conflicts.body.count, 1)
+            local group = conflicts.body.groups[1]
+            test.eq(#group.items, 2)
+            local winner = group.items[2]
+            local resolved = request(user, "POST", "/memory/" .. id .. "/conflicts/" .. group.group_id .. "/resolve", { winner_id = winner.id })
+            test.eq(resolved.status, 200, resolved.raw)
+            test.eq(resolved.body.superseded, 1)
+            fixture.settle(user, id)
+            test.eq(get_path(user, "/memory/" .. id .. "/conflicts").body.count, 0)
+            test.eq(get_path(user, "/memory/" .. id .. "/items/" .. winner.id).body.item.status, "current")
+        end)
+
         test.it("serves each driver's declared web component from its own static mount", function()
             local gateway = assert(registry.get("app:gateway"))
             local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
@@ -161,9 +244,11 @@ local function define_tests()
             })
             test.is_nil(grant_err, tostring(grant_err))
             test.is_true(grant.success)
-            fixture.op(owner, "create", { component_id = id, fields = {
+            local created, create_err = fixture.op(owner, "create", { component_id = id, fields = {
                 kind = "fact", scope_family = "owner", key = "drink", value = "tea", content = "The user drinks tea.",
             } })
+            test.is_nil(create_err, tostring(create_err))
+            test.not_nil(created)
             fixture.settle(owner, id)
             local page = get_path(owner, "/memory?limit=1")
             test.eq(page.status, 200, page.raw)
@@ -199,7 +284,8 @@ local function define_tests()
                 ids[#ids + 1] = added.item_id
                 fixture.settle(owner, id)
             end
-            fixture.op(owner, "archive", { component_id = id, item_id = ids[3] })
+            local _, archive_err = fixture.op(owner, "archive", { component_id = id, item_id = ids[3] })
+            test.is_nil(archive_err, tostring(archive_err))
             fixture.settle(owner, id)
             local page = get_path(owner, "/memory/" .. id .. "/items?q=tea&status=current&kind=fact&limit=1")
             test.eq(page.status, 200, page.raw)
@@ -246,8 +332,9 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local function seed(key: string, n: integer)
-                local _, err = fixture.call_as(user, "app.suites:persistence_call", {
-                    op = "seed", component_id = id, user = user, count = n, conflict = true, key = key, idempotency = key, content = key == "first_topic" and "Synthetic evidence." or "Distant evidence.",
+                local _, err = fixture.persistence_op(user, "seed", {
+                    component_id = id, user = user, count = n, conflict = true, key = key, idempotency = key,
+                    content = key == "first_topic" and "Synthetic evidence." or "Distant evidence.",
                 })
                 test.is_nil(err, tostring(err))
                 fixture.settle(user, id)
@@ -348,7 +435,9 @@ local function define_tests()
                 cardinality = "single",
             } })
             fixture.settle(user, component_id)
-            fixture.op(user, "apply", { payload = fixture.payload("activate", session, "agent-a") }, context)
+            local activated, activate_err = fixture.op(user, "apply", { payload = fixture.payload("activate", session, "agent-a") }, context)
+            test.is_nil(activate_err, tostring(activate_err))
+            test.is_true(activated.metadata.pinned)
             test.is_true(fixture.op(user, "prompt", {}, context):find("Drink [drink]: tea", 1, true) ~= nil)
 
             local _, archive_err = fixture.op(user, "archive", { component_id = component_id, item_id = added.item_id })
@@ -384,28 +473,24 @@ local function define_tests()
         test.it("pages every scope and topic version across kinds through the item endpoint", function()
             local user = fixture.user()
             local component_id = fixture.memory(user)
-            local ids, seed_err = fixture.op(user, "seed_history", { component_id = component_id, user_id = user, count = 201 })
+            local seeded, seed_err = fixture.persistence_op(user, "seed", {
+                component_id = component_id, user = user, count = 201, key = "history_topic",
+                final_kind = "profile_slot", idempotency = "history:" .. component_id,
+            })
             test.is_nil(seed_err, tostring(seed_err))
             fixture.settle(user, component_id)
-            local minted, mint_err = session.mint(assert(groups.get_user_with_groups(user)))
-            test.is_nil(mint_err, tostring(mint_err))
-            test.not_nil(minted)
 
-            local first, first_err = get_item(minted.token, component_id, ids[1], "?limit=200")
-            test.is_nil(first_err, tostring(first_err))
-            test.eq(first.status_code, 200, tostring(first.body))
-            local first_body = assert(json.decode(first.body))
-            test.eq(#first_body.versions, 200)
-            test.eq(first_body.next_offset, 200)
-            test.eq(first_body.versions[1].kind, "fact")
+            local first = request(user, "GET", "/memory/" .. component_id .. "/items/" .. seeded.item_ids[1] .. "?limit=200")
+            test.eq(first.status, 200, first.raw)
+            test.eq(#first.body.versions, 200)
+            test.eq(first.body.next_offset, 200)
+            test.eq(first.body.versions[1].kind, "fact")
 
-            local final, final_err = get_item(minted.token, component_id, ids[1], "?limit=200&offset=200")
-            test.is_nil(final_err, tostring(final_err))
-            test.eq(final.status_code, 200, tostring(final.body))
-            local final_body = assert(json.decode(final.body))
-            test.eq(#final_body.versions, 1)
-            test.eq(final_body.versions[1].kind, "profile_slot")
-            test.is_nil(final_body.next_offset)
+            local final = request(user, "GET", "/memory/" .. component_id .. "/items/" .. seeded.item_ids[1] .. "?limit=200&offset=200")
+            test.eq(final.status, 200, final.raw)
+            test.eq(#final.body.versions, 1)
+            test.eq(final.body.versions[1].kind, "profile_slot")
+            test.is_nil(final.body.next_offset)
         end)
     end)
 end
