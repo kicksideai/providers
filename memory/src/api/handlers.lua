@@ -58,6 +58,16 @@ local function body_of(req: any): (any?, error?)
     return types.decode_object(raw, "body")
 end
 
+local function int_param(req: any, name: string, default: integer, min: integer, max: integer): (integer?, string?)
+    local raw = req:query(name)
+    if raw == nil or raw == "" then return default, nil end
+    local n = tonumber(raw)
+    if not n or math.floor(n) ~= n or n < min or n > max then
+        return nil, name .. " must be an integer between " .. min .. " and " .. max
+    end
+    return math.floor(n), nil
+end
+
 local function page_params(req: any, default_limit: integer): (integer?, integer?, string?)
     local limit, limit_err = int_param(req, "limit", default_limit, 1, MAX_PAGE)
     if limit_err then return nil, nil, limit_err end
@@ -78,16 +88,6 @@ local function list_param(req: any, name: string): { string }?
     local out: { string } = {}
     for part in raw:gmatch("[^,]+") do out[#out + 1] = types.trim(part) end
     return out
-end
-
-local function int_param(req: any, name: string, default: integer, min: integer, max: integer): (integer?, string?)
-    local raw = req:query(name)
-    if raw == nil or raw == "" then return default, nil end
-    local n = tonumber(raw)
-    if not n or math.floor(n) ~= n or n < min or n > max then
-        return nil, name .. " must be an integer between " .. min .. " and " .. max
-    end
-    return math.floor(n), nil
 end
 
 function M.list_items()
