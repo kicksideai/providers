@@ -114,11 +114,7 @@ entries:
     targets:
       - entry: kickside.memory.migrations:01_memory_schema
         path: .meta.target_db
-      - entry: kickside.memory.migrations:02_cursor_owner_scope
-        path: .meta.target_db
-      - entry: kickside.memory.migrations:03_run_cycle
-        path: .meta.target_db
-      - entry: kickside.memory.migrations:04_memory_trait_context
+      - entry: kickside.memory.migrations:05_memory_upgrade
         path: .meta.target_db
       - entry: kickside.memory:db_config
         path: .meta.db_id

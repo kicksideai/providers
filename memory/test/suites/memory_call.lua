@@ -97,7 +97,7 @@ local OPS: { [string]: (any) -> (any, any) } = {
     build = function(a: any) return prompt.build(nil, a.context) end,
     prompt = function(_a: any) return prompt.prompt() end,
     tool_search = function(a: any) return funcs.call("kickside.memory.agent:search_tool", a.input) end,
-    migrate = function(a: any) return funcs.call("kickside.memory.migrations:" .. a.name,
+    migrate = function(a: any) return funcs.call((a.entry or ("kickside.memory.migrations:" .. a.name)),
         { database_id = a.database_id or "app:migration_db", id = a.id, direction = "up" }) end,
     migration_exec = function(a: any): (any?, any?)
         local db, db_err = sql.get(a.database_id or "app:migration_db")

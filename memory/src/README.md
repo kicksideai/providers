@@ -5,17 +5,16 @@ The typed memory engine and agent memory capability.
 
 This module owns:
 
-- `kickside.memory.migrations:01_memory_schema` creates
-  `kickside_memory_stores`, `kickside_memory_items`, `kickside_memory_keys`,
-  `kickside_memory_payloads`, `kickside_memory_provenance`,
-  `kickside_memory_embeddings`, `kickside_memory_cursors`,
-  `kickside_memory_runs` and `kickside_memory_run_sources`.
-  `kickside.memory.migrations:02_cursor_owner_scope` adds the owner scope to
-  pinned host profiles. `kickside.memory.migrations:03_run_cycle` adds the
-  consolidation cycle identity to runs.
-  `kickside.memory.migrations:04_memory_trait_context` removes retired
-  per-agent settings from stored Memory trait contexts. SQLite also uses
-  `kickside_memory_fts`; PostgreSQL indexes the items' generated search vector.
+- `kickside.memory.migrations:01_memory_schema` defines the baseline storage.
+  `kickside.memory.migrations:05_memory_upgrade` converts the schema and stored
+  data to typed storage with stable topic identities, retained payload vectors,
+  source ownership, scoped pins and consolidation cycle identities. It also
+  updates component bindings and removes retired per-agent settings.
+  The resulting tables are `kickside_memory_stores`, `kickside_memory_items`,
+  `kickside_memory_keys`, `kickside_memory_payloads`, `kickside_memory_provenance`,
+  `kickside_memory_embeddings`, `kickside_memory_cursors`, `kickside_memory_runs`
+  and `kickside_memory_run_sources`. SQLite uses `kickside_memory_fts`;
+  PostgreSQL indexes the items' generated search vector.
 - `kickside.memory:engine_memory` describes the Memory knowledge-base engine.
   `kickside.memory:store_lifecycle` implements its store lifecycle;
   `kickside.memory:memory_store` supplies embedding, query and deletion;

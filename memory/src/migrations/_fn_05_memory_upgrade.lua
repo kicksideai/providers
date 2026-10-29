@@ -1,5 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-
 local implementation = require("operation_impl")
 
 type RunOptions = {

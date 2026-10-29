@@ -51,8 +51,9 @@ recall budgets and consolidation cadence belong to each memory's configuration.
 
 Run `make lockrefresh`, `make lint`, `make test`, `make test-pg` and
 `make build`. The test harness loads this module locally and resolves its
-other dependencies from the Hub. Use a dedicated PostgreSQL database and set
-the harness's `pg_database` and connection variables. `make ui-kit` materializes
+other dependencies from the Hub. Workspace replacements select local module
+sources. Use dedicated PostgreSQL databases and set the harness's `pg_database`,
+`pg_migration_database` and connection variables. `make ui-kit` materializes
 the shared UI package before frontend installation.
 
 [KickSide Community License 1.0](LICENSE).
