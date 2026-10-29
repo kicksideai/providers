@@ -56,6 +56,24 @@ end
 
 type LedgerEvent = { type: string, body: any }
 
+-- The first external identity proves that an atomic ledger batch was accepted.
+function M.accepted(component_id: string, idempotency: string): (boolean?, error?)
+    local inst, open_err = threads()
+    if open_err then return nil, open_err end
+    local external_id = idempotency .. ":1"
+    for _, event_type in pairs(types.EVENT) do
+        local found, find_err = (inst :: any):find_event_by_external({
+            thread_id = component_id,
+            event_type = event_type,
+            external_source = types.SOURCE,
+            external_id = external_id,
+        })
+        if find_err then return nil, find_err end
+        if found and (found :: any).event then return true, nil end
+    end
+    return false, nil
+end
+
 function M.append_tx(tx: any, component_id: string, events: { LedgerEvent }, expected_head: integer?, idempotency: string): (any?, error?)
     local writes: { any } = {}
     for index, event in ipairs(events) do

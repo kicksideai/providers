@@ -25,6 +25,9 @@ function M.write(component_id: string, idempotency: string, opts: WriteOptions, 
         if head_err then return nil, head_err end
         local key = idempotency
         if opts.keyed_by_head then key = idempotency .. "@" .. tostring(head) end
+        local accepted, accepted_err = ledger.accepted(component_id, key)
+        if accepted_err then return nil, accepted_err end
+        if accepted then return { result = nil, stats = {}, item_ids = {}, inserted = 0, accepted = true }, nil end
         local d = decision.new(component_id, key, opts.source, opts.actor)
         local result, decide_err = decide(d)
         if decide_err then return nil, decide_err end

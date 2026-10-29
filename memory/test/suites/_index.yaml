@@ -335,3 +335,13 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+
+  - name: derive_delivery_test
+    kind: function.lua
+    meta: { type: test, suite: memory_derive_delivery, timeout: 300s }
+    source: file://derive_delivery_test.lua
+    method: run
+    modules: []
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
