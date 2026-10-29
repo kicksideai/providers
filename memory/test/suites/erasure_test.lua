@@ -61,7 +61,8 @@ local function define_tests()
 
             local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = first.item_ids[1] })
             test.is_nil(forget_err, tostring(forget_err))
-            fixture.settle(user, id)
+            local _, projection_err = project(user, id, ledger_event(id, "kickside.memory.events:item.forgotten"))
+            test.is_nil(projection_err, tostring(projection_err))
 
             test.is_nil(fixture.op(user, "run", { run_id = first_run }).input.span)
             test.eq(fixture.op(user, "run", { run_id = second_run }).input.span[1].id, event_id)
@@ -254,6 +255,7 @@ local function define_tests()
             test.eq(result.lineage_queries, 1)
             test.eq(result.run_scans, 0)
             test.eq(result.run_rows, 0)
+            test.is_true(result.source_plan:find("idx_kickside_memory_provenance_host", 1, true) ~= nil, result.source_plan)
             test.is_true(result.source_plan:find("idx_kickside_memory_run_sources_event", 1, true) ~= nil, result.source_plan)
             if result.sqlite then
                 test.is_true(result.plan:find("idx_kickside_memory_items_claim", 1, true) ~= nil, result.plan)

@@ -189,12 +189,14 @@ local function scrub_runs_tx(tx: any, component_id: string, forgotten: { string 
         local params: { any } = { component_id }
         for i = first, math.min(first + 199, #forgotten) do params[#params + 1] = forgotten[i] end
         local ids = index.placeholders(#params - 1, 2)
+        local source_identities = "(SELECT component_id, host_kind, host_id, event_id FROM kickside_memory_provenance " ..
+            "WHERE component_id = $1 AND item_id IN (" .. ids .. ") GROUP BY component_id, host_kind, host_id, event_id) p"
+        local source_runs = "SELECT s.run_id FROM " .. source_identities .. " JOIN kickside_memory_run_sources s " ..
+            "ON s.component_id = p.component_id AND s.event_id = p.event_id JOIN kickside_memory_runs r " ..
+            "ON r.component_id = s.component_id AND r.id = s.run_id AND r.host_kind = p.host_kind AND r.host_id = p.host_id"
         local _, err = tx:execute("UPDATE kickside_memory_runs SET input = '{}' WHERE component_id = $1 AND (" ..
             "id IN (SELECT run_id FROM kickside_memory_items WHERE component_id = $1 AND id IN (" .. ids .. ")) OR " ..
-            "id IN (SELECT s.run_id FROM kickside_memory_run_sources s JOIN kickside_memory_provenance p " ..
-            "ON p.component_id = s.component_id AND p.event_id = s.event_id JOIN kickside_memory_runs r " ..
-            "ON r.component_id = s.component_id AND r.id = s.run_id AND r.host_kind = p.host_kind AND r.host_id = p.host_id " ..
-            "WHERE p.component_id = $1 AND p.item_id IN (" .. ids .. ")))", params)
+            "id IN (" .. source_runs .. "))", params)
         if err then return types.failed("memory source input erase failed", err) end
     end
     return nil
