@@ -40,6 +40,18 @@ entries:
       message_handlers: wippy.session.process:message_handlers
       consts: wippy.session:consts
 
+  - name: session_history_compact
+    kind: function.lua
+    source: file://session_history.lua
+    method: compact
+    modules: [uuid, contract]
+    imports:
+      context_repo: wippy.session.persist:context_repo
+      session_repo: wippy.session.persist:session_repo
+      writer: wippy.session.persist:writer
+      message_handlers: wippy.session.process:message_handlers
+      consts: wippy.session:consts
+
   - name: memory_call
     kind: function.lua
     meta: { comment: Runs a named memory operation in the caller's frame. }

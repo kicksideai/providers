@@ -55,6 +55,46 @@ local function define_tests()
             test.eq(#fixture.items(user, id), 1)
         end)
 
+        test.it("retains the enrolled source after compaction moves the visible history", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "checkpoint-" .. user
+            local events = {{id = "source", role = "user", author = {kind = "user", id = user},
+                content = "A reusable lesson: verify source claims before reporting them."}}
+            fixture.record_chat(user, session, events)
+            fixture.extraction(id, {fixture.candidate("lesson", "verification", "Verify source claims before reporting them.",
+                "Verify source claims before reporting them.", events[1].id)})
+            fixture.script.respond(id, "generate", "Working summary without the reusable lesson.")
+            fixture.script.hold(id, "structured_output")
+            local ok, failure = pcall(function()
+                local result, err = fixture.op(user, "checkpoint", {payload = fixture.payload("checkpoint", session, "agent-a")},
+                    fixture.agent_context(id, session, "agent-a"))
+                test.is_nil(err, tostring(err))
+                test.is_true(result.metadata.capture.captured)
+                local enrolled = fixture.op(user, "runs", {component_id = id, run_type = "derive"})
+                test.eq(#enrolled, 1)
+                test.eq(enrolled[1].input.span[1].id, events[1].id)
+                local _, compact_err = fixture.call_as(user, "app.suites:session_history_compact", {
+                    session_id = session, checkpoint_id = events[1].id, summary = result.summary,
+                })
+                test.is_nil(compact_err, tostring(compact_err))
+                local visible, visible_err = fixture.read_chat(user, {host = {kind = "session", session_id = session}})
+                test.is_nil(visible_err, tostring(visible_err))
+                test.eq(#visible.events, 0)
+            end)
+            fixture.script.release(id, "structured_output")
+            if not ok then error(failure) end
+            test.eq(fixture.wait_runs(user, id, "derive", 1)[1].status, "succeeded")
+            fixture.settle(user, id)
+            local items = fixture.items(user, id)
+            test.eq(#items, 1)
+            test.eq(fixture.op(user, "provenance", {component_id = id, item_id = items[1].id})[1].event_id, events[1].id)
+            local later = "later-" .. user
+            local _, activate_err = fixture.apply(user, "activate", id, later, "agent-a")
+            test.is_nil(activate_err, tostring(activate_err))
+            test.contains(fixture.op(user, "prompt", {}, fixture.agent_context(id, later, "agent-a")), "Verify source claims")
+        end)
+
         test.it("clamps checkpoint source text through the run context selector", function()
             local user = fixture.user()
             local id = fixture.memory(user)

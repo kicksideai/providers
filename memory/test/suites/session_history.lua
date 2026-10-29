@@ -120,4 +120,12 @@ function M.read(args: any)
     return binding:get_history(args)
 end
 
+function M.compact(args: any)
+    local session_writer, writer_err = writer.new(args.session_id)
+    if not session_writer then return nil, writer_err end
+    local _, summary_err = session_writer:add_session_context(consts.CONTEXT_TYPES.CONVERSATION_SUMMARY, args.summary)
+    if summary_err then return nil, summary_err end
+    return session_writer:set_context(consts.CONTEXT_KEYS.CURRENT_CHECKPOINT_ID, args.checkpoint_id)
+end
+
 return M

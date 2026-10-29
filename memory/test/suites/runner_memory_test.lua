@@ -188,6 +188,32 @@ local function define_tests()
             test.eq(items[1].scope_id, "agent:reader")
         end)
 
+        test.it("recalls a session lesson when the same agent activates in dataflow", function()
+            local user, id, flow, context, apply = setup(false)
+            local session = "session-" .. user
+            local events = {{id = "experience", role = "user", author = {kind = "user", id = user},
+                content = "A reusable lesson: resolve relative links against the document base URL."}}
+            fixture.record_chat(user, session, events)
+            fixture.extraction(id, {fixture.candidate("lesson", "relative_links", "Resolve relative links against the document base URL.",
+                "Resolve relative links against the document base URL.", events[1].id)})
+            local _, capture_err = fixture.apply(user, "before_step", id, session, "agent:reader")
+            test.is_nil(capture_err, tostring(capture_err))
+            test.eq(fixture.wait_runs(user, id, "derive", 1)[1].status, "succeeded")
+            fixture.settle(user, id)
+            local items = fixture.items(user, id)
+            test.eq(#items, 1)
+            test.eq(items[1].scope_id, "agent:reader")
+            local source = fixture.op(user, "provenance", {component_id = id, item_id = items[1].id})[1]
+            test.eq(source.host_kind, "session")
+            test.eq(source.host_id, session)
+            fixture.history.record(flow, {{id = "task", role = "user", author = {kind = "system"}, content = "Read another source."}})
+            local _, activate_err = apply("activate")
+            test.is_nil(activate_err, tostring(activate_err))
+            test.contains(fixture.op(user, "prompt", {}, context), "Resolve relative links against the document base URL.")
+            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "dataflow", host_id = flow})
+            test.eq(cursor.agent_id, "agent:reader")
+        end)
+
         test.it("keeps group and service principals outside owner-profile recall", function()
             for _, principal in ipairs({"principal:group:research", "principal:service:research"}) do
                 local scopes, err = fixture.op(principal, "recall_scopes", {agent_id = "agent:reader"})
