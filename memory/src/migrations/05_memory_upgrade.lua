@@ -12,7 +12,7 @@ local RETIRED_REFERENCES = {
     ["kickside.memory:runtime_lifecycle"] = "kickside.memory.agent:lifecycle",
     ["kickside.memory:runtime_checkpoint"] = "kickside.memory.agent:checkpoint",
 }
-local RETIRED_MEMORY_CONTEXT_FIELDS = {
+local DOCUMENT_MEMORY_CONTEXT_FIELDS = {
     "kb_ids", "write_kb_id", "recall_max_chars", "recall_prompt", "checkpoint_model", "checkpoint_prompt",
     "checkpoint_temperature", "checkpoint_max_tokens", "checkpoint_source_max_chars",
 }
@@ -76,15 +76,18 @@ local function rewrite_references(value: any): boolean
     return changed
 end
 
-local function remove_retired_memory_context_fields(context: any): boolean
+local function has_document_memory_context(context: any): boolean
     local trait_contexts = type(context) == "table" and context.trait_contexts or nil
-    local memory_context = type(trait_contexts) == "table" and trait_contexts["kickside.memory:memory"] or nil
-    if type(memory_context) ~= "table" then return false end
-    local changed = false
-    for _, field in ipairs(RETIRED_MEMORY_CONTEXT_FIELDS) do
-        if memory_context[field] ~= nil then memory_context[field] = nil; changed = true end
+    if type(trait_contexts) ~= "table" then return false end
+    for _, trait_id in ipairs({ "kickside.memory:knowledge_based_memory", "kickside.memory:memory" }) do
+        local memory_context = trait_contexts[trait_id]
+        if type(memory_context) == "table" then
+            for _, field in ipairs(DOCUMENT_MEMORY_CONTEXT_FIELDS) do
+                if memory_context[field] ~= nil then return true end
+            end
+        end
     end
-    return changed
+    return false
 end
 
 local function migrate_component_references(db: any, sqlite: boolean)
@@ -92,9 +95,8 @@ local function migrate_component_references(db: any, sqlite: boolean)
     for _, row in ipairs(query(db, "SELECT component_id, private_context FROM kickside_components WHERE private_context IS NOT NULL")) do
         local context, decode_err = json.decode(tostring(row.private_context))
         if decode_err then error(tostring(decode_err)) end
-        if type(context) == "table" then
+        if type(context) == "table" and not has_document_memory_context(context) then
             local changed = rewrite_references(context)
-            changed = remove_retired_memory_context_fields(context) or changed
             if changed then
                 local encoded, encode_err = json.encode(context)
                 if encode_err then error(tostring(encode_err)) end
@@ -161,9 +163,9 @@ local function needs_cancel(input: any): boolean
     return false
 end
 
-local function cancel_published_derives(db: any)
+local function cancel_published_derives(db: any, sqlite: boolean)
     local cancelled: { any } = {}
-    for _, run in ipairs(query(db, [[SELECT id, component_id, status, host_kind, host_id, from_event_id, to_event_id, input
+    for _, run in ipairs(query(db, [[SELECT id, component_id, job_id, status, host_kind, host_id, from_event_id, to_event_id, input
         FROM kickside_memory_runs WHERE run_type = 'derive' AND status IN ('scheduled', 'running', 'failed')]])) do
         local input, decode_err = json.decode(tostring(run.input))
         if decode_err then error(tostring(decode_err)) end
@@ -173,13 +175,22 @@ local function cancel_published_derives(db: any)
             cancelled[#cancelled + 1] = run
         end
     end
-    local predecessors: { [string]: { [string]: any } } = {}
+    if has_table(db, sqlite, "kickside_job") then
+        for _, run in ipairs(cancelled) do
+            if type(run.job_id) == "string" and run.job_id ~= "" then
+                execute(db, [[UPDATE kickside_job SET status = 'cancelled', last_error = $1,
+                    finished_at = COALESCE(finished_at, created_at) WHERE id = $2 AND status IN ('pending', 'running')]],
+                    {CANCELLED_SOURCE_REASON, run.job_id})
+            end
+        end
+    end
+    local predecessors: { [string]: { [string]: { from_event_id: string? } } } = {}
     for _, run in ipairs(cancelled) do
         if type(run.host_kind) == "string" and run.host_kind ~= "" and type(run.host_id) == "string" and run.host_id ~= ""
             and type(run.to_event_id) == "string" and run.to_event_id ~= "" then
             local key = tostring(run.component_id) .. "\0" .. run.host_kind .. "\0" .. run.host_id
             predecessors[key] = predecessors[key] or {}
-            predecessors[key][run.to_event_id] = run.from_event_id
+            predecessors[key][run.to_event_id] = { from_event_id = run.from_event_id }
         end
     end
     for _, cursor in ipairs(query(db, "SELECT component_id, host_kind, host_id, last_event_id FROM kickside_memory_cursors")) do
@@ -188,7 +199,7 @@ local function cancel_published_derives(db: any)
         local position = cursor.last_event_id
         local rewound = false
         while chain and position ~= nil and chain[position] ~= nil do
-            position = chain[position]
+            position = chain[position].from_event_id
             rewound = true
         end
         if rewound then
@@ -346,7 +357,7 @@ local function upgrade(db: any, sqlite: boolean)
     execute(db, [[UPDATE kickside_components SET impl_id = 'kickside.memory:memory_store'
         WHERE impl_id = 'kickside.memory:memory_kb']])
     migrate_component_references(db, sqlite)
-    cancel_published_derives(db)
+    cancel_published_derives(db, sqlite)
 end
 
 return require("migration").define(function()

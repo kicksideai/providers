@@ -78,6 +78,120 @@ local function define_tests()
             test.is_nil(run_err, tostring(run_err))
             test.eq(ran.response.result, "Memory is ready.")
         end)
+
+        test.it("resolves a published document-backed memory agent", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local published_trait = "kickside.memory:knowledge_based_memory"
+            local trait = "kickside.memory:memory"
+            local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
+                name = "published document memory agent", model = "test-fast", traits = { trait },
+                trait_contexts = { [trait] = { memory_id = memory } },
+            })
+            test.is_nil(create_err, tostring(create_err))
+            local db = fixture.db()
+            local rows, read_err = db:query("SELECT private_context FROM kickside_components WHERE component_id = $1", { created.component_id })
+            test.is_nil(read_err, tostring(read_err))
+            local published_context, decode_err = json.decode(tostring(rows[1].private_context))
+            test.is_nil(decode_err, tostring(decode_err))
+            published_context.traits = { published_trait }
+            published_context.tools = { "kickside.memory:memory_recall_tool" }
+            published_context.trait_contexts = {
+                [published_trait] = {
+                    kb_ids = { "document-one", "document-two" }, write_kb_id = "document-two",
+                    read_enabled = true, write_enabled = false, recall_limit = 5, recall_max_chars = 4000,
+                    recall_prompt = "Search selected documents.", checkpoint_model = "test-fast",
+                    checkpoint_prompt = "Keep the active task.", checkpoint_temperature = 0.1,
+                    checkpoint_max_tokens = 321, checkpoint_source_max_chars = 20000,
+                },
+            }
+            local encoded, encode_err = json.encode(published_context)
+            test.is_nil(encode_err, tostring(encode_err))
+            local _, write_err = db:execute("UPDATE kickside_components SET private_context = $1 WHERE component_id = $2", { encoded, created.component_id })
+            db:release()
+            test.is_nil(write_err, tostring(write_err))
+
+            local migrated, migrate_err = fixture.op(user, "migrate", {
+                name = "05_memory_upgrade", id = "published-document-memory", database_id = "app:db",
+            })
+            test.is_nil(migrate_err, tostring(migrate_err))
+            test.eq(migrated.failed, 0, migrated.error)
+            local stored, query_err = fixture.op(user, "migration_query", {
+                database_id = "app:db", statement = "SELECT private_context FROM kickside_components WHERE component_id = $1",
+                params = { created.component_id },
+            })
+            test.is_nil(query_err, tostring(query_err))
+            local context, decode_err = json.decode(tostring(stored[1].private_context))
+            test.is_nil(decode_err, tostring(decode_err))
+            local settings = context.trait_contexts[published_trait]
+            test.eq(context.traits[1], published_trait)
+            test.eq(context.tools[1], "kickside.memory:memory_recall_tool")
+            test.eq(settings.kb_ids[1], "document-one")
+            test.eq(settings.kb_ids[2], "document-two")
+            test.eq(settings.write_kb_id, "document-two")
+            test.eq(settings.recall_max_chars, 4000)
+            test.eq(settings.checkpoint_model, "test-fast")
+
+            local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func", {
+                agent_id = "user_agent:" .. created.component_id,
+            })
+            test.is_nil(resolve_err, tostring(resolve_err))
+            test.not_nil(agent)
+        end)
+    end)
+
+    test.describe("published pending derives", function()
+        local held_scope: string? = nil
+
+        test.after_each(function()
+            if held_scope then fixture.script.release(held_scope, "structured_output"); held_scope = nil end
+        end)
+
+        test.it("cancels a queued published derive before recapturing its source", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local session = "migration-pending-" .. user
+            fixture.record_chat(user, session, {
+                { id = "published-source", role = "user", author = { kind = "user", id = user }, content = "I prefer a quiet room." },
+            })
+            held_scope = memory
+            fixture.script.hold(memory, "structured_output")
+            fixture.extraction(memory, {})
+            local queued, queue_err = fixture.apply(user, "before_step", memory, session, "agent-a")
+            test.is_nil(queue_err, tostring(queue_err))
+            test.is_true(queued.metadata.capture.captured)
+
+            local db = fixture.db()
+            local input = assert(json.encode({ span = { { id = "published-source", text = "I prefer a quiet room." } } }))
+            local _, rewrite_err = db:execute("UPDATE kickside_memory_runs SET input = $1 WHERE id = $2", { input, queued.metadata.capture.run_id })
+            db:release()
+            test.is_nil(rewrite_err, tostring(rewrite_err))
+
+            local migrated, migrate_err = fixture.op(user, "migrate", {
+                name = "05_memory_upgrade", id = "published-pending-derive", database_id = "app:db",
+            })
+            test.is_nil(migrate_err, tostring(migrate_err))
+            test.eq(migrated.failed, 0, migrated.error)
+            local cancelled = fixture.op(user, "run", { run_id = queued.metadata.capture.run_id })
+            test.eq(cancelled.status, "cancelled")
+            local job = fixture.rows("SELECT status FROM kickside_job WHERE id = $1", { cancelled.job_id })[1]
+            test.eq(job.status, "cancelled")
+
+            fixture.script.release(memory, "structured_output")
+            held_scope = nil
+            fixture.record_chat(user, session, {
+                { id = "recaptured-source", role = "user", author = { kind = "user", id = user }, content = "I prefer a room away from the lift." },
+            })
+            fixture.extraction(memory, {})
+            local recaptured, recapture_err = fixture.apply(user, "before_step", memory, session, "agent-a")
+            test.is_nil(recapture_err, tostring(recapture_err))
+            local completed = fixture.wait_run(user, recaptured.metadata.capture.run_id, function(run: any): boolean
+                return run.status == "succeeded"
+            end)
+            test.eq(completed.status, "succeeded", tostring(completed.last_error))
+            test.eq(completed.input.span[1].text, "I prefer a quiet room.")
+            test.eq(completed.input.span[2].text, "I prefer a room away from the lift.")
+        end)
     end)
 
     test.describe("memory schema upgrade", function()
@@ -181,6 +295,10 @@ local function define_tests()
             end
             exec([[INSERT INTO kickside_memory_kb_runs
                 (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, to_event_id, input, created_at)
+                VALUES ('initial-pending-derive', $1, 'derive', 'scheduled', 'session', 'pending', 'reader', '', 'pending-before',
+                    '{"span":[{"id":"pending-before","text":"I prefer a quiet car."}],"owner_id":"reader"}', $2)]], {component, now})
+            exec([[INSERT INTO kickside_memory_kb_runs
+                (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, to_event_id, input, created_at)
                 VALUES ('pending-derive', $1, 'derive', 'scheduled', 'session', 'pending', 'reader', 'pending-before', 'pending-end',
                     '{"span":[{"id":"pending-end","text":"I prefer window seats."}],"owner_id":"reader"}', $2)]], {component, now})
             exec([[INSERT INTO kickside_memory_kb_runs
@@ -215,7 +333,7 @@ local function define_tests()
             test.eq(#payloads, 3)
             test.eq(#assert(json.decode(payloads[1].embedding)), 512)
             test.eq(#query("SELECT * FROM kickside_memory_provenance"), 3)
-            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 6)
+            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 7)
             local rows = query("SELECT host_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids FROM kickside_memory_cursors ORDER BY host_id")
             test.eq(rows[1].owner_scope_key, "owner:one")
             test.is_nil(rows[2].owner_scope_key)
@@ -231,7 +349,10 @@ local function define_tests()
             local pending = query("SELECT status, last_error FROM kickside_memory_runs WHERE id = 'pending-derive'")[1]
             test.eq(pending.status, "cancelled")
             test.eq(pending.last_error, "cancelled: source records do not provide author attribution")
-            test.eq(query("SELECT last_event_id FROM kickside_memory_cursors WHERE host_id = 'pending'")[1].last_event_id, "pending-before")
+            local initial = query("SELECT status, last_error FROM kickside_memory_runs WHERE id = 'initial-pending-derive'")[1]
+            test.eq(initial.status, "cancelled")
+            test.eq(initial.last_error, "cancelled: source records do not provide author attribution")
+            test.is_nil(query("SELECT last_event_id FROM kickside_memory_cursors WHERE host_id = 'pending'")[1].last_event_id)
             local attributed = assert(json.decode(tostring(query("SELECT input FROM kickside_memory_runs WHERE id = 'attributed-derive'")[1].input)))
             test.is_nil(attributed.host)
             test.eq(tostring(query("SELECT config FROM kickside_memory_stores WHERE component_id = 'empty-config'")[1].config), "{}")
@@ -263,7 +384,7 @@ local function define_tests()
             migrate("05_memory_upgrade", "memory-forward-reapply")
             test.eq(query("SELECT owner_scope_key FROM kickside_memory_cursors WHERE host_id = 'complete'")[1].owner_scope_key, "owner:principal:service:reader")
             test.eq(tonumber(query("SELECT context_revision FROM kickside_components")[1].context_revision), 1)
-            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 6)
+            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 7)
             test.eq(#query("SELECT * FROM kickside_memory_embeddings"), 3)
             test.eq(query("SELECT impl_id FROM kickside_components")[1].impl_id, "kickside.memory:memory_store")
             local _, immutable_err = fixture.op(user, "migration_exec", {statement = "UPDATE kickside_event SET body = '{}'"})
