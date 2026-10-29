@@ -81,7 +81,7 @@ local function define_tests()
             fixture.extraction(user, {})
             local result, err = fixture.op(user, "model_step", { step = "extract", span = {
                 { id = "request", role = "user", author = {kind = "user", id = user}, text = "Forget my dietary preferences." },
-            } })
+            }, owner_id = user })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 0)
             local instruction = fixture.script.prompts(user, "structured_output")[1].system
@@ -96,7 +96,7 @@ local function define_tests()
             fixture.extraction(user, { city, job })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = {
                 { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo and work as an engineer." },
-            }, keys = { { key = "residence", kind = "profile_slot", cardinality = "single", value = "Paris", content = "Lives in Paris." } } })
+            }, keys = { { key = "residence", kind = "profile_slot", cardinality = "single", value = "Paris", content = "Lives in Paris.", scope_family = "owner" } }, owner_id = user })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 2)
             test.eq(result.items[1].key, "residence")

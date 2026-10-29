@@ -76,7 +76,7 @@ local function define_tests()
             local id = fixture.memory(user)
             local session = "s-" .. user
             local context = fixture.agent_context(id, session, "agent-a", {learn_in_isolation = true})
-            fixture.history.record(session, {{id = "task", role = "user", author = {kind = "system"}, content = "Inspect the documentation."}})
+            fixture.history.record(session, {{id = "observation", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I inspected the documentation and found no reusable lesson."}})
             fixture.script.hold(id, "structured_output")
             fixture.extraction(id, {})
             local first, first_err = fixture.op(user, "apply", {payload = fixture.payload("before_step", session, "agent-a")}, context)
