@@ -23,22 +23,23 @@ return require("migration").define(function()
         database("postgres", function()
             up(function(db)
                 if not has_column(db, "postgres") then execute(db, "ALTER TABLE kickside_memory_cursors ADD COLUMN owner_scope_key text") end
-                execute(db, [[WITH pinned AS (
-                    SELECT c.component_id, c.host_kind, c.host_id, i.scope_key
+                execute(db, [[WITH inferred AS (
+                    SELECT c.component_id, c.host_kind, c.host_id,
+                        MIN(CASE WHEN i.scope_key LIKE 'owner:%' THEN i.scope_key END) AS owner_scope_key,
+                        jsonb_array_length(COALESCE(c.pinned_ids, '[]')::jsonb) AS pinned_count,
+                        COUNT(i.id) AS found_count,
+                        COUNT(DISTINCT CASE WHEN i.scope_key LIKE 'owner:%' THEN i.scope_key END) AS owner_count
                     FROM kickside_memory_cursors c
-                    CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(c.pinned_ids, '[]')::jsonb) AS p(item_id)
-                    JOIN kickside_memory_items i ON i.component_id = c.component_id AND i.id = p.item_id
-                ), inferred AS (
-                    SELECT c.component_id, c.host_kind, c.host_id, MIN(p.scope_key) AS owner_scope_key
-                    FROM kickside_memory_cursors c
-                    JOIN pinned p ON p.component_id = c.component_id AND p.host_kind = c.host_kind AND p.host_id = c.host_id
-                    WHERE p.scope_key LIKE 'owner:%'
+                    LEFT JOIN LATERAL jsonb_array_elements_text(COALESCE(c.pinned_ids, '[]')::jsonb) AS p(item_id) ON true
+                    LEFT JOIN kickside_memory_items i ON i.component_id = c.component_id AND i.id = p.item_id
+                    WHERE c.owner_scope_key IS NULL
                     GROUP BY c.component_id, c.host_kind, c.host_id, c.pinned_ids
-                    HAVING COUNT(*) = jsonb_array_length(COALESCE(c.pinned_ids, '[]')::jsonb)
-                        AND COUNT(DISTINCT p.scope_key) = 1
                 )
                 UPDATE kickside_memory_cursors c SET owner_scope_key = inferred.owner_scope_key
-                FROM inferred WHERE c.component_id = inferred.component_id AND c.host_kind = inferred.host_kind AND c.host_id = inferred.host_id]])
+                FROM inferred WHERE c.component_id = inferred.component_id AND c.host_kind = inferred.host_kind AND c.host_id = inferred.host_id
+                    AND inferred.pinned_count > 0 AND inferred.found_count = inferred.pinned_count AND inferred.owner_count = 1]])
+                execute(db, [[UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL
+                    WHERE owner_scope_key IS NULL]])
                 execute(db, "CREATE INDEX IF NOT EXISTS idx_kickside_memory_cursors_owner_scope ON kickside_memory_cursors (component_id, owner_scope_key)")
             end)
             down(function(db)
@@ -49,14 +50,15 @@ return require("migration").define(function()
             up(function(db)
                 if not has_column(db, "sqlite") then execute(db, "ALTER TABLE kickside_memory_cursors ADD COLUMN owner_scope_key TEXT") end
                 execute(db, [[UPDATE kickside_memory_cursors AS c SET owner_scope_key = (
-                    SELECT MIN(i.scope_key)
+                    SELECT MIN(CASE WHEN i.scope_key LIKE 'owner:%' THEN i.scope_key END)
                     FROM json_each(COALESCE(c.pinned_ids, '[]')) AS p
                     JOIN kickside_memory_items i ON i.component_id = c.component_id AND i.id = p.value
-                    WHERE i.scope_key LIKE 'owner:%'
                     HAVING COUNT(*) = json_array_length(COALESCE(c.pinned_ids, '[]'))
-                        AND COUNT(DISTINCT i.scope_key) = 1
+                        AND COUNT(DISTINCT CASE WHEN i.scope_key LIKE 'owner:%' THEN i.scope_key END) = 1
                 )
-                WHERE json_array_length(COALESCE(c.pinned_ids, '[]')) > 0]])
+                WHERE c.owner_scope_key IS NULL AND json_array_length(COALESCE(c.pinned_ids, '[]')) > 0]])
+                execute(db, [[UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL
+                    WHERE owner_scope_key IS NULL]])
                 execute(db, "CREATE INDEX IF NOT EXISTS idx_kickside_memory_cursors_owner_scope ON kickside_memory_cursors (component_id, owner_scope_key)")
             end)
             down(function(db)

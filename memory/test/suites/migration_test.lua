@@ -63,7 +63,7 @@ local function define_tests()
     end)
 
     test.describe("cursor owner scope migration", function()
-        test.it("backfills complete owner pins and safely re-applies", function()
+        test.it("binds proven owner pins and clears pins without a unique owner", function()
             local user = fixture.user()
             local function migrate(name: string, id: string)
                 local result, err = fixture.op(user, "migrate", { name = name, id = id })
@@ -81,7 +81,7 @@ local function define_tests()
             end
             migrate("01_memory_schema", "memory-cursor-owner-schema")
             for _, item in ipairs({
-                { "owner-item", "owner:one" }, { "other-item", "owner:two" },
+                { "owner-item", "owner:one" }, { "other-item", "owner:two" }, { "agent-item", "agent:reader" },
             }) do
                 exec([[INSERT INTO kickside_memory_items
                     (id, component_id, claim_id, kind, scope_family, scope_id, scope_key, key, cardinality, content, value,
@@ -92,22 +92,35 @@ local function define_tests()
             end
             for _, cursor in ipairs({
                 { "complete", '["owner-item"]' }, { "empty", '[]' }, { "mixed", '["owner-item","other-item"]' },
+                { "owner-and-agent", '["owner-item","agent-item"]' },
             }) do
                 exec([[INSERT INTO kickside_memory_cursors
                     (component_id, host_kind, host_id, agent_id, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at)
-                    VALUES ('memory', 'session', $1, 'agent', '', 1, 'prompt', $2, '2026-01-01T00:00:00Z')]], cursor)
+                    VALUES ('memory', 'session', $1, 'agent', 'event', 1, 'prompt', $2, '2026-01-01T00:00:00Z')]], cursor)
             end
             migrate("02_cursor_owner_scope", "memory-cursor-owner-upgrade")
-            local rows = query("SELECT host_id, owner_scope_key FROM kickside_memory_cursors WHERE component_id = 'memory' ORDER BY host_id")
+            local rows = query("SELECT host_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids FROM kickside_memory_cursors WHERE component_id = 'memory' ORDER BY host_id")
             test.eq(rows[1].host_id, "complete")
             test.eq(rows[1].owner_scope_key, "owner:one")
             test.eq(rows[2].host_id, "empty")
             test.is_nil(rows[2].owner_scope_key)
             test.eq(rows[3].host_id, "mixed")
             test.is_nil(rows[3].owner_scope_key)
+            test.eq(rows[4].host_id, "owner-and-agent")
+            test.eq(rows[4].owner_scope_key, "owner:one")
+            for _, row in ipairs({rows[2], rows[3]}) do
+                test.eq(row.last_event_id, "event")
+                test.is_nil(row.pinned_head)
+                test.is_nil(row.pinned_prompt)
+                test.is_nil(row.pinned_ids)
+            end
+            test.eq(rows[4].pinned_prompt, "prompt")
+            test.eq(rows[4].pinned_ids, '["owner-item","agent-item"]')
+            test.eq(#query("SELECT id FROM kickside_memory_items WHERE component_id = 'memory'"), 3)
+            exec("UPDATE kickside_memory_cursors SET owner_scope_key = 'owner:principal:service:reader' WHERE component_id = 'memory' AND host_id = 'complete'")
             migrate("02_cursor_owner_scope", "memory-cursor-owner-reapply")
             local reloaded = query("SELECT owner_scope_key FROM kickside_memory_cursors WHERE component_id = 'memory' AND host_id = 'complete'")
-            test.eq(reloaded[1].owner_scope_key, "owner:one")
+            test.eq(reloaded[1].owner_scope_key, "owner:principal:service:reader")
             exec([[INSERT INTO kickside_memory_runs
                 (id, component_id, run_type, status, input, stats, created_at)
                 VALUES ('existing-run', 'memory', 'consolidate', 'succeeded', '{}', '{}', '2026-01-01T00:00:00Z')]])
