@@ -22,6 +22,16 @@ describe('memory API responses', () => {
     await expect(memoryApi('memory').status()).rejects.toThrow('invalid run')
   })
 
+  it('decodes cancelled historical work with its recorded reason', async () => {
+    get.mockResolvedValueOnce({ data: { counts: {}, runs: [{
+      id: 'cancelled-run', run_type: 'derive', status: 'cancelled', created_at: '2026-01-01T00:00:00Z',
+      last_error: 'Source records do not provide author attribution.',
+    }] } })
+    await expect(memoryApi('memory').status()).resolves.toMatchObject({
+      runs: [{ status: 'cancelled', last_error: 'Source records do not provide author attribution.' }],
+    })
+  })
+
   it('decodes typed values and document provenance without assigning authorship from its role', async () => {
     get.mockResolvedValueOnce({ data: {
       item: plan,

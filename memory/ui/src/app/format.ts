@@ -38,7 +38,7 @@ export function sourceLabel(source: MemoryItem['source']): string {
 
 export const STATUS_LABEL: Record<MemoryStatus | MemoryRun['status'], string> = {
   current: 'Current', superseded: 'Earlier', conflict: 'Conflict', archived: 'Archived', forgotten: 'Forgotten',
-  scheduled: 'Scheduled', running: 'Running', succeeded: 'Completed', failed: 'Failed', rejected: 'Rejected',
+  scheduled: 'Scheduled', running: 'Running', succeeded: 'Completed', failed: 'Failed', rejected: 'Rejected', cancelled: 'Cancelled',
 }
 
 const STATUS_SEVERITY: Partial<Record<MemoryStatus | MemoryRun['status'], string>> = { current: 'success', conflict: 'warn', failed: 'danger', archived: 'secondary' }

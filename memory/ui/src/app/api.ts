@@ -20,7 +20,7 @@ const KINDS = ['identity', 'rule', 'profile_slot', 'fact', 'preference', 'plan',
 const STATUSES = ['current', 'superseded', 'conflict', 'archived', 'forgotten'] as const
 const SOURCES = ['capture', 'reflection', 'owner'] as const
 const RUN_TYPES = ['derive', 'consolidate', 'reembed'] as const
-const RUN_STATUSES = ['scheduled', 'running', 'succeeded', 'failed', 'rejected'] as const
+const RUN_STATUSES = ['scheduled', 'running', 'succeeded', 'failed', 'rejected', 'cancelled'] as const
 
 function itemRow(raw: unknown): MemoryItem {
   if (!isRecord(raw)) throw new Error('Memory response has an invalid item')

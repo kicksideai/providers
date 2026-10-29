@@ -3,7 +3,7 @@ import { Icon as V } from "@iconify/vue";
 import { on as st, define as ut } from "@wippy-fe/proxy";
 import { F as dt, d as ct, n as mt, N as Oe, S as ee, B as H, f as fe, g as ge, i as Le, h as vt, l as pt, P as de, C as ft, Q as gt, j as be, T as Ve, R as Ie, v as bt, k as yt, K as ht, W as kt, U as $t, s as Ee, o as ye, q as ce, r as _t, e as le, t as wt, w as St, u as xt, a as Tt, b as Ct, m as Pt } from "./types-Dpmtmezp.js";
 import { B as he, s as At, f as xe, c as Ke, u as Ot, a as Lt, d as ke } from "./useWidget-ASETQ9fG.js";
-import { m as J, a as Te, h as Be, u as Vt, _ as It } from "./usePaged-BBuR-les.js";
+import { m as J, a as Te, h as Be, u as Vt, _ as It } from "./usePaged-DSKgwS8l.js";
 var me = {};
 function Et(e = "pui_id_") {
   return Object.hasOwn(me, e) || (me[e] = 0), me[e]++, `${e}${me[e]}`;
@@ -660,7 +660,8 @@ const we = {
   running: "Running",
   succeeded: "Completed",
   failed: "Failed",
-  rejected: "Rejected"
+  rejected: "Rejected",
+  cancelled: "Cancelled"
 }, cn = { current: "success", conflict: "warn", failed: "danger", archived: "secondary" };
 function Fe(e) {
   return cn[e] ?? "secondary";

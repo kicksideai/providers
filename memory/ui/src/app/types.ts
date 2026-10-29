@@ -41,7 +41,7 @@ export interface ConflictGroup { group_id: string; items: MemoryItem[] }
 export interface MemoryRun {
   id: string
   run_type: 'derive' | 'consolidate' | 'reembed'
-  status: 'scheduled' | 'running' | 'succeeded' | 'failed' | 'rejected'
+  status: 'scheduled' | 'running' | 'succeeded' | 'failed' | 'rejected' | 'cancelled'
   last_error?: string | null
   stats?: Record<string, number>
   host_kind?: string
