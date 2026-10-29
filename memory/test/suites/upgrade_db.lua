@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
 return {
-    write = function(_component_id: string, fn: any): (any?, error?)
+    write = function(_component_id: string?, fn: any): (any?, error?)
         local db, err = sql.get("app:migration_db")
         if err then return nil, err end
         local tx, tx_err = db:begin()

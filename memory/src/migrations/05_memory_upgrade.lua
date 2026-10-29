@@ -109,6 +109,10 @@ end
 
 local function upgrade(db: any, sqlite: boolean)
     rename_schema(db, sqlite)
+    for _, field in ipairs({{"stores", "config"}, {"runs", "input"}, {"runs", "stats"}}) do
+        local predicate = sqlite and ("json(" .. field[2] .. ") = '[]'") or (field[2] .. " = '[]'::jsonb")
+        execute(db, "UPDATE kickside_memory_" .. field[1] .. " SET " .. field[2] .. " = '{}' WHERE " .. predicate)
+    end
     add_column(db, sqlite, "kickside_memory_payloads", "embedding", "TEXT")
     local vector = sqlite and "vec_to_json(e.embedding)" or "e.embedding::text"
     execute(db, [[UPDATE kickside_memory_payloads AS p SET embedding = (SELECT ]] .. vector .. [[

@@ -8,7 +8,8 @@ This module owns:
 - `kickside.memory.migrations:01_memory_schema` defines the baseline storage.
   `kickside.memory.migrations:05_memory_upgrade` converts the schema and stored
   data to typed storage with stable topic identities, retained payload vectors,
-  source ownership, scoped pins and consolidation cycle identities. It also
+  source ownership, scoped pins and consolidation cycle identities. Empty
+  settings and run records use JSON objects. The migration also
   updates component bindings and removes retired per-agent settings.
   The resulting tables are `kickside_memory_stores`, `kickside_memory_items`,
   `kickside_memory_keys`, `kickside_memory_payloads`, `kickside_memory_provenance`,

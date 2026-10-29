@@ -4,6 +4,7 @@ local fixture = require("fixture")
 local json = require("json")
 local items = require("upgrade_items")
 local fold = require("upgrade_fold")
+local upgraded_runs = require("upgrade_runs")
 local sql = require("sql")
 local canonical_json = require("canonical_json")
 
@@ -39,6 +40,7 @@ local function define_tests()
                 })
                 test.is_nil(migrate_err, tostring(migrate_err))
                 test.not_nil(result)
+                test.eq(result.failed, 0, result.error)
             end
             migrate("memory-trait-context-upgrade")
             migrate("memory-trait-context-reapply")
@@ -111,6 +113,9 @@ local function define_tests()
             exec([[INSERT INTO kickside_memory_kb_stores
                 (component_id, kb_type, embedding_model, config, created_at, updated_at)
                 VALUES ($1, 'memory', 'test-embed', '{"extraction_instructions":"Keep preferences"}', $2, $2)]], { component, now })
+            exec([[INSERT INTO kickside_memory_kb_stores
+                (component_id, kb_type, embedding_model, config, created_at, updated_at)
+                VALUES ('empty-config', 'memory', 'test-embed', '[]', $1, $1)]], {now})
             local vector = {}
             for i = 1, 512 do vector[i] = i == 1 and 1 or 0 end
             local literal = assert(json.encode(vector))
@@ -155,8 +160,9 @@ local function define_tests()
                 exec([[INSERT INTO kickside_memory_kb_runs
                     (id, component_id, run_type, status, job_id, input, stats, created_at, started_at)
                     VALUES ($1, $2, 'consolidate', $3, '018fa100-0000-7000-8000-000000000003',
-                        '{"span":[{"id":"event","text":"source"}],"context":[{"id":"context-event","text":"context"}]}', '{}', $4, $4)]],
-                    {run[1], component, run[2], now})
+                        $4, '[]', $5, $5)]],
+                    {run[1], component, run[2], run[1] == "existing-run" and "[]"
+                        or '{"span":[{"id":"event","text":"source"}],"context":[{"id":"context-event","text":"context"}]}', now})
             end
             exec([[INSERT INTO kickside_components (component_id, private_context, updated_at) VALUES ('agent',
                 '{"trait_contexts":{"kickside.memory:memory":{"memory_id":"selected","read_enabled":false,"write_enabled":false,"recall_limit":1}}}', $1)]], {now})
@@ -192,7 +198,7 @@ local function define_tests()
             test.eq(#payloads, 3)
             test.eq(#assert(json.decode(payloads[1].embedding)), 512)
             test.eq(#query("SELECT * FROM kickside_memory_provenance"), 3)
-            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 6)
+            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 4)
             local rows = query("SELECT host_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids FROM kickside_memory_cursors ORDER BY host_id")
             test.eq(rows[1].owner_scope_key, "owner:one")
             test.is_nil(rows[2].owner_scope_key)
@@ -205,6 +211,12 @@ local function define_tests()
                 test.is_nil(row.pinned_ids)
             end
             test.eq(rows[4].pinned_ids, '["owner-item","agent-item"]')
+            test.eq(tostring(query("SELECT config FROM kickside_memory_stores WHERE component_id = 'empty-config'")[1].config), "{}")
+            local settings = assert(json.decode(tostring(query("SELECT config FROM kickside_memory_stores WHERE component_id = $1", {component})[1].config)))
+            test.eq(settings.extraction_instructions, "Keep preferences")
+            local readable_runs, runs_err = upgraded_runs.list(component, nil, 10)
+            test.is_nil(runs_err, tostring(runs_err))
+            test.eq(#readable_runs, 3)
             local runs = query("SELECT id, cycle FROM kickside_memory_runs ORDER BY id")
             test.is_nil(runs[1].cycle)
             test.eq(runs[2].cycle, now)
@@ -225,7 +237,7 @@ local function define_tests()
             migrate("05_memory_upgrade", "memory-forward-reapply")
             test.eq(query("SELECT owner_scope_key FROM kickside_memory_cursors WHERE host_id = 'complete'")[1].owner_scope_key, "owner:principal:service:reader")
             test.eq(tonumber(query("SELECT context_revision FROM kickside_components")[1].context_revision), 1)
-            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 6)
+            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 4)
             test.eq(#query("SELECT * FROM kickside_memory_embeddings"), 3)
             test.eq(query("SELECT impl_id FROM kickside_components")[1].impl_id, "kickside.memory:memory_store")
             exec("DELETE FROM kickside_memory_items WHERE id = 'owner-item'")

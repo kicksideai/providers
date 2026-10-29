@@ -175,6 +175,17 @@ entries:
       memory_payloads: kickside.memory.persist:payloads
       memory_runs: kickside.memory.persist:runs
 
+  - name: upgrade_runs
+    kind: library.lua
+    source: file://upgrade_runs.lua
+    modules: [sql, json, uuid]
+    imports:
+      memory_db: app.suites:upgrade_db
+      types: kickside.memory:types
+      search_index: kickside.search_index:index
+      jobs: kickside.core.jobs:jobs
+      jobs_wake: kickside.core.jobs.persist:wake
+
   - name: migration_test
     kind: function.lua
     meta: { type: test, suite: memory_migration, timeout: 300s }
@@ -186,6 +197,7 @@ entries:
       fixture: app.suites:fixture
       upgrade_items: app.suites:upgrade_items
       upgrade_fold: app.suites:upgrade_fold
+      upgrade_runs: app.suites:upgrade_runs
       canonical_json: kickside.contract:canonical_json
 
   - name: consolidation_test
