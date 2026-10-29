@@ -1,7 +1,9 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 
 local contract = require("contract")
+local json = require("json")
 local types = require("types")
+local jobs = require("memory_jobs")
 
 local M = {}
 
@@ -42,30 +44,49 @@ local function event_text(event: any): string
     return ""
 end
 
-function M.span_entry(event: any, cfg: any): any?
+local function outcome_text(metadata: any): (string?, error?)
+    local outcome = metadata.result
+    if outcome == nil then outcome = metadata.error end
+    if outcome == nil then return "", nil end
+    if type(outcome) == "string" then return types.trim(outcome), nil end
+    local encoded, encode_err = json.encode(outcome)
+    if encode_err then return nil, types.invalid("tool outcome must be serializable") end
+    return types.trim(encoded), nil
+end
+
+function M.span_entry(event: any, cfg: any): (any?, error?)
     local metadata = type(event.metadata) == "table" and event.metadata or {}
     local role = event.role
     if (role == "user" or role == "assistant") and cfg.capture_conversation ~= false then
         local text = event_text(event)
-        if text == "" then return nil end
-        return { id = tostring(event.id), role = role, author = event.author, text = text, created_at = event.created_at }
+        if text == "" then return nil, nil end
+        return { id = tostring(event.id), role = role, author = event.author, text = text, created_at = event.created_at }, nil
     end
-    if role == "function" and cfg.capture_experience == true then
+    if role == "tool" and cfg.capture_experience == true then
         local name = types.trim(metadata.function_name)
         local status = types.trim(metadata.status)
-        if name == "" or status == "" then return nil end
-        return { id = tostring(event.id), role = "tool", author = event.author, text = "tool " .. name .. " " .. status, created_at = event.created_at }
+        if name == "" or status == "" then return nil, nil end
+        local prefix = "tool " .. name .. " " .. status
+        local outcome, outcome_err = outcome_text(metadata)
+        if outcome_err then return nil, outcome_err end
+        if outcome ~= "" then outcome = outcome:sub(1, jobs.INPUT_BYTES - #prefix - 1) end
+        return {
+            id = tostring(event.id), role = "tool", author = event.author,
+            text = outcome == "" and prefix or prefix .. "\n" .. outcome,
+            created_at = event.created_at,
+        }, nil
     end
-    return nil
+    return nil, nil
 end
 
-function M.span(events: { any }, cfg: any): { any }
+function M.span(events: { any }, cfg: any): ({ any }?, error?)
     local span: { any } = {}
     for _, event in ipairs(events) do
-        local entry = M.span_entry(event, cfg)
+        local entry, entry_err = M.span_entry(event, cfg)
+        if entry_err then return nil, entry_err end
         if entry then span[#span + 1] = entry end
     end
-    return span
+    return span, nil
 end
 
 return M

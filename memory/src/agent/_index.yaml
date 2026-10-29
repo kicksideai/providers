@@ -15,9 +15,10 @@ entries:
   - name: history
     kind: library.lua
     source: file://history.lua
-    modules: [contract]
+    modules: [contract, json]
     imports:
       types: kickside.memory:types
+      memory_jobs: kickside.memory.engine:jobs
 
   - name: prompt
     kind: library.lua

@@ -202,15 +202,17 @@ local function define_tests()
             test.eq(fixture.items(user, id, { key = "trip_tickets" })[1].value.details, "Travel to London")
         end)
 
-        test.it("captures conversation while dropping developer messages and reducing tool output to name and status", function()
+        test.it("captures conversation while dropping developer messages and retaining the attributable tool outcome", function()
             local user = fixture.user()
             local id = fixture.memory(user, { capture_experience = true })
             local session = "s-" .. user
             fixture.record_chat(user, session, {
-                { id = "h1", role = "user", content = "Hi! I live in Paris and I am vegetarian." },
-                { id = "h2", role = "developer", content = "- The user likes jazz.", metadata = { memory_ids = { "x" } } },
-                { id = "h3", role = "function", content = "{\"rows\": 42}", metadata = { function_name = "lookup", status = "success" } },
-                { id = "h4", role = "assistant", content = "Nice to meet you." },
+                { id = "h1", role = "user", author = { kind = "user", id = user }, content = "Hi! I live in Paris and I am vegetarian." },
+                { id = "h2", role = "developer", author = { kind = "system" }, content = "- The user likes jazz.", metadata = { memory_ids = { "x" } } },
+                { id = "h3", role = "tool", author = { kind = "system" }, content = "{\"query\":\"vegetarian\"}", metadata = {
+                    function_name = "lookup", status = "error", result = "pagination requires page_size",
+                } },
+                { id = "h4", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Nice to meet you." },
             })
             fixture.extraction(id, {
                 fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "h1"),
@@ -224,7 +226,8 @@ local function define_tests()
             local span = runs[1].input.span
             test.eq(#span, 3)
             test.eq(span[1].id, "h1")
-            test.eq(span[2].text, "tool lookup success")
+            test.eq(span[2].role, "tool")
+            test.eq(span[2].text, "tool lookup error\npagination requires page_size")
             test.eq(span[3].id, "h4")
             test.eq(runs[1].input.owner_id, user)
             fixture.settle(user, id)
@@ -236,6 +239,33 @@ local function define_tests()
             test.eq(provenance[1].event_id, "h1")
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
             test.eq(cursor.last_event_id, "h4")
+        end)
+
+        test.it("bounds a retained tool outcome to the derive source limit", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.record_chat(user, session, {
+                { id = "user", role = "user", author = { kind = "user", id = user }, content = "Please inspect the result." },
+                { id = "tool", role = "tool", author = { kind = "system" }, content = "{}", metadata = {
+                    function_name = "inspect", status = "error", result = string.rep("x", 30000),
+                } },
+            })
+            fixture.extraction(id, {})
+            fixture.extraction(id, {})
+            local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(err, tostring(err))
+            test.is_true(applied.metadata.capture.captured)
+            local captured = fixture.wait_runs(user, id, "derive", 2)
+            local tool_entry
+            for _, run in ipairs(captured) do
+                for _, entry in ipairs(run.input.span) do
+                    if entry.id == "tool" then tool_entry = entry end
+                end
+            end
+            test.not_nil(tool_entry)
+            test.eq(#tool_entry.text, 24000)
+            test.is_true(tool_entry.text:find("tool inspect error\n", 1, true) == 1)
         end)
 
         test.it("derives memories only from what the user states, never from assistant narration", function()

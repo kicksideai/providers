@@ -14,6 +14,53 @@ local M = {}
 local CAPTURE_CONTEXT_WINDOW = 10
 local CAPTURE_CONTEXT_MAX_CHARS = 6000
 
+local function valid_event_id(value: any): boolean
+    return type(value) == "string" and types.trim(value) ~= ""
+end
+
+local function selector_error(message: string): (any?, error?)
+    return nil, types.invalid("capture selector " .. message)
+end
+
+local function validate_selector(selector: any): (any?, error?)
+    if type(selector) ~= "table" then return selector_error("must be an object") end
+    local mode = types.trim(selector.mode)
+    if mode == "" then return selector_error("mode is required") end
+    if mode == "window" then
+        if selector.last ~= nil and (type(selector.last) ~= "number" or selector.last <= 0) then
+            return selector_error("last must be positive for window")
+        end
+    elseif mode == "since_id" then
+        if not valid_event_id(selector.from_id) then return selector_error("from_id is required for since_id") end
+    elseif mode == "range" then
+        if selector.from_id ~= nil and not valid_event_id(selector.from_id) then return selector_error("from_id must be a message id") end
+        if selector.to_id ~= nil and not valid_event_id(selector.to_id) then return selector_error("to_id must be a message id") end
+        if selector.from_id == nil and selector.to_id == nil then return selector_error("range requires a bound") end
+    elseif mode == "checkpoint" then
+        if not valid_event_id(selector.checkpoint_id) then return selector_error("checkpoint_id is required for checkpoint") end
+    elseif mode ~= "since_checkpoint" and mode ~= "all" then
+        return selector_error("mode is unsupported")
+    end
+    if selector.max_chars ~= nil and (type(selector.max_chars) ~= "number" or selector.max_chars <= 0) then
+        return selector_error("max_chars must be positive")
+    end
+    return selector, nil
+end
+
+local function requested_selector(payload: any): (any?, error?)
+    if payload.selector ~= nil then return validate_selector(payload.selector) end
+    if payload.phase ~= "deactivate" then return nil, nil end
+    local refs = type(payload.refs) == "table" and payload.refs or nil
+    if not refs or refs.deactivation_range == nil then return nil, nil end
+    local bounds = refs.deactivation_range
+    if type(bounds) ~= "table" then return selector_error("deactivation range must be an object") end
+    if not valid_event_id(bounds.to_id) then return selector_error("deactivation range requires to_id") end
+    if bounds.from_id ~= nil and not valid_event_id(bounds.from_id) then
+        return selector_error("deactivation range from_id must be a message id")
+    end
+    return { mode = "range", from_id = bounds.from_id, to_id = bounds.to_id }, nil
+end
+
 local function context_window(entries: { any }): { any }
     local out = {}
     local remaining = CAPTURE_CONTEXT_MAX_CHARS
@@ -49,14 +96,8 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     else
         selector = { mode = "window", last = history.FIRST_CAPTURE_WINDOW }
     end
-    local requested = type(payload.selector) == "table" and payload.selector or nil
-    if payload.selector == nil and payload.phase == "deactivate" then
-        local bounds = type(payload.refs) == "table" and payload.refs.deactivation_range or nil
-        if type(bounds) == "table" and type(bounds.to_id) == "string" and types.trim(bounds.to_id) ~= ""
-            and (bounds.from_id == nil or (type(bounds.from_id) == "string" and types.trim(bounds.from_id) ~= "")) then
-            requested = { mode = "range", from_id = bounds.from_id, to_id = bounds.to_id }
-        end
-    end
+    local requested, selector_err = requested_selector(payload)
+    if selector_err then return nil, selector_err end
     local result, history_err = history.read(payload, requested or selector)
     if history_err then return nil, history_err end
     local events = (result :: any).events
@@ -82,7 +123,8 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
         events = through
     end
     if #events == 0 then return skipped("no_new_history"), nil end
-    local span = history.span(events, cfg)
+    local span, span_err = history.span(events, cfg)
+    if span_err then return nil, span_err end
     if #span == 0 then return skipped("nothing_to_capture"), nil end
     local preceding, preceding_err = history.read(payload, { mode = "range", to_id = tostring(events[1].id) })
     if preceding_err then return nil, preceding_err end
@@ -98,7 +140,8 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     end
     local entries = {}
     for i = math.max(1, #prior - CAPTURE_CONTEXT_WINDOW), #prior - 1 do
-        local entry = history.span_entry(prior[i], cfg)
+        local entry, entry_err = history.span_entry(prior[i], cfg)
+        if entry_err then return nil, entry_err end
         if entry then entries[#entries + 1] = entry end
     end
     local first_entry, rejected_run = 1, nil

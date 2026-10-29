@@ -5,6 +5,17 @@ local json = require("json")
 
 local function define_tests()
     test.describe("capture enrollment", function()
+        local held: { any } = {}
+
+        test.before_each(function() held = {} end)
+        test.after_each(function()
+            for _, barrier in ipairs(held) do fixture.script.release(barrier.scope, barrier.method) end
+        end)
+
+        local function hold(scope: string, method: string)
+            held[#held + 1] = { scope = scope, method = method }
+            fixture.script.hold(scope, method)
+        end
 
         for _, phase in ipairs({ "before_step", "deactivate", "checkpoint" }) do
             test.it("enrolls statement-sized consecutive runs for " .. phase .. " with independent erasure ownership", function()
@@ -21,7 +32,7 @@ local function define_tests()
                 fixture.record_chat(user, session, events)
                 if phase == "checkpoint" then fixture.script.respond(id, "generate", "Working state.") end
                 -- Hold execution until every slice and its sources are enrolled.
-                fixture.script.hold(id, "structured_output")
+                hold(id, "structured_output")
                 for i = 1, 3 do fixture.extraction(id, {}) end
                 local extra = phase == "deactivate" and { refs = { deactivation_range = { to_id = events[#events].id } } } or nil
                 local applied, err
@@ -77,7 +88,7 @@ local function define_tests()
             local session = "s-" .. user
             local context = fixture.agent_context(id, session, "agent-a", {learn_in_isolation = true})
             fixture.history.record(session, {{id = "observation", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I inspected the documentation and found no reusable lesson."}})
-            fixture.script.hold(id, "structured_output")
+            hold(id, "structured_output")
             fixture.extraction(id, {})
             local first, first_err = fixture.op(user, "apply", {payload = fixture.payload("before_step", session, "agent-a")}, context)
             fixture.history.record(session, {{id = "experience", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I corrected my mistake: resolve relative links against the document base URL."}})
@@ -129,7 +140,7 @@ local function define_tests()
                 { id = "large-second", role = "user", content = second },
                 { id = "trailing-evidence", role = "user", content = "I live in Oslo." },
             })
-            fixture.script.hold(id, "structured_output")
+            hold(id, "structured_output")
             fixture.extraction(id, {})
             fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "trailing-evidence") })
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
@@ -160,7 +171,7 @@ local function define_tests()
                     { id = "oversized", role = "user", content = oversized },
                     { id = "last", role = "user", content = "I enjoy cycling." },
                 })
-                fixture.script.hold(id, "structured_output")
+                hold(id, "structured_output")
                 fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "first") })
                 fixture.extraction(id, { fixture.candidate("fact", "hobby", "cycling", "The user enjoys cycling.", "last") })
                 if phase == "deactivate" then fixture.script.respond(id, "structured_output", { items = {} }) end

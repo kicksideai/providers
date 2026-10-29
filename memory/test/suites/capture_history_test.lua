@@ -11,9 +11,9 @@ local function define_tests()
             local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session = "s-" .. user
             fixture.record_chat(user, session, {
-                { id = "earlier", role = "user", content = "An earlier conversation." },
-                { id = "outgoing", role = "user", content = "I live in Paris." },
-                { id = "incoming", role = "user", content = "A different agent handles this." },
+                { id = "earlier", role = "user", author = { kind = "user", id = user }, content = "An earlier conversation." },
+                { id = "outgoing", role = "user", author = { kind = "user", id = user }, content = "I live in Paris." },
+                { id = "incoming", role = "user", author = { kind = "user", id = user }, content = "A different agent handles this." },
             })
             fixture.extraction(id, {})
             local applied, err = fixture.apply(user, "deactivate", id, session, "agent-a", {
@@ -32,8 +32,6 @@ local function define_tests()
         for _, case in ipairs({
             { name = "first outgoing history", refs = { deactivation_range = { to_id = "b" } }, expected = "a,b" },
             { name = "explicit selector", refs = { deactivation_range = { to_id = "b" } }, selector = { mode = "range", from_id = "b", to_id = "c" }, expected = "c" },
-            { name = "false selector", refs = { deactivation_range = { to_id = "b" } }, selector = false, expected = "a,b,c" },
-            { name = "invalid outgoing bound", refs = { deactivation_range = { from_id = false, to_id = "b" } }, expected = "a,b,c" },
             { name = "cursor intersection", refs = { deactivation_range = { to_id = "b" } }, cursor = "a", expected = "b" },
             { name = "captured outgoing range", refs = { deactivation_range = { to_id = "b" } }, cursor = "c", expected = "" },
         }) do
@@ -42,9 +40,9 @@ local function define_tests()
                 local id = fixture.memory(user, { extraction_model = "test-bounded" })
                 local session = "s-" .. user
                 fixture.record_chat(user, session, {
-                    { id = "a", role = "user", content = "The first message." },
-                    { id = "b", role = "user", content = "The outgoing message." },
-                    { id = "c", role = "user", content = "The incoming message." },
+                    { id = "a", role = "user", author = { kind = "user", id = user }, content = "The first message." },
+                    { id = "b", role = "user", author = { kind = "user", id = user }, content = "The outgoing message." },
+                    { id = "c", role = "user", author = { kind = "user", id = user }, content = "The incoming message." },
                 })
                 if case.cursor then
                     fixture.extraction(id, {})
@@ -77,6 +75,33 @@ local function define_tests()
                     test.is_true(capturing)
                     test.eq(table.concat(ids, ","), case.expected)
                 end
+            end)
+        end
+
+        for _, case in ipairs({
+            { name = "a non-table selector", selector = false },
+            { name = "a malformed selector range", selector = { mode = "range", from_id = false, to_id = "b" } },
+            { name = "a malformed outgoing range", refs = { deactivation_range = { from_id = false, to_id = "b" } } },
+        }) do
+            test.it("rejects " .. case.name .. " without enrolling or advancing capture", function()
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local session = "s-" .. user
+                fixture.record_chat(user, session, {
+                    { id = "a", role = "user", author = { kind = "user", id = user }, content = "The earlier message." },
+                    { id = "b", role = "user", author = { kind = "user", id = user }, content = "The outgoing message." },
+                    { id = "c", role = "user", author = { kind = "user", id = user }, content = "The incoming message." },
+                })
+                local result, err = fixture.apply(user, "deactivate", id, session, "agent-a", {
+                    refs = case.refs,
+                    selector = case.selector,
+                })
+                test.is_nil(result)
+                test.not_nil(err)
+                local runs = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
+                test.eq(#runs, 0)
+                local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+                test.is_nil(cursor)
             end)
         end
 
