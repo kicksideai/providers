@@ -60,6 +60,27 @@ local function define_tests()
             fixture.extraction(id, {})
             fixture.script.release(id, "structured_output")
         end)
+
+        test.it("does not retain cancelled capture ownership", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            fixture.record_chat(user, session, {
+                { id = "uncaptured", role = "user", content = "I prefer a quiet room." },
+            })
+            fixture.script.hold(id, "structured_output")
+            local first, first_err = fixture.apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(first_err, tostring(first_err))
+            local db = fixture.db()
+            local _, cancel_err = db:execute("UPDATE kickside_memory_runs SET status = 'cancelled' WHERE id = $1", { first.metadata.capture.run_id })
+            db:release()
+            test.is_nil(cancel_err, tostring(cancel_err))
+            local second, second_err = fixture.apply(user, "before_step", id, session, "agent-a")
+            test.is_nil(second_err, tostring(second_err))
+            test.is_true(second.metadata.capture.captured)
+            test.is_true(second.metadata.capture.run_id ~= first.metadata.capture.run_id)
+            fixture.script.release(id, "structured_output")
+        end)
     end)
 end
 

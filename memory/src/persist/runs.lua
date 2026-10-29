@@ -141,9 +141,10 @@ local function capture_state(conn: any, sqlite: boolean, run: {component_id: str
     local active, active_err = conn:query([[SELECT r.id, r.from_event_id, r.to_event_id FROM kickside_memory_runs r
         JOIN kickside_job j ON j.id = r.job_id
         WHERE r.component_id = $1 AND r.host_kind = $2 AND r.host_id = $3
-        AND r.run_type = $4 AND r.agent_id IS NOT NULL AND r.status <> $5 AND j.status NOT IN ('done', 'dead', 'cancelled')
+        AND r.run_type = $4 AND r.agent_id IS NOT NULL AND r.status IN ($5, $6, $7) AND j.status NOT IN ('done', 'dead', 'cancelled')
         ORDER BY r.created_at, r.id]],
-        {run.component_id, run.host_kind, run.host_id, types.RUN_TYPE.DERIVE, types.RUN_STATUS.SUCCEEDED})
+        {run.component_id, run.host_kind, run.host_id, types.RUN_TYPE.DERIVE,
+            types.RUN_STATUS.SCHEDULED, types.RUN_STATUS.RUNNING, types.RUN_STATUS.FAILED})
     if active_err then return nil, types.failed("memory capture ownership read failed", active_err) end
     local position = current
     for _, pending in ipairs(active or {}) do
