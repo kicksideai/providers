@@ -87,10 +87,10 @@ local function read_candidates(response: any, step: string, event_ids: { [string
         for _, item in ipairs(collection) do
             local reason = candidate_reason(item)
             local reject = false
-            local existing = nil
+            local existing, known_key = nil, nil
             if not reason then
                 local family = evidence_scopes and M.scope_family(item, evidence_scopes.authors[item.event_id], evidence_scopes.owner_id)
-                local known_key = (family and (family .. ":") or "") .. item.key
+                known_key = (family and (family .. ":") or "") .. item.key
                 existing = known[known_key]
             end
             if existing then
@@ -112,7 +112,10 @@ local function read_candidates(response: any, step: string, event_ids: { [string
                 end
             elseif not reason and step == "reflection" and item.kind ~= types.KIND.LESSON then reason = "kind" end
             if reason then return model_calls.invalid(step, reason, data) end
-            if not reject then out[#out + 1] = item end
+            if not reject then
+                out[#out + 1] = item
+                known[known_key] = existing or item
+            end
         end
         return nil
     end
@@ -267,6 +270,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             normalized.content = types.trim(normalized.content)
             if type(normalized.value) == "string" then normalized.value = types.trim(normalized.value) end
             out[#out + 1] = normalized
+            known[normalized.key] = known[normalized.key] or normalized
         end
     end
     return out, nil

@@ -132,6 +132,47 @@ local function define_tests()
             test.is_true(json.validate_string(key, assert(json.encode("home_city"))) == true)
         end)
 
+        test.it("rejects incompatible kinds sharing a new topic within one extraction", function()
+            local user = fixture.user()
+            fixture.extraction(user, {
+                fixture.candidate("fact", "representation", "HTML", "The returned representation is HTML.", "event"),
+                fixture.candidate("lesson", "representation", "Inspect the declared representation.", "Inspect the declared representation.", "event"),
+            })
+            local result, err = fixture.op(user, "model_step", {step = "extract", agent_id = "agent-a", isolated = true, span = {
+                {id = "event", role = "assistant", author = {kind = "agent", id = "agent-a"}, text = "Inspect the declared representation before parsing."},
+            }})
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_invalid_extraction_kind")
+        end)
+
+        test.it("rejects incompatible mappings sharing a new topic", function()
+            local user = fixture.user()
+            local fact = fixture.candidate("fact", "format", "HTML", "The returned representation is HTML.", "event")
+            local lesson = fixture.candidate("lesson", "parsing", "Inspect the declared representation.", "Inspect the declared representation.", "event")
+            fixture.normalization(user, {
+                fixture.candidate("fact", "representation", fact.value, fact.content, "event"),
+                fixture.candidate("lesson", "representation", lesson.value, lesson.content, "event"),
+            })
+            local result, err = fixture.op(user, "model_step", {candidates = {fact, lesson}})
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_invalid_normalization_kind")
+        end)
+
+        test.it("allows a shared topic name in different evidence scopes", function()
+            local user = fixture.user()
+            fixture.extraction(user, {
+                fixture.candidate("preference", "representation", "tables", "The user prefers tables.", "event"),
+                fixture.candidate("lesson", "representation", "Inspect the declared representation.", "Inspect the declared representation.", "event"),
+            })
+            local result, err = fixture.op(user, "model_step", {step = "extract", owner_id = user, span = {
+                {id = "event", role = "user", author = {kind = "user", id = user}, text = "I prefer tables. Inspect the declared representation."},
+            }})
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 2)
+        end)
+
         test.it("constrains effective times before asking the extraction model", function()
             local user = fixture.user()
             fixture.extraction(user, {})

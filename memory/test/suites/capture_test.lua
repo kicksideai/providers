@@ -165,6 +165,39 @@ local function define_tests()
             test.eq(fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = session}).last_event_id, second.id)
         end)
 
+        test.it("terminates a conflicting new-topic batch without blocking the next range", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "batch-" .. user
+            local context = fixture.agent_context(id, session, "agent-a", {learn_in_isolation = true})
+            local first = {id = "first", role = "assistant", author = {kind = "agent", id = "agent-a"},
+                content = "Inspect the declared representation before parsing."}
+            fixture.record_chat(user, session, {first})
+            for i = 1, 3 do fixture.extraction(id, {
+                fixture.candidate("fact", "representation", "HTML", "The returned representation is HTML.", first.id),
+                fixture.candidate("lesson", "representation", "Inspect the declared representation.", "Inspect the declared representation.", first.id),
+            }) end
+            local result, err = fixture.op(user, "apply", {payload = fixture.payload("before_step", session, "agent-a")}, context)
+            test.is_nil(err, tostring(err))
+            local failed = fixture.wait_run(user, result.metadata.capture.run_id, function(run) return run.status == "failed" end)
+            test.eq(fixture.wait_job(failed.job_id, "dead").attempts, 3)
+            failed = fixture.op(user, "run", {run_id = failed.id})
+            test.eq(json.decode(failed.last_error).code, "model_output_invalid_extraction_kind")
+            test.not_nil(failed.input.model_output)
+            test.eq(#fixture.items(user, id), 0)
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = session}).last_event_id, first.id)
+            local second = {id = "second", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "Verify source claims."}
+            fixture.record_chat(user, session, {second})
+            fixture.extraction(id, {fixture.candidate("lesson", "verification", "Verify source claims.", "Verify source claims.", second.id)})
+            local next_run, next_err = fixture.op(user, "apply", {payload = fixture.payload("before_step", session, "agent-a")}, context)
+            test.is_nil(next_err, tostring(next_err))
+            test.eq(fixture.wait_run(user, next_run.metadata.capture.run_id, function(run) return run.status == "succeeded" end).status, "succeeded")
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id), 1)
+            test.eq(fixture.items(user, id)[1].key, "verification")
+        end)
+
         test.it("retains an exhausted transient failure and captures its source after recovery", function()
             local user = fixture.user()
             local id = fixture.memory(user)
