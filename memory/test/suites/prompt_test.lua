@@ -11,6 +11,11 @@ local function define_tests()
             local id = fixture.memory(user)
             local host = "identity-" .. user
             fixture.remember(user, id, {fixture.candidate("preference", "format", "numbered steps", "The user prefers numbered steps.", "seed")}, "identity-seed")
+            local _, rule_err = fixture.op(user, "create", {component_id = id, fields = {
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "procedure",
+                value = "Follow the declared procedure.", content = "Follow the declared procedure.",
+            }})
+            test.is_nil(rule_err, tostring(rule_err))
             fixture.settle(user, id)
             local _, activate_err = fixture.apply(user, "activate", id, host, "agent-a")
             test.is_nil(activate_err, tostring(activate_err))
@@ -25,11 +30,49 @@ local function define_tests()
                 local prompt, prompt_err = fixture.op(principal, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
                 test.is_nil(prompt_err, tostring(prompt_err))
                 test.eq(prompt, "")
+                local _, principal_activate_err = fixture.apply(principal, "activate", id, host, "agent-a")
+                test.is_nil(principal_activate_err, tostring(principal_activate_err))
+                local principal_prompt = fixture.op(principal, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+                test.contains(principal_prompt, "Follow the declared procedure.")
+                test.is_nil(principal_prompt:find("numbered steps", 1, true), principal_prompt)
             end
             local different_agent, agent_err = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-b"))
             test.is_nil(agent_err, tostring(agent_err))
             test.eq(different_agent, "")
+            local _, restore_err = fixture.apply(user, "activate", id, host, "agent-a")
+            test.is_nil(restore_err, tostring(restore_err))
             test.eq(fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-a")), original)
+        end)
+
+        test.it("replaces the host snapshot for each agent activation", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local host = "activation-" .. user
+            for _, fields in ipairs({
+                {kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "a_rule", value = "Apply the first procedure.", content = "Apply the first procedure."},
+                {kind = "rule", scope_family = "agent", scope_id = "agent-b", key = "b_rule", value = "Apply the second procedure.", content = "Apply the second procedure."},
+            }) do
+                local _, create_err = fixture.op(user, "create", {component_id = id, fields = fields})
+                test.is_nil(create_err, tostring(create_err))
+            end
+            fixture.settle(user, id)
+
+            local _, first_err = fixture.apply(user, "activate", id, host, "agent-a")
+            test.is_nil(first_err, tostring(first_err))
+            local first = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+            test.contains(first, "Apply the first procedure.")
+
+            local _, second_err = fixture.apply(user, "activate", id, host, "agent-b")
+            test.is_nil(second_err, tostring(second_err))
+            local second = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-b"))
+            test.contains(second, "Apply the second procedure.")
+            test.is_nil(second:find("Apply the first procedure.", 1, true), second)
+
+            local _, third_err = fixture.apply(user, "activate", id, host, "agent-a")
+            test.is_nil(third_err, tostring(third_err))
+            local third = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+            test.contains(third, "Apply the first procedure.")
+            test.is_nil(third:find("Apply the second procedure.", 1, true), third)
         end)
 
 

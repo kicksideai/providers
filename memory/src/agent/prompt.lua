@@ -66,11 +66,15 @@ function M.pin(payload: any): (any?, error?)
     local id, store, err = context.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
     local host_kind, host_id = context.host_ref(payload.host)
+    if host_kind == nil or host_id == nil then return nil, types.invalid("lifecycle host is required for prompt") end
     local owner_scope_key, human_id, identity_err = acting_scope()
     if identity_err then return nil, identity_err end
+    local agent_id = types.trim(payload.agent and payload.agent.id)
     local existing, existing_err = runs.cursor(id :: string, host_kind, host_id)
     if existing_err then return nil, existing_err end
-    if existing and existing.pinned_prompt ~= nil then return true, nil end
+    if existing and existing.pinned_prompt ~= nil and existing.owner_scope_key == owner_scope_key and existing.agent_id == agent_id then
+        return true, nil
+    end
     local rows, rows_err = {}, nil
     if human_id then rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, human_id), OWNER_SOUL_KINDS) end
     if rows_err then return nil, rows_err end
@@ -82,7 +86,6 @@ function M.pin(payload: any): (any?, error?)
         end
     end
     local text, pinned = render(visible, "## What you know about the user\nUse these facts as defaults. Do not ask the user to repeat or confirm an attribute shown here. Apply it when relevant, state the assumption and let the user correct it. Ask only for missing details.", (store :: any).effective.soul_owner_max_chars)
-    local agent_id = types.trim(payload.agent and payload.agent.id)
     local learned, learned_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), AGENT_SOUL_KINDS)
     if learned_err then return nil, learned_err end
     local task = {}
@@ -118,7 +121,7 @@ end
 function M.snapshot(payload: any): (any?, error?)
     local run = ctx.get("agent_run")
     local host_kind, host_id = context.host_ref(type(run) == "table" and run.host or nil)
-    if host_kind == "" or host_id == "" then return nil, nil end
+    if host_kind == nil or host_id == nil then return nil, nil end
     local id, _, err = context.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
     local owner_scope_key, _, identity_err = acting_scope()
@@ -148,6 +151,7 @@ function M.prompt(): (string?, error?)
     if types.trim(context.setting({}, "memory_id")) == "" then
         return nil, types.invalid("the Memory capability has no memory selected")
     end
+    if not context.read_enabled({}) then return "", nil end
     local snapshot, err = M.snapshot({})
     if err then return nil, err end
     return snapshot and snapshot.pinned_prompt or "", nil
