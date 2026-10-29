@@ -292,7 +292,7 @@ local function define_tests()
             fixture.op(user, "wake", { component_id = id })
             local runs = fixture.wait_runs(user, id, "consolidate", 1)
             test.eq(runs[1].status, "failed")
-            test.is_true(runs[1].last_error:find("model_output_invalid_reflection_grounding", 1, true) ~= nil, runs[1].last_error)
+            test.is_true(runs[1].last_error:find("model_output_malformed", 1, true) ~= nil, runs[1].last_error)
             local schema = fixture.script.requests(id, "structured_output")[1]
             test.eq(table.concat(schema.properties.items.items.properties.kind.enum, ","), "lesson")
             fixture.settle(user, id)
