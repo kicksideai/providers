@@ -83,6 +83,49 @@ local function define_tests()
             test.contains(system, expected)
         end)
 
+        test.it("does not recall agent learning already present in the activation snapshot", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local lesson = "Resolve relative links against the document base URL."
+            local _, create_err = fixture.op(user, "create", {component_id = id, fields = {
+                kind = "lesson", scope_family = "agent", scope_id = "agent-a", key = "relative_links", value = lesson, content = lesson,
+            }})
+            test.is_nil(create_err, tostring(create_err))
+            fixture.settle(user, id)
+            local host = "learning-request-" .. user
+            fixture.record_chat(user, host, {{id = "task", role = "user", content = "Resolve relative links."}})
+            local run_context = fixture.agent_context(id, host, "agent-a")
+            local spec = {id = "agent-a", prompt = "Research carefully.", model = "test-fast", traits = {
+                {id = "kickside.memory:memory", context = {memory_id = id}},
+            }}
+            local activated, activate_err = fixture.op(user, "trait_agent", {
+                spec = spec, payload = fixture.payload("activate", host, "agent-a"),
+            }, run_context)
+            test.is_nil(activate_err, tostring(activate_err))
+            test.eq(#activated.errors, 0)
+            fixture.script.respond(id, "generate", "Ready.")
+            local _, step_err = fixture.op(user, "trait_agent", {
+                spec = spec, messages = {
+                    {role = "user", text = "Resolve relative links."},
+                    {role = "assistant", text = "Which links?"},
+                    {role = "user", text = "Resolve the relative links in the documentation."},
+                },
+            }, run_context)
+            test.is_nil(step_err, tostring(step_err))
+            local rows = fixture.rows("SELECT messages FROM app_llm_requests WHERE scope = $1 AND method = 'generate'", {id})
+            local request = assert(json.decode(rows[1].messages))
+            local count = 0
+            for _, message in ipairs(request) do
+                for _, part in ipairs(message.content or {}) do
+                    if part.type == "text" then
+                        local _, occurrences = part.text:gsub("Resolve relative links against the document base URL%.", "")
+                        count = count + occurrences
+                    end
+                end
+            end
+            test.eq(count, 1, rows[1].messages)
+        end)
+
         test.it("clears agent memory snapshots on archive, restore and forget", function()
             local user = fixture.user()
             local id = fixture.memory(user)

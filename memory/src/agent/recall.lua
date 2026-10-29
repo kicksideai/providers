@@ -5,6 +5,7 @@ local component = require("component")
 local types = require("types")
 local context = require("agent_context")
 local recall = require("memory_recall")
+local prompt = require("agent_prompt")
 
 local M = {}
 
@@ -34,6 +35,11 @@ function M.recall(input: any): (any?, error?)
     local max_length = math.floor(tonumber(constraints.max_length) or cfg.recall_max_length)
     local exclude: { [string]: boolean } = {}
     for _, id in ipairs(type(args.previous_memories) == "table" and args.previous_memories or {}) do exclude[tostring(id)] = true end
+    local snapshot, snapshot_err = prompt.snapshot({})
+    if snapshot_err then return nil, snapshot_err end
+    if snapshot then
+        for _, id in ipairs(snapshot.pinned_ids) do exclude[id] = true end
+    end
     local agent_id = types.trim(ctx.get("agent_id"))
     local scopes, scopes_err = recall.visible_scopes(agent_id)
     if scopes_err then return nil, scopes_err end

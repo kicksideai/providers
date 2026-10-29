@@ -175,11 +175,17 @@ end
 function M.cursor(component_id: string, host_kind: string, host_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(
-            "SELECT component_id, host_kind, host_id, agent_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, updated_at FROM kickside_memory_cursors " ..
+            "SELECT component_id, host_kind, host_id, agent_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at FROM kickside_memory_cursors " ..
             "WHERE component_id = $1 AND host_kind = $2 AND host_id = $3", { component_id, host_kind, host_id })
         if err then return nil, types.failed("memory cursor read failed", err) end
         local row = rows and rows[1]
         if row and row.pinned_head ~= nil then row.pinned_head = tonumber(row.pinned_head) end
+        if row and row.pinned_ids ~= nil then
+            local ids, decode_err = types.decode_json(row.pinned_ids)
+            if decode_err then return nil, decode_err end
+            if type(ids) ~= "table" then return nil, types.internal("memory pinned ids must be an array") end
+            row.pinned_ids = ids
+        end
         return row, nil
     end)
 end

@@ -57,12 +57,13 @@ entries:
       types: kickside.memory:types
       agent_context: kickside.memory.agent:context
       memory_recall: kickside.memory.engine:recall
+      agent_prompt: kickside.memory.agent:prompt
     method: recall
 
   - name: memory_build
     kind: function.lua
     meta:
-      comment: Adds the agent's identity, rules, skills and lessons to the compiled prompt.
+      comment: Validates the selected memory for agent compilation.
     source: file://prompt.lua
     modules: *prompt_modules
     imports: *prompt_imports

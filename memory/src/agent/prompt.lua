@@ -115,10 +115,10 @@ function M.pin(payload: any): (any?, error?)
 end
 
 -- A host keeps its activation snapshot until archive, restore or forget clears the pin.
-local function owner_prompt(payload: any): (string?, error?)
+function M.snapshot(payload: any): (any?, error?)
     local run = ctx.get("agent_run")
     local host_kind, host_id = context.host_ref(type(run) == "table" and run.host or nil)
-    if host_kind == "" or host_id == "" then return "", nil end
+    if host_kind == "" or host_id == "" then return nil, nil end
     local id, _, err = context.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
     local owner_scope_key, _, identity_err = acting_scope()
@@ -126,15 +126,15 @@ local function owner_prompt(payload: any): (string?, error?)
     local agent_id = types.trim(run.agent and run.agent.id)
     local cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
     if cursor_err then return nil, cursor_err end
-    if cursor and (cursor.owner_scope_key ~= owner_scope_key or cursor.agent_id ~= agent_id) then return "", nil end
+    if cursor and (cursor.owner_scope_key ~= owner_scope_key or cursor.agent_id ~= agent_id) then return nil, nil end
     if cursor and (cursor :: any).pinned_prompt == nil then
         local _, pin_err = M.pin({ context = payload.context, host = run.host, agent = run.agent, run_context = run.run_context })
         if pin_err then return nil, pin_err end
         cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
         if cursor_err then return nil, cursor_err end
     end
-    if not cursor or cursor.owner_scope_key ~= owner_scope_key or cursor.agent_id ~= agent_id then return "", nil end
-    return cursor.pinned_prompt or "", nil
+    if not cursor or cursor.owner_scope_key ~= owner_scope_key or cursor.agent_id ~= agent_id then return nil, nil end
+    return cursor, nil
 end
 
 function M.build(_prompt: any, trait_context: any): (any?, error?)
@@ -148,7 +148,9 @@ function M.prompt(): (string?, error?)
     if types.trim(context.setting({}, "memory_id")) == "" then
         return nil, types.invalid("the Memory capability has no memory selected")
     end
-    return owner_prompt({})
+    local snapshot, err = M.snapshot({})
+    if err then return nil, err end
+    return snapshot and snapshot.pinned_prompt or "", nil
 end
 
 return M
