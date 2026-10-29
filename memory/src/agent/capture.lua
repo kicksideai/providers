@@ -40,9 +40,9 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     if cfg.capture_conversation == false and cfg.capture_experience ~= true then return skipped("capture_disabled"), nil end
     local host_kind, host_id = context.host_ref(payload.host)
     if host_kind == "" or host_id == "" then return nil, types.invalid("lifecycle host is required for capture") end
-    local cursor, cursor_err = runs.cursor(memory_id :: string, host_kind, host_id)
-    if cursor_err then return nil, cursor_err end
-    local from = cursor and types.trim((cursor :: any).last_event_id) or ""
+    local from, position_err = runs.capture_position(memory_id :: string, host_kind, host_id)
+    if position_err then return nil, position_err end
+    from = from :: string
     local selector: any
     if from ~= "" then
         selector = { mode = "since_id", from_id = from }
@@ -87,6 +87,15 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     local preceding, preceding_err = history.read(payload, { mode = "range", to_id = tostring(events[1].id) })
     if preceding_err then return nil, preceding_err end
     local prior = (preceding :: any).events
+    local conversational = false
+    for _, list in ipairs({prior, events}) do
+        for _, event in ipairs(list) do
+            if type(event.author) == "table" and event.author.kind == "user" then conversational = true end
+        end
+    end
+    if not conversational and context.setting(payload, "learn_in_isolation") ~= true then
+        return skipped("isolated_learning_disabled"), nil
+    end
     local entries = {}
     for i = math.max(1, #prior - CAPTURE_CONTEXT_WINDOW), #prior - 1 do
         local entry = history.span_entry(prior[i], cfg)
@@ -118,9 +127,9 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     local count, size, prior_context = 0, 0, context_window(entries)
     local function append(to_id: string)
         captures[#captures + 1] = {
-            component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
+            component_id = memory_id :: string, host_kind = host_kind, host_id = host_id, host = payload.host,
             agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
-            to_event_id = to_id, span = part, context = prior_context,
+            to_event_id = to_id, span = part, context = prior_context, isolated = not conversational,
         }
         from = to_id
         part, count, size, prior_context = {}, 0, 0, context_window(entries)

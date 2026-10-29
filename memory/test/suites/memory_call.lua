@@ -23,8 +23,10 @@ local agent_compiler = require("agent_compiler")
 local agent = require("agent")
 local agent_prompt = require("llm_prompt")
 local lifecycle = require("agent_lifecycle")
+local recall = require("memory_recall")
 
 local OPS: { [string]: (any) -> (any, any) } = {
+    recall_scopes = function(a: any) return recall.visible_scopes(a.agent_id), nil end,
     descriptor = function(a: any)
         local err = config.validate_descriptor(a.meta)
         if err then return nil, err end

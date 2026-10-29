@@ -92,7 +92,7 @@ local function define_tests()
             for _ in pairs(stepped.compiled.tools) do tool_count = tool_count + 1 end
             test.eq(tool_count, 2, json.encode(stepped.compiled.tools))
             test.not_nil(stepped.compiled.tools.ForgetMemory, "ForgetMemory tool")
-            fixture.history.record(session, { { id = "trait-capture", role = "user", content = "Remember that I prefer aisle seats." } })
+            fixture.record_chat(user, session, { { id = "trait-capture", role = "user", content = "Remember that I prefer aisle seats." } })
             fixture.extraction(memory, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "trait-capture") })
             fixture.relations(memory, { "unrelated" })
             local captured, capture_err = fixture.op(user, "trait_agent", {

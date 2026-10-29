@@ -17,14 +17,26 @@ local TRANSIENT_KINDS = {
 local STATEMENT_ROLES = { user = true, tool = true, document = true }
 
 function M.is_statement(message: any): boolean
-    return STATEMENT_ROLES[message.role] == true
+    return STATEMENT_ROLES[message.role] == true or (message.role == "assistant" and type(message.author) == "table" and message.author.kind == "agent")
+end
+
+local PERSONAL_KINDS = {profile_slot = true, preference = true, plan = true, fact = true}
+
+function M.scope_family(candidate: any, author: any, owner_id: string?): string
+    if type(owner_id) == "string" and owner_id ~= "" and PERSONAL_KINDS[candidate.kind]
+        and type(author) == "table" and author.kind == "user" and author.id == owner_id then
+        return types.SCOPE.OWNER
+    end
+    return types.SCOPE.AGENT
 end
 
 local EXTRACTION_PROMPT = string.format([[You extract personal attributes and actionable goals from new conversation statements.
 
-Treat memory-management requests as instructions about stored memory. Requests to forget,
-delete or stop remembering information establish no personal attribute or actionable
-goal. Extract only separately stated assertions about the person or their work.
+Treat memory-management requests as instructions about stored memory. Retrieving memory supplies no new fact, goal, skill or lesson.
+Requests to recall, search, list, explain, forget, delete or stop remembering stored
+information establish no new learning or actionable goal. Do not interpret the topics
+named in such a request as assertions that the person learned them. Extract only
+separately stated new assertions about the person or their work.
 
 First identify requests, intentions and ongoing work. Each request to accomplish a task
 is an open plan from its first statement. A task needs no date, audience, destination,
@@ -46,7 +58,16 @@ Answers about a task change that goal's details, not stable personal attributes.
 Hypotheticals do not establish personal attributes. Change a stable attribute only
 when the user directly states it or its change.
 
-Cite only new user, tool or document statements that supply evidence. Preceding context
+Skills, lessons and agent-authored work facts describe reusable agent knowledge. A person's skills or
+attributes use profile_slot; their personal goals use plan. A question asking what
+existing memory says teaches nothing new. Never copy existing memories as new claims.
+Only statements authored by the acting human establish their profile, preferences or
+personal goals. Prompt roles do not establish authorship. Tasks from parent agents and
+workflow inputs never establish owner attributes. Agent-authored statements and tool
+experience may establish reusable agent lessons, skills or stable domain/tool facts;
+skip their task-specific inputs, intermediate values, one-off results and fetched page
+contents. Agent plans qualify only for work explicitly spanning runs.
+Cite new events that supply evidence, preserving their author. Preceding context
 and existing memories explain meaning but supply no new evidence. Assistant suggestions,
 answers, narration and recalled-memory notes are not user statements. Raw tool output
 alone is not a durable claim. Omit greetings, thanks, acknowledgements, questions that
@@ -77,6 +98,34 @@ Each item has:
 
 Return scalar attributes in items, lessons in lessons, and goals in plans. All three arrays
 are required. Return {"items": [], "lessons": [], "plans": []} only when nothing qualifies.]], types.KEY_MAX)
+
+local ISOLATED_EXTRACTION_PROMPT = [[Extract only reusable knowledge from this agent's experience.
+Keep generalizable lessons about how to do the work, reusable skills, stable facts about
+its domain, tools or sources, and the agent's corrected mistakes. A lesson must help a
+future run with different task inputs. Skip the task's specific inputs, intermediate
+values, one-off results, fetched page contents, and anything meaningful only inside
+this run. An instruction to perform this task is not knowledge about a human.
+Plans qualify only for work explicitly spanning runs. Never extract personal profiles
+or preferences from parent-agent tasks or workflow input. Do not turn requests to
+forget or never remember something into memories. Memory policy applies to every item.
+
+Cite a new event id that supplies evidence; preceding context explains meaning but
+supplies no new evidence. Event authorship is independent of its prompt role.
+Never copy recalled memories or personal attributes into agent knowledge.
+Repeating a human profile, preference or goal is not agent learning, even when the
+agent says it. A question asking what memory says teaches nothing new.
+Return items (fact or skill), lessons (lesson), and plans (plan) arrays. Each item has
+kind, key, cardinality, value, content, event_id, valid_at and confidence. Use short
+canonical lowercase topic keys with underscores, reuse existing keys for the same
+knowledge, and never put a value in its key. Use multi cardinality for independent
+knowledge and single for a changing value.
+- value: the reusable knowledge itself, expressed as a substantive statement; never
+  the kind, cardinality, a task argument or an intermediate value.
+- content: a self-contained sentence expressing that knowledge for future runs.
+valid_at is empty unless the evidence explicitly establishes effective time.
+Confidence is from 0 to 1. A plan's value has status (open or done), next_step and
+details; plans have single cardinality. Return all three arrays empty when no durable
+learning qualifies.]]
 
 local JUDGE_PROMPT = [[You reconcile one new memory against existing memories of the same person.
 
@@ -392,18 +441,23 @@ local function candidate_reason(item: any, typed: boolean?): string?
     return nil
 end
 
-local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any): (any?, error?)
+local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any, evidence_scopes: any?): (any?, error?)
     local err = response_error(response, step, schema)
     if err then return nil, err end
     local data = response.result
     local known = {}
-    for _, row in ipairs(keys or {}) do known[row.key] = row end
+    for _, row in ipairs(keys or {}) do known[(row.scope_family and (row.scope_family .. ":") or "") .. row.key] = row end
     local out = {}
     local function read(collection: any, plans: boolean): error?
         for _, item in ipairs(collection) do
             if type(item) == "table" and type(item.key) == "string" then item.key = types.normalize_key(item.key) end
             local reason = candidate_reason(item)
-            local existing = not reason and known[types.normalize_key(item.key)] or nil
+            local existing = nil
+            if not reason then
+                local family = evidence_scopes and M.scope_family(item, evidence_scopes.authors[item.event_id], evidence_scopes.owner_id)
+                local known_key = (family and (family .. ":") or "") .. types.normalize_key(item.key)
+                existing = known[known_key]
+            end
             if existing then
                 if not types.compatible_kinds(existing.kind, item.kind) then reason = "kind"
                 else item.cardinality = existing.cardinality end
@@ -430,13 +484,14 @@ end
 
 local function key_listing(keys: { any }): (string?, error?)
     local lines: { string } = {}
-    local kind, names = nil, {}
+    local kind, family, names = nil, nil, {}
     local function flush()
         if kind then lines[#lines + 1] = "- " .. kind .. ": " .. table.concat(names, ", ") end
     end
     for _, row in ipairs(keys) do
-        if row.kind ~= kind then flush(); kind, names = row.kind, {} end
+        if row.kind ~= kind or row.scope_family ~= family then flush(); kind, family, names = row.kind, row.scope_family, {} end
         local description = row.key .. " (" .. tostring(row.cardinality) .. ")"
+        if family then description = description .. " [" .. family .. " scope]" end
         if row.content then description = description .. ": " .. row.content end
         if row.value ~= nil then
             local value, encode_err = json.encode(row.value)
@@ -456,7 +511,7 @@ function M.conversation(span: { any }, context: { any }?): string
     end
     for _, message in ipairs(span) do
         if M.is_statement(message) then
-            lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role, message.text)
+            lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role .. (type(message.author) == "table" and ("; author=" .. message.author.kind .. ":" .. tostring(message.author.id or "")) or ""), message.text)
         else
             lines[#lines + 1] = string.format("(%s, context only) %s", message.role, message.text)
         end
@@ -464,14 +519,14 @@ function M.conversation(span: { any }, context: { any }?): string
     return table.concat(lines, "\n")
 end
 
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?): (any?, error?)
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, isolated: boolean?, owner_id: string?): (any?, error?)
     local ids: { string } = {}
     local allowed = {}
     for _, message in ipairs(span) do
         if M.is_statement(message) then ids[#ids + 1] = message.id; allowed[message.id] = true end
     end
     if #ids == 0 then return {}, nil end
-    local system = EXTRACTION_PROMPT
+    local system = isolated and ISOLATED_EXTRACTION_PROMPT or EXTRACTION_PROMPT
     if #keys > 0 then
         local listing, listing_err = key_listing(keys)
         if listing_err then return nil, listing_err end
@@ -484,7 +539,15 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
     if err then return nil, model_error("extraction", err) end
-    local candidates, read_err = read_candidates(response, "extraction", allowed, keys, schema)
+    local evidence_scopes = nil
+    for _, key in ipairs(keys) do
+        if key.scope_family then
+            evidence_scopes = {authors = {}, owner_id = owner_id}
+            for _, message in ipairs(span) do evidence_scopes.authors[message.id] = message.author end
+            break
+        end
+    end
+    local candidates, read_err = read_candidates(response, "extraction", allowed, keys, schema, evidence_scopes)
     if read_err then return nil, read_err end
     return candidates, nil
 end

@@ -16,9 +16,24 @@ traits:
 trait_contexts:
   kickside.memory:memory:
     memory_id: <memory-id>
+    learn_in_isolation: false
 ```
 
-Requires `wippy/agent` 0.5.7 or later. The trait supplies SearchMemory and
+Runners supply a stable opaque `host.id`, an open `host.kind`, and an author for
+each history event. Human-authored attributes and goals belong to that human.
+Parent tasks and workflow input never establish a human profile. Agent lessons,
+skills and work facts stay in agent scope. Runs acting for a person recall their
+profile alongside the agent's rules and relevant learning.
+
+**Learn from isolated runs** defaults to off. Isolated runs still recall memory;
+enabling it captures reusable lessons, skills and stable knowledge. Task inputs,
+intermediate values, fetched page contents and one-off results do not qualify.
+Plans in isolation require work that explicitly spans runs. Human conversation
+capture remains active with either setting. **Memory rules** use the memory's
+existing `extraction_instructions` to specify what to keep and what to skip in
+both modes.
+
+Requires the runner-neutral `wippy.agent:run_context` contract. The trait supplies SearchMemory and
 ForgetMemory. Background capture learns from conversation automatically.
 Corrections supersede values and retain history. SearchMemory returns canonical
 keys and typed values. ForgetMemory selects the caller's attribute by key and

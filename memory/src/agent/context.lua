@@ -38,17 +38,14 @@ end
 
 function M.host_ref(host: any): (string, string)
     if type(host) ~= "table" then return "", "" end
-    if host.kind == "session" then return "session", types.trim(host.session_id) end
-    if host.kind == "dataflow" then
-        return "dataflow", table.concat({ types.trim(host.dataflow_id), types.trim(host.node_id),
-            types.trim(host.run_id) }, ":")
-    end
-    return "", ""
+    return type(host.kind) == "string" and host.kind or "", type(host.id) == "string" and host.id or ""
 end
 
 function M.validate(payload: any): error?
     if type(payload) ~= "table" then return types.invalid("payload must be an object") end
-    if type(payload.host) ~= "table" or types.trim(payload.host.kind) == "" then return types.invalid("host.kind is required") end
+    if type(payload.host) ~= "table" or type(payload.host.kind) ~= "string" or payload.host.kind == "" then return types.invalid("host.kind is required") end
+    if type(payload.host.id) ~= "string" or payload.host.id == "" then return types.invalid("host.id is required") end
+    if type(payload.agent) ~= "table" or types.trim(payload.agent.id) == "" then return types.invalid("agent.id is required") end
     return nil
 end
 

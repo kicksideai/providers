@@ -16,10 +16,9 @@ local function define_tests()
                 test.is_true(capacity >= 1)
                 local events = {}
                 for i = 1, 2 * capacity + 1 do
-                    events[#events + 1] = { id = "batch-" .. tostring(i), role = "user", content = "Statement " .. tostring(i) .. "." }
-                    events[#events + 1] = { id = "reply-" .. tostring(i), role = "assistant", content = "Acknowledged." }
+                    events[#events + 1] = { id = "batch-" .. tostring(i), role = i % 2 == 1 and "user" or "assistant", content = "Statement " .. tostring(i) .. "." }
                 end
-                fixture.history.record(session, events)
+                fixture.record_chat(user, session, events)
                 if phase == "checkpoint" then fixture.script.respond(id, "generate", "Working state.") end
                 -- Hold execution until every slice and its sources are enrolled.
                 fixture.script.hold(id, "structured_output")
@@ -37,7 +36,7 @@ local function define_tests()
                 local previous = ""
                 for i, run in ipairs(enrolled) do
                     test.eq(run.from_event_id, previous)
-                    test.eq(#run.input.span, i < 3 and 2 * capacity or 2)
+                    test.eq(#run.input.span, i < 3 and capacity or 1)
                     local db = fixture.db()
                     local sources = db:query("SELECT event_id FROM kickside_memory_run_sources WHERE component_id = $1 AND run_id = $2", { id, run.id })
                     db:release()
@@ -72,6 +71,33 @@ local function define_tests()
             end)
         end
 
+        test.it("enrolls new persisted experience while its earlier extraction is in flight", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            local context = fixture.agent_context(id, session, "agent-a", {learn_in_isolation = true})
+            fixture.history.record(session, {{id = "task", role = "user", author = {kind = "system"}, content = "Inspect the documentation."}})
+            fixture.script.hold(id, "structured_output")
+            fixture.extraction(id, {})
+            local first, first_err = fixture.op(user, "apply", {payload = fixture.payload("before_step", session, "agent-a")}, context)
+            fixture.history.record(session, {{id = "experience", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I corrected my mistake: resolve relative links against the document base URL."}})
+            fixture.extraction(id, {fixture.candidate("lesson", "relative_links", "Resolve relative links against the document base URL.", "Resolve relative links against the document base URL.", "experience")})
+            local second, second_err = fixture.op(user, "apply", {payload = fixture.payload("after_persist", session, "agent-a", {refs = {event_id = "experience"}})}, context)
+            fixture.script.release(id, "structured_output")
+            test.is_nil(first_err, tostring(first_err))
+            test.is_nil(second_err, tostring(second_err))
+            test.is_true(first.metadata.capture.captured)
+            test.is_true(second.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 2)
+            for _, run in ipairs(runs) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
+            fixture.settle(user, id)
+            local learned = fixture.items(user, id)
+            test.eq(#learned, 1)
+            test.eq(learned[1].scope_family, "agent")
+            test.eq(learned[1].scope_id, "agent-a")
+            test.eq(fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = session}).last_event_id, "experience")
+        end)
+
         test.it("does not advance consecutive captures past a failed predecessor", function()
             local user = fixture.user()
             local id = fixture.memory(user, { extraction_model = "test-bounded" })
@@ -81,7 +107,7 @@ local function define_tests()
             for i = 1, capacity + 1 do
                 events[i] = { id = "failed-batch-" .. tostring(i), role = "user", content = "A statement." }
             end
-            fixture.history.record(session, events)
+            fixture.record_chat(user, session, events)
             fixture.script.fail(id, "structured_output", "Invalid model input", errors.INVALID, false)
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
@@ -98,7 +124,7 @@ local function define_tests()
             local id = fixture.memory(user, { extraction_model = "test-fast" })
             local session = "s-" .. user
             local first, second = string.rep("a", 14000), string.rep("b", 14000)
-            fixture.history.record(session, {
+            fixture.record_chat(user, session, {
                 { id = "large-first", role = "user", content = first },
                 { id = "large-second", role = "user", content = second },
                 { id = "trailing-evidence", role = "user", content = "I live in Oslo." },
@@ -129,7 +155,7 @@ local function define_tests()
                 local id = fixture.memory(user, { extraction_model = "test-bounded" })
                 local session = "s-" .. user
                 local oversized = string.rep("private-source-", 2000)
-                fixture.history.record(session, {
+                fixture.record_chat(user, session, {
                     { id = "first", role = "user", content = "I live in Oslo." },
                     { id = "oversized", role = "user", content = oversized },
                     { id = "last", role = "user", content = "I enjoy cycling." },
@@ -223,7 +249,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.history.record(session, {
+            fixture.record_chat(user, session, {
                 { id = "first", role = "user", content = "A first statement." },
                 { id = "oversized", role = "user", content = string.rep("x", 24001) },
                 { id = "last", role = "user", content = "A later statement." },
@@ -256,7 +282,7 @@ local function define_tests()
             local id = fixture.memory(user)
             local session = "s-" .. user
             local event_id = "oversized-" .. user
-            fixture.history.record(session, { { id = event_id, role = "user", content = string.rep("x", 24001) } })
+            fixture.record_chat(user, session, { { id = event_id, role = "user", content = string.rep("x", 24001) } })
             local db = fixture.db()
             local sqlite = db:type() == "sqlite"
             local _, setup_err = db:execute(sqlite and [[CREATE TRIGGER refuse_rejected_cursor BEFORE INSERT ON kickside_memory_cursors
@@ -297,7 +323,8 @@ local function define_tests()
                 if layout == "leading" then events[#events + 1] = { id = "normal", role = "user", content = "A normal statement." } end
                 local expected = #events
                 events[#events + 1] = { id = "ignored", role = "system", content = "Host state." }
-                fixture.history.record(session, events)
+                if layout == "only" then events[1].author = {kind = "user", id = user} end
+                fixture.record_chat(user, session, events)
                 if layout == "leading" or layout == "trailing" then fixture.extraction(id, {}) end
                 local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
                 test.is_nil(err, tostring(err))
@@ -324,7 +351,7 @@ local function define_tests()
                 end
                 test.eq(rejected, layout == "consecutive" and 2 or 1)
                 test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "ignored")
-                fixture.history.record(session, { { id = "next", role = "user", content = "A later statement." } })
+                fixture.record_chat(user, session, { { id = "next", role = "user", content = "A later statement." } })
                 fixture.extraction(id, {})
                 local next_capture, next_err = fixture.apply(user, "before_step", id, session, "agent-a")
                 test.is_nil(next_err, tostring(next_err))

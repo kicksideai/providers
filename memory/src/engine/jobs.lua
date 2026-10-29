@@ -50,11 +50,13 @@ type Capture = {
     component_id: string,
     host_kind: string,
     host_id: string,
+    host: any?,
     agent_id: string,
     from_event_id: string,
     to_event_id: string,
     span: { any },
     context: { any }?,
+    isolated: boolean?,
 }
 
 local function frozen_identity(): (any?, any?, error?)
@@ -95,7 +97,9 @@ local function new_derive_run(run_id: string, capture: Capture): (any?, any?, er
     end
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, nil, id_err end
-    local input: any = { span = capture.span, context = capture.context, owner_id = (identity :: any).principal.id }
+    local principal = (identity :: any).principal
+    local input: any = { span = capture.span, context = capture.context, isolated = capture.isolated, host = capture.host,
+        owner_id = principal.kind == "user" and not capture.isolated and principal.id or nil }
     return {
         id = run_id :: string, component_id = capture.component_id, run_type = types.RUN_TYPE.DERIVE,
         status = types.RUN_STATUS.SCHEDULED,
@@ -294,9 +298,10 @@ function M.derive_authorized(value: any): any
     if settings_err then return fail(run.id, settings_err) end
     local deadline = value.job.deadline
     local failed_stats = nil
+    local host = type(run.input) == "table" and run.input.host or nil
     local result, write_err = writer.write(run.component_id, "derive:" .. run.id, {
         source = types.ITEM_SOURCE.CAPTURE, deadline = deadline,
-        extra_events = run.host_kind ~= "content" and {
+        extra_events = host and {
             { type = types.EVENT.CAPTURE_ADVANCED, body = {
                 host_kind = run.host_kind, host_id = run.host_id, agent_id = run.agent_id, from_event_id = run.from_event_id, last_event_id = run.to_event_id,
             } },
@@ -306,7 +311,7 @@ function M.derive_authorized(value: any): any
         local fresh, read_err = runs.get(run.id)
         if read_err then return nil, read_err end
         if not fresh then return nil, types.not_found("memory run not found") end
-        if run.host_kind ~= "content" then
+        if host then
             local cursor, cursor_err = runs.cursor(run.component_id, run.host_kind, run.host_id)
             if cursor_err then return nil, cursor_err end
             if (cursor and cursor.last_event_id or "") ~= run.from_event_id then
@@ -319,21 +324,56 @@ function M.derive_authorized(value: any): any
         for _, message in ipairs(span) do
             events[message.id] = { at = types.utc(message.created_at), text = message.text }
         end
-        local candidates: any = {}
-        if #span > 0 then
-            local keys, keys_err = items.keys(run.component_id, types.scope_key(types.SCOPE.OWNER, types.trim(input.owner_id)), KEY_LIMIT)
-            if keys_err then return nil, keys_err end
-            local extracted, extract_err = models.extract(cfg.extraction_model, span, keys :: any, cfg.extraction_instructions, input.context)
-            if extract_err then return nil, extract_err end
-            candidates = extracted
+        local families = {}
+        for _, message in ipairs(span) do
+            local author = message.author
+            if type(author) == "table" and author.kind == "user" and author.id == input.owner_id then
+                families[types.SCOPE.OWNER] = true
+            elseif type(author) == "table" then
+                families[types.SCOPE.AGENT] = true
+            end
+        end
+        if not host then families[types.SCOPE.OWNER] = true end
+        local keys = {}
+        for _, scope in ipairs({{types.SCOPE.OWNER, types.trim(input.owner_id)}, {types.SCOPE.AGENT, run.agent_id or ""}}) do
+            if scope[2] ~= "" and families[scope[1]] then
+                local rows, keys_err = items.keys(run.component_id, types.scope_key(scope[1], scope[2]), KEY_LIMIT)
+                if keys_err then return nil, keys_err end
+                for _, row in ipairs(rows) do row.scope_family = scope[1]; keys[#keys + 1] = row end
+            end
+        end
+        local learning = input.isolated or not families[types.SCOPE.OWNER]
+        local candidates, extract_err = models.extract(cfg.extraction_model, span, keys, cfg.extraction_instructions, input.context, learning, input.owner_id)
+        if extract_err then return nil, extract_err end
+        local owner, learned = {}, {}
+        local authors = {}
+        for _, message in ipairs(span) do authors[message.id] = message.author end
+        for _, candidate in ipairs(candidates) do
+            local author = authors[candidate.event_id]
+            if models.scope_family(candidate, author, input.owner_id) == types.SCOPE.OWNER
+                or (not host and input.owner_id ~= nil) then
+                owner[#owner + 1] = candidate
+            elseif run.agent_id and run.agent_id ~= "" then
+                if candidate.kind == types.KIND.PROFILE_SLOT or candidate.kind == types.KIND.PREFERENCE then
+                    return nil, types.invalid("nonhuman evidence cannot establish an owner attribute")
+                end
+                learned[#learned + 1] = candidate
+            else
+                return nil, types.invalid("memory evidence has no authorized scope")
+            end
         end
         d.stats.candidates = #candidates
-        return nil, reconcile.decide(d, candidates, {
-            embedding_model = store.embedding_model, judge_model = cfg.judge_model,
-            scope_family = types.SCOPE.OWNER, scope_id = types.trim(input.owner_id),
-            host_kind = run.host_kind, host_id = run.host_id, events = events, run_id = run.id,
-            conversation = models.conversation(span, input.context),
-        })
+        for _, group in ipairs({{family = types.SCOPE.OWNER, id = input.owner_id, candidates = owner},
+            {family = types.SCOPE.AGENT, id = run.agent_id, candidates = learned}}) do
+            local decide_err = reconcile.decide(d, group.candidates, {
+                embedding_model = store.embedding_model, judge_model = cfg.judge_model,
+                scope_family = group.family, scope_id = types.trim(group.id),
+                host_kind = run.host_kind, host_id = run.host_id, events = events, run_id = run.id,
+                conversation = models.conversation(span, input.context),
+            })
+            if decide_err then return nil, decide_err end
+        end
+        return nil, nil
     end)
     if write_err then return fail(run.id, write_err, failed_stats) end
     local _, settle_err = ledger.settled_head(run.component_id, deadline)

@@ -43,7 +43,7 @@ local function define_tests()
             fixture.script.release(first, "structured_output")
             test.is_nil(fixture.script.await_release(first, "structured_output"))
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "summary", role = "user", content = "A working task." } })
+            fixture.record_chat(user, session, { { id = "summary", role = "user", content = "A working task." } })
             local _, unscripted_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
                 fixture.agent_context(second, session, "agent-a"))
             test.not_nil(unscripted_err)
@@ -60,7 +60,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "contact", role = "user", content = "I prefer weekly contact by email." } })
+            fixture.record_chat(user, session, { { id = "contact", role = "user", content = "I prefer weekly contact by email." } })
             fixture.extraction(id, {
                 fixture.candidate("preference", "contact_channel", "email", "The user prefers email.", "contact"),
                 fixture.candidate("preference", "contact_frequency", "weekly", "The user prefers weekly contact.", "contact"),
@@ -86,12 +86,12 @@ local function define_tests()
                 fixture.candidate("profile_slot", "home_city", "Oslo", "Lives in Oslo.", "initial"),
                 fixture.candidate("profile_slot", "home_city", "Bergen", "Lives in Bergen.", "update"),
                 fixture.candidate("fact", "programming", "Rust", "Compiles Rust software.", "independent"),
-                fixture.candidate("skill", "residence_detail", "Bergen", "Lives in Bergen.", "ambiguous"),
+                fixture.candidate("profile_slot", "residence_detail", "Bergen", "Lives in Bergen.", "ambiguous"),
             }
             for index, statement in ipairs(statements) do
                 local before = #fixture.script.requests(id, "structured_output")
                 local embeddings = #fixture.script.requests(user, "embed")
-                fixture.history.record(session, { { id = statement.event_id, role = "user", content = statement.content } })
+                fixture.record_chat(user, session, { { id = statement.event_id, role = "user", content = statement.content } })
                 fixture.extraction(id, { statement })
                 if index == 4 then fixture.relations(id, { "same" }) end
                 local _, err = fixture.apply(user, "before_step", id, session, "agent-a")

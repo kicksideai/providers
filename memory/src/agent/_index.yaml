@@ -30,6 +30,8 @@ entries:
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
       memory_ledger: kickside.memory.engine:ledger
+      agent_history: kickside.memory.agent:history
+      memory_recall: kickside.memory.engine:recall
 
   - name: capture
     kind: library.lua

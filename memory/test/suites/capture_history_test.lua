@@ -10,7 +10,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session = "s-" .. user
-            fixture.history.record(session, {
+            fixture.record_chat(user, session, {
                 { id = "earlier", role = "user", content = "An earlier conversation." },
                 { id = "outgoing", role = "user", content = "I live in Paris." },
                 { id = "incoming", role = "user", content = "A different agent handles this." },
@@ -41,7 +41,7 @@ local function define_tests()
                 local user = fixture.user()
                 local id = fixture.memory(user, { extraction_model = "test-bounded" })
                 local session = "s-" .. user
-                fixture.history.record(session, {
+                fixture.record_chat(user, session, {
                     { id = "a", role = "user", content = "The first message." },
                     { id = "b", role = "user", content = "The outgoing message." },
                     { id = "c", role = "user", content = "The incoming message." },

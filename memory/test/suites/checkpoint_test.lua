@@ -10,7 +10,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "summary", role = "user", content = "A working task." } })
+            fixture.record_chat(user, session, { { id = "summary", role = "user", content = "A working task." } })
             fixture.script.respond(id, "generate", "Continue the working task.")
             local payload = fixture.payload("checkpoint", session, "agent-a", {
                 agent = { id = "agent-a", model = "missing-agent-model" }, options = { model = "class:fast", max_tokens = 73 },
@@ -38,7 +38,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.history.record(session, {
+            fixture.record_chat(user, session, {
                 { id = "c1", role = "user", content = "Book the Lisbon hotel for May 3 to May 7." },
                 { id = "c2", role = "assistant", content = "Booked." },
             })
@@ -58,7 +58,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.history.record(session, {
+            fixture.record_chat(user, session, {
                 { id = "first", role = "user", content = string.rep("first ", 1000) },
                 { id = "second", role = "user", content = string.rep("second", 1000) },
                 { id = "third", role = "user", content = "third must not reach the checkpoint summary" },
@@ -81,7 +81,7 @@ local function define_tests()
 
         test.it("mirrors the run context selector contract for checkpoints windows and open ranges", function()
             local session = "history-" .. fixture.user()
-            fixture.history.record(session, {
+            fixture.record_chat(user, session, {
                 { id = "a", role = "user", content = "first" },
                 { id = "b", role = "assistant", content = "second" },
                 { id = "c", role = "user", content = "third" },
@@ -106,7 +106,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "model-1", role = "user", content = "I live in Oslo." } })
+            fixture.record_chat(user, session, { { id = "model-1", role = "user", content = "I live in Oslo." } })
 
             fixture.script.fail(id, "generate", "model rejected the summary request", errors.INVALID, true)
             local _, invalid_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },

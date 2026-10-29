@@ -121,16 +121,17 @@ local function define_tests()
             }, "The user needs tickets.", "seed", "2026-09-01T00:00:00Z") }, "goal-state-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "question", role = "assistant", content = "Where are you heading?" } })
+            fixture.record_chat(user, session, { { id = "request", role = "user", content = "Help me plan a trip." }, { id = "question", role = "assistant", content = "Where are you heading?" } })
+            fixture.extraction(id, {})
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 1)
-            fixture.history.record(session, { { id = "answer", role = "user", content = "London" } })
+            fixture.record_chat(user, session, { { id = "answer", role = "user", content = "London" } })
             fixture.extraction(id, { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", "answer") })
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 2)
-            local prompt = fixture.script.prompts(id, "structured_output")[1].system
+            local prompt = fixture.script.prompts(id, "structured_output")[2].system
             test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
-            local schema = fixture.script.requests(id, "structured_output")[1]
+            local schema = fixture.script.requests(id, "structured_output")[2]
             test.eq(schema.properties.plans.items.properties.value.properties.details.minLength, 1)
         end)
 
@@ -250,7 +251,7 @@ local function define_tests()
             fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "seed") }, "normalization-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "goal", role = "user", content = "I need tickets to London." } })
+            fixture.record_chat(user, session, { { id = "goal", role = "user", content = "I need tickets to London." } })
             fixture.script.respond(user, "structured_output", { mappings = { ["1"] = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } } })
             local normalized, err = fixture.op(user, "model_step", { step = "normalize", candidates = {
                 fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal"),

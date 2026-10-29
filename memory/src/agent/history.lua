@@ -44,18 +44,17 @@ end
 
 function M.span_entry(event: any, cfg: any): any?
     local metadata = type(event.metadata) == "table" and event.metadata or {}
-    if metadata.memory_ids ~= nil then return nil end
     local role = event.role
     if (role == "user" or role == "assistant") and cfg.capture_conversation ~= false then
         local text = event_text(event)
         if text == "" then return nil end
-        return { id = tostring(event.id), role = role, text = text, created_at = event.created_at }
+        return { id = tostring(event.id), role = role, author = event.author, text = text, created_at = event.created_at }
     end
     if role == "function" and cfg.capture_experience == true then
         local name = types.trim(metadata.function_name)
         local status = types.trim(metadata.status)
         if name == "" or status == "" then return nil end
-        return { id = tostring(event.id), role = "tool", text = "tool " .. name .. " " .. status, created_at = event.created_at }
+        return { id = tostring(event.id), role = "tool", author = event.author, text = "tool " .. name .. " " .. status, created_at = event.created_at }
     end
     return nil
 end

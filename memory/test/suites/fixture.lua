@@ -15,8 +15,19 @@ local M = { script = script, history = history }
 
 local RUN_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.suites:history_binding" }
 
+function M.record_chat(user_id: string, host_id: string, messages: { any })
+    for _, message in ipairs(messages) do
+        if not message.author then
+            if message.role == "user" then message.author = {kind = "user", id = user_id}
+            elseif message.role == "assistant" then message.author = {kind = "agent", id = "agent-a"}
+            else message.author = {kind = "system"} end
+        end
+    end
+    history.record(host_id, messages)
+end
+
 function M.payload(phase: string, session_id: string, agent_id: string, extra: any?): any
-    local host = { kind = "session", session_id = session_id }
+    local host = { kind = "session", id = session_id, session_id = session_id }
     local payload = {
         phase = phase, host = host, agent = { id = agent_id, model = "test-fast" },
         run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host },
@@ -27,7 +38,7 @@ function M.payload(phase: string, session_id: string, agent_id: string, extra: a
 end
 
 function M.agent_context(memory_id: string, session_id: string, agent_id: string, extra: any?): any
-    local host = { kind = "session", session_id = session_id }
+    local host = { kind = "session", id = session_id, session_id = session_id }
     local context = {
         memory_id = memory_id, thread_id = memory_id, agent_id = agent_id,
         agent_run = { host = host, agent = { id = agent_id }, run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host } },

@@ -7,6 +7,8 @@ local context = require("agent_context")
 local items = require("memory_items")
 local runs = require("memory_runs")
 local ledger = require("memory_ledger")
+local history = require("agent_history")
+local recall = require("memory_recall")
 
 local M = {}
 
@@ -14,7 +16,7 @@ local AGENT_SOUL_KINDS = { types.KIND.IDENTITY, types.KIND.RULE, types.KIND.SKIL
 local OWNER_SOUL_KINDS = { types.KIND.PROFILE_SLOT, types.KIND.PREFERENCE, types.KIND.PLAN }
 
 local KIND_ORDER: { [string]: integer } = {
-    identity = 1, rule = 2, profile_slot = 3, preference = 4, plan = 5, skill = 6, lesson = 7,
+    identity = 1, rule = 2, profile_slot = 3, preference = 4, plan = 5, skill = 6, lesson = 7, fact = 8,
 }
 
 local function sort_soul(rows: { any })
@@ -65,7 +67,9 @@ function M.pin(payload: any): (any?, error?)
     local id, store, err = context.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
     local host_kind, host_id = context.host_ref(payload.host)
-    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, types.actor_id()), OWNER_SOUL_KINDS)
+    local human_id = types.human_id()
+    local rows, rows_err = {}, nil
+    if human_id then rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, human_id), OWNER_SOUL_KINDS) end
     if rows_err then return nil, rows_err end
     local visible: { any } = {}
     local cutoff = types.after_seconds(-(store :: any).effective.plan_expiry_days * 86400)
@@ -75,10 +79,36 @@ function M.pin(payload: any): (any?, error?)
         end
     end
     local text, pinned = render(visible, "## What you know about the user\nUse these facts as defaults. Do not ask the user to repeat or confirm an attribute shown here. Apply it when relevant, state the assumption and let the user correct it. Ask only for missing details.", (store :: any).effective.soul_owner_max_chars)
+    local agent_id = types.trim(payload.agent and payload.agent.id)
+    local learned, learned_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), AGENT_SOUL_KINDS)
+    if learned_err then return nil, learned_err end
+    local task = {}
+    if payload.run_context then
+        local input, input_err = history.read(payload, {mode = "window", last = 20})
+        if input_err then return nil, input_err end
+        for _, event in ipairs(input.events) do
+            if event.role == "user" and type(event.content) == "string" then task[#task + 1] = event.content end
+        end
+    end
+    if #task > 0 and agent_id ~= "" then
+        local relevant, relevant_err = recall.search({component_id = id :: string, query = table.concat(task, "\n"),
+            limit = (store :: any).effective.recall_max_items, kinds = {types.KIND.SKILL, types.KIND.LESSON, types.KIND.FACT, types.KIND.PLAN},
+            scopes = {types.scope_key(types.SCOPE.AGENT, agent_id)}})
+        if relevant_err then return nil, relevant_err end
+        local selected = {}
+        for _, row in ipairs(learned) do
+            if row.kind == types.KIND.RULE or row.kind == types.KIND.IDENTITY then selected[#selected + 1] = row end
+        end
+        for _, row in ipairs(relevant) do selected[#selected + 1] = row end
+        learned = selected
+    end
+    local agent_text, agent_pinned = render(learned, "## Agent memory", (store :: any).effective.soul_agent_max_chars)
+    if agent_text ~= "" then text = agent_text .. (text ~= "" and ("\n\n" .. text) or "") end
+    for _, row in ipairs(agent_pinned) do pinned[#pinned + 1] = row end
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
     return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent and payload.agent.id),
-        head :: integer, text, pinned, types.scope_key(types.SCOPE.OWNER, types.actor_id()))
+        head :: integer, text, pinned, human_id and types.scope_key(types.SCOPE.OWNER, human_id) or "")
 end
 
 -- A host keeps its activation snapshot until archive, restore or forget clears the pin.

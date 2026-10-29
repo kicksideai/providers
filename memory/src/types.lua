@@ -4,6 +4,7 @@ local time = require("time")
 local json = require("json")
 local canonical_json = require("canonical_json")
 local security = require("security")
+local execution_identity = require("execution_identity")
 
 local M = {}
 
@@ -212,6 +213,14 @@ end
 function M.actor_id(): string
     local actor = security.actor()
     return actor and actor:id() or ""
+end
+
+function M.human_id(): string?
+    local id = M.actor_id()
+    if id == "" then return nil end
+    local principal, err = execution_identity.principal_of_key(id)
+    if err then error(err) end
+    return principal.kind == "user" and principal.id or nil
 end
 
 function M.scope_key(scope_family: string, scope_id: string): string

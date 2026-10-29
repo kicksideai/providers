@@ -55,7 +55,7 @@ local function define_tests()
             local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session_id = "s-" .. user
             local source = string.rep("private-source-", 2000)
-            fixture.history.record(session_id, { { id = "oversized", role = "user", content = source } })
+            fixture.record_chat(user, session_id, { { id = "oversized", role = "user", content = source } })
             local _, err = fixture.apply(user, "before_step", id, session_id, "agent-a")
             test.is_nil(err, tostring(err))
             local finished = fixture.wait_runs(user, id, "derive", 1)[1]
@@ -83,7 +83,7 @@ local function define_tests()
             local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "event")
             local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", "event")
             for i = 1, 3 do fixture.extraction(id, { good, bad }) end
-            fixture.history.record(session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
+            fixture.record_chat(user, session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") },
                 fixture.agent_context(id, session_id, "agent-a"))
             test.is_nil(err, tostring(err))
@@ -180,7 +180,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session_id = "s-sources-" .. user
-            fixture.history.record(session_id, {
+            fixture.record_chat(user, session_id, {
                 { id = "line-1", role = "user", content = "I started teaching chemistry at Lincoln Academy." },
                 { id = "line-2", role = "assistant", content = "Congratulations on the new role." },
             })

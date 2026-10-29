@@ -9,8 +9,8 @@ local M = {}
 
 function M.visible_scopes(agent_id: string?): { string }
     local scopes: { string } = {}
-    local actor_id = types.actor_id()
-    if actor_id ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.OWNER, actor_id) end
+    local actor_id = types.human_id()
+    if actor_id then scopes[#scopes + 1] = types.scope_key(types.SCOPE.OWNER, actor_id) end
     local agent = types.trim(agent_id)
     if agent ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.AGENT, agent) end
     return scopes

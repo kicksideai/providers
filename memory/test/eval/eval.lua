@@ -53,7 +53,7 @@ end
 
 local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer,
     scripted: any?, verdict: string?, seed: boolean?, judgments: any?): (any?, string?)
-    fixture.history.record(session, stamp(messages, at))
+    fixture.record_chat(user, session, stamp(messages, at))
     if scripted then fixture.script.hold(memory, "structured_output") end
     local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
         fixture.agent_context(memory, session, "eval-agent"))

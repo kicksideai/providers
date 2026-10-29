@@ -43,9 +43,12 @@ function M.record(host_id: string, messages: { any })
     if read_err then conn:release(); error(tostring(read_err)) end
     local seq = assert(tonumber(rows[1].n))
     for _, message in ipairs(messages) do
+        local metadata = {}
+        for key, value in pairs(message.metadata or {}) do metadata[key] = value end
+        metadata.author = message.author
         seq = seq + 1
         local _, write_err = conn:execute("INSERT INTO app_history (host_id, seq, id, role, content, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            { host_id, seq, message.id, message.role, message.content, json.encode(message.metadata or {}),
+            { host_id, seq, message.id, message.role, message.content, json.encode(metadata),
                 message.created_at or "2026-10-01T10:00:00Z" })
         if write_err then conn:release(); error(tostring(write_err)) end
     end
@@ -58,7 +61,7 @@ local function all(conn: any, host_id: string): ({ any }?, any?)
     local out = {}
     for _, row in ipairs(rows) do
         out[#out + 1] = { id = row.id, role = row.role, content = row.content, raw_content = row.content,
-            metadata = assert(json.decode(row.metadata)), created_at = row.created_at }
+            author = assert(json.decode(row.metadata)).author, metadata = assert(json.decode(row.metadata)), created_at = row.created_at }
     end
     return out, nil
 end
@@ -87,7 +90,7 @@ end
 
 local function select_events(conn: any, args: any): ({ any }?, string?)
     local host = args.host or {}
-    local host_id = tostring(host.session_id or "")
+    local host_id = tostring(host.id or host.session_id or "")
     local events, all_err = all(conn, host_id)
     if all_err then return nil, tostring(all_err) end
     local sel = args.selector or { mode = "since_checkpoint" }

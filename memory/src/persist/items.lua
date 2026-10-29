@@ -365,7 +365,7 @@ local function source_lines(conn: any, component_id: string, item_id: string): (
         for _, messages in ipairs({ (input :: any).span or {}, (input :: any).context or {} }) do
             for _, message in ipairs(messages) do
                 if tostring(message.id) == row.event_id then
-                    lines[row.event_id] = { role = message.role, text = message.text, created_at = message.created_at }
+                    lines[row.event_id] = { role = message.role, author = message.author, text = message.text, created_at = message.created_at }
                 end
             end
         end

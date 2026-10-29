@@ -83,21 +83,41 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
     return { created = true }, nil
 end
 
-function M.capture_available_tx(tx: any, sqlite: boolean, run: RunInput, expected: string): (any?, error?)
-    local rows, read_err = tx:query(
+local function capture_state(conn: any, sqlite: boolean, run: {component_id: string, host_kind: string?, host_id: string?}, lock: boolean): (any?, error?)
+    local rows, read_err = conn:query(
         "SELECT last_event_id FROM kickside_memory_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3" ..
-        (sqlite and "" or " FOR UPDATE"), { run.component_id, run.host_kind, run.host_id })
+        (lock and not sqlite and " FOR UPDATE" or ""), {run.component_id, run.host_kind, run.host_id})
     if read_err then return nil, types.failed("memory cursor read failed", read_err) end
-    local current = rows and rows[1] and tostring(rows[1].last_event_id or "") or nil
-    if (current or "") ~= expected then return { available = false }, nil end
-    local active, active_err = tx:query([[SELECT r.id FROM kickside_memory_runs r
+    local current = rows and rows[1] and tostring(rows[1].last_event_id or "") or ""
+    local active, active_err = conn:query([[SELECT r.id, r.from_event_id, r.to_event_id FROM kickside_memory_runs r
         JOIN kickside_job j ON j.id = r.job_id
         WHERE r.component_id = $1 AND r.host_kind = $2 AND r.host_id = $3
-        AND r.run_type = $4 AND r.status <> $5 AND j.status NOT IN ('done', 'dead', 'cancelled') LIMIT 1]],
-        { run.component_id, run.host_kind, run.host_id, types.RUN_TYPE.DERIVE, types.RUN_STATUS.SUCCEEDED })
+        AND r.run_type = $4 AND r.agent_id <> '' AND r.status <> $5 AND j.status NOT IN ('done', 'dead', 'cancelled')
+        ORDER BY r.created_at, r.id]],
+        {run.component_id, run.host_kind, run.host_id, types.RUN_TYPE.DERIVE, types.RUN_STATUS.SUCCEEDED})
     if active_err then return nil, types.failed("memory capture ownership read failed", active_err) end
-    if active and #active > 0 then return { available = false, run_id = active[1].id }, nil end
-    return { available = true }, nil
+    local position = current
+    for _, pending in ipairs(active or {}) do
+        if (pending.from_event_id or "") ~= position then
+            return {committed = current, position = current, blocked = true, run_id = active[1].id}, nil
+        end
+        position = pending.to_event_id
+    end
+    return {committed = current, position = position, run_id = active and active[1] and active[1].id}, nil
+end
+
+function M.capture_position(component_id: string, host_kind: string, host_id: string): (string?, error?)
+    return db.read(function(conn: any, sqlite: boolean): (string?, error?)
+        local state, err = capture_state(conn, sqlite, {component_id = component_id, host_kind = host_kind, host_id = host_id}, false)
+        if err then return nil, err end
+        return state.position, nil
+    end)
+end
+
+function M.capture_available_tx(tx: any, sqlite: boolean, run: RunInput, expected: string): (any?, error?)
+    local state, err = capture_state(tx, sqlite, run, true)
+    if err then return nil, err end
+    return {available = state.committed == expected and state.run_id == nil, run_id = state.run_id}, nil
 end
 
 function M.insert_tx(tx: any, run: RunInput): (any?, error?)
@@ -117,9 +137,9 @@ end
 function M.schedule(run: RunInput, params: any, expected: string?, following: { any }?): (any?, error?)
     local scheduled, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any, error?)
         if expected ~= nil then
-            local state, state_err = M.capture_available_tx(tx, sqlite, run, expected)
+            local state, state_err = capture_state(tx, sqlite, run, true)
             if state_err then return nil, state_err end
-            if not state.available then return { scheduled = false, run_id = state.run_id }, nil end
+            if state.blocked or state.position ~= expected then return {scheduled = false, run_id = state.run_id}, nil end
         end
         local batch = { { run = run, params = params } }
         for _, entry in ipairs(following or {}) do batch[#batch + 1] = entry end

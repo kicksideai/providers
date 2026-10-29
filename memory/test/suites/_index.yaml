@@ -42,6 +42,7 @@ entries:
       agent: wippy.agent:agent
       llm_prompt: wippy.llm:prompt
       agent_lifecycle: wippy.agent:lifecycle_runtime
+      memory_recall: kickside.memory.engine:recall
 
   - name: history
     kind: library.lua
@@ -318,6 +319,16 @@ entries:
     kind: function.lua
     meta: { type: test, suite: memory_bindings, timeout: 300s }
     source: file://bindings_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: runner_memory_test
+    kind: function.lua
+    meta: { type: test, suite: memory_runners, timeout: 300s }
+    source: file://runner_memory_test.lua
     method: run
     modules: [json]
     imports:

@@ -125,7 +125,7 @@ local function define_tests()
             local id = fixture.memory(user)
             fixture.remember(user, id, { fixture.candidate("preference", "format", "numbered steps", "The user prefers numbered steps.", "m1") }, "dataflow-pin")
             fixture.settle(user, id)
-            local host = { kind = "dataflow", dataflow_id = "flow-" .. user, node_id = "node-a", iteration = 1 }
+            local host = { kind = "dataflow", id = "run-" .. user, dataflow_id = "flow-" .. user, node_id = "node-a", iteration = 1 }
             local context = fixture.agent_context(id, "unused", "agent-a")
             context.agent_run.host = host
             local payload = fixture.payload("activate", "unused", "agent-a", {host = host})

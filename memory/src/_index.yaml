@@ -137,6 +137,7 @@ entries:
     modules: [time, json, security]
     imports:
       canonical_json: kickside.contract:canonical_json
+      execution_identity: kickside.execution:execution_identity
 
   - name: config
     kind: library.lua
@@ -358,8 +359,8 @@ entries:
             section: learning
             order: 5
             type: string
-            title: Memory policy
-            description: Extra instructions for what this memory keeps.
+            title: Memory rules
+            description: Tell this memory what to remember and what to skip. These rules apply to conversations and isolated learning, for example, never remember access codes.
             format: textarea
           recall_max_items:
             section: recall
@@ -447,6 +448,11 @@ entries:
             title: Memory
             description: The memory this agent captures into and recalls from.
             role: picker
+          learn_in_isolation:
+            type: boolean
+            default: false
+            title: Learn from isolated runs
+            description: Keep reusable lessons, skills and stable knowledge from runs without a human conversation. Skip task inputs and one-off results. Recall stays active when this is off.
         additionalProperties: false
     prompt: |
       Memory learns from the conversation automatically, including facts, corrections
