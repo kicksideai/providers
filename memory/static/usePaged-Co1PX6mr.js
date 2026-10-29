@@ -70,7 +70,10 @@ function O(e) {
   const r = a(e), n = { host_kind: i(r.host_kind, "provenance host_kind"), host_id: i(r.host_id, "provenance host_id"), event_id: i(r.event_id, "provenance event_id"), recorded_at: typeof r.recorded_at == "string" ? r.recorded_at : void 0 };
   if (r.line !== void 0) {
     const t = a(r.line);
-    n.line = { role: c(t.role, ["user", "assistant", "tool"], "source line role"), text: i(t.text, "source line text"), created_at: typeof t.created_at == "string" ? t.created_at : void 0 };
+    if (n.line = { role: c(t.role, ["user", "assistant", "tool"], "source line role"), text: i(t.text, "source line text"), created_at: typeof t.created_at == "string" ? t.created_at : void 0 }, t.author !== void 0) {
+      const o = a(t.author);
+      n.line.author = { kind: c(o.kind, ["user", "agent", "system"], "source author kind"), id: o.id === void 0 ? void 0 : i(o.id, "source author id") };
+    }
   }
   if (r.memory !== void 0) {
     const t = a(r.memory);
@@ -206,4 +209,4 @@ export {
   J as r,
   W as u
 };
-//# sourceMappingURL=usePaged-B6B3LhXE.js.map
+//# sourceMappingURL=usePaged-Co1PX6mr.js.map

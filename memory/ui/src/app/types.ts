@@ -20,7 +20,9 @@ export interface MemoryItem {
   source: 'capture' | 'reflection' | 'owner'
 }
 
-export interface SourceLine { role: 'user' | 'assistant' | 'tool'; text: string; created_at?: string }
+export interface EventAuthor { kind: 'user' | 'agent' | 'system'; id?: string }
+
+export interface SourceLine { author?: EventAuthor; role: 'user' | 'assistant' | 'tool'; text: string; created_at?: string }
 
 export interface SourceMemory { id: string; kind: MemoryKind; key: string; content: string; status: MemoryStatus }
 
@@ -93,7 +95,7 @@ export function pageOf<T>(data: unknown, field: string): Page<T> {
   return { rows: data[field] as T[], next: typeof next === 'number' ? next : null }
 }
 
-export interface MemoryContext { memory_id: string }
+export interface MemoryContext { memory_id: string; learn_in_isolation?: boolean }
 
 export interface MemoryEvents {
   'config-changed': { context: MemoryContext }

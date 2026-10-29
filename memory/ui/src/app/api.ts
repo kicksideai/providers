@@ -33,6 +33,10 @@ function provenanceRow(raw: unknown): Provenance {
   if (origin.line !== undefined) {
     const line = response(origin.line)
     row.line = { role: oneOf(line.role, ['user', 'assistant', 'tool'] as const, 'source line role'), text: text(line.text, 'source line text'), created_at: typeof line.created_at === 'string' ? line.created_at : undefined }
+    if (line.author !== undefined) {
+      const author = response(line.author)
+      row.line.author = { kind: oneOf(author.kind, ['user', 'agent', 'system'] as const, 'source author kind'), id: author.id === undefined ? undefined : text(author.id, 'source author id') }
+    }
   }
   if (origin.memory !== undefined) {
     const memory = response(origin.memory)

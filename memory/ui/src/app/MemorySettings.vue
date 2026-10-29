@@ -14,6 +14,7 @@ const props = useProps<{ config?: unknown }>()
 const emit = useEvents<MemoryEvents>()
 
 const memoryId = ref('')
+const learnInIsolation = ref(false)
 const configError = ref('')
 const query = ref('')
 const debounced = useDebounced(query, 250, (value) => value.trim())
@@ -22,6 +23,7 @@ watch(() => props.value.config, (raw) => {
   try {
     const context = parseConfig(raw)
     memoryId.value = typeof context.memory_id === 'string' ? context.memory_id : ''
+    learnInIsolation.value = context.learn_in_isolation === true
     configError.value = ''
   } catch (err) { configError.value = errorText(err) }
 }, { immediate: true, deep: true })
@@ -52,7 +54,7 @@ watch(memoryId, async (id) => {
 }, { immediate: true })
 
 function publish(): void {
-  emit('config-changed', { context: { memory_id: memoryId.value } })
+  emit('config-changed', { context: { memory_id: memoryId.value, learn_in_isolation: learnInIsolation.value } })
 }
 
 const choicesList = computed(() => choices.rows.value)
@@ -75,9 +77,15 @@ function pick(choice: MemoryChoice): void {
 <template>
   <div v-if="configError" class="kx-notice error">{{ configError }}</div>
   <div v-else class="mm-trait">
+    <label class="mm-toggle">
+      <input v-model="learnInIsolation" type="checkbox" @change="publish" />
+      <span>Learn from isolated runs</span>
+    </label>
+    <p class="mm-hint">Keep reusable lessons, skills and stable knowledge from runs without a human conversation. Task inputs and one-off results stay out of memory. Recall stays active when this is off.</p>
+
     <div class="mm-field">
       <span id="trait_memory" class="mm-label">Memory</span>
-      <span class="mm-hint">Memory learns from conversations automatically and supplies recall. Models, limits and cadence are set on the memory.</span>
+      <span class="mm-hint">Memory learns from conversations automatically and supplies recall. Models, limits, memory rules and cadence are set on the memory.</span>
       <div v-if="resolveError" class="kx-notice error">
         <Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ resolveError }}</span>
       </div>

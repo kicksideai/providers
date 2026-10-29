@@ -114,7 +114,6 @@ async function forget() {
   }
 }
 
-const SPEAKER: Record<string, string> = { user: 'They said', assistant: 'The agent said', tool: 'Tool result' }
 
 function sourceIcon(origin: Provenance): string {
   if (origin.host_kind === 'item') return 'tabler:brain'
@@ -124,7 +123,13 @@ function sourceIcon(origin: Provenance): string {
 }
 
 function sourceLabel(origin: Provenance): string {
-  if (origin.line) return SPEAKER[origin.line.role] || 'Message'
+  if (origin.line) {
+    const author = origin.line.author
+    if (author?.kind === 'user') return 'They said'
+    if (author?.kind === 'system') return 'Workflow input'
+    if (author?.kind === 'agent') return item.value?.scope_family === 'agent' && item.value.scope_id === author.id ? 'The agent said' : `Task from ${author.id || 'an agent'}`
+    return 'Message'
+  }
   if (origin.host_kind === 'item') return origin.memory ? 'From the memory' : 'From a memory that is no longer kept'
   if (origin.host_kind === 'content') return 'A document'
   if (origin.host_kind === 'dataflow') return 'A workflow run'

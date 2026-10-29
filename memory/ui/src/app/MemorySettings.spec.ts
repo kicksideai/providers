@@ -34,3 +34,15 @@ it.each([
   expect(wrapper.text()).not.toContain(rawError)
   wrapper.unmount()
 })
+
+it('preserves isolated learning when selecting a memory and publishes toggle changes', async () => {
+  state.config = { memory_id: 'selected', learn_in_isolation: true }
+  state.resolve = { kb_type: 'memory', name: 'Selected memory' }
+  const wrapper = mount(MemorySettings)
+  await flushPromises()
+  const checkbox = wrapper.get('input[type="checkbox"]')
+  expect((checkbox.element as HTMLInputElement).checked).toBe(true)
+  await checkbox.setValue(false)
+  expect(state.emit).toHaveBeenLastCalledWith('config-changed', { context: { memory_id: 'selected', learn_in_isolation: false } })
+  wrapper.unmount()
+})

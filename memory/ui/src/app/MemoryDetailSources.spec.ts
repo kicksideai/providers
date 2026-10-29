@@ -7,7 +7,7 @@ import MemoryDetail from './MemoryDetail.vue'
 
 const item = { id: 'lesson-1', kind: 'lesson', scope_family: 'owner', scope_id: 'owner', key: 'teaching_context', cardinality: 'multi', content: 'Frame examples for a chemistry classroom.', status: 'current', version: 1, valid_at: '2026-01-01T00:00:00Z', recorded_at: '2026-01-01T00:00:00Z', source: 'capture' }
 const provenance = [
-  { host_kind: 'session', host_id: 'session-7', event_id: 'line-1', recorded_at: '2026-01-01T00:00:00Z', line: { role: 'user', text: 'I started teaching chemistry at Lincoln Academy.' } },
+  { host_kind: 'session', host_id: 'session-7', event_id: 'line-1', recorded_at: '2026-01-01T00:00:00Z', line: { role: 'user', author: {kind: 'user', id: 'human:test'}, text: 'I started teaching chemistry at Lincoln Academy.' } },
   { host_kind: 'item', host_id: 'employer-1', event_id: '', recorded_at: '2026-01-01T00:00:00Z', memory: { id: 'employer-1', kind: 'profile_slot', key: 'employer', content: 'The user works at Lincoln Academy.', status: 'current' } },
 ]
 vi.mock('@wippy-fe/proxy', () => ({ api: { get: vi.fn(() => Promise.resolve({ data: { item, provenance, versions: [item] } })) } }))
@@ -48,5 +48,37 @@ it('shows history only when the memory has earlier versions', async () => {
   const wrapper = render()
   await flushPromises()
   expect(wrapper.find('.mm-timeline').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('labels a parent-authored user-role source as a task', async () => {
+  const line = provenance[0]!.line!
+  Object.assign(line, { author: { kind: 'agent', id: 'agent:coordinator' } })
+  const wrapper = render()
+  await flushPromises()
+  expect(wrapper.text()).toContain('Task from agent:coordinator')
+  Object.assign(line, { author: {kind: 'user', id: 'human:test'} })
+  wrapper.unmount()
+})
+
+it('labels workflow-authored input by its author', async () => {
+  const line = provenance[0]!.line!
+  Object.assign(line, { author: { kind: 'system' } })
+  const wrapper = render()
+  await flushPromises()
+  expect(wrapper.text()).toContain('Workflow input')
+  Object.assign(line, { author: {kind: 'user', id: 'human:test'} })
+  wrapper.unmount()
+})
+
+it('labels a source written by the running agent', async () => {
+  const previous = {scope_family: item.scope_family, scope_id: item.scope_id}
+  Object.assign(item, {scope_family: 'agent', scope_id: 'agent:reader'})
+  Object.assign(provenance[0]!.line!, {author: {kind: 'agent', id: 'agent:reader'}})
+  const wrapper = render()
+  await flushPromises()
+  expect(wrapper.text()).toContain('The agent said')
+  Object.assign(item, previous)
+  Object.assign(provenance[0]!.line!, {author: {kind: 'user', id: 'human:test'}})
   wrapper.unmount()
 })
