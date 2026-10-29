@@ -53,7 +53,12 @@ end
 
 local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer,
     scripted: any?, verdict: string?, seed: boolean?, judgments: any?): (any?, string?)
-    fixture.record_chat(user, session, stamp(messages, at))
+    local recorded = stamp(messages, at)
+    local ids = {}
+    for index, message in ipairs(recorded) do ids[message.id] = index end
+    fixture.record_chat(user, session, recorded)
+    local event_ids = {}
+    for source_id, index in pairs(ids) do event_ids[source_id] = recorded[index].id end
     if scripted then fixture.script.hold(memory, "structured_output") end
     local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
         fixture.agent_context(memory, session, "eval-agent"))
@@ -67,12 +72,22 @@ local function capture(user: string, memory: string, session: string, messages: 
         for i, run in ipairs(current) do
             local ids, candidates = {}, {}
             for _, message in ipairs(run.input.span) do ids[message.id] = true end
-            for _, candidate in ipairs(scripted) do
-                if ids[candidate.event_id] then candidates[#candidates + 1] = candidate end
+            for _, expected in ipairs(scripted) do
+                local candidate = {}
+                for key, value in pairs(expected) do candidate[key] = value end
+                local candidate_event_id = candidate.event_id
+                if type(candidate_event_id) == "string" then
+                    local native_event_id = event_ids[candidate_event_id] or candidate_event_id
+                    candidate.event_id = native_event_id
+                    if ids[native_event_id] then candidates[#candidates + 1] = candidate end
+                end
             end
             fixture.extraction(memory, candidates)
             for index, candidate in ipairs(scripted) do
-                if ids[candidate.event_id] and judgments and judgments[index] then fixture.relations(memory, judgments[index]) end
+                if type(candidate.event_id) == "string" then
+                    local event_id = event_ids[candidate.event_id] or candidate.event_id
+                    if ids[event_id] and judgments and judgments[index] then fixture.relations(memory, judgments[index]) end
+                end
             end
             if not seed then
                 for _, candidate in ipairs(candidates) do
@@ -150,8 +165,7 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
     return action, json.encode(stats) .. " " .. held(user, memory)
 end
 
-local function run_case(case: any, target: any): any
-    local user = target.user_id or fixture.user("evaluser")
+local function run_case(case: any, target: any, user: string): any
     local memory = fixture.memory(user, { extraction_model = target.extraction_model, judge_model = target.judge_model },
         target.embedding_model)
     local actual, detail = outcome(case, target, user, memory)
@@ -198,7 +212,8 @@ end
 
 function M.run(target: any): ({ any }, { [string]: any })
     local rows = {}
-    for _, case in ipairs(cases) do rows[#rows + 1] = run_case(case, target) end
+    local user = target.user_id or fixture.user("evaluser")
+    for _, case in ipairs(cases.for_user(user)) do rows[#rows + 1] = run_case(case, target, user) end
     return rows, M.score(rows)
 end
 

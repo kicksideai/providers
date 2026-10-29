@@ -467,9 +467,18 @@ local function define_tests()
         test.it("retains an invalid stored identity as the derive run diagnostic", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local run_id = "consolidate:" .. id
+            local session = "s-" .. user
+            local source = { id = "identity-source", role = "user", author = { kind = "user", id = user }, content = "I prefer quiet rooms." }
+            fixture.record_chat(user, session, { source })
+            local run_id = "identity-derive:" .. id
+            local insert_err = fixture.insert_run(id, run_id, "scheduled", {
+                span = { { id = source.id, role = source.role, author = source.author, text = source.content, created_at = "2026-01-01T00:00:00Z" } },
+                owner_id = user,
+            })
+            test.is_nil(insert_err, tostring(insert_err))
             local db = fixture.db()
-            local _, setup_err = db:execute("UPDATE kickside_memory_runs SET run_type = 'derive', actor_context = $1 WHERE id = $2", { "{", run_id })
+            local _, setup_err = db:execute("UPDATE kickside_memory_runs SET host_kind = $1, host_id = $2, agent_id = $3, to_event_id = $4, actor_context = $5 WHERE id = $6",
+                { "session", session, "agent-a", source.id, "{", run_id })
             db:release()
             test.is_nil(setup_err, tostring(setup_err))
             local result, worker_err = fixture.op(user, "derive_worker", { component_id = id, run_id = run_id })

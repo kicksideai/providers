@@ -204,6 +204,7 @@ local function define_tests()
             local session = "s-" .. user
             fixture.remember(user, id, { fixture.candidate("preference", "drink", "matcha", "The user drinks matcha.", "p1") }, "pin-1")
             fixture.settle(user, id)
+            fixture.record_chat(user, session, {})
             local context = fixture.agent_context(id, session, "agent-a")
             fixture.op(user, "apply", { payload = fixture.payload("activate", session, "agent-a") }, context)
             local before = fixture.op(user, "prompt", {}, context)

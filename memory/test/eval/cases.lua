@@ -1,8 +1,9 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local fixture = require("fixture")
 
-local function u(id: string, text: string): any return { id = id, role = "user", content = text } end
-local function a(id: string, text: string): any return { id = id, role = "assistant", content = text } end
+local function cases_for(user: string): { any }
+local function u(id: string, text: string): any return { id = id, role = "user", author = { kind = "user", id = user }, content = text } end
+local function a(id: string, text: string): any return { id = id, role = "assistant", author = { kind = "agent", id = "eval-agent" }, content = text } end
 local c = fixture.candidate
 
 local function goal(key: string, details: string, event_id: string, next_step: string?): any
@@ -137,7 +138,7 @@ return {
     { name = "recalled memory is not captured", expect = "IGNORE",
         seed = { u("s1", "I prefer window seats.") },
         follow = {
-            { id = "f1", role = "developer", content = "- The user lives in Rome.\n- The user likes opera.", metadata = { memory_ids = { "m-1", "m-2" } } },
+            { id = "f1", role = "developer", author = { kind = "system" }, content = "- The user lives in Rome.\n- The user likes opera.", metadata = { memory_ids = { "m-1", "m-2" } } },
             u("f2", "Thanks!"),
         },
         ideal = { seed = { c("preference", "seat", "window", "The user prefers window seats.", "s1") }, follow = {} } },
@@ -166,3 +167,6 @@ return {
                 "When planning the user's trips, propose rail routes that allow dogs and avoid long car transfers, since Pepper always comes along.", ""), { 1, 2, 3 }) },
  } },
 }
+end
+
+return { for_user = cases_for }

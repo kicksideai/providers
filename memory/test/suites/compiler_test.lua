@@ -68,6 +68,7 @@ local function define_tests()
             } })
             test.is_nil(fact_err, tostring(fact_err))
             fixture.settle(user, memory)
+            fixture.record_chat(user, session, {})
             local run_context = fixture.agent_context(memory, session, agent_id)
             run_context.memory_id = nil
             local activated, activate_err = fixture.op(user, "trait_agent", {
@@ -122,6 +123,7 @@ local function define_tests()
             test.not_nil(compiled.tools.SearchMemory, json.encode(compiled.tools))
             test.not_nil(compiled.tools.ForgetMemory, json.encode(compiled.tools))
 
+            fixture.record_chat(user, session, {})
             local run_context = fixture.agent_context(memory, session, agent_id)
             local activated, activate_err = fixture.op(user, "trait_agent", {
                 spec = spec, payload = fixture.payload("activate", session, agent_id),
@@ -136,7 +138,7 @@ local function define_tests()
             }, run_context)
             test.is_nil(capture_err, tostring(capture_err))
             test.eq(captured.metadata[1].metadata.capture.reason, "capture_disabled")
-            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_runs WHERE component_id = $1", {memory}), 0)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_runs WHERE component_id = $1 AND run_type = 'derive'", {memory}), 0)
 
             run_context.read_enabled = false
             local searched, search_err = fixture.op(user, "tool_search", { input = { query = "trains" } }, run_context)
