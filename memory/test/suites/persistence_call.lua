@@ -254,6 +254,12 @@ local function call(a: any): (any?, error?)
         local vectors, err = models.embed("test-embed", { a.content })
         if err then return nil, err end
         return items.search(a.component_id, vectors[1], { statuses = { "current" }, limit = 1 })
+    elseif a.op == "set_vector" then
+        return payloads.set_embedding(a.component_id, a.item_id, a.vector, a.content_hash)
+    elseif a.op == "search_vector" then
+        return items.search(a.component_id, a.vector, {
+            statuses = { "current" }, min_similarity = a.min_similarity, limit = 10,
+        })
     elseif a.op == "reembed" then
         local vectors, err = models.embed("test-embed", { a.content })
         if err then return nil, err end

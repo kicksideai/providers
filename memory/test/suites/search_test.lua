@@ -36,6 +36,30 @@ local function define_tests()
             test.is_true(nearest[1].similarity > 0.99)
         end)
 
+        test.it("uses the shared cosine threshold without rewriting its score", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local added = fixture.create_claim(user, id, "Paris")
+            local stored, stored_err = fixture.op(user, "get", { component_id = id, item_id = added.item_id })
+            test.is_nil(stored_err, tostring(stored_err))
+            local stored_vector, query_vector = {}, {}
+            for i = 1, 512 do
+                stored_vector[i] = i == 1 and 2 or 0
+                query_vector[i] = i == 2 and 4 or 0
+            end
+            local _, replace_err = fixture.persistence_op(user, "set_vector", {
+                component_id = id, item_id = added.item_id, vector = stored_vector, content_hash = stored.content_hash,
+            })
+            test.is_nil(replace_err, tostring(replace_err))
+            local matches, search_err = fixture.persistence_op(user, "search_vector", {
+                component_id = id, vector = query_vector, min_similarity = -0.1,
+            })
+            test.is_nil(search_err, tostring(search_err))
+            test.eq(#matches, 1)
+            test.eq(matches[1].id, added.item_id)
+            test.is_true(math.abs(matches[1].similarity) < 0.000001)
+        end)
+
         test.it("keeps lexical search on the newest revision after older and repeated delivery", function()
             local user = fixture.user()
             local id = fixture.memory(user)

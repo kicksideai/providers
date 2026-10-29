@@ -453,7 +453,7 @@ function M.search(component_id: string, vector: { number }, filter: SearchFilter
     if filter.kinds and #filter.kinds > 0 then filters[#filters + 1] = { column = "kind", values = filter.kinds } end
     if filter.statuses and #filter.statuses > 0 then filters[#filters + 1] = { column = "status", values = filter.statuses } end
     if filter.scope_keys and #filter.scope_keys > 0 then filters[#filters + 1] = { column = "scope_key", values = filter.scope_keys } end
-    return db.read(function(conn: any, sqlite: boolean): (any, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = index.search(conn, SEARCH_SPEC, vector, {
             partition = component_id, limit = filter.limit or 10, filters = filters, query_text = filter.min_similarity == nil and filter.query_text or nil, group_by = filter.group_by,
         })
@@ -461,10 +461,7 @@ function M.search(component_id: string, vector: { number }, filter: SearchFilter
         if filter.min_similarity ~= nil then
             local qualifying = {}
             for _, row in ipairs(rows) do
-                -- Dense search exposes exp(-L2) on SQLite and (1+cosine)/2 on PostgreSQL.
-                local cosine = sqlite and (1 - math.log(row.similarity)^2 / 2) or (2 * row.similarity - 1)
-                row.similarity = cosine
-                if cosine >= filter.min_similarity then qualifying[#qualifying + 1] = row end
+                if row.similarity >= filter.min_similarity then qualifying[#qualifying + 1] = row end
             end
             rows = qualifying
         end
