@@ -299,9 +299,18 @@ function M.derive_authorized(value: any): any
     if refusal then return refusal end
     local declined = claim(run, false)
     if declined then return declined end
+    local deadline = value.job.deadline
+    local accepted, accepted_err = ledger.accepted(run.component_id, "derive:" .. run.id)
+    if accepted_err then return fail(run.id, accepted_err) end
+    if accepted then
+        local _, settle_err = ledger.settled_head(run.component_id, deadline)
+        if settle_err then return fail(run.id, settle_err) end
+        local _, close_err = runs.finish(run.id, types.RUN_STATUS.SUCCEEDED, nil, run.stats)
+        if close_err then return fail(run.id, close_err) end
+        return { ok = true, record = { status = "completed" }, stats = run.stats }
+    end
     local store, cfg, settings_err = settings(run.component_id)
     if settings_err then return fail(run.id, settings_err) end
-    local deadline = value.job.deadline
     local failed_stats = nil
     local captures_history = run.agent_id ~= nil
     local result, write_err = writer.write(run.component_id, "derive:" .. run.id, {
