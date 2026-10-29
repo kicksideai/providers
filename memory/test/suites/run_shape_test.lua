@@ -2,8 +2,6 @@
 
 local test = require("test")
 local fixture = require("fixture")
-local contract = require("contract")
-local security = require("security")
 
 local function define_tests()
     test.describe("memory run shape", function()
@@ -25,13 +23,9 @@ local function define_tests()
             fixture.record_chat(user, session, {
                 { id = "admitted", role = "user", author = { kind = "user", id = user }, content = "I prefer a quiet room." },
             })
-            local definition, definition_err = contract.get("wippy.agent:run_context")
-            test.is_nil(definition_err, tostring(definition_err))
-            local scope, scope_err = security.named_scope("wippy.security:process")
-            test.is_nil(scope_err, tostring(scope_err))
-            local binding, binding_err = definition:with_actor(security.new_actor(user, {})):with_scope(scope):open("wippy.session.run_context:binding")
-            test.is_nil(binding_err, tostring(binding_err))
-            local history, history_err = binding:get_history({ host = { kind = "session", session_id = session }, selector = { mode = "all" } })
+            local history, history_err = fixture.op(user, "read_history", {
+                payload = fixture.payload("before_step", session, "agent-a"), selector = {mode = "all"},
+            })
             test.is_nil(history_err, tostring(history_err))
             test.eq(history.events[1].author.kind, "user")
             test.eq(history.events[1].author.id, user)
@@ -56,8 +50,12 @@ local function define_tests()
             local ids = fixture.record_chat(user, session, messages)
             test.neq(ids[1], "submitted-user")
             test.neq(ids[2], "submitted-agent")
-            local history, history_err = fixture.read_chat(user, { host = { kind = "session", session_id = session }, selector = { mode = "all" } })
+            local history, history_err = fixture.op(user, "read_history", {
+                payload = fixture.payload("before_step", session, "agent-a"), selector = {mode = "all"},
+            })
             test.is_nil(history_err, tostring(history_err))
+            test.eq(history.events[1].id, ids[1])
+            test.eq(history.events[2].id, ids[2])
             test.eq(history.events[2].author.kind, "agent")
             test.eq(history.events[2].author.id, "agent-a")
         end)

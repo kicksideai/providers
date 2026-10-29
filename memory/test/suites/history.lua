@@ -90,7 +90,7 @@ end
 
 local function select_events(conn: any, args: any): ({ any }?, string?)
     local host = args.host or {}
-    local host_id = tostring(host.id or host.session_id or "")
+    local host_id = host.kind == "dataflow" and (host.dataflow_id .. ":" .. host.node_id) or tostring(host.session_id or "")
     local events, all_err = all(conn, host_id)
     if all_err then return nil, tostring(all_err) end
     local sel = args.selector or { mode = "since_checkpoint" }

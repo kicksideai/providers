@@ -221,7 +221,7 @@ local function define_tests()
             local events = {
                 { id = "h1", role = "user", author = { kind = "user", id = user }, content = "Hi! I live in Paris and I am vegetarian." },
                 { id = "h2", role = "developer", author = { kind = "system" }, content = "- The user likes jazz.", metadata = { memory_ids = { "x" } } },
-                { id = "h3", role = "tool", author = { kind = "system" }, content = "{\"query\":\"vegetarian\"}", metadata = {
+                { id = "h3", role = "function", author = { kind = "system" }, content = "{\"query\":\"vegetarian\"}", metadata = {
                     function_name = "lookup", status = "error", result = "pagination requires page_size",
                 } },
                 { id = "h4", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Nice to meet you." },
@@ -260,7 +260,7 @@ local function define_tests()
             local session = "s-" .. user
             local events = {
                 { id = "user", role = "user", author = { kind = "user", id = user }, content = "Please inspect the result." },
-                { id = "tool", role = "tool", author = { kind = "system" }, content = "{}", metadata = {
+                { id = "tool", role = "function", author = { kind = "system" }, content = "{}", metadata = {
                     function_name = "inspect", status = "error", result = string.rep("x", 30000),
                 } },
             }

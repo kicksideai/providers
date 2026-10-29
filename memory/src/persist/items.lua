@@ -454,17 +454,28 @@ function M.search(component_id: string, vector: { number }, filter: SearchFilter
     if filter.statuses and #filter.statuses > 0 then filters[#filters + 1] = { column = "status", values = filter.statuses } end
     if filter.scope_keys and #filter.scope_keys > 0 then filters[#filters + 1] = { column = "scope_key", values = filter.scope_keys } end
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        local rows, err = index.search(conn, SEARCH_SPEC, vector, {
-            partition = component_id, limit = filter.limit or 10, filters = filters, query_text = filter.min_similarity == nil and filter.query_text or nil, group_by = filter.group_by,
-        })
-        if err then return nil, types.failed("memory search failed", err) end
+        local rows, err
         if filter.min_similarity ~= nil then
-            local qualifying = {}
-            for _, row in ipairs(rows) do
-                if row.similarity >= filter.min_similarity then qualifying[#qualifying + 1] = row end
+            local similarity = _sqlite and "(1 - vec_distance_cosine(e.embedding, $1))"
+                or "(1 - (e.embedding <=> ($1::vector)))"
+            local statement = "SELECT n.id, n." .. table.concat(COLUMNS, ", n.") .. ", " .. similarity .. " AS similarity"
+                .. " FROM kickside_memory_items n JOIN kickside_memory_embeddings e ON n.id = e.item_id"
+                .. " WHERE n.component_id = $2 AND " .. similarity .. " >= $3"
+            local params: { any } = {index.vector_literal(vector), component_id, filter.min_similarity}
+            for _, selection in ipairs(filters) do
+                statement = statement .. " AND n." .. selection.column .. " IN (" .. index.placeholders(#selection.values, #params + 1) .. ")"
+                for _, value in ipairs(selection.values) do params[#params + 1] = value end
             end
-            rows = qualifying
+            params[#params + 1] = filter.limit or 10
+            rows, err = conn:query(statement .. " ORDER BY similarity DESC, n.id LIMIT $" .. #params, params)
+            for _, row in ipairs(rows or {}) do row.similarity = tonumber(row.similarity) end
+        else
+            rows, err = index.search(conn, SEARCH_SPEC, vector, {
+                partition = component_id, limit = filter.limit or 10, filters = filters,
+                query_text = filter.query_text, group_by = filter.group_by,
+            })
         end
+        if err then return nil, types.failed("memory search failed", err) end
         return decode_all(rows)
     end)
 end

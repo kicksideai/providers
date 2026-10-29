@@ -36,7 +36,7 @@ local function define_tests()
             test.is_true(nearest[1].similarity > 0.99)
         end)
 
-        test.it("uses the shared cosine threshold without rewriting its score", function()
+        test.it("computes reconcile similarity independently of shared search scores", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local added = fixture.create_claim(user, id, "Paris")

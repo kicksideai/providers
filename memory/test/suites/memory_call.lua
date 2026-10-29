@@ -24,8 +24,14 @@ local agent = require("agent")
 local agent_prompt = require("llm_prompt")
 local lifecycle = require("agent_lifecycle")
 local recall = require("memory_recall")
+local history = require("agent_history")
 
 local OPS: { [string]: (any) -> (any, any) } = {
+    host_ref = function(a: any)
+        local kind, id = context.host_ref(a.host)
+        return {kind = kind, id = id}, nil
+    end,
+    read_history = function(a: any) return history.read(a.payload, a.selector) end,
     recall_scopes = function(a: any) return recall.visible_scopes(a.agent_id) end,
     recall_scope_failure = function(a: any)
         local returned, scopes, err = pcall(function() return recall.visible_scopes(a.agent_id) end)

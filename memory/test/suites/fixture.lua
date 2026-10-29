@@ -31,7 +31,7 @@ function M.read_chat(user_id: string, args: any): (any?, any?)
 end
 
 function M.payload(phase: string, session_id: string, agent_id: string, extra: any?): any
-    local host = { kind = "session", id = session_id, session_id = session_id }
+    local host = { kind = "session", session_id = session_id }
     local payload = {
         phase = phase, host = host, agent = { id = agent_id, model = "test-fast" },
         run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host },
@@ -42,7 +42,7 @@ function M.payload(phase: string, session_id: string, agent_id: string, extra: a
 end
 
 function M.agent_context(memory_id: string, session_id: string, agent_id: string, extra: any?): any
-    local host = { kind = "session", id = session_id, session_id = session_id }
+    local host = { kind = "session", session_id = session_id }
     local context = {
         memory_id = memory_id, thread_id = memory_id, agent_id = agent_id,
         agent_run = { host = host, agent = { id = agent_id }, run_context = { contract = RUN_CONTEXT.contract, binding = RUN_CONTEXT.binding, host = host } },

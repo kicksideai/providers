@@ -19,8 +19,16 @@ trait_contexts:
     learn_in_isolation: false
 ```
 
-Runners supply a stable opaque `host.id`, an open `host.kind`, and an author for
-each history event. Human-authored attributes and goals belong to that human.
+Memory consumes the published `wippy.agent:run_context` contract. Session identity
+is `host.session_id`; dataflow identity is `host.dataflow_id:host.node_id`, independent
+of iteration. The existing `from_agent_id` context identifies delegated input.
+Tool results retain the public `function` role. Optional persisted author metadata
+identifies automation and parent submissions. Unmarked user messages in a session
+belong to its owner: the session history binding opens the persisted session
+for the current actor and rejects other owners. Only a human principal supplies
+owner evidence. An explicit unknown
+or non-human author never becomes owner evidence. Unknown sources remain context.
+Human-authored attributes and goals belong to that human.
 Parent tasks and workflow input never establish a human profile. Agent lessons,
 skills and work facts stay in agent scope. Runs acting for a person recall their
 profile alongside the agent's rules and relevant learning.

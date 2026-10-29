@@ -46,7 +46,7 @@ local function input_type(role: string): string?
 end
 
 local function emitted_type(role: string): string?
-    if role == "tool" then return consts.MSG_TYPE.FUNCTION end
+    if role == "function" then return consts.MSG_TYPE.FUNCTION end
     return nil
 end
 

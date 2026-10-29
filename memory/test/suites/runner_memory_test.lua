@@ -7,9 +7,9 @@ local HISTORY_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.s
 local function setup(learn, kind, config)
     local user = fixture.user()
     local id = fixture.memory(user, config)
-    local host_kind = kind or "research"
-    local run_id = host_kind == "content" and id or "run:/[" .. user .. "]"
-    local host = {kind = host_kind, id = run_id}
+    local host_kind = kind or "dataflow"
+    local run_id = host_kind == "content" and id or "flow-" .. user .. ":node"
+    local host = {kind = host_kind, dataflow_id = "flow-" .. user, node_id = "node"}
     local context = fixture.agent_context(id, run_id, "agent:reader", {learn_in_isolation = learn})
     context.agent_run.host = host
     context.agent_run.run_context = { contract = HISTORY_CONTEXT.contract, binding = HISTORY_CONTEXT.binding, host = host }
@@ -26,7 +26,7 @@ local function define_tests()
         test.it("recalls but captures nothing from an isolated runner by default", function()
             local user, id, run, context, apply = setup(false)
             fixture.remember(user, id, {fixture.candidate("preference", "format", "numbered steps", "The user prefers numbered steps.", "seed")}, "owner")
-            fixture.op(user, "create", {component_id = id, fields = {kind = "rule", scope_family = "agent", scope_id = "agent:reader", key = "research", value = "Verify source claims.", content = "Verify source claims."}})
+            fixture.op(user, "create", {component_id = id, fields = {kind = "rule", scope_family = "agent", scope_id = "agent:reader", key = "dataflow", value = "Verify source claims.", content = "Verify source claims."}})
             fixture.op(user, "create", {component_id = id, fields = {kind = "skill", scope_family = "agent", scope_id = "agent:reader", key = "relative_links", value = "Resolve relative links against the document base URL.", content = "Resolve relative links against the document base URL."}})
             fixture.settle(user, id)
             fixture.history.record(run, {{id = "task", role = "user", author = {kind = "system"}, content = "Read relative links in the documentation."}})
@@ -44,7 +44,7 @@ local function define_tests()
             test.eq(#fixture.op(user, "runs", {component_id = id, run_type = "derive"}), 0)
         end)
 
-        for _, kind in ipairs({"research"}) do
+        for _, kind in ipairs({"dataflow"}) do
             test.it("captures reusable experience in agent scope for runner " .. kind, function()
                 local user, id, run, context, apply = setup(true, kind)
                 fixture.history.record(run, {
@@ -77,18 +77,6 @@ local function define_tests()
 
         end
 
-        test.it("rejects agent runner capture for content", function()
-            local user, id, run, context, apply = setup(true, "content")
-            fixture.history.record(run, {
-                {id = "lesson", role = "assistant", author = {kind = "agent", id = "agent:reader"}, content = "I corrected my mistake: resolve relative links against the document base URL."},
-            })
-            fixture.extraction(id, {fixture.candidate("lesson", "relative_links", "Resolve relative links against the document base URL.", "Resolve relative links against the document base URL.", "lesson")})
-            local result, err = apply("before_step")
-            test.is_nil(result)
-            test.not_nil(err)
-            test.is_true(tostring(err):find("memory content derive has no agent or predecessor event", 1, true) ~= nil)
-        end)
-
         test.it("keeps parent task input out of isolated extraction", function()
             local user, id, run, context, apply = setup(true)
             fixture.history.record(run, {{id = "task", role = "user", author = {kind = "agent", id = "agent:parent"}, content = "Explain how to separate quotations from inferences."}})
@@ -99,13 +87,13 @@ local function define_tests()
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
             test.eq(#fixture.script.requests(id, "structured_output"), 0)
             test.eq(#fixture.items(user, id), 0)
-            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "research", host_id = run})
+            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "dataflow", host_id = run})
             test.eq(cursor.last_event_id, "task")
         end)
 
         test.it("rejects personal candidates from tool evidence and advances capture", function()
             local user, id, run, context, apply = setup(true, nil, {capture_experience = true})
-            fixture.history.record(run, {{id = "result", role = "tool", author = {kind = "system"}, content = "Inspection complete.", metadata = {function_name = "inspect", status = "completed"}}})
+            fixture.history.record(run, {{id = "result", role = "function", author = {kind = "system"}, content = "Inspection complete.", metadata = {function_name = "inspect", status = "completed"}}})
             fixture.extraction(id, {fixture.candidate("preference", "output_format", "tables", "The user prefers tables.", "result")})
             local result, err = apply("before_step")
             test.is_nil(err, tostring(err))
@@ -113,13 +101,13 @@ local function define_tests()
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
             test.eq(runs[1].stats.rejected_candidates.kind, 1)
             test.eq(#fixture.items(user, id), 0)
-            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "research", host_id = run})
+            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "dataflow", host_id = run})
             test.eq(cursor.last_event_id, "result")
         end)
 
         test.it("keeps unknown-author tool input out of extraction", function()
             local user, id, run, context, apply = setup(true, nil, {capture_experience = true})
-            fixture.history.record(run, {{id = "result", role = "tool", author = {kind = "unknown"}, content = "Inspection complete.", metadata = {function_name = "inspect", status = "completed"}}})
+            fixture.history.record(run, {{id = "result", role = "function", author = {kind = "unknown"}, content = "Inspection complete.", metadata = {function_name = "inspect", status = "completed"}}})
             fixture.extraction(id, {fixture.candidate("lesson", "inspection", "Inspect source output.", "Inspect source output.", "result")})
             local result, err = apply("before_step")
             test.is_nil(err, tostring(err))
@@ -127,7 +115,7 @@ local function define_tests()
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
             test.eq(#fixture.script.requests(id, "structured_output"), 0)
             test.eq(#fixture.items(user, id), 0)
-            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "research", host_id = run})
+            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "dataflow", host_id = run})
             test.eq(cursor.last_event_id, "result")
         end)
 
@@ -141,7 +129,7 @@ local function define_tests()
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
             test.eq(#fixture.script.requests(id, "structured_output"), 0)
             test.eq(#fixture.items(user, id), 0)
-            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "research", host_id = run})
+            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "dataflow", host_id = run})
             test.eq(cursor.last_event_id, "other")
         end)
 

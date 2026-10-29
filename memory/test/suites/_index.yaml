@@ -53,6 +53,7 @@ entries:
       memory_reconcile: kickside.memory.engine:reconcile
       memory_models: kickside.memory.engine:models
       agent_context: kickside.memory.agent:context
+      agent_history: kickside.memory.agent:history
       agent_prompt: kickside.memory.agent:prompt
       memory_items: kickside.memory.persist:items
       memory_runs: kickside.memory.persist:runs
@@ -376,6 +377,16 @@ entries:
     source: file://derive_delivery_test.lua
     method: run
     modules: []
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: runner_contract_test
+    kind: function.lua
+    meta: {type: test, suite: memory_runner_contract}
+    source: file://runner_contract_test.lua
+    modules: [uuid, json, time]
+    method: run
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture

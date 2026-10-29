@@ -4,6 +4,7 @@ local contract = require("contract")
 local json = require("json")
 local types = require("types")
 local jobs = require("memory_jobs")
+local ctx = require("ctx")
 
 local M = {}
 
@@ -32,6 +33,39 @@ function M.read(payload: any, selector: any): (any?, error?)
     if history_err then return nil, types.failed("run_context history failed", history_err) end
     if type(result) ~= "table" or type(result.events) ~= "table" then
         return nil, types.unavailable("run_context history returned no events")
+    end
+    for _, event in ipairs(result.events) do
+        local metadata = type(event.metadata) == "table" and event.metadata or {}
+        local role = event.role
+        if role == "node.input" then role = "user"
+        elseif role == "agent.action" then
+            role = "assistant"
+            if type(event.content) == "table" then event.content = event.content.result; event.raw_content = event.content end
+        elseif role == "agent.observation" or role == "agent.delegation" then
+            role = "function"
+            metadata.function_name = metadata.tool_name
+            metadata.status = metadata.is_error and "error" or "success"
+            metadata.result = event.content
+        end
+        event.role, event.metadata = role, metadata
+        local author = metadata.author
+        if author == nil and type(event.author) == "table" and event.author.kind ~= "unknown" then author = event.author end
+        if author == nil then
+            if role == "function" then author = {kind = "system"}
+            elseif role == "assistant" and types.trim(metadata.agent_id) ~= "" then
+                author = {kind = "agent", id = metadata.agent_id}
+            elseif role == "user" and payload.host.kind == "dataflow" then
+                local parent = types.trim(ctx.get("from_agent_id"))
+                author = parent ~= "" and {kind = "agent", id = parent} or {kind = "system"}
+            elseif role == "user" and payload.host.kind == "session" then
+                local session_owner, owner_err = types.human_id()
+                if owner_err then return nil, owner_err end
+                local parent = types.trim(ctx.get("from_agent_id"))
+                author = parent ~= "" and {kind = "agent", id = parent}
+                    or (session_owner and {kind = "user", id = session_owner} or {kind = "unknown"})
+            end
+        end
+        event.author = type(author) == "table" and author or {kind = "unknown"}
     end
     return result, nil
 end
@@ -62,7 +96,7 @@ function M.span_entry(event: any, cfg: any): (any?, error?)
         if text == "" then return nil, nil end
         return { id = tostring(event.id), role = role, author = event.author, text = text, created_at = event.created_at }, nil
     end
-    if role == "tool" and cfg.capture_experience == true then
+    if role == "function" and cfg.capture_experience == true then
         local name = types.trim(metadata.function_name)
         local status = types.trim(metadata.status)
         if name == "" or status == "" then return nil, nil end

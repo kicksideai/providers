@@ -47,16 +47,20 @@ end
 function M.host_ref(host: any): (string?, string?)
     if type(host) ~= "table" then return nil, nil end
     local kind = type(host.kind) == "string" and types.trim(host.kind) or ""
-    local id = type(host.id) == "string" and types.trim(host.id) or ""
-    if kind == "" or id == "" then return nil, nil end
-    return kind, id
+    if kind == "session" then
+        local id = types.trim(host.session_id)
+        if id ~= "" then return kind, id end
+    elseif kind == "dataflow" then
+        local flow, node = types.trim(host.dataflow_id), types.trim(host.node_id)
+        if flow ~= "" and node ~= "" then return kind, flow .. ":" .. node end
+    end
+    return nil, nil
 end
 
 function M.validate(payload: any): error?
     if type(payload) ~= "table" then return types.invalid("payload must be an object") end
     local host_kind, host_id = M.host_ref(payload.host)
-    if host_kind == nil then return types.invalid("host.kind is required") end
-    if host_id == nil then return types.invalid("host.id is required") end
+    if host_kind == nil or host_id == nil then return types.invalid("host requires a session_id or dataflow_id and node_id") end
     if type(payload.agent) ~= "table" or types.trim(payload.agent.id) == "" then return types.invalid("agent.id is required") end
     return nil
 end

@@ -29,7 +29,7 @@ entries:
     meta:
       type: migration
       tags: [kickside, memory, schema]
-      comment: Upgrade typed memory storage, source ownership and agent contexts.
+      comment: Create typed memory storage.
       target_db: ""
       timestamp: "2026-10-29T00:00:00Z"
     source: file://_fn_05_memory_upgrade.lua
@@ -42,7 +42,5 @@ entries:
     meta:
       comment: Implementation for kickside.memory.migrations:05_memory_upgrade.
     source: file://05_memory_upgrade.lua
-    modules: [json, sql]
     imports:
       migration: wippy.migration:migration
-      canonical_json: kickside.contract:canonical_json

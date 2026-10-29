@@ -6,11 +6,10 @@ The typed memory engine and agent memory capability.
 This module owns:
 
 - `kickside.memory.migrations:01_memory_schema` defines the baseline storage.
-  `kickside.memory.migrations:05_memory_upgrade` converts the schema and stored
-  data to typed storage with stable topic identities, retained payload vectors,
-  source ownership, scoped pins and consolidation cycle identities. Empty
-  settings and run records use JSON objects. The migration also
-  updates component bindings and removes retired per-agent settings.
+  `kickside.memory.migrations:05_memory_upgrade` drops the baseline Memory tables
+  and creates typed storage with stable topic identities, payload vectors,
+  source ownership, scoped pins and consolidation cycle identities. It accesses
+  only Memory-owned objects and copies no data or configuration.
   The resulting tables are `kickside_memory_stores`, `kickside_memory_items`,
   `kickside_memory_keys`, `kickside_memory_payloads`, `kickside_memory_provenance`,
   `kickside_memory_embeddings`, `kickside_memory_cursors`, `kickside_memory_runs`
