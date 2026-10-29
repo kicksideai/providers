@@ -77,6 +77,19 @@ local function define_tests()
 
         end
 
+        test.it("rejects agent runner capture for content", function()
+            local user, id, run, context, apply = setup(true, "content")
+            fixture.history.record(run, {
+                {id = "lesson", role = "assistant", author = {kind = "agent", id = "agent:reader"}, content = "Inspect the declared format before parsing."},
+            })
+            local result, err = apply("before_step")
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.INVALID)
+            test.eq(#fixture.op(user, "runs", {component_id = id, run_type = "derive"}), 0)
+            test.eq(#fixture.items(user, id), 0)
+        end)
+
         test.it("keeps parent task input out of isolated extraction", function()
             local user, id, run, context, apply = setup(true)
             fixture.history.record(run, {{id = "task", role = "user", author = {kind = "agent", id = "agent:parent"}, content = "Explain how to separate quotations from inferences."}})
