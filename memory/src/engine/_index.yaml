@@ -36,18 +36,37 @@ entries:
       evidence_policy: kickside.memory.engine:evidence_policy
       model_prompts: kickside.memory.engine:model_prompts
       model_schema: kickside.memory.engine:model_schema
+      model_calls: kickside.memory.engine:model_calls
+
+  - name: model_calls
+    kind: library.lua
+    meta:
+      comment: Structured model execution and response validation.
+    source: file://model_calls.lua
+    modules: [json]
+    imports:
+      llm: wippy.llm:llm
+      types: kickside.memory:types
+      error_envelope: kickside.contract:error_envelope
+      model_schema: kickside.memory.engine:model_schema
 
   - name: model_prompts
     kind: library.lua
     meta:
       comment: Shared model prompt composition.
     source: file://model_prompts.lua
+    imports:
+      types: kickside.memory:types
 
   - name: model_schema
     kind: library.lua
     meta:
       comment: Bounded structured-output schema primitives.
     source: file://model_schema.lua
+    modules: [json]
+    imports:
+      llm: wippy.llm:llm
+      types: kickside.memory:types
 
   - name: evidence_policy
     kind: library.lua

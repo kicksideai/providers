@@ -89,6 +89,16 @@ local function define_tests()
             test.is_true(instruction:find("instructions about stored memory", 1, true) ~= nil)
         end)
 
+        test.it("keeps system workflow input as context instead of evidence", function()
+            local user = fixture.user()
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "workflow-input", role = "user", author = { kind = "system" }, text = "The owner prefers tea." },
+            }, owner_id = user })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 0)
+            test.eq(#fixture.script.requests(user, "structured_output"), 0)
+        end)
+
         test.it("admits document facts without treating imported text as an owner profile", function()
             local user = fixture.user()
             local fact = fixture.candidate("fact", "travel_policy", "advance booking", "The document recommends advance booking.", "document-event")
@@ -466,7 +476,7 @@ local function define_tests()
             local user = fixture.user()
             for _, example in ipairs({
                 { field = "value", value = "", reason = "value" },
-                { field = "value", value = "   ", reason = "value" },
+                { field = "value", value = "   ", reason = "value", code = "model_output_invalid_extraction_value" },
                 { field = "value", value = false, reason = "value" },
                 { field = "kind", value = "unknown", reason = "shape" },
                 { field = "event_id", value = "other", reason = "evidence" },
@@ -481,7 +491,7 @@ local function define_tests()
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
-                test.eq(err:details().code, (example.field == "kind" or example.field == "event_id") and "model_output_malformed" or "model_output_invalid_extraction_" .. example.reason)
+                test.eq(err:details().code, example.code or (example.field == "valid_at" and "model_output_invalid_extraction_time" or "model_output_malformed"))
                 test.is_true(err:retryable())
             end
             local schema = fixture.script.requests(user, "structured_output")[1]
@@ -495,7 +505,7 @@ local function define_tests()
             local result, err = fixture.op(user, "model_step", { candidates = { candidate("home_city", "Oslo") } })
             test.is_nil(result)
             test.not_nil(err)
-            test.eq(err:details().code, "model_output_invalid_normalization_mapping")
+            test.eq(err:details().code, "model_output_malformed")
             test.is_true(err:retryable())
         end)
 
@@ -602,7 +612,7 @@ local function define_tests()
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
-                test.eq(err:details().code, sources[2] == 3 and "model_output_malformed" or "model_output_invalid_reflection_grounding")
+                test.eq(err:details().code, sources[2] == 1 and "model_output_invalid_reflection_grounding" or "model_output_malformed")
                 test.is_true(err:retryable())
             end
             test.eq(#fixture.script.requests(user, "structured_output"), 3)
@@ -660,7 +670,7 @@ local function define_tests()
                 test.not_nil(err)
                 test.eq(err:kind(), errors.UNAVAILABLE)
                 test.is_true(err:retryable())
-                test.eq(err:details().code, "model_output_invalid_normalization_shape")
+                test.eq(err:details().code, "model_output_malformed")
             end
         end)
 

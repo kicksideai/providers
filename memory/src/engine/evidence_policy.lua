@@ -9,7 +9,8 @@ local PERSONAL_KINDS = {profile_slot = true, preference = true, plan = true, fac
 function M.is_statement(message: any, agent_id: string?): boolean
     local author = message.author
     if type(author) ~= "table" then return false end
-    if author.kind == "document" or author.kind == "system" then return true end
+    if author.kind == "document" then return true end
+    if author.kind == "system" then return message.role == "tool" end
     if author.kind == "user" then return type(author.id) == "string" and author.id ~= "" end
     if author.kind == "agent" then return type(agent_id) == "string" and agent_id ~= "" and author.id == agent_id end
     return false
