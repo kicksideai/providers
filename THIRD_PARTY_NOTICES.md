@@ -71,7 +71,13 @@ LICENSE: [License text](#license-text-769d154fbde32a915af110b1123650bc79f4cbe675
 
 License: LicenseRef-KickSide-Community-1.0
 
-Lockfiles: `kb10/ui/package-lock.json`, `memory/ui/package-lock.json`
+Lockfiles: `kb10/ui/package-lock.json`
+
+### npm: @kickside/ui-kit@1.6.2
+
+License: LicenseRef-KickSide-Community-1.0
+
+Lockfiles: `memory/ui/package-lock.json`
 
 ### npm: @nodelib/fs.scandir@2.1.5
 
