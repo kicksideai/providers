@@ -111,7 +111,7 @@ local function read_candidates(response: any, step: string, event_ids: { [string
                     reject = true
                 end
             elseif not reason and step == "reflection" and item.kind ~= types.KIND.LESSON then reason = "kind" end
-            if reason then return model_calls.invalid(step, reason) end
+            if reason then return model_calls.invalid(step, reason, data) end
             if not reject then out[#out + 1] = item end
         end
         return nil
@@ -172,7 +172,7 @@ function M.extract(request: any): (any?, error?, { [string]: integer }?)
     end
     system = prompts.with_policy(system, instructions)
     local conversation = M.conversation(span, context, agent_id)
-    local schema = schema_util.extraction_schema(ids, #ids, evidence)
+    local schema = schema_util.extraction_schema(ids, #ids, evidence, keys)
     local data, call_err = model_calls.structured("extraction", schema, system .. prompts.JSON_FORMAT, conversation, model)
     if call_err then return nil, call_err end
     canonicalize_keys(data.items)
@@ -208,7 +208,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
         end
         local lesson = candidate.kind == types.KIND.LESSON
         local mapping_properties = {
-            key = schema_util.topic_key(schema_util.LIMITS.key), kind = schema_util.enum_string(kinds),
+            key = schema_util.compatible_topic(candidate.kind, keys), kind = schema_util.enum_string(kinds),
             cardinality = schema_util.enum_string(lesson and { "multi" } or { "single", "multi" }),
         }
         local mapping_required = { "key", "kind", "cardinality" }
@@ -242,7 +242,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     for i, candidate in ipairs(candidates) do
         local parts = mappings[tostring(i)]
         if #parts == 0 or (single_part(candidate) and #parts ~= 1) then
-            return nil, model_calls.invalid("normalization", "mapping")
+            return nil, model_calls.invalid("normalization", "mapping", data)
         end
         for _, mapping in ipairs(parts) do
             local reason = nil
@@ -263,7 +263,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
                 if not reason and (not types.compatible_kinds(mapping.kind, candidate.kind)
                     or (existing and not types.compatible_kinds(existing.kind, mapping.kind))) then reason = "kind" end
             end
-            if reason then return nil, model_calls.invalid("normalization", reason) end
+            if reason then return nil, model_calls.invalid("normalization", reason, data) end
             normalized.content = types.trim(normalized.content)
             if type(normalized.value) == "string" then normalized.value = types.trim(normalized.value) end
             out[#out + 1] = normalized
@@ -308,7 +308,7 @@ function M.reflect(request: any): (any?, error?)
         if valid and #source_ids >= schema_util.REFLECTION_MIN_SOURCES then
             candidate.source_ids = source_ids
             grounded[#grounded + 1] = candidate
-        else return nil, model_calls.invalid("reflection", "grounding") end
+        else return nil, model_calls.invalid("reflection", "grounding", data) end
     end
     return M.normalize(model, grounded, items, nil, instructions)
 end

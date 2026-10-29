@@ -27,6 +27,40 @@ function M.topic_key(maximum: integer): any
     return { type = "string", maxLength = maximum, pattern = "^[a-z][a-z0-9_]{0," .. tostring(maximum - 1) .. "}$" }
 end
 
+-- A prefix tree expresses finite exclusions without lookaround in constrained decoding.
+function M.compatible_topic(kind: string, keys: { any }): any
+    local tree = {}
+    local excluded = false
+    for _, row in ipairs(keys) do
+        if not types.compatible_kinds(kind, row.kind) then
+            excluded = true
+            local node = tree
+            for i = 1, #row.key do
+                local char = row.key:sub(i, i)
+                node[char] = node[char] or {}
+                node = node[char]
+            end
+            node.terminal = true
+        end
+    end
+    local topic = M.topic_key(M.LIMITS.key)
+    if not excluded then return topic end
+    local function alternatives(node: any, first: boolean): string
+        local alphabet: string = first and "abcdefghijklmnopqrstuvwxyz" or "abcdefghijklmnopqrstuvwxyz0123456789_"
+        local free, branches = "", {}
+        if not first and not node.terminal then branches[#branches + 1] = "" end
+        for i = 1, #alphabet do
+            local char = alphabet:sub(i, i)
+            if node[char] then branches[#branches + 1] = char .. alternatives(node[char], false)
+            else free = free .. char end
+        end
+        if free ~= "" then branches[#branches + 1] = "[" .. free .. "][a-z0-9_]*" end
+        return "(" .. table.concat(branches, "|") .. ")"
+    end
+    topic.pattern = "^" .. alternatives(tree, true) .. "$"
+    return topic
+end
+
 function M.validate(schema: any, value: any): boolean
     local encoded, encode_err = json.encode(value)
     if encode_err then return false end
@@ -43,7 +77,6 @@ local CANDIDATE_KINDS = types.MEMORY_KINDS
 local CANDIDATE_KIND_SET = {}
 for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 
--- Kind compatibility with existing topics is validated after decoding.
 local TOPIC_SCHEMA = M.topic_key(M.LIMITS.key)
 
 function M.item_schema(allowed: { string }, value: any, cardinalities: { string }, event_id: any, valid_at: any, based_on: any?): any
@@ -61,7 +94,7 @@ function M.item_schema(allowed: { string }, value: any, cardinalities: { string 
     return { type = "object", additionalProperties = false, required = required, properties = properties }
 end
 
-function M.extraction_schema(event_ids: { string }, count: integer, evidence: string): any
+function M.extraction_schema(event_ids: { string }, count: integer, evidence: string, keys: { any }?): any
     local event_id = M.enum_string(event_ids)
     local effective_time = M.bounded_string(M.LIMITS.valid_at)
     effective_time.pattern = [[^(|[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9]))$]]
@@ -77,10 +110,14 @@ function M.extraction_schema(event_ids: { string }, count: integer, evidence: st
             next_step = M.bounded_string(M.LIMITS.next_step), details = M.bounded_string(M.LIMITS.details, 1),
         },
     }, { "single" }, event_id, effective_time)
+    scalar.properties.key = M.compatible_topic(types.KIND.FACT, keys or {})
+    goal.properties.key = M.compatible_topic(types.KIND.PLAN, keys or {})
+    local lesson = M.item_schema({ types.KIND.LESSON }, M.bounded_string(M.LIMITS.value, 1), { "multi" }, event_id, effective_time)
+    lesson.properties.key = M.compatible_topic(types.KIND.LESSON, keys or {})
     return { type = "object", additionalProperties = false, required = { "items", "lessons", "plans" }, properties = {
         items = { type = "array", maxItems = count * M.LIMITS.per_statement, items = scalar },
         lessons = { type = "array", maxItems = evidence == "document" and 0 or count * M.LIMITS.per_statement,
-            items = M.item_schema({ types.KIND.LESSON }, M.bounded_string(M.LIMITS.value, 1), { "multi" }, event_id, effective_time),
+            items = lesson,
         },
         plans = { type = "array", maxItems = evidence == "document" and 0 or count, items = goal },
     } }

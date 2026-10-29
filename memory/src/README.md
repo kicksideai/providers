@@ -36,14 +36,18 @@ diagnostics remain.
 
 A capture records its span and source ownership in a derive run. Its cursor
 advances through `capture.advanced` only after the derive commits. An active
-job owns that host's unconsumed span. A failed run remains visible; the next
-capture includes the unconsumed history. Consolidation reflects across owner
+job owns that host's unconsumed span. A provider failure remains visible and
+leaves its history unconsumed for the next capture. Consolidation reflects across owner
 scopes; re-embedding conditionally replaces payload vectors under the accepted item lock and content hash.
 
 Invalid structured model output fails the whole call with a retryable,
 content-free `model_output_invalid_<step>_<reason>` code. No partial candidates
 commit. The job attempt limit retries failed derive attempts; an exhausted run
-stays `failed` without advancing capture.
+stays `failed`, retains the rejected output with its erasable source input, and
+advances capture past that range. No candidate from that call is admitted.
+Later ranges continue through the existing job attempt policy. Provider and
+network failures retain their unconsumed range for a later capture. Activity
+shows each failed range, its classified error and its rejected model output.
 
 A source event above the derive input byte bound has its own run with a
 `source_too_large` rejection, byte size and bound recorded at enrollment.

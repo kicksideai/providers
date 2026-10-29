@@ -22,20 +22,23 @@ local function define_tests()
             local schema = fixture.script.requests(user, "structured_output")[1]
             for _, collection in ipairs({ "items", "plans", "lessons" }) do
                 local shape = schema.properties[collection].items
-                test.eq(shape.properties.key.pattern, "^[a-z][a-z0-9_]{0,63}$")
+                for _, key in ipairs({"new_topic", "home_city_details"}) do
+                    test.is_true(json.validate_string(shape.properties.key, assert(json.encode(key))) == true)
+                end
+                test.eq(json.validate_string(shape.properties.key, assert(json.encode("home_city"))) == true, collection == "items")
                 test.eq(shape.properties.key.maxLength, 64)
                 test.eq(#shape.required, 8)
                 test.eq(shape.required[2], "key")
             end
         end)
 
-        test.it("rejects malformed topic keys at the schema boundary and incompatible kinds after canonicalization", function()
+        test.it("rejects malformed topic keys at the schema boundary and incompatible kinds at generation", function()
             local user = fixture.user()
             for _, case in ipairs({
                 { key = "", code = "model_output_malformed" },
                 { key = "123", code = "model_output_malformed" },
                 { key = "!!!", code = "model_output_malformed" },
-                { key = "contact_guidance", code = "model_output_invalid_extraction_kind" },
+                { key = "contact_guidance", code = "model_output_malformed" },
             }) do
                 local item = fixture.candidate("profile_slot", case.key, "Bergen", "Lives in Bergen.", "source")
                 fixture.script.respond(user, "structured_output", { items = { item }, plans = {}, lessons = {} })
@@ -76,7 +79,7 @@ local function define_tests()
                 test.is_nil(result)
                 test.not_nil(err)
                 test.eq(err:kind(), errors.UNAVAILABLE)
-                test.eq(err:details().code, "model_output_invalid_normalization_kind")
+                test.eq(err:details().code, "model_output_malformed")
             end
         end)
 
@@ -200,7 +203,7 @@ local function define_tests()
                 test.not_nil(err)
                 test.eq(err:kind(), errors.UNAVAILABLE)
                 test.is_true(err:retryable())
-                test.eq(err:details().code, "model_output_invalid_normalization_kind")
+                test.eq(err:details().code, "model_output_malformed")
                 test.is_nil((tostring(err):find("private", 1, true)))
             end
         end)

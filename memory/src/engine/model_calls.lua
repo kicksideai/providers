@@ -21,13 +21,13 @@ local function messages(system: string, user: string): { any }
     }
 end
 
-local function malformed_error(step: string): error
-    return types.unavailable("memory " .. step .. " returned malformed output", { step = step, code = "model_output_malformed" })
+local function malformed_error(step: string, output: any?): error
+    return types.unavailable("memory " .. step .. " returned malformed output", { step = step, code = "model_output_malformed", model_output = output })
 end
 
-function M.invalid(step: string, reason: string): error
+function M.invalid(step: string, reason: string, output: any?): error
     local code = "model_output_invalid_" .. step .. "_" .. reason
-    return types.unavailable("memory " .. step .. " returned invalid output: " .. code, { step = step, code = code })
+    return types.unavailable("memory " .. step .. " returned invalid output: " .. code, { step = step, code = code, model_output = output })
 end
 
 function M.error(step: string, err: any): error
@@ -38,7 +38,7 @@ function M.error(step: string, err: any): error
     local details = err:details() or {}
     if details.error_type == "model_error" and type(details.raw_content) == "string" then
         local _, decode_err = json.decode(details.raw_content)
-        if decode_err then return malformed_error(step) end
+        if decode_err then return malformed_error(step, details.raw_content) end
     end
     local retryable = err:retryable() == true and TRANSIENT_KINDS[err:kind()] == true
     return errors.new({
@@ -55,14 +55,14 @@ function M.structured(step: string, result_schema: any, system: string, user: st
     local response, call_err = llm.structured_output(result_schema, messages(system, user), { model = model, max_tokens = budget })
     if call_err then return nil, M.error(step, call_err) end
     if response and response.finish_reason == "length" then
-        return nil, types.unavailable("memory " .. step .. " output is truncated", { code = "model_output_truncated", step = step })
+        return nil, types.unavailable("memory " .. step .. " output is truncated", { code = "model_output_truncated", step = step, model_output = response.result })
     end
-    if not response or type(response.result) ~= "table" then return nil, malformed_error(step) end
+    if not response or type(response.result) ~= "table" then return nil, malformed_error(step, response) end
     return response.result, nil
 end
 
 function M.validate(step: string, result_schema: any, result: any): (any?, error?)
-    if not schema.validate(result_schema, result) then return nil, malformed_error(step) end
+    if not schema.validate(result_schema, result) then return nil, malformed_error(step, result) end
     return result, nil
 end
 

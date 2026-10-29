@@ -45,6 +45,9 @@ export interface MemoryRun {
   last_error?: string | null
   stats?: Record<string, number>
   host_kind?: string
+  from_event_id?: string | null
+  to_event_id?: string | null
+  model_output?: unknown
   created_at: string
   started_at?: string | null
   finished_at?: string | null

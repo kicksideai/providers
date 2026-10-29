@@ -299,7 +299,8 @@ function M.view(run: any): any?
     if not run then return nil end
     return {
         id = run.id, run_type = run.run_type, status = run.status, job_id = run.job_id, last_error = run.last_error,
-        stats = run.stats, created_at = run.created_at, started_at = run.started_at, finished_at = run.finished_at,
+        host_kind = run.host_kind, host_id = run.host_id, from_event_id = run.from_event_id, to_event_id = run.to_event_id,
+        model_output = run.input.model_output, stats = run.stats, created_at = run.created_at, started_at = run.started_at, finished_at = run.finished_at,
         in_flight = run.status == types.RUN_STATUS.RUNNING or run.status == types.RUN_STATUS.SCHEDULED,
     }
 end
@@ -347,15 +348,32 @@ function M.claim(run_id: string, repeatable: boolean): (any?, error?)
     end)
 end
 
-function M.finish(run_id: string, status: string, last_error: string?, stats: any?): (any?, error?)
+function M.finish_tx(tx: any, run_id: string, status: string, last_error: string?, stats: any?, output: any?): (any?, error?)
     local encoded, encode_err = types.encode_object(stats or {}, "stats")
     if encode_err then return nil, encode_err end
+    if output ~= nil then
+        local rows, read_err = tx:query("SELECT input FROM kickside_memory_runs WHERE id = $1", {run_id})
+        if read_err then return nil, types.failed("memory run input read failed", read_err) end
+        local input, decode_err = types.decode_object(rows[1].input, "input")
+        if decode_err then return nil, decode_err end
+        if next(input) then
+            input.model_output = output
+            local source, source_err = types.encode_object(input, "input")
+            if source_err then return nil, source_err end
+            local _, save_err = tx:execute("UPDATE kickside_memory_runs SET input = $1 WHERE id = $2", {source, run_id})
+            if save_err then return nil, types.failed("memory run output save failed", save_err) end
+        end
+    end
+    local _, err = tx:execute(
+        "UPDATE kickside_memory_runs SET status = $1, last_error = $2, stats = $3, finished_at = $4 WHERE id = $5",
+        { status, last_error or sql.NULL, encoded, types.now(), run_id })
+    if err then return nil, types.failed("memory run close failed", err) end
+    return true, nil
+end
+
+function M.finish(run_id: string, status: string, last_error: string?, stats: any?): (any?, error?)
     return db.write(nil, function(tx: any, _sqlite: boolean): (any, error?)
-        local _, err = tx:execute(
-            "UPDATE kickside_memory_runs SET status = $1, last_error = $2, stats = $3, finished_at = $4 WHERE id = $5",
-            { status, last_error or sql.NULL, encoded, types.now(), run_id })
-        if err then return nil, types.failed("memory run close failed", err) end
-        return true, nil
+        return M.finish_tx(tx, run_id, status, last_error, stats)
     end)
 end
 

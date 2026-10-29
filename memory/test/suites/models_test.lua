@@ -99,6 +99,39 @@ local function define_tests()
             test.eq(#fixture.script.requests(user, "structured_output"), 0)
         end)
 
+        test.it("constrains existing topic kind families during extraction and normalization", function()
+            local user = fixture.user()
+            local keys = {
+                {key = "result_format", kind = "lesson", cardinality = "multi"},
+                {key = "project_goal", kind = "plan", cardinality = "single"},
+                {key = "home_city", kind = "profile_slot", cardinality = "single"},
+            }
+            fixture.extraction(user, {})
+            local _, err = fixture.op(user, "model_step", {step = "extract", keys = keys, span = {
+                {id = "event", role = "user", author = {kind = "user", id = user}, text = "I prefer tea."},
+            }, owner_id = user})
+            test.is_nil(err, tostring(err))
+            local schema = fixture.script.requests(user, "structured_output")[1]
+            for _, case in ipairs({{"items", "result_format", "home_city"}, {"lessons", "project_goal", "result_format"},
+                {"plans", "home_city", "project_goal"}}) do
+                local key = schema.properties[case[1]].items.properties.key
+                test.is_false(json.validate_string(key, assert(json.encode(case[2]))) == true)
+                for _, value in ipairs({case[3], "new_topic", case[2] .. "_detail", case[2]:sub(1, -2)}) do
+                    test.is_true(json.validate_string(key, assert(json.encode(value))) == true, value)
+                end
+            end
+            fixture.script.respond(user, "structured_output", {mappings = {["1"] = {{key = "result_format", kind = "fact", cardinality = "single",
+                value = "summary", content = "Read the summary."}}}})
+            local result, mapping_err = fixture.op(user, "model_step", {keys = keys,
+                candidates = {fixture.candidate("fact", "format", "summary", "Read the summary.", "event")}})
+            test.is_nil(result)
+            test.not_nil(mapping_err)
+            local requests = fixture.script.requests(user, "structured_output")
+            local key = requests[2].properties.mappings.properties["1"].items.properties.key
+            test.is_false(json.validate_string(key, assert(json.encode("result_format"))) == true)
+            test.is_true(json.validate_string(key, assert(json.encode("home_city"))) == true)
+        end)
+
         test.it("constrains effective times before asking the extraction model", function()
             local user = fixture.user()
             fixture.extraction(user, {})

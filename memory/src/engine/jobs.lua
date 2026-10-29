@@ -227,14 +227,36 @@ local function retryable(err: any): boolean
 end
 
 -- Queue diagnostics retain classification independently of erasable input.
-local function fail(run_id: string, err: any, stats: any?): any
+local function fail(run_id: string, err: any, stats: any?, terminal: any?): any
     local failure, failure_err = types.failure(err)
     if failure_err then error(failure_err) end
+    if terminal then failure.retryable = false end
     local message, encode_err = json.encode(failure)
     if encode_err then error(encode_err) end
-    local _, close_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message, stats)
+    local close_err
+    if terminal then
+        local _, settle_err = ledger.settled_head(terminal.component_id)
+        if settle_err then error(settle_err) end
+        local _, terminal_err = db.write(terminal.component_id, function(tx: any, _sqlite: boolean): (any?, error?)
+            if terminal.agent_id then
+                local body = {host_kind = terminal.host_kind, host_id = terminal.host_id, agent_id = terminal.agent_id,
+                    from_event_id = terminal.from_event_id, last_event_id = terminal.to_event_id}
+                local _, append_err = ledger.append_tx(tx, terminal.component_id,
+                    {{type = types.EVENT.CAPTURE_ADVANCED, body = body}}, nil, "derive-failed:" .. run_id)
+                if append_err then return nil, append_err end
+                local advance_err = runs.advance_cursor_tx(tx, terminal.component_id, body, types.now())
+                if advance_err then return nil, advance_err end
+            end
+            return runs.finish_tx(tx, run_id, types.RUN_STATUS.FAILED, message, stats, err:details().model_output)
+        end)
+        close_err = terminal_err
+        if not close_err and terminal.agent_id then close_err = ledger.appended(terminal.component_id) end
+    else
+        local _, finish_err = runs.finish(run_id, types.RUN_STATUS.FAILED, message, stats)
+        close_err = finish_err
+    end
     if close_err then error(close_err) end
-    if retryable(err) then
+    if not terminal and retryable(err) then
         error(errors.new({ kind = err:kind(), retryable = true, message = err:message(),
             details = { cause_kind = (failure :: any).code } }))
     end
@@ -297,6 +319,9 @@ end
 function M.derive_authorized(value: any): any
     local run, refusal = load_run(value, types.RUN_TYPE.DERIVE)
     if refusal then return refusal end
+    local terminal, terminal_err = ledger.accepted(run.component_id, "derive-failed:" .. run.id)
+    if terminal_err then return fail(run.id, terminal_err) end
+    if terminal then return {ok = false, job_error = run.last_error, failure_class = "deterministic"} end
     local declined = claim(run, false)
     if declined then return declined end
     local deadline = value.job.deadline
@@ -329,7 +354,7 @@ function M.derive_authorized(value: any): any
             local cursor, cursor_err = runs.cursor(run.component_id, run.host_kind, run.host_id)
             if cursor_err then return nil, cursor_err end
             if (cursor and cursor.last_event_id or nil) ~= run.from_event_id then
-                return nil, types.invalid("memory capture predecessor has not advanced the cursor")
+                return nil, types.unavailable("memory capture predecessor has not advanced the cursor")
             end
         end
         local input = fresh.input
@@ -391,7 +416,11 @@ function M.derive_authorized(value: any): any
         end
         return nil, nil
     end)
-    if write_err then return fail(run.id, write_err, failed_stats) end
+    if write_err then
+        local code = type(write_err) == "userdata" and (write_err:details() or {}).code
+        local exhausted_output = value.job.is_final_attempt and type(code) == "string" and code:sub(1, 13) == "model_output_"
+        return fail(run.id, write_err, failed_stats, exhausted_output and run or nil)
+    end
     local _, settle_err = ledger.settled_head(run.component_id, deadline)
     if settle_err then return fail(run.id, settle_err) end
     local stats = (result :: any).stats

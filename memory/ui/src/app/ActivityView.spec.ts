@@ -35,3 +35,18 @@ it('shows a rejected source with its content-free reason and byte limits', () =>
   expect(wrapper.findComponent({ name: 'Tag' }).props('value')).toBe('Rejected')
   wrapper.unmount()
 })
+
+it('shows the failed capture range and rejected output without admitting it', () => {
+  const output = { items: [{ valid_at: 'confidence_0.99' }] }
+  const wrapper = mount(ActivityView, {
+    props: { memory: { status: ref({ runs: [{ id: 'run', run_type: 'derive', status: 'failed',
+      created_at: '2026-01-01T00:00:00Z', last_error: 'Invalid model output',
+      from_event_id: 'start-event', to_event_id: 'end-event', model_output: output }] }) } as unknown as Memory },
+    global: { stubs: { Tag: true } },
+  })
+  expect(wrapper.text()).toContain('start-event')
+  expect(wrapper.text()).toContain('end-event')
+  expect(wrapper.find('details summary').text()).toBe('Rejected model output')
+  expect(wrapper.find('details pre').text()).toBe(JSON.stringify(output, null, 2))
+  wrapper.unmount()
+})

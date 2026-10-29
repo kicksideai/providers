@@ -275,12 +275,7 @@ function M.status()
     local recent, runs_err = runs.list(id :: string, nil, 20)
     if runs_err then return fail(res, runs_err) end
     local view: { any } = {}
-    for _, run in ipairs(recent :: any) do
-        view[#view + 1] = {
-            id = run.id, run_type = run.run_type, status = run.status, last_error = run.last_error, stats = run.stats,
-            host_kind = run.host_kind, created_at = run.created_at, started_at = run.started_at, finished_at = run.finished_at,
-        }
-    end
+    for _, run in ipairs(recent or {}) do view[#view + 1] = runs.view(run) end
     reply(res, http.STATUS.OK, {
         success = true, config = (store :: any).config, defaults = defaults, config_schema = schema,
         counts = counts, runs = view,

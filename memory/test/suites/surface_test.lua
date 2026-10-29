@@ -104,7 +104,7 @@ local function define_tests()
             test.eq(job.attempts, 3)
             test.eq(fixture.op(user, "run", { run_id = runs[1].id }).status, "failed")
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session_id })
-            test.is_true(cursor == nil or cursor.last_event_id == nil)
+            test.eq(cursor.last_event_id, event.id)
             local response = get_path(user, "/memory/" .. id .. "/status")
             test.eq(response.status, 200, response.raw)
             local found = false
@@ -112,6 +112,8 @@ local function define_tests()
                 if run.id == runs[1].id then
                     found = true
                     test.eq(run.status, "failed")
+                    test.eq(run.to_event_id, event.id)
+                    test.eq(run.model_output.items[2].key, "private_value")
                     test.eq(json.decode(run.last_error).code, "model_output_invalid_extraction_topic_key")
                     test.is_nil(run.stats.rejected)
                     test.is_nil((json.encode(run.stats):find("private", 1, true)))

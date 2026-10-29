@@ -100,7 +100,9 @@ local function define_tests()
             test.eq(provenance[1].event_id, "accepted")
             local instructions = fixture.script.prompts(id, "structured_output")[1].system
             test.contains(instructions, "Tool validation errors establish observed")
-            test.contains(instructions, "omit\n" .. "the concrete argument values and returned task data")
+            test.contains(instructions, "Preserve exact tool argument names and required literal values")
+            test.contains(instructions, "State observed requirements directly, without hypothetical conditions")
+            test.contains(instructions, "task-specific numbers, identifiers, intermediate values")
         end)
 
         test.it("rejects agent runner capture for content", function()

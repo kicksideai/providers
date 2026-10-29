@@ -22,6 +22,17 @@ describe('memory API responses', () => {
     await expect(memoryApi('memory').status()).rejects.toThrow('invalid run')
   })
 
+  it('preserves a failed capture range and rejected model output for activity', async () => {
+    const output = { items: [{ valid_at: 'confidence_0.99' }] }
+    get.mockResolvedValueOnce({ data: { counts: {}, runs: [{
+      id: 'failed-run', run_type: 'derive', status: 'failed', created_at: '2026-01-01T00:00:00Z',
+      from_event_id: 'start-event', to_event_id: 'end-event', model_output: output,
+    }] } })
+    await expect(memoryApi('memory').status()).resolves.toMatchObject({
+      runs: [{ from_event_id: 'start-event', to_event_id: 'end-event', model_output: output }],
+    })
+  })
+
   it('decodes cancelled historical work with its recorded reason', async () => {
     get.mockResolvedValueOnce({ data: { counts: {}, runs: [{
       id: 'cancelled-run', run_type: 'derive', status: 'cancelled', created_at: '2026-01-01T00:00:00Z',

@@ -47,6 +47,13 @@ function changes(run: MemoryRun): string {
           {{ relativeTime(run.finished_at || run.started_at || run.created_at) }}<template v-if="changes(run)"> · {{ changes(run) }}</template>
         </span>
         <span v-if="run.last_error" class="mm-run-err">{{ run.last_error }}</span>
+        <template v-if="run.status === 'failed'">
+          <span v-if="run.to_event_id" class="mm-muted">Range: {{ run.from_event_id || 'Beginning' }} → {{ run.to_event_id }}</span>
+          <details v-if="run.model_output !== undefined">
+            <summary>Rejected model output</summary>
+            <pre class="mm-value">{{ JSON.stringify(run.model_output, null, 2) }}</pre>
+          </details>
+        </template>
       </div>
       <Tag v-if="run.status !== 'succeeded'" class="kx-tag-sm" :severity="severity(run.status)" :value="STATUS_LABEL[run.status]" />
     </li>
