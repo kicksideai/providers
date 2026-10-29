@@ -5,6 +5,17 @@ local fixture = require("fixture")
 
 local function define_tests()
     test.describe("memory run shape", function()
+        local held: { any } = {}
+
+        test.before_each(function() held = {} end)
+        test.after_each(function()
+            for _, barrier in ipairs(held) do fixture.script.release(barrier.scope, barrier.method) end
+        end)
+
+        local function hold(scope: string, method: string)
+            held[#held + 1] = { scope = scope, method = method }
+            fixture.script.hold(scope, method)
+        end
 
         test.it("persists capture coordinates separately from its evidence", function()
             local user = fixture.user()
@@ -13,7 +24,7 @@ local function define_tests()
             fixture.record_chat(user, session, {
                 { id = "first", role = "user", content = "I prefer a quiet room." },
             })
-            fixture.script.hold(id, "structured_output")
+            hold(id, "structured_output")
             local applied, apply_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(apply_err, tostring(apply_err))
             test.is_true(applied.metadata.capture.captured)
@@ -35,7 +46,7 @@ local function define_tests()
         test.it("persists document and maintenance runs without empty source fields", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            fixture.script.hold(id, "structured_output")
+            hold(id, "structured_output")
             local queued, queue_err = fixture.op(user, "embed", { request = { content = "Reference material.", external_id = "reference" } }, { component_id = id })
             test.is_nil(queue_err, tostring(queue_err))
             test.is_true(queued.success)
@@ -68,7 +79,7 @@ local function define_tests()
             fixture.record_chat(user, session, {
                 { id = "uncaptured", role = "user", content = "I prefer a quiet room." },
             })
-            fixture.script.hold(id, "structured_output")
+            hold(id, "structured_output")
             local first, first_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(first_err, tostring(first_err))
             local db = fixture.db()
@@ -84,4 +95,5 @@ local function define_tests()
     end)
 end
 
-return { run = define_tests }
+local run_cases = test.run_cases(define_tests)
+return { run = function(options) return run_cases(options) end }

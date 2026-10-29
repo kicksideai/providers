@@ -286,13 +286,21 @@ end
 
 function M.insert_run(id: string, run_id: string, status: string, input: any, last_error: string?): error?
     local db = M.db()
+    local span = type(input) == "table" and input.span or nil
+    local source = type(span) == "table" and span[1] or nil
+    local event_id = type(source) == "table" and source.id or nil
+    if type(event_id) ~= "string" or event_id == "" then event_id = run_id end
     local _, err
     if last_error then
-        _, err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, last_error, created_at)
-            VALUES ($1, $2, 'derive', $3, $4, $5, '2026-01-01T00:00:00Z')]], { run_id, id, status, json.encode(input), last_error })
+        _, err = db:execute([[INSERT INTO kickside_memory_runs
+            (id, component_id, run_type, status, host_kind, host_id, agent_id, to_event_id, input, last_error, created_at)
+            VALUES ($1, $2, 'derive', $3, 'session', $4, 'test-derive', $5, $6, $7, '2026-01-01T00:00:00Z')]],
+            { run_id, id, status, "s-test", event_id, json.encode(input), last_error })
     else
-        _, err = db:execute([[INSERT INTO kickside_memory_runs (id, component_id, run_type, status, input, created_at)
-            VALUES ($1, $2, 'derive', $3, $4, '2026-01-01T00:00:00Z')]], { run_id, id, status, json.encode(input) })
+        _, err = db:execute([[INSERT INTO kickside_memory_runs
+            (id, component_id, run_type, status, host_kind, host_id, agent_id, to_event_id, input, created_at)
+            VALUES ($1, $2, 'derive', $3, 'session', $4, 'test-derive', $5, $6, '2026-01-01T00:00:00Z')]],
+            { run_id, id, status, "s-test", event_id, json.encode(input) })
     end
     db:release()
     return err
