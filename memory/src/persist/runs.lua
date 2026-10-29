@@ -127,7 +127,8 @@ end
 function M.advance_cursor_tx(tx: any, component_id: string, body: any, updated_at: string): error?
     local _, err = tx:execute([[INSERT INTO kickside_memory_cursors
         (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET agent_id = excluded.agent_id, last_event_id = excluded.last_event_id,
+        ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET agent_id = CASE WHEN kickside_memory_cursors.pinned_prompt IS NULL
+            THEN excluded.agent_id ELSE kickside_memory_cursors.agent_id END, last_event_id = excluded.last_event_id,
             updated_at = excluded.updated_at WHERE kickside_memory_cursors.last_event_id = $7]],
         { component_id, body.host_kind, body.host_id, body.agent_id, body.last_event_id, updated_at, body.from_event_id })
     if err then return types.failed("memory cursor advance failed", err) end
@@ -174,7 +175,7 @@ end
 function M.cursor(component_id: string, host_kind: string, host_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
         local rows, err = conn:query(
-            "SELECT component_id, host_kind, host_id, agent_id, last_event_id, pinned_head, pinned_prompt, updated_at FROM kickside_memory_cursors " ..
+            "SELECT component_id, host_kind, host_id, agent_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, updated_at FROM kickside_memory_cursors " ..
             "WHERE component_id = $1 AND host_kind = $2 AND host_id = $3", { component_id, host_kind, host_id })
         if err then return nil, types.failed("memory cursor read failed", err) end
         local row = rows and rows[1]
@@ -205,7 +206,7 @@ function M.pin(component_id: string, host_kind: string, host_id: string, agent_i
         local _, err = tx:execute(
             "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at) " ..
             "VALUES ($1, $2, $3, $4, $5, '', $6, $7, $8, $9) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
-            "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, owner_scope_key = excluded.owner_scope_key, updated_at = excluded.updated_at",
+            "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, owner_scope_key = excluded.owner_scope_key, updated_at = excluded.updated_at WHERE kickside_memory_cursors.pinned_prompt IS NULL",
             { component_id, host_kind, host_id, agent_id, scope_key, head, prompt, item_ids_json, types.now() })
         if err then return nil, types.failed("memory pin failed", err) end
         return true, nil

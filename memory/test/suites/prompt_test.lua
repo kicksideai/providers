@@ -6,6 +6,109 @@ local json = require("json")
 local function define_tests()
     test.describe("prompt", function()
 
+        test.it("binds saved prompts to the acting principal and producing agent", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local host = "identity-" .. user
+            fixture.remember(user, id, {fixture.candidate("preference", "format", "numbered steps", "The user prefers numbered steps.", "seed")}, "identity-seed")
+            fixture.settle(user, id)
+            local _, activate_err = fixture.apply(user, "activate", id, host, "agent-a")
+            test.is_nil(activate_err, tostring(activate_err))
+            local original = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+            test.contains(original, "numbered steps")
+            for _, principal in ipairs({"principal:group:research", "principal:service:research"}) do
+                local grant, grant_err = fixture.call_as(user, "kickside.component.binding:grant_subtree_func", {
+                    root_component_id = id, subject = {subject_id = "research", subject_type = principal:match("^principal:([^:]+):")}, access_mask = 1,
+                })
+                test.is_nil(grant_err, tostring(grant_err))
+                test.is_true(grant.success, json.encode(grant))
+                local prompt, prompt_err = fixture.op(principal, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+                test.is_nil(prompt_err, tostring(prompt_err))
+                test.eq(prompt, "")
+            end
+            local different_agent, agent_err = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-b"))
+            test.is_nil(agent_err, tostring(agent_err))
+            test.eq(different_agent, "")
+            test.eq(fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-a")), original)
+        end)
+
+
+        test.it("keeps the pinned agent binding when another agent advances capture", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local host = "capture-binding-" .. user
+            fixture.apply(user, "activate", id, host, "agent-a")
+            fixture.record_chat(user, host, {{id = "later", role = "user", content = "Continue the task."}})
+            fixture.extraction(id, {})
+            local _, capture_err = fixture.apply(user, "before_step", id, host, "agent-b")
+            test.is_nil(capture_err, tostring(capture_err))
+            test.eq(fixture.wait_runs(user, id, "derive", 1)[1].status, "succeeded")
+            local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = host})
+            test.eq(cursor.agent_id, "agent-a")
+            test.eq(cursor.last_event_id, "later")
+        end)
+
+        test.it("renders agent memory once within one budget in the model request", function()
+            local user = fixture.user()
+            local rule = "Verify source claims."
+            local expected = "## Agent memory\n- " .. rule
+            local id = fixture.memory(user, {soul_agent_max_chars = #expected})
+            for _, fields in ipairs({
+                {kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "verification", value = rule, content = rule, priority = 5},
+                {kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "format", value = "List evidence links.", content = "List evidence links."},
+            }) do
+                local _, create_err = fixture.op(user, "create", {component_id = id, fields = fields})
+                test.is_nil(create_err, tostring(create_err))
+            end
+            fixture.settle(user, id)
+            local host = "request-" .. user
+            local run_context = fixture.agent_context(id, host, "agent-a")
+            local spec = {id = "agent-a", prompt = "Research carefully.", model = "test-fast", traits = {
+                {id = "kickside.memory:memory", context = {memory_id = id}},
+            }}
+            local activated, activate_err = fixture.op(user, "trait_agent", {
+                spec = spec, payload = fixture.payload("activate", host, "agent-a"),
+            }, run_context)
+            test.is_nil(activate_err, tostring(activate_err))
+            test.eq(#activated.errors, 0)
+            fixture.script.respond(id, "generate", "Ready.")
+            local _, step_err = fixture.op(user, "trait_agent", {
+                spec = spec, messages = {{role = "user", text = "Begin."}},
+            }, run_context)
+            test.is_nil(step_err, tostring(step_err))
+            local system = fixture.script.prompts(id, "generate")[1].system
+            local _, occurrences = system:gsub("Verify source claims%.", "")
+            test.eq(occurrences, 1, system)
+            test.is_nil(system:find("List evidence links.", 1, true), system)
+            test.contains(system, expected)
+        end)
+
+        test.it("clears agent memory snapshots on archive, restore and forget", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local created, create_err = fixture.op(user, "create", {component_id = id, fields = {
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "verification", value = "Check source claims.", content = "Check source claims.",
+            }})
+            test.is_nil(create_err, tostring(create_err))
+            fixture.settle(user, id)
+            local host = "agent-invalidation-" .. user
+            local context = fixture.agent_context(id, host, "agent-a")
+            fixture.apply(user, "activate", id, host, "agent-a")
+            test.contains(fixture.op(user, "prompt", {}, context), "Check source claims.")
+            local _, archive_err = fixture.op(user, "archive", {component_id = id, item_id = created.item_id})
+            test.is_nil(archive_err, tostring(archive_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "prompt", {}, context), "")
+            local _, restore_err = fixture.op(user, "restore", {component_id = id, item_id = created.item_id})
+            test.is_nil(restore_err, tostring(restore_err))
+            fixture.settle(user, id)
+            test.contains(fixture.op(user, "prompt", {}, context), "Check source claims.")
+            local _, forget_err = fixture.op(user, "forget", {component_id = id, item_id = created.item_id})
+            test.is_nil(forget_err, tostring(forget_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "prompt", {}, context), "")
+        end)
+
         test.it("renders complete plan state in pinned prompts and recall within their budgets", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -30,11 +133,11 @@ local function define_tests()
             local heading = "## What you know about the user\nUse these facts as defaults. Do not ask the user to repeat or confirm an attribute shown here. Apply it when relevant, state the assumption and let the user correct it. Ask only for missing details."
             local _, config_err = fixture.op(user, "update_config", { component_id = id, config = { soul_owner_max_chars = #heading + #expected + 3 } })
             test.is_nil(config_err, tostring(config_err))
-            fixture.apply(user, "activate", id, session, "agent-a")
-            test.eq(fixture.op(user, "prompt", {}, fixture.agent_context(id, session, "agent-a")), heading .. "\n- " .. expected)
+            fixture.apply(user, "activate", id, session .. "-exact", "agent-a")
+            test.eq(fixture.op(user, "prompt", {}, fixture.agent_context(id, session .. "-exact", "agent-a")), heading .. "\n- " .. expected)
             fixture.op(user, "update_config", { component_id = id, config = { soul_owner_max_chars = #heading + #expected + 2 } })
-            fixture.apply(user, "activate", id, session, "agent-a")
-            test.eq(fixture.op(user, "prompt", {}, fixture.agent_context(id, session, "agent-a")), "")
+            fixture.apply(user, "activate", id, session .. "-limited", "agent-a")
+            test.eq(fixture.op(user, "prompt", {}, fixture.agent_context(id, session .. "-limited", "agent-a")), "")
         end)
 
         test.it("pins open goals across conversations and retains completed and expired goals for search", function()
@@ -139,7 +242,7 @@ local function define_tests()
             test.eq(fixture.op(user, "prompt", {}, context), first)
         end)
 
-        test.it("renders the pinned owner slice byte-identically until the next activation", function()
+        test.it("retains the activation snapshot when the same host reactivates", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
@@ -160,8 +263,11 @@ local function define_tests()
             test.eq(fixture.op(user, "prompt", {}, context), first)
             fixture.apply(user, "activate", id, session, "agent-a")
             local second = fixture.op(user, "prompt", {}, context)
-            test.neq(second, first)
-            test.is_true(second:find("Format [format]: bullets", 1, true) ~= nil)
+            test.eq(second, first)
+            local next_host = "next-" .. user
+            fixture.apply(user, "activate", id, next_host, "agent-a")
+            local next_prompt = fixture.op(user, "prompt", {}, fixture.agent_context(id, next_host, "agent-a"))
+            test.contains(next_prompt, "Format [format]: bullets")
         end)
 
         test.it("invalidates only the affected owner's pins when items archive, restore or forget", function()
@@ -275,9 +381,13 @@ local function define_tests()
             fixture.settle(user, id)
             local built, err = fixture.op(user, "build", { context = { memory_id = id, agent_id = "agent-a" } })
             test.is_nil(err, tostring(err))
-            test.eq(built.prompt, "## Agent memory\n- You are Ada.\n- Quote prices in euros.\n- Use metric units.")
+            test.is_nil(built.prompt)
+            local session = "agent-pin-" .. user
+            fixture.apply(user, "activate", id, session, "agent-a")
+            local pinned = fixture.op(user, "prompt", {}, fixture.agent_context(id, session, "agent-a"))
+            test.eq(pinned, "## Agent memory\n- You are Ada.\n- Quote prices in euros.\n- Use metric units.")
             local again = fixture.op(user, "build", { context = { memory_id = id, agent_id = "agent-a" } })
-            test.eq(again.prompt, built.prompt)
+            test.is_nil(again.prompt)
         end)
 
     end)

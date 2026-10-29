@@ -54,20 +54,23 @@ local function soul_rows(component_id: string, scope_key: string, kinds: { strin
     return items.list(component_id, { kinds = kinds, statuses = { types.STATUS.CURRENT }, scope_keys = { scope_key }, limit = 200 })
 end
 
-local function agent_soul(payload: any, agent_id: string): (string?, error?)
-    local id, store, err = context.memory(payload, component.ACCESS.READ)
-    if err then return nil, err end
-    local rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.AGENT, agent_id), AGENT_SOUL_KINDS)
-    if rows_err then return nil, rows_err end
-    local text = render(rows :: any, "## Agent memory", (store :: any).effective.soul_agent_max_chars)
-    return text, nil
+local function acting_scope(): (string?, string?, error?)
+    local human_id, err = types.human_id()
+    if err then return nil, nil, err end
+    local actor_id = types.actor_id()
+    if actor_id == "" then return nil, nil, types.invalid("memory prompt requires an authenticated principal") end
+    return types.scope_key(types.SCOPE.OWNER, human_id or actor_id), human_id, nil
 end
 
 function M.pin(payload: any): (any?, error?)
     local id, store, err = context.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
     local host_kind, host_id = context.host_ref(payload.host)
-    local human_id = types.human_id()
+    local owner_scope_key, human_id, identity_err = acting_scope()
+    if identity_err then return nil, identity_err end
+    local existing, existing_err = runs.cursor(id :: string, host_kind, host_id)
+    if existing_err then return nil, existing_err end
+    if existing and existing.pinned_prompt ~= nil then return true, nil end
     local rows, rows_err = {}, nil
     if human_id then rows, rows_err = soul_rows(id :: string, types.scope_key(types.SCOPE.OWNER, human_id), OWNER_SOUL_KINDS) end
     if rows_err then return nil, rows_err end
@@ -108,7 +111,7 @@ function M.pin(payload: any): (any?, error?)
     local head, head_err = ledger.head(id :: string)
     if head_err then return nil, head_err end
     return runs.pin(id :: string, host_kind, host_id, types.trim(payload.agent and payload.agent.id),
-        head :: integer, text, pinned, human_id and types.scope_key(types.SCOPE.OWNER, human_id) or "")
+        head :: integer, text, pinned, owner_scope_key)
 end
 
 -- A host keeps its activation snapshot until archive, restore or forget clears the pin.
@@ -118,26 +121,27 @@ local function owner_prompt(payload: any): (string?, error?)
     if host_kind == "" or host_id == "" then return "", nil end
     local id, _, err = context.memory(payload, component.ACCESS.READ)
     if err then return nil, err end
+    local owner_scope_key, _, identity_err = acting_scope()
+    if identity_err then return nil, identity_err end
+    local agent_id = types.trim(run.agent and run.agent.id)
     local cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
     if cursor_err then return nil, cursor_err end
+    if cursor and (cursor.owner_scope_key ~= owner_scope_key or cursor.agent_id ~= agent_id) then return "", nil end
     if cursor and (cursor :: any).pinned_prompt == nil then
-        local _, pin_err = M.pin({ context = payload.context, host = run.host, agent = run.agent or {} })
+        local _, pin_err = M.pin({ context = payload.context, host = run.host, agent = run.agent, run_context = run.run_context })
         if pin_err then return nil, pin_err end
         cursor, cursor_err = runs.cursor(id :: string, host_kind, host_id)
         if cursor_err then return nil, cursor_err end
     end
-    return cursor and (cursor :: any).pinned_prompt or "", nil
+    if not cursor or cursor.owner_scope_key ~= owner_scope_key or cursor.agent_id ~= agent_id then return "", nil end
+    return cursor.pinned_prompt or "", nil
 end
 
 function M.build(_prompt: any, trait_context: any): (any?, error?)
     if types.trim(context.setting({ context = trait_context }, "memory_id")) == "" then
         return nil, types.invalid("the Memory capability has no memory selected")
     end
-    local agent_id = types.trim(type(trait_context) == "table" and trait_context.agent_id or ctx.get("agent_id"))
-    if agent_id == "" then return {}, nil end
-    local text, err = agent_soul({ context = trait_context }, agent_id)
-    if err then return nil, err end
-    return { prompt = text ~= "" and text or nil }, nil
+    return {}, nil
 end
 
 function M.prompt(): (string?, error?)

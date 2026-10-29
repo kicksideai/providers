@@ -178,7 +178,7 @@ local function scrub_runs_tx(tx: any, component_id: string, forgotten: { string 
 end
 
 local function invalidate_pins_tx(tx: any, component_id: string, owner_scope_key: string): error?
-    local _, err = tx:execute("UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL WHERE component_id = $1 AND owner_scope_key = $2",
+    local _, err = tx:execute("UPDATE kickside_memory_cursors SET pinned_prompt = NULL, pinned_ids = NULL, pinned_head = NULL WHERE component_id = $1 AND (owner_scope_key = $2 OR 'agent:' || agent_id = $2)",
         { component_id, owner_scope_key })
     if err then return types.failed("memory pin invalidation failed", err) end
     return nil
