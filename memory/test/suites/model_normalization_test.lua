@@ -29,12 +29,12 @@ local function define_tests()
             end
         end)
 
-        test.it("rejects keys with no valid topic interpretation and incompatible kinds", function()
+        test.it("rejects malformed topic keys at the schema boundary and incompatible kinds after canonicalization", function()
             local user = fixture.user()
             for _, case in ipairs({
-                { key = "", code = "model_output_invalid_extraction_shape" },
-                { key = "123", code = "model_output_invalid_extraction_topic_key" },
-                { key = "!!!", code = "model_output_invalid_extraction_shape" },
+                { key = "", code = "model_output_malformed" },
+                { key = "123", code = "model_output_malformed" },
+                { key = "!!!", code = "model_output_malformed" },
                 { key = "contact_guidance", code = "model_output_invalid_extraction_kind" },
             }) do
                 local item = fixture.candidate("profile_slot", case.key, "Bergen", "Lives in Bergen.", "source")
@@ -47,6 +47,22 @@ local function define_tests()
                 test.eq(err:kind(), errors.UNAVAILABLE)
                 test.eq(err:details().code, case.code)
             end
+        end)
+
+        test.it("reports malformed output collections before canonicalization", function()
+            local user = fixture.user()
+            fixture.script.respond(user, "structured_output", { items = true, lessons = {}, plans = {} })
+            local extracted, extraction_err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "source", role = "user", author = { kind = "user", id = user }, text = "I moved to Bergen." },
+            } })
+            test.is_nil(extracted)
+            test.eq(extraction_err:details().code, "model_output_malformed")
+
+            local candidate = fixture.candidate("profile_slot", "home_city", "Bergen", "Lives in Bergen.")
+            fixture.script.respond(user, "structured_output", { mappings = true })
+            local normalized, normalization_err = fixture.op(user, "model_step", { candidates = { candidate } })
+            test.is_nil(normalized)
+            test.eq(normalization_err:details().code, "model_output_malformed")
         end)
 
         test.it("rejects lesson mappings onto attribute keys and attribute mappings onto lesson keys", function()
@@ -108,7 +124,7 @@ local function define_tests()
             test.not_nil(err)
             test.eq(err:kind(), errors.UNAVAILABLE)
             test.is_true(err:retryable())
-            test.eq(err:details().code, "model_output_invalid_extraction_value")
+            test.eq(err:details().code, "model_output_malformed")
             test.is_nil((tostring(err):find("private", 1, true)))
             test.eq(#fixture.script.requests(user, "structured_output"), 1)
         end)

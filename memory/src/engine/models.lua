@@ -56,7 +56,14 @@ local function candidate_reason(item: any, typed: boolean?): string?
     return nil
 end
 
-local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any, evidence_scopes: any?): (any?, error?, { [string]: integer }?)
+local function canonicalize_keys(items: { any }?)
+    if type(items) ~= "table" then return end
+    for _, item in ipairs(items) do
+        if type(item) == "table" and type(item.key) == "string" then item.key = types.normalize_key(item.key) end
+    end
+end
+
+local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, evidence_scopes: any?): (any?, error?, { [string]: integer }?)
     local data = response.result
     local known = {}
     for _, row in ipairs(keys or {}) do known[(row.scope_family and (row.scope_family .. ":") or "") .. row.key] = row end
@@ -64,13 +71,12 @@ local function read_candidates(response: any, step: string, event_ids: { [string
     local rejected: { [string]: integer } = {}
     local function read(collection: any, plans: boolean): error?
         for _, item in ipairs(collection) do
-            if type(item) == "table" and type(item.key) == "string" then item.key = types.normalize_key(item.key) end
             local reason = candidate_reason(item)
             local reject = false
             local existing = nil
             if not reason then
                 local family = evidence_scopes and M.scope_family(item, evidence_scopes.authors[item.event_id], evidence_scopes.owner_id)
-                local known_key = (family and (family .. ":") or "") .. types.normalize_key(item.key)
+                local known_key = (family and (family .. ":") or "") .. item.key
                 existing = known[known_key]
             end
             if existing then
@@ -155,10 +161,15 @@ function M.extract(request: any): (any?, error?, { [string]: integer }?)
     local schema = schema_util.extraction_schema(ids, #ids)
     local data, call_err = model_calls.structured("extraction", schema, system .. prompts.JSON_FORMAT, conversation, model)
     if call_err then return nil, call_err end
+    canonicalize_keys(data.items)
+    canonicalize_keys(data.lessons)
+    canonicalize_keys(data.plans)
+    data, call_err = model_calls.validate("extraction", schema, data)
+    if call_err then return nil, call_err end
     local response = { result = data }
     local evidence_scopes = {authors = {}, owner_id = owner_id}
     for _, message in ipairs(span) do evidence_scopes.authors[message.id] = message.author end
-    local candidates, read_err, rejected = read_candidates(response, "extraction", allowed, keys, schema, evidence_scopes)
+    local candidates, read_err, rejected = read_candidates(response, "extraction", allowed, keys, evidence_scopes)
     if read_err then return nil, read_err end
     return candidates, nil, rejected
 end
@@ -207,6 +218,11 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     if encode_err then return nil, types.internal("memory normalization input encode failed", { cause = tostring(encode_err) }) end
     local data, call_err = model_calls.structured("normalization", schema, prompts.with_policy(prompts.NORMALIZATION_PROMPT, instructions) .. prompts.JSON_FORMAT, payload, model)
     if call_err then return nil, call_err end
+    if type(data.mappings) == "table" then
+        for _, parts in pairs(data.mappings) do canonicalize_keys(parts) end
+    end
+    data, call_err = model_calls.validate("normalization", schema, data)
+    if call_err then return nil, call_err end
     local mappings = data.mappings
     local out = {}
     for i, candidate in ipairs(candidates) do
@@ -221,10 +237,9 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
             if type(mapping) ~= "table" or type(mapping.key) ~= "string"
                 or not types.CARDINALITY_SET[mapping.cardinality] then reason = "shape"
             else
-                local mapped_key = types.normalize_key(mapping.key)
-                local existing = known[mapped_key]
+                local existing = known[mapping.key]
                 normalized.kind = mapping.kind
-                normalized.key = mapped_key
+                normalized.key = mapping.key
                 normalized.cardinality = existing and existing.cardinality or mapping.cardinality
                 if type(candidate.value) == "string" then
                     normalized.value = mapping.value
@@ -258,7 +273,10 @@ function M.reflect(request: any): (any?, error?)
     local system = prompts.with_policy(prompts.REFLECTION_PROMPT, instructions)
     local data, call_err = model_calls.structured("reflection", schema, system .. prompts.JSON_FORMAT, table.concat(lines, "\n"), model)
     if call_err then return nil, call_err end
-    local candidates, read_err = read_candidates({ result = data }, "reflection", nil, nil, schema)
+    canonicalize_keys(data.items)
+    data, call_err = model_calls.validate("reflection", schema, data)
+    if call_err then return nil, call_err end
+    local candidates, read_err = read_candidates({ result = data }, "reflection", nil, nil)
     if read_err then return nil, read_err end
     local grounded: { any } = {}
     for _, candidate in ipairs(candidates :: any) do
@@ -323,6 +341,8 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     })
     if encode_err then return nil, types.internal("memory reconcile judge input encode failed", { cause = tostring(encode_err) }) end
     local data, call_err = model_calls.structured("reconcile judge", schema, prompts.JUDGE_PROMPT .. prompts.JSON_FORMAT, payload, model)
+    if call_err then return nil, call_err end
+    data, call_err = model_calls.validate("reconcile judge", schema, data)
     if call_err then return nil, call_err end
     local relations = data.relations
     for _, choice in ipairs(RELATION_ACTIONS) do

@@ -57,10 +57,13 @@ function M.structured(step: string, result_schema: any, system: string, user: st
     if response and response.finish_reason == "length" then
         return nil, types.unavailable("memory " .. step .. " output is truncated", { code = "model_output_truncated", step = step })
     end
-    if not response or type(response.result) ~= "table" or not schema.validate(result_schema, response.result) then
-        return nil, malformed_error(step)
-    end
+    if not response or type(response.result) ~= "table" then return nil, malformed_error(step) end
     return response.result, nil
+end
+
+function M.validate(step: string, result_schema: any, result: any): (any?, error?)
+    if not schema.validate(result_schema, result) then return nil, malformed_error(step) end
+    return result, nil
 end
 
 function M.embed(model: string, texts: { string }): (any?, error?)
