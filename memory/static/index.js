@@ -1,9 +1,9 @@
-import { mergeProps as W, openBlock as v, createElementBlock as f, createBlock as R, resolveDynamicComponent as et, createCommentVNode as O, renderSlot as Z, createElementVNode as u, toDisplayString as _, defineComponent as Y, computed as M, Fragment as j, createVNode as x, unref as d, createTextVNode as D, renderList as F, normalizeClass as U, resolveDirective as tt, withDirectives as Ue, resolveComponent as nt, createSlots as ot, withCtx as te, ref as I, watch as q, onUnmounted as at, withModifiers as ze, onBeforeUnmount as lt, Transition as it, nextTick as Ae, vShow as rt } from "vue";
-import { Icon as L } from "@iconify/vue";
+import { mergeProps as W, openBlock as v, createElementBlock as f, createBlock as N, resolveDynamicComponent as et, createCommentVNode as O, renderSlot as Z, createElementVNode as u, toDisplayString as _, defineComponent as Y, computed as M, Fragment as j, createVNode as x, unref as d, createTextVNode as D, renderList as F, normalizeClass as U, resolveDirective as tt, withDirectives as Ue, resolveComponent as nt, createSlots as ot, withCtx as te, ref as I, watch as q, onUnmounted as at, withModifiers as ze, onBeforeUnmount as lt, Transition as it, nextTick as Ae, vShow as rt } from "vue";
+import { Icon as V } from "@iconify/vue";
 import { on as st, define as ut } from "@wippy-fe/proxy";
-import { F as dt, d as ct, n as mt, N as Oe, S as ee, B as H, f as fe, g as ge, i as Ve, h as vt, l as pt, P as de, C as ft, Q as gt, j as be, T as Le, R as Ie, v as bt, k as yt, K as ht, W as kt, U as $t, s as Ee, o as ye, q as ce, r as _t, e as le, t as wt, w as St, u as xt, a as Tt, b as Ct, m as Pt } from "./types-Dpmtmezp.js";
-import { B as he, s as At, f as xe, c as Ke, u as Ot, a as Vt, d as ke } from "./useWidget-ASETQ9fG.js";
-import { m as J, a as Te, h as Be, u as Lt, _ as It } from "./usePaged-BBuR-les.js";
+import { F as dt, d as ct, n as mt, N as Oe, S as ee, B as H, f as fe, g as ge, i as Le, h as vt, l as pt, P as de, C as ft, Q as gt, j as be, T as Ve, R as Ie, v as bt, k as yt, K as ht, W as kt, U as $t, s as Ee, o as ye, q as ce, r as _t, e as le, t as wt, w as St, u as xt, a as Tt, b as Ct, m as Pt } from "./types-Dpmtmezp.js";
+import { B as he, s as At, f as xe, c as Ke, u as Ot, a as Lt, d as ke } from "./useWidget-ASETQ9fG.js";
+import { m as J, a as Te, h as Be, u as Vt, _ as It } from "./usePaged-BBuR-les.js";
 var me = {};
 function Et(e = "pui_id_") {
   return Object.hasOwn(me, e) || (me[e] = 0), me[e]++, `${e}${me[e]}`;
@@ -66,7 +66,7 @@ function Me(e, t) {
   }
   return n;
 }
-function V(e) {
+function L(e) {
   for (var t = 1; t < arguments.length; t++) {
     var n = arguments[t] != null ? arguments[t] : {};
     t % 2 ? Me(Object(n), !0).forEach(function(l) {
@@ -78,13 +78,13 @@ function V(e) {
   return e;
 }
 function $e(e, t, n) {
-  return (t = Nt(t)) in e ? Object.defineProperty(e, t, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : e[t] = n, e;
+  return (t = Rt(t)) in e ? Object.defineProperty(e, t, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : e[t] = n, e;
 }
-function Nt(e) {
-  var t = Rt(e, "string");
+function Rt(e) {
+  var t = Nt(e, "string");
   return ie(t) == "symbol" ? t : t + "";
 }
-function Rt(e, t) {
+function Nt(e, t) {
   if (ie(e) != "object" || !e) return e;
   var n = e[Symbol.toPrimitive];
   if (n !== void 0) {
@@ -96,7 +96,7 @@ function Rt(e, t) {
 }
 var P = {
   _getMeta: function() {
-    return [Ve(arguments.length <= 0 ? void 0 : arguments[0]) || arguments.length <= 0 ? void 0 : arguments[0], vt(Ve(arguments.length <= 0 ? void 0 : arguments[0]) ? arguments.length <= 0 ? void 0 : arguments[0] : arguments.length <= 1 ? void 0 : arguments[1])];
+    return [Le(arguments.length <= 0 ? void 0 : arguments[0]) || arguments.length <= 0 ? void 0 : arguments[0], vt(Le(arguments.length <= 0 ? void 0 : arguments[0]) ? arguments.length <= 0 ? void 0 : arguments[0] : arguments.length <= 1 ? void 0 : arguments[1])];
   },
   _getConfig: function(t, n) {
     var l, o, a;
@@ -109,14 +109,14 @@ var P = {
       return fe(A) || ft(A) ? {
         class: A
       } : A;
-    }, m = ((t = l.binding) === null || t === void 0 || (t = t.value) === null || t === void 0 ? void 0 : t.ptOptions) || ((n = l.$primevueConfig) === null || n === void 0 ? void 0 : n.ptOptions) || {}, b = m.mergeSections, p = b === void 0 ? !0 : b, $ = m.mergeProps, y = $ === void 0 ? !1 : $, g = i ? P._useDefaultPT(l, l.defaultPT(), r, a, s) : void 0, S = P._usePT(l, P._getPT(o, l.$name), r, a, V(V({}, s), {}, {
+    }, m = ((t = l.binding) === null || t === void 0 || (t = t.value) === null || t === void 0 ? void 0 : t.ptOptions) || ((n = l.$primevueConfig) === null || n === void 0 ? void 0 : n.ptOptions) || {}, b = m.mergeSections, p = b === void 0 ? !0 : b, $ = m.mergeProps, y = $ === void 0 ? !1 : $, g = i ? P._useDefaultPT(l, l.defaultPT(), r, a, s) : void 0, w = P._usePT(l, P._getPT(o, l.$name), r, a, L(L({}, s), {}, {
       global: g || {}
     })), T = P._getPTDatasets(l, a);
-    return p || !p && S ? y ? P._mergeProps(l, y, g, S, T) : V(V(V({}, g), S), T) : V(V({}, S), T);
+    return p || !p && w ? y ? P._mergeProps(l, y, g, w, T) : L(L(L({}, g), w), T) : L(L({}, w), T);
   },
   _getPTDatasets: function() {
     var t = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {}, n = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : "", l = "data-pc-";
-    return V(V({}, n === "root" && $e({}, "".concat(l, "name"), ge(t.$name))), {}, $e({}, "".concat(l, "section"), ge(n)));
+    return L(L({}, n === "root" && $e({}, "".concat(l, "name"), ge(t.$name))), {}, $e({}, "".concat(l, "section"), ge(n)));
   },
   _getPT: function(t) {
     var n = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : "", l = arguments.length > 2 ? arguments[2] : void 0, o = function(s) {
@@ -135,7 +135,7 @@ var P = {
     };
     if (n && Object.hasOwn(n, "_usept")) {
       var i, r = n._usept || ((i = t.$primevueConfig) === null || i === void 0 ? void 0 : i.ptOptions) || {}, m = r.mergeSections, b = m === void 0 ? !0 : m, p = r.mergeProps, $ = p === void 0 ? !1 : p, y = s(n.originalValue), g = s(n.value);
-      return y === void 0 && g === void 0 ? void 0 : fe(g) ? g : fe(y) ? y : b || !b && g ? $ ? P._mergeProps(t, $, y, g) : V(V({}, y), g) : g;
+      return y === void 0 && g === void 0 ? void 0 : fe(g) ? g : fe(y) ? y : b || !b && g ? $ ? P._mergeProps(t, $, y, g) : L(L({}, y), g) : g;
     }
     return s(n);
   },
@@ -163,27 +163,27 @@ var P = {
     if (!(o != null && o.isUnstyled() || (o == null || (t = o.theme) === null || t === void 0 ? void 0 : t.call(o)) === "none")) {
       if (!ee.isStyleNameLoaded("common")) {
         var s, i, r = ((s = o.$style) === null || s === void 0 || (i = s.getCommonTheme) === null || i === void 0 ? void 0 : i.call(s)) || {}, m = r.primitive, b = r.semantic, p = r.global, $ = r.style;
-        H.load(m?.css, V({
+        H.load(m?.css, L({
           name: "primitive-variables"
-        }, a)), H.load(b?.css, V({
+        }, a)), H.load(b?.css, L({
           name: "semantic-variables"
-        }, a)), H.load(p?.css, V({
+        }, a)), H.load(p?.css, L({
           name: "global-variables"
-        }, a)), H.loadStyle(V({
+        }, a)), H.loadStyle(L({
           name: "global-style"
         }, a), $), ee.setLoadedStyleName("common");
       }
       if (!ee.isStyleNameLoaded((n = o.$style) === null || n === void 0 ? void 0 : n.name) && (l = o.$style) !== null && l !== void 0 && l.name) {
-        var y, g, S, T, B = ((y = o.$style) === null || y === void 0 || (g = y.getDirectiveTheme) === null || g === void 0 ? void 0 : g.call(y)) || {}, A = B.css, k = B.style;
-        (S = o.$style) === null || S === void 0 || S.load(A, V({
+        var y, g, w, T, B = ((y = o.$style) === null || y === void 0 || (g = y.getDirectiveTheme) === null || g === void 0 ? void 0 : g.call(y)) || {}, A = B.css, k = B.style;
+        (w = o.$style) === null || w === void 0 || w.load(A, L({
           name: "".concat(o.$style.name, "-variables")
-        }, a)), (T = o.$style) === null || T === void 0 || T.loadStyle(V({
+        }, a)), (T = o.$style) === null || T === void 0 || T.loadStyle(L({
           name: "".concat(o.$style.name, "-style")
         }, a), k), ee.setLoadedStyleName(o.$style.name);
       }
       if (!ee.isStyleNameLoaded("layer-order")) {
         var c, C, K = (c = o.$style) === null || c === void 0 || (C = c.getLayerOrderThemeCSS) === null || C === void 0 ? void 0 : C.call(c);
-        H.load(K, V({
+        H.load(K, L({
           name: "layer-order",
           first: !0
         }, a)), ee.setLoadedStyleName("layer-order");
@@ -193,7 +193,7 @@ var P = {
   _loadScopedThemeStyles: function() {
     var t = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {}, n = arguments.length > 1 ? arguments[1] : void 0, l = t.preset();
     if (l && t.$attrSelector) {
-      var o, a, s, i = ((o = t.$style) === null || o === void 0 || (a = o.getPresetTheme) === null || a === void 0 ? void 0 : a.call(o, l, "[".concat(t.$attrSelector, "]"))) || {}, r = i.css, m = (s = t.$style) === null || s === void 0 ? void 0 : s.load(r, V({
+      var o, a, s, i = ((o = t.$style) === null || o === void 0 || (a = o.getPresetTheme) === null || a === void 0 ? void 0 : a.call(o, l, "[".concat(t.$attrSelector, "]"))) || {}, r = i.css, m = (s = t.$style) === null || s === void 0 ? void 0 : s.load(r, L({
         name: "".concat(t.$attrSelector, "-").concat(t.$style.name)
       }, n));
       t.scopedStyleEl = m.el;
@@ -225,10 +225,10 @@ var P = {
   },
   _extend: function(t) {
     var n = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {}, l = function(i, r, m, b, p) {
-      var $, y, g, S;
+      var $, y, g, w;
       r._$instances = r._$instances || {};
-      var T = P._getConfig(m, b), B = r._$instances[t] || {}, A = pt(B) ? V(V({}, n), n?.methods) : {};
-      r._$instances[t] = V(V({}, B), {}, {
+      var T = P._getConfig(m, b), B = r._$instances[t] || {}, A = pt(B) ? L(L({}, n), n?.methods) : {};
+      r._$instances[t] = L(L({}, B), {}, {
         /* new instance variables to pass in directive methods */
         $name: t,
         $host: r,
@@ -236,7 +236,7 @@ var P = {
         $modifiers: m?.modifiers,
         $value: m?.value,
         $el: B.$el || r || void 0,
-        $style: V({
+        $style: L({
           classes: void 0,
           inlineStyles: void 0,
           load: function() {
@@ -270,7 +270,7 @@ var P = {
         /* instance's methods */
         ptm: function() {
           var c, C = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : "", K = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
-          return P._getPTValue(r._$instances[t], (c = r._$instances[t]) === null || c === void 0 || (c = c.$binding) === null || c === void 0 || (c = c.value) === null || c === void 0 ? void 0 : c.pt, C, V({}, K));
+          return P._getPTValue(r._$instances[t], (c = r._$instances[t]) === null || c === void 0 || (c = c.$binding) === null || c === void 0 || (c = c.value) === null || c === void 0 ? void 0 : c.pt, C, L({}, K));
         },
         ptmo: function() {
           var c = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {}, C = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : "", K = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
@@ -278,13 +278,13 @@ var P = {
         },
         cx: function() {
           var c, C, K = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : "", ne = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
-          return (c = r._$instances[t]) !== null && c !== void 0 && c.isUnstyled() ? void 0 : P._getOptionValue((C = r._$instances[t]) === null || C === void 0 || (C = C.$style) === null || C === void 0 ? void 0 : C.classes, K, V({}, ne));
+          return (c = r._$instances[t]) !== null && c !== void 0 && c.isUnstyled() ? void 0 : P._getOptionValue((C = r._$instances[t]) === null || C === void 0 || (C = C.$style) === null || C === void 0 ? void 0 : C.classes, K, L({}, ne));
         },
         sx: function() {
           var c, C = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : "", K = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : !0, ne = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
-          return K ? P._getOptionValue((c = r._$instances[t]) === null || c === void 0 || (c = c.$style) === null || c === void 0 ? void 0 : c.inlineStyles, C, V({}, ne)) : void 0;
+          return K ? P._getOptionValue((c = r._$instances[t]) === null || c === void 0 || (c = c.$style) === null || c === void 0 ? void 0 : c.inlineStyles, C, L({}, ne)) : void 0;
         }
-      }, A), r.$instance = r._$instances[t], (y = (g = r.$instance)[i]) === null || y === void 0 || y.call(g, r, m, b, p), r["$".concat(t)] = r.$instance, P._hook(t, i, r, m, b, p), r.$pd || (r.$pd = {}), r.$pd[t] = V(V({}, (S = r.$pd) === null || S === void 0 ? void 0 : S[t]), {}, {
+      }, A), r.$instance = r._$instances[t], (y = (g = r.$instance)[i]) === null || y === void 0 || y.call(g, r, m, b, p), r["$".concat(t)] = r.$instance, P._hook(t, i, r, m, b, p), r.$pd || (r.$pd = {}), r.$pd[t] = L(L({}, (w = r.$pd) === null || w === void 0 ? void 0 : w[t]), {}, {
         name: t,
         instance: r._$instances[t]
       });
@@ -338,10 +338,10 @@ var P = {
   },
   extend: function() {
     var t = P._getMeta.apply(P, arguments), n = De(t, 2), l = n[0], o = n[1];
-    return V({
+    return L({
       extend: function() {
         var s = P._getMeta.apply(P, arguments), i = De(s, 2), r = i[0], m = i[1];
-        return P.extend(r, V(V(V({}, o), o?.methods), m));
+        return P.extend(r, L(L(L({}, o), o?.methods), m));
       }
     }, P._extend(l, o));
   }
@@ -407,7 +407,7 @@ function _e(e, t) {
   for (var n = 0, l = Array(t); n < t; n++) l[n] = e[n];
   return l;
 }
-function Ne(e, t, n) {
+function Re(e, t, n) {
   return (t = Gt(t)) in e ? Object.defineProperty(e, t, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : e[t] = n, e;
 }
 function Gt(e) {
@@ -443,7 +443,7 @@ var We = Wt.extend("ripple", {
     },
     createRipple: function(t) {
       var n = this.getInk(t);
-      n || (n = $t("span", Ne(Ne({
+      n || (n = $t("span", Re(Re({
         role: "presentation",
         "aria-hidden": !0,
         "data-p-ink": !0,
@@ -459,11 +459,11 @@ var We = Wt.extend("ripple", {
     onMouseDown: function(t) {
       var n = this, l = t.currentTarget, o = this.getInk(l);
       if (!(!o || getComputedStyle(o, null).display === "none")) {
-        if (!this.isUnstyled() && be(o, "p-ink-active"), o.setAttribute("data-p-ink-active", "false"), !Le(o) && !Ie(o)) {
+        if (!this.isUnstyled() && be(o, "p-ink-active"), o.setAttribute("data-p-ink-active", "false"), !Ve(o) && !Ie(o)) {
           var a = Math.max(bt(l), yt(l));
           o.style.height = a + "px", o.style.width = a + "px";
         }
-        var s = ht(l), i = t.pageX - s.left + document.body.scrollTop - Ie(o) / 2, r = t.pageY - s.top + document.body.scrollLeft - Le(o) / 2;
+        var s = ht(l), i = t.pageX - s.left + document.body.scrollTop - Ie(o) / 2, r = t.pageY - s.top + document.body.scrollLeft - Ve(o) / 2;
         o.style.top = r + "px", o.style.left = i + "px", !this.isUnstyled() && kt(o, "p-ink-active"), o.setAttribute("data-p-ink-active", "true"), this.timeout = setTimeout(function() {
           o && (!n.isUnstyled() && be(o, "p-ink-active"), o.setAttribute("data-p-ink-active", "false"));
         }, 401);
@@ -608,7 +608,7 @@ function rn(e, t, n, l, o, a) {
   return v(), f("span", W({
     class: e.cx("root"),
     "data-p": a.dataP
-  }, e.ptmi("root")), [e.$slots.icon ? (v(), R(et(e.$slots.icon), W({
+  }, e.ptmi("root")), [e.$slots.icon ? (v(), N(et(e.$slots.icon), W({
     key: 0,
     class: e.cx("icon")
   }, e.ptm("icon")), null, 16, ["class"])) : e.icon ? (v(), f("span", W({
@@ -719,7 +719,7 @@ const vn = { class: "mm-view-head" }, pn = { class: "mm-view-title" }, fn = {
     return (a, s) => (v(), f(j, null, [
       u("header", vn, [
         u("h2", pn, [
-          x(d(L), {
+          x(d(V), {
             icon: "tabler:activity",
             "aria-hidden": "true"
           }),
@@ -745,7 +745,7 @@ const vn = { class: "mm-view-head" }, pn = { class: "mm-view-title" }, fn = {
             ], 8, kn),
             i.last_error ? (v(), f("span", $n, _(i.last_error), 1)) : O("", !0)
           ]),
-          i.status !== "succeeded" ? (v(), R(d(Ce), {
+          i.status !== "succeeded" ? (v(), N(d(Ce), {
             key: 0,
             class: "kx-tag-sm",
             severity: d(Fe)(i.status),
@@ -754,7 +754,7 @@ const vn = { class: "mm-view-head" }, pn = { class: "mm-view-title" }, fn = {
         ], 2))), 128))
       ])) : (v(), f("div", fn, [
         u("span", gn, [
-          x(d(L), {
+          x(d(V), {
             icon: "tabler:activity",
             "aria-hidden": "true"
           })
@@ -1017,8 +1017,8 @@ var qe = {
   directives: {
     ripple: We
   }
-}, On = ["tabindex", "disabled", "aria-pressed", "aria-label", "aria-labelledby", "data-p-checked", "data-p-disabled", "data-p"], Vn = ["data-p"];
-function Ln(e, t, n, l, o, a) {
+}, On = ["tabindex", "disabled", "aria-pressed", "aria-label", "aria-labelledby", "data-p-checked", "data-p-disabled", "data-p"], Ln = ["data-p"];
+function Vn(e, t, n, l, o, a) {
   var s = tt("ripple");
   return Ue((v(), f("button", W({
     type: "button",
@@ -1054,9 +1054,9 @@ function Ln(e, t, n, l, o, a) {
     }), u("span", W({
       class: e.cx("label")
     }, a.getPTOptions("label")), _(a.label), 17)];
-  })], 16, Vn)], 16, On)), [[s]]);
+  })], 16, Ln)], 16, On)), [[s]]);
 }
-qe.render = Ln;
+qe.render = Vn;
 var In = `
     .p-selectbutton {
         display: inline-flex;
@@ -1180,9 +1180,9 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
   } };
 }
 function Mn(e) {
-  return Un(e) || Rn(e) || Je(e) || Nn();
+  return Un(e) || Nn(e) || Je(e) || Rn();
 }
-function Nn() {
+function Rn() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
@@ -1193,7 +1193,7 @@ function Je(e, t) {
     return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? Se(e, t) : void 0;
   }
 }
-function Rn(e) {
+function Nn(e) {
   if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
 function Un(e) {
@@ -1298,7 +1298,7 @@ function Kn(e, t, n, l, o, a) {
   }, e.ptmi("root"), {
     "data-p": a.dataP
   }), [(v(!0), f(j, null, F(e.options, function(i, r) {
-    return v(), R(s, {
+    return v(), N(s, {
       key: a.getOptionRenderKey(i),
       modelValue: a.isSelected(i),
       onLabel: a.getOptionLabel(i),
@@ -1333,7 +1333,7 @@ Pe.render = Kn;
 function Wn(e) {
   return e.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
-function Re(e) {
+function Ne(e) {
   return /^[a-z][a-z0-9_]{0,63}$/.test(e);
 }
 function Fn(e) {
@@ -1400,11 +1400,11 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
       { value: "rule", label: "Rule", hint: "How the agent must behave. Part of every conversation." },
       { value: "skill", label: "Skill", hint: "Something the agent knows how to do. Recalled when relevant." },
       { value: "lesson", label: "Lesson", hint: "Experience worth reusing. Recalled when relevant." }
-    ], a = I("rule"), s = I(""), i = I(""), r = I(""), m = Ot("wc-agent-picker"), b = M(() => o.find((A) => A.value === a.value)?.hint || ""), p = M(() => Wn(i.value)), $ = M(() => i.value && !Re(p.value) ? "Use a short topic of letters, digits and spaces." : ""), y = M(() => !!s.value && Re(p.value) && !!r.value.trim()), g = Te(
+    ], a = I("rule"), s = I(""), i = I(""), r = I(""), m = Ot("wc-agent-picker"), b = M(() => o.find((A) => A.value === a.value)?.hint || ""), p = M(() => Wn(i.value)), $ = M(() => i.value && !Ne(p.value) ? "Use a short topic of letters, digits and spaces." : ""), y = M(() => !!s.value && Ne(p.value) && !!r.value.trim()), g = Te(
       () => n.memory.memoryId.value ? [n.memory.memoryId.value, a.value] : null,
       (A) => J(n.memory.memoryId.value).topics({ kind: a.value, offset: A }),
       n.memory.revision
-    ), S = M(() => g.rows.value.map((A) => A.key).filter((A) => A !== p.value).slice(0, 8));
+    ), w = M(() => g.rows.value.map((A) => A.key).filter((A) => A !== p.value).slice(0, 8));
     q(a, () => {
       i.value = "";
     });
@@ -1445,7 +1445,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
           "aria-labelledby": "add_kind"
         }, null, 8, ["modelValue"]),
         u("span", qn, [
-          x(d(L), {
+          x(d(V), {
             icon: d(X)[a.value].icon,
             "aria-hidden": "true"
           }, null, 8, ["icon"]),
@@ -1471,7 +1471,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
           class: "mm-label",
           for: "add_topic"
         }, "Topic", -1)),
-        x(d(Vt), {
+        x(d(Lt), {
           id: "add_topic",
           modelValue: i.value,
           "onUpdate:modelValue": k[1] || (k[1] = (c) => i.value = c),
@@ -1481,8 +1481,8 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         }, null, 8, ["modelValue", "invalid"]),
         $.value ? (v(), f("span", Xn, _($.value), 1)) : (v(), f("span", Zn, "What this is about, not what it says. A topic that already exists gets a new version.")),
         d(g).error.value ? (v(), f("div", eo, _(d(g).error.value), 1)) : O("", !0),
-        S.value.length ? (v(), f("div", to, [
-          (v(!0), f(j, null, F(S.value, (c) => (v(), f("button", {
+        w.value.length ? (v(), f("div", to, [
+          (v(!0), f(j, null, F(w.value, (c) => (v(), f("button", {
             key: c,
             type: "button",
             class: "mm-suggest-chip",
@@ -1510,7 +1510,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
           class: "kx-btn kx-btn-primary",
           disabled: e.memory.busy.value || !y.value
         }, [
-          x(d(L), {
+          x(d(V), {
             icon: e.memory.busy.value ? "tabler:loader-2" : "tabler:plus",
             class: U({ spin: e.memory.busy.value }),
             "aria-hidden": "true"
@@ -1539,7 +1539,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
     return (o, a) => (v(), f(j, null, [
       u("header", ro, [
         u("h2", so, [
-          x(d(L), {
+          x(d(V), {
             icon: "tabler:arrows-split-2",
             "aria-hidden": "true"
           }),
@@ -1548,14 +1548,14 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         a[2] || (a[2] = u("p", { class: "mm-muted" }, "These memories contradict each other. Keep the one that is right; the others move to earlier versions. Until then, agents treat them as unresolved.", -1))
       ]),
       d(n).error.value ? (v(), f("div", uo, [
-        x(d(L), {
+        x(d(V), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
         u("span", null, _(d(n).error.value), 1)
       ])) : !d(n).loading.value && !d(n).rows.value.length ? (v(), f("div", co, [
         u("span", mo, [
-          x(d(L), {
+          x(d(V), {
             icon: "tabler:circle-check",
             "aria-hidden": "true"
           })
@@ -1586,7 +1586,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             disabled: e.memory.busy.value,
             onClick: (r) => l(s, i)
           }, [
-            x(d(L), {
+            x(d(V), {
               icon: "tabler:check",
               "aria-hidden": "true"
             }),
@@ -1624,7 +1624,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
       disabled: e.disabled,
       onClick: o[0] || (o[0] = (a) => n("click"))
     }, [
-      x(d(L), {
+      x(d(V), {
         icon: e.icon,
         "aria-hidden": "true"
       }, null, 8, ["icon"])
@@ -1643,16 +1643,17 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
     let a = null;
     const s = /* @__PURE__ */ new Map();
     function i(y) {
-      const g = y.getRootNode(), S = g instanceof ShadowRoot ? g.activeElement : document.activeElement;
-      return S instanceof HTMLElement ? S : null;
+      const g = y.getRootNode(), w = g instanceof ShadowRoot ? g.activeElement : document.activeElement;
+      return w instanceof HTMLElement ? w : null;
     }
     function r(y) {
       let g = y;
-      for (; g?.parentElement; ) {
-        const S = g.parentElement;
-        for (const T of Array.from(S.children))
+      for (; g; ) {
+        const w = g.parentNode;
+        if (!(w instanceof HTMLElement || w instanceof ShadowRoot)) break;
+        for (const T of Array.from(w.children))
           T instanceof HTMLElement && T !== g && !s.has(T) && (s.set(T, T.inert), T.inert = !0);
-        g = S;
+        g = w instanceof ShadowRoot ? w.host : w;
       }
     }
     function m() {
@@ -1673,9 +1674,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         y.preventDefault();
         return;
       }
-      const S = g[0];
-      g[g.length - 1];
-      const T = o.value ? i(o.value) : null, B = g.indexOf(T || S), A = g[(B + (y.shiftKey ? -1 : 1) + g.length) % g.length];
+      const w = g[0], T = o.value ? i(o.value) : null, B = g.indexOf(T || w), A = g[(B + (y.shiftKey ? -1 : 1) + g.length) % g.length];
       y.preventDefault(), A.focus();
     }
     async function $(y) {
@@ -1691,8 +1690,8 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
     return q(() => n.open, (y) => {
       $(y);
     }, { immediate: !0 }), lt(() => {
-      m();
-    }), (y, g) => (v(), R(it, {
+      m(), a?.focus(), a = null;
+    }), (y, g) => (v(), N(it, {
       name: e.kind === "drawer" ? "kx-drawer" : "kx-modal"
     }, {
       default: te(() => [
@@ -1702,7 +1701,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
           ref: o,
           class: U(e.kind === "drawer" ? "kx-drawer-mask" : "kx-modal-mask"),
           onKeydown: p,
-          onClick: g[0] || (g[0] = ze((S) => e.dismissible && l("close"), ["self"]))
+          onClick: g[0] || (g[0] = ze((w) => e.dismissible && l("close"), ["self"]))
         }, [
           Z(y.$slots, "default")
         ], 34)) : O("", !0)
@@ -1720,7 +1719,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
   emits: ["close"],
   setup(e, { emit: t }) {
     const n = t;
-    return (l, o) => (v(), R(Ye, {
+    return (l, o) => (v(), N(Ye, {
       open: e.open,
       kind: "drawer",
       onClose: o[1] || (o[1] = (a) => n("close"))
@@ -1734,7 +1733,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         }, [
           u("div", So, [
             u("span", xo, [
-              x(d(L), {
+              x(d(V), {
                 icon: e.icon,
                 "aria-hidden": "true"
               }, null, 8, ["icon"]),
@@ -1755,7 +1754,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
       _: 3
     }, 8, ["open"]));
   }
-}), Po = ["aria-label"], Ao = { class: "kx-modal-h" }, Oo = { class: "kx-modal-h-ico" }, Vo = { class: "kx-modal-h-text" }, Lo = { class: "kx-modal-h-title" }, Io = {
+}), Po = ["aria-label"], Ao = { class: "kx-modal-h" }, Oo = { class: "kx-modal-h-ico" }, Lo = { class: "kx-modal-h-text" }, Vo = { class: "kx-modal-h-title" }, Io = {
   key: 0,
   class: "kx-modal-h-sub"
 }, Eo = { class: "kx-modal-body" }, Bo = { class: "kx-modal-foot" }, Do = ["disabled"], jo = ["disabled"], Mo = /* @__PURE__ */ Y({
@@ -1772,7 +1771,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
   emits: ["confirm", "cancel"],
   setup(e, { emit: t }) {
     const n = t;
-    return (l, o) => (v(), R(Ye, {
+    return (l, o) => (v(), N(Ye, {
       open: e.open,
       kind: "dialog",
       dismissible: !e.busy,
@@ -1787,13 +1786,13 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         }, [
           u("div", Ao, [
             u("span", Oo, [
-              x(d(L), {
+              x(d(V), {
                 icon: e.icon,
                 "aria-hidden": "true"
               }, null, 8, ["icon"])
             ]),
-            u("span", Vo, [
-              u("span", Lo, _(e.title), 1),
+            u("span", Lo, [
+              u("span", Vo, _(e.title), 1),
               e.subtitle ? (v(), f("span", Io, _(e.subtitle), 1)) : O("", !0)
             ]),
             x(pe, {
@@ -1820,7 +1819,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
               disabled: e.busy,
               onClick: o[2] || (o[2] = (a) => n("confirm"))
             }, [
-              e.busy ? (v(), R(d(L), {
+              e.busy ? (v(), N(d(V), {
                 key: 0,
                 icon: "tabler:loader-2",
                 class: "spin",
@@ -1834,10 +1833,10 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
       _: 3
     }, 8, ["open", "dismissible"]));
   }
-}), No = {
+}), Ro = {
   key: 0,
   class: "kx-notice error"
-}, Ro = {
+}, No = {
   key: 1,
   class: "mm-skel-reader"
 }, Uo = {
@@ -1889,26 +1888,26 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
   },
   emits: ["replaced", "gone", "open", "conversation"],
   setup(e, { emit: t }) {
-    const n = e, l = t, o = I(null), a = I([]), s = I(null), i = I([]), r = I(""), m = I(null), b = I(null), p = I(""), $ = I(!1), y = M(() => o.value ? X[o.value.kind] : null), g = M(() => o.value ? X[o.value.kind].icon : "tabler:brain"), S = M(() => o.value?.status === "current" || o.value?.status === "conflict"), T = M(() => o.value?.kind === "plan" && St(o.value.value) ? o.value.value : null), B = M(() => o.value?.value === void 0 ? "" : JSON.stringify(o.value.value, null, 2));
+    const n = e, l = t, o = I(null), a = I([]), s = I(null), i = I([]), r = I(""), m = I(null), b = I(null), p = I(""), $ = I(!1), y = M(() => o.value ? X[o.value.kind] : null), g = M(() => o.value ? X[o.value.kind].icon : "tabler:brain"), w = M(() => o.value?.status === "current" || o.value?.status === "conflict"), T = M(() => o.value?.kind === "plan" && St(o.value.value) ? o.value.value : null), B = M(() => o.value?.value === void 0 ? "" : JSON.stringify(o.value.value, null, 2));
     let A = 0;
     async function k(E = 0, h) {
-      const w = ++A;
+      const S = ++A;
       try {
-        const N = await J(n.memory.memoryId.value).item(n.itemId, E, h);
-        if (w !== A) return;
+        const R = await J(n.memory.memoryId.value).item(n.itemId, E, h);
+        if (S !== A) return;
         if (!E) {
-          const oe = N.item;
+          const oe = R.item;
           if (oe.status === "forgotten") {
             l("gone");
             return;
           }
-          o.value = oe, i.value = N.provenance;
+          o.value = oe, i.value = R.provenance;
         }
-        const z = N.versions;
+        const z = R.versions;
         a.value = E ? [...a.value, ...z.rows] : z.rows, s.value = z.next, r.value = "";
-      } catch (N) {
-        if (w !== A) return;
-        Be(N) === 404 ? l("gone") : r.value = le(N);
+      } catch (R) {
+        if (S !== A) return;
+        Be(R) === 404 ? l("gone") : r.value = le(R);
       }
     }
     q(() => n.itemId, () => {
@@ -1917,11 +1916,11 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
     async function c() {
       const E = ++A, h = a.value.length;
       try {
-        let w = 0, N = null;
+        let S = 0, R = null;
         const z = [];
         let oe = !0;
         do {
-          const Ze = Math.min(100, Math.max(1, h - z.length)), ae = await J(n.memory.memoryId.value).item(n.itemId, w, Ze);
+          const Ze = Math.min(100, Math.max(1, h - z.length)), ae = await J(n.memory.memoryId.value).item(n.itemId, S, Ze);
           if (E !== A) return;
           if (oe) {
             if (ae.item.status === "forgotten") {
@@ -1930,11 +1929,11 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             }
             o.value = ae.item, i.value = ae.provenance, oe = !1;
           }
-          z.push(...ae.versions.rows), N = ae.versions.next, w = N ?? 0;
-        } while (z.length < h && N !== null);
-        a.value = z, s.value = N, r.value = "";
-      } catch (w) {
-        E === A && (Be(w) === 404 ? l("gone") : r.value = le(w));
+          z.push(...ae.versions.rows), R = ae.versions.next, S = R ?? 0;
+        } while (z.length < h && R !== null);
+        a.value = z, s.value = R, r.value = "";
+      } catch (S) {
+        E === A && (Be(S) === 404 ? l("gone") : r.value = le(S));
       }
     }
     q(n.memory.revision, () => {
@@ -1955,7 +1954,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
           return;
         }
       await n.memory.act(async () => {
-        const N = b.value === null ? { content: E } : { content: E, value: h }, z = await J(n.memory.memoryId.value).edit(n.itemId, N);
+        const R = b.value === null ? { content: E } : { content: E, value: h }, z = await J(n.memory.memoryId.value).edit(n.itemId, R);
         z && z !== n.itemId && l("replaced", z);
       }) && (m.value = null, b.value = null, p.value = "");
     }
@@ -1978,8 +1977,8 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
       return E.host_kind === "item" ? E.memory ? "From the memory" : "From a memory that is no longer kept" : E.host_kind === "content" ? "A document" : E.host_kind === "dataflow" ? "A workflow run" : "A conversation whose text is no longer kept";
     }
     return (E, h) => (v(), f(j, null, [
-      r.value ? (v(), f("div", No, [
-        x(d(L), {
+      r.value ? (v(), f("div", Ro, [
+        x(d(V), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
@@ -1989,7 +1988,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
           u("span", {
             class: U(["mm-head-ic", y.value?.tone])
           }, [
-            x(d(L), {
+            x(d(V), {
               icon: g.value,
               "aria-hidden": "true"
             }, null, 8, ["icon"])
@@ -1998,33 +1997,33 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             u("div", Wo, [
               u("span", Fo, _(y.value?.label), 1),
               u("span", Ho, _(d(G)(o.value.key)), 1),
-              o.value.status !== "current" ? (v(), R(d(Ce), {
+              o.value.status !== "current" ? (v(), N(d(Ce), {
                 key: 0,
                 class: "kx-tag-sm",
                 severity: d(Fe)(o.value.status),
                 value: d(we)[o.value.status]
               }, null, 8, ["severity", "value"])) : O("", !0),
               u("span", qo, [
-                S.value && m.value === null ? (v(), f("button", {
+                w.value && m.value === null ? (v(), f("button", {
                   key: 0,
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
                   onClick: ne
                 }, [
-                  x(d(L), {
+                  x(d(V), {
                     icon: "tabler:pencil",
                     "aria-hidden": "true"
                   }),
                   h[8] || (h[8] = D("Edit ", -1))
                 ])) : O("", !0),
-                S.value ? (v(), f("button", {
+                w.value ? (v(), f("button", {
                   key: 1,
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
                   disabled: e.memory.busy.value,
-                  onClick: h[0] || (h[0] = (w) => C("archive"))
+                  onClick: h[0] || (h[0] = (S) => C("archive"))
                 }, [
-                  x(d(L), {
+                  x(d(V), {
                     icon: "tabler:archive",
                     "aria-hidden": "true"
                   }),
@@ -2035,9 +2034,9 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
                   disabled: e.memory.busy.value,
-                  onClick: h[1] || (h[1] = (w) => C("restore"))
+                  onClick: h[1] || (h[1] = (S) => C("restore"))
                 }, [
-                  x(d(L), {
+                  x(d(V), {
                     icon: "tabler:restore",
                     "aria-hidden": "true"
                   }),
@@ -2047,9 +2046,9 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm mm-danger",
                   disabled: e.memory.busy.value,
-                  onClick: h[2] || (h[2] = (w) => $.value = !0)
+                  onClick: h[2] || (h[2] = (S) => $.value = !0)
                 }, [
-                  x(d(L), {
+                  x(d(V), {
                     icon: "tabler:trash",
                     "aria-hidden": "true"
                   }),
@@ -2065,7 +2064,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
               x(d(ke), {
                 id: "memory_content",
                 modelValue: m.value,
-                "onUpdate:modelValue": h[3] || (h[3] = (w) => m.value = w),
+                "onUpdate:modelValue": h[3] || (h[3] = (S) => m.value = S),
                 "auto-resize": "",
                 rows: "2",
                 "aria-label": "Memory text"
@@ -2078,7 +2077,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
                 x(d(ke), {
                   id: "memory_value",
                   modelValue: b.value,
-                  "onUpdate:modelValue": h[4] || (h[4] = (w) => b.value = w),
+                  "onUpdate:modelValue": h[4] || (h[4] = (S) => b.value = S),
                   "auto-resize": "",
                   rows: "5",
                   "aria-label": "Claim value"
@@ -2092,7 +2091,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
                   disabled: e.memory.busy.value || !m.value.trim(),
                   onClick: K
                 }, [
-                  x(d(L), {
+                  x(d(V), {
                     icon: "tabler:check",
                     "aria-hidden": "true"
                   }),
@@ -2101,7 +2100,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
                 u("button", {
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
-                  onClick: h[5] || (h[5] = (w) => {
+                  onClick: h[5] || (h[5] = (S) => {
                     m.value = null, b.value = null, p.value = "";
                   })
                 }, "Cancel")
@@ -2109,7 +2108,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             ])) : (v(), f("h2", ta, _(o.value.content), 1)),
             u("div", na, [
               o.value.scope_family === "agent" ? (v(), f("span", oa, [
-                x(d(L), {
+                x(d(V), {
                   icon: "tabler:robot",
                   "aria-hidden": "true"
                 }),
@@ -2119,7 +2118,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
                 class: "mm-fact",
                 title: d(ve)(o.value.valid_at)
               }, [
-                x(d(L), {
+                x(d(V), {
                   icon: "tabler:calendar-event",
                   "aria-hidden": "true"
                 }),
@@ -2130,7 +2129,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
                 class: "mm-fact",
                 title: d(ve)(o.value.invalid_at)
               }, [
-                x(d(L), {
+                x(d(V), {
                   icon: "tabler:calendar-off",
                   "aria-hidden": "true"
                 }),
@@ -2165,20 +2164,20 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             class: "mm-sec-h"
           }, "History", -1)),
           u("ol", da, [
-            (v(!0), f(j, null, F(a.value, (w) => (v(), f("li", {
-              key: w.id,
-              class: U({ now: w.id === o.value.id, past: w.status !== "current" })
+            (v(!0), f(j, null, F(a.value, (S) => (v(), f("li", {
+              key: S.id,
+              class: U({ now: S.id === o.value.id, past: S.status !== "current" })
             }, [
               h[20] || (h[20] = u("span", {
                 class: "mm-dot",
                 "aria-hidden": "true"
               }, null, -1)),
               u("span", ca, [
-                u("span", ma, _(w.content), 1),
+                u("span", ma, _(S.content), 1),
                 u("span", va, [
-                  D("v" + _(w.version) + " · " + _(d(Q)(w.valid_at)), 1),
-                  w.status !== "current" ? (v(), f(j, { key: 0 }, [
-                    D(" · " + _(d(we)[w.status]), 1)
+                  D("v" + _(S.version) + " · " + _(d(Q)(S.valid_at)), 1),
+                  S.status !== "current" ? (v(), f(j, { key: 0 }, [
+                    D(" · " + _(d(we)[S.status]), 1)
                   ], 64)) : O("", !0)
                 ])
               ])
@@ -2188,7 +2187,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             key: 0,
             type: "button",
             class: "kx-btn kx-btn-ghost sm",
-            onClick: h[6] || (h[6] = (w) => k(s.value))
+            onClick: h[6] || (h[6] = (S) => k(s.value))
           }, "Show older versions")) : O("", !0)
         ])) : O("", !0),
         u("section", pa, [
@@ -2197,41 +2196,41 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             class: "mm-sec-h"
           }, "Learned from", -1)),
           i.value.length ? (v(), f("ul", ga, [
-            (v(!0), f(j, null, F(i.value, (w) => (v(), f("li", {
-              key: w.host_kind + w.host_id + w.event_id,
+            (v(!0), f(j, null, F(i.value, (S) => (v(), f("li", {
+              key: S.host_kind + S.host_id + S.event_id,
               class: "mm-source"
             }, [
-              x(d(L), {
+              x(d(V), {
                 class: "mm-source-ic",
-                icon: Qe(w),
+                icon: Qe(S),
                 "aria-hidden": "true"
               }, null, 8, ["icon"]),
               u("div", ba, [
                 u("div", ya, [
-                  u("span", null, _(Xe(w)), 1),
-                  w.line?.created_at || w.recorded_at ? (v(), f("span", {
+                  u("span", null, _(Xe(S)), 1),
+                  S.line?.created_at || S.recorded_at ? (v(), f("span", {
                     key: 0,
                     class: "mm-muted",
-                    title: d(ve)(w.line?.created_at || w.recorded_at || "")
-                  }, _(d(Q)(w.line?.created_at || w.recorded_at || "")), 9, ha)) : O("", !0)
+                    title: d(ve)(S.line?.created_at || S.recorded_at || "")
+                  }, _(d(Q)(S.line?.created_at || S.recorded_at || "")), 9, ha)) : O("", !0)
                 ]),
-                w.line ? (v(), f("blockquote", ka, _(w.line.text), 1)) : O("", !0),
-                w.memory ? (v(), f("button", {
+                S.line ? (v(), f("blockquote", ka, _(S.line.text), 1)) : O("", !0),
+                S.memory ? (v(), f("button", {
                   key: 1,
                   type: "button",
                   class: "mm-source-link",
-                  onClick: (N) => l("open", w.memory.id)
+                  onClick: (R) => l("open", S.memory.id)
                 }, [
-                  u("span", _a, _(d(G)(w.memory.key)), 1),
-                  u("span", null, _(w.memory.content), 1)
+                  u("span", _a, _(d(G)(S.memory.key)), 1),
+                  u("span", null, _(S.memory.content), 1)
                 ], 8, $a)) : O("", !0),
-                w.host_kind === "session" ? (v(), f("button", {
+                S.host_kind === "session" ? (v(), f("button", {
                   key: 2,
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
-                  onClick: (N) => l("conversation", w.host_id)
+                  onClick: (R) => l("conversation", S.host_id)
                 }, [
-                  x(d(L), {
+                  x(d(V), {
                     icon: "tabler:external-link",
                     "aria-hidden": "true"
                   }),
@@ -2241,9 +2240,9 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             ]))), 128))
           ])) : (v(), f("p", fa, _(o.value.source === "owner" ? "Added by a person on this page." : "No conversation recorded for this memory."), 1))
         ])
-      ])) : (v(), f("div", Ro, [
-        (v(), f(j, null, F(4, (w) => u("div", {
-          key: w,
+      ])) : (v(), f("div", No, [
+        (v(), f(j, null, F(4, (S) => u("div", {
+          key: S,
           class: "mm-skel-line"
         })), 64))
       ])),
@@ -2255,7 +2254,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         subtitle: o.value ? d(G)(o.value.key) : "",
         "confirm-label": "Forget for good",
         busy: e.memory.busy.value,
-        onCancel: h[7] || (h[7] = (w) => $.value = !1),
+        onCancel: h[7] || (h[7] = (S) => $.value = !1),
         onConfirm: Ge
       }, {
         default: te(() => [...h[24] || (h[24] = [
@@ -2277,7 +2276,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
 }, Aa = {
   key: 2,
   class: "mm-rail-empty"
-}, Oa = ["aria-expanded", "onClick"], Va = { class: "kx-railsec-t" }, La = { class: "kx-railsec-b" }, Ia = ["aria-current", "onClick"], Ea = { class: "mm-row-main" }, Ba = { class: "mm-row-t" }, Da = { class: "mm-row-s" }, ja = ["disabled"], Ma = /* @__PURE__ */ Y({
+}, Oa = ["aria-expanded", "onClick"], La = { class: "kx-railsec-t" }, Va = { class: "kx-railsec-b" }, Ia = ["aria-current", "onClick"], Ea = { class: "mm-row-main" }, Ba = { class: "mm-row-t" }, Da = { class: "mm-row-s" }, ja = ["disabled"], Ma = /* @__PURE__ */ Y({
   __name: "MemoryRail",
   props: {
     memory: {},
@@ -2289,7 +2288,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
       { value: "current", label: "Current" },
       { value: "superseded", label: "Earlier" },
       { value: "archived", label: "Archived" }
-    ], a = I("current"), s = I(""), i = Lt(s, 250, ($) => $.trim()), r = Te(() => n.memory.memoryId.value ? [n.memory.memoryId.value, a.value, i.value] : null, ($) => J(n.memory.memoryId.value).items({ status: a.value, query: i.value, offset: $ }), n.memory.revision);
+    ], a = I("current"), s = I(""), i = Vt(s, 250, ($) => $.trim()), r = Te(() => n.memory.memoryId.value ? [n.memory.memoryId.value, a.value, i.value] : null, ($) => J(n.memory.memoryId.value).items({ status: a.value, query: i.value, offset: $ }), n.memory.revision);
     q([a, i], () => {
       l("filtered"), l("status-change", a.value);
     });
@@ -2321,7 +2320,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             class: "mm-skel-row"
           })), 64))
         ])) : d(r).error.value ? (v(), f("div", Pa, [
-          x(d(L), {
+          x(d(V), {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
@@ -2335,39 +2334,39 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             type: "button",
             class: "kx-railsec-h",
             "aria-expanded": !m.value[g.id],
-            onClick: (S) => m.value[g.id] = !m.value[g.id]
+            onClick: (w) => m.value[g.id] = !m.value[g.id]
           }, [
-            x(d(L), {
+            x(d(V), {
               class: "kx-railsec-chev",
               icon: "tabler:chevron-right",
               "aria-hidden": "true"
             }),
-            x(d(L), {
+            x(d(V), {
               class: "kx-railsec-ic",
               icon: g.icon,
               "aria-hidden": "true"
             }, null, 8, ["icon"]),
-            u("span", Va, _(g.title), 1)
+            u("span", La, _(g.title), 1)
           ], 8, Oa),
-          Ue(u("div", La, [
-            (v(!0), f(j, null, F(g.items, (S) => (v(), f("button", {
-              key: S.id,
+          Ue(u("div", Va, [
+            (v(!0), f(j, null, F(g.items, (w) => (v(), f("button", {
+              key: w.id,
               type: "button",
-              class: U(["mm-row", { on: e.selectedId === S.id }]),
-              "aria-current": e.selectedId === S.id ? "true" : void 0,
-              onClick: (T) => l("select", S)
+              class: U(["mm-row", { on: e.selectedId === w.id }]),
+              "aria-current": e.selectedId === w.id ? "true" : void 0,
+              onClick: (T) => l("select", w)
             }, [
               u("span", {
-                class: U(["mm-row-ic", d(X)[S.kind].tone])
+                class: U(["mm-row-ic", d(X)[w.kind].tone])
               }, [
-                x(d(L), {
-                  icon: d(X)[S.kind].icon,
+                x(d(V), {
+                  icon: d(X)[w.kind].icon,
                   "aria-hidden": "true"
                 }, null, 8, ["icon"])
               ], 2),
               u("span", Ea, [
-                u("span", Ba, _(S.content), 1),
-                u("span", Da, _(d(G)(S.key)) + " · " + _(d(Q)(S.valid_at)), 1)
+                u("span", Ba, _(w.content), 1),
+                u("span", Da, _(d(G)(w.key)) + " · " + _(d(Q)(w.valid_at)), 1)
               ])
             ], 10, Ia))), 128))
           ], 512), [
@@ -2382,7 +2381,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
           onClick: y[2] || (y[2] = //@ts-ignore
           (...g) => d(r).more && d(r).more(...g))
         }, [
-          d(r).loading.value ? (v(), R(d(L), {
+          d(r).loading.value ? (v(), N(d(V), {
             key: 0,
             icon: "tabler:loader-2",
             class: "spin",
@@ -2393,10 +2392,10 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
       ])
     ], 64));
   }
-}), Na = {
+}), Ra = {
   key: 0,
   class: "kx-notice error"
-}, Ra = {
+}, Na = {
   key: 1,
   class: "mm-page"
 }, Ua = {
@@ -2434,21 +2433,21 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
     function g(k) {
       n("kickside-chat-open", { kind: "session", sessionId: k });
     }
-    function S(k) {
+    function w(k) {
       s.value = "item", k !== i.value && (i.value = k);
     }
     function T(k) {
-      S(k.id);
+      w(k.id);
     }
     function B(k) {
       s.value = s.value === k ? "item" : k;
     }
     function A(k) {
-      r.value = !1, k && S(k);
+      r.value = !1, k && w(k);
     }
-    return (k, c) => l.value ? (v(), f("div", Na, _(l.value), 1)) : (v(), f("div", Ra, [
+    return (k, c) => l.value ? (v(), f("div", Ra, _(l.value), 1)) : (v(), f("div", Na, [
       d(a).error.value ? (v(), f("div", Ua, [
-        x(d(L), {
+        x(d(V), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
@@ -2481,12 +2480,12 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
             class: U(["mm-conflict-bar", { on: s.value === "conflicts" }]),
             onClick: c[2] || (c[2] = (C) => B("conflicts"))
           }, [
-            x(d(L), {
+            x(d(V), {
               icon: "tabler:arrows-split-2",
               "aria-hidden": "true"
             }),
             u("span", null, _(p.value === 1 ? "1 conflict to resolve" : `${p.value} conflicts to resolve`), 1),
-            x(d(L), {
+            x(d(V), {
               icon: "tabler:chevron-right",
               "aria-hidden": "true"
             })
@@ -2501,23 +2500,23 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         ]),
         u("main", Ja, [
           u("div", Ya, [
-            s.value === "conflicts" ? (v(), R($o, {
+            s.value === "conflicts" ? (v(), N($o, {
               key: 0,
               memory: d(a)
-            }, null, 8, ["memory"])) : s.value === "activity" ? (v(), R(_n, {
+            }, null, 8, ["memory"])) : s.value === "activity" ? (v(), N(_n, {
               key: 1,
               memory: d(a)
-            }, null, 8, ["memory"])) : i.value ? (v(), R(Sa, {
+            }, null, 8, ["memory"])) : i.value ? (v(), N(Sa, {
               key: i.value,
               memory: d(a),
               "item-id": i.value,
-              onReplaced: S,
-              onOpen: S,
+              onReplaced: w,
+              onOpen: w,
               onConversation: g,
               onGone: c[5] || (c[5] = (C) => i.value = "")
             }, null, 8, ["memory", "item-id"])) : (v(), f("div", Ga, [
               u("span", Qa, [
-                x(d(L), {
+                x(d(V), {
                   icon: "tabler:brain",
                   "aria-hidden": "true"
                 })
@@ -2535,7 +2534,7 @@ const Hn = { class: "mm-field" }, qn = { class: "mm-hint" }, Jn = { class: "mm-f
         onClose: c[6] || (c[6] = (C) => r.value = !1)
       }, {
         default: te(() => [
-          r.value ? (v(), R(io, {
+          r.value ? (v(), N(io, {
             key: 0,
             memory: d(a),
             onAdded: A

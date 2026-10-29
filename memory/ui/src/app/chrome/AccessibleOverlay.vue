@@ -16,15 +16,16 @@ function activeElement(node: HTMLElement): HTMLElement | null {
 
 function inertBackground(node: HTMLElement): void {
   let current: HTMLElement | null = node
-  while (current?.parentElement) {
-    const parent: HTMLElement = current.parentElement
+  while (current) {
+    const parent: ParentNode | null = current.parentNode
+    if (!(parent instanceof HTMLElement || parent instanceof ShadowRoot)) break
     for (const sibling of Array.from(parent.children)) {
       if (sibling instanceof HTMLElement && sibling !== current && !background.has(sibling)) {
         background.set(sibling, sibling.inert)
         sibling.inert = true
       }
     }
-    current = parent
+    current = parent instanceof ShadowRoot ? parent.host as HTMLElement : parent
   }
 }
 
@@ -45,7 +46,6 @@ function onKeydown(event: KeyboardEvent): void {
   const controls = focusable()
   if (!controls.length) { event.preventDefault(); return }
   const first = controls[0]!
-  const last = controls[controls.length - 1]!
   const active = overlay.value ? activeElement(overlay.value) : null
   const index = controls.indexOf(active || first)
   const target = controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]!
@@ -71,7 +71,7 @@ async function activate(open: boolean): Promise<void> {
 }
 
 watch(() => props.open, (open) => { void activate(open) }, { immediate: true })
-onBeforeUnmount(() => { restoreBackground() })
+onBeforeUnmount(() => { restoreBackground(); invoker?.focus(); invoker = null })
 </script>
 
 <template>
