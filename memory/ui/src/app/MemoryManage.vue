@@ -14,7 +14,7 @@ import { errorText, parseConfig, type MemoryItem } from './types'
 import { useMemory } from './useMemory'
 
 const props = useProps<{ config?: unknown }>()
-const emit = useEvents<{ navigate: string }>()
+const emit = useEvents<{ navigate: string; 'kickside-chat-open': { kind: 'session'; sessionId: string } }>()
 const configError = ref('')
 const context = ref<Record<string, unknown>>({})
 watch(() => props.value.config, (raw) => {
@@ -51,7 +51,7 @@ watch(selectedId, (id) => {
 })
 
 function openConversation(sessionId: string) {
-  emit('navigate', `/sessions/${encodeURIComponent(sessionId)}`)
+  emit('kickside-chat-open', { kind: 'session', sessionId })
 }
 
 function open(id: string) {

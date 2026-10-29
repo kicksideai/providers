@@ -21,7 +21,7 @@ vi.mock('./useMemory', async () => {
 vi.mock('@iconify/vue', () => ({ Icon: { template: '<span />' } }))
 vi.mock('./AddMemory.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./MemoryRail.vue', () => ({ default: { template: '<button class="clear" @click="$emit(\'filtered\')">clear</button><button class="earlier" @click="$emit(\'status-change\', \'superseded\')">earlier</button>' } }))
-vi.mock('./MemoryDetail.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('./MemoryDetail.vue', () => ({ default: { template: '<button class="conversation" @click="$emit(\'conversation\', \'session-7\')" />' } }))
 
 let wrapper: ReturnType<typeof mount> | undefined
 afterEach(() => wrapper?.unmount())
@@ -30,7 +30,7 @@ function mountMemory() {
   state.emit.mockClear()
   wrapper = mount(MemoryManage, { global: { stubs: {
     MemoryRail: { template: '<button class="clear" @click="$emit(\'filtered\')">clear</button><button class="earlier" @click="$emit(\'status-change\', \'superseded\')">earlier</button>' },
-    MemoryDetail: true, ActivityView: true, ConflictView: true, AddMemory: true, SideDrawer: true, IconButton: true,
+    ActivityView: true, ConflictView: true, AddMemory: true, SideDrawer: true, IconButton: true,
   } } })
   return wrapper
 }
@@ -46,4 +46,11 @@ it('shows the server count for the active view', async () => {
   const view = mountMemory()
   await view.get('.earlier').trigger('click')
   expect(view.find('.kx-railhead-title').text()).toContain('7')
+})
+
+it('opens a source conversation in the chat panel', async () => {
+  const view = mountMemory()
+  await flushPromises()
+  await view.get('.conversation').trigger('click')
+  expect(state.emit).toHaveBeenCalledWith('kickside-chat-open', { kind: 'session', sessionId: 'session-7' })
 })

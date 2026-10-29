@@ -1,4 +1,4 @@
-import { mergeProps as K, openBlock as v, createElementBlock as g, createBlock as U, resolveDynamicComponent as Je, createCommentVNode as P, renderSlot as ee, createElementVNode as u, toDisplayString as $, defineComponent as Y, computed as R, Fragment as D, createVNode as S, unref as d, createTextVNode as j, renderList as F, normalizeClass as N, resolveDirective as Qe, withDirectives as Me, resolveComponent as Xe, createSlots as Ze, withCtx as se, ref as E, watch as W, onUnmounted as et, withModifiers as we, onBeforeUnmount as Ue, Transition as Ne, nextTick as tt, vShow as nt } from "vue";
+import { mergeProps as K, openBlock as v, createElementBlock as g, createBlock as U, resolveDynamicComponent as Je, createCommentVNode as P, renderSlot as ee, createElementVNode as u, toDisplayString as $, defineComponent as Y, computed as M, Fragment as D, createVNode as S, unref as d, createTextVNode as j, renderList as F, normalizeClass as N, resolveDirective as Qe, withDirectives as Re, resolveComponent as Xe, createSlots as Ze, withCtx as se, ref as E, watch as W, onUnmounted as et, withModifiers as we, onBeforeUnmount as Ue, Transition as Ne, nextTick as tt, vShow as nt } from "vue";
 import { Icon as O } from "@iconify/vue";
 import { on as ot, define as at } from "@wippy-fe/proxy";
 import { F as lt, d as rt, n as it, N as Pe, S as Z, B as H, f as pe, g as ge, i as Ae, h as st, l as ut, P as ue, C as dt, Q as ct, j as fe, T as Oe, R as Le, v as mt, k as vt, K as pt, W as gt, U as ft, s as Ie, o as be, q as de, r as bt, e as oe, t as yt, u as ht, a as kt, b as $t, m as _t } from "./types-D3kJ2ulw.js";
@@ -371,7 +371,7 @@ var T = {
   name: "ripple-directive",
   style: Bt,
   classes: jt
-}), Rt = T.extend({
+}), Mt = T.extend({
   style: Dt
 });
 function le(e) {
@@ -382,7 +382,7 @@ function le(e) {
     return t && typeof Symbol == "function" && t.constructor === Symbol && t !== Symbol.prototype ? "symbol" : typeof t;
   }, le(e);
 }
-function Mt(e) {
+function Rt(e) {
   return Kt(e) || zt(e) || Nt(e) || Ut();
 }
 function Ut() {
@@ -424,7 +424,7 @@ function Ft(e, t) {
   }
   return (t === "string" ? String : Number)(e);
 }
-var We = Rt.extend("ripple", {
+var We = Mt.extend("ripple", {
   watch: {
     "config.ripple": function(t) {
       t ? (this.createRipple(this.$host), this.bindEvents(this.$host), this.$host.setAttribute("data-pd-ripple", !0), this.$host.style.overflow = "hidden", this.$host.style.position = "relative") : (this.remove(this.$host), this.$host.removeAttribute("data-pd-ripple"));
@@ -473,7 +473,7 @@ var We = Rt.extend("ripple", {
       this.timeout && clearTimeout(this.timeout), !this.isUnstyled() && fe(t.currentTarget, "p-ink-active"), t.currentTarget.setAttribute("data-p-ink-active", "false");
     },
     getInk: function(t) {
-      return t && t.children ? Mt(t.children).find(function(n) {
+      return t && t.children ? Rt(t.children).find(function(n) {
         return ct(n, "data-pc-name") === "ripple";
       }) : void 0;
     }
@@ -703,7 +703,7 @@ const rn = { class: "mm-view-head" }, sn = { class: "mm-view-title" }, un = {
     memory: {}
   },
   setup(e) {
-    const t = e, n = R(() => t.memory.status.value?.runs || []);
+    const t = e, n = M(() => t.memory.status.value?.runs || []);
     function l(o) {
       return o.run_type === "consolidate" ? "Consolidation" : o.run_type === "reembed" ? "Re-embedding" : o.host_kind === "content" ? "Learned from a document" : "Learned from a conversation";
     }
@@ -1020,7 +1020,7 @@ var qe = {
 }, Sn = ["tabindex", "disabled", "aria-pressed", "aria-label", "aria-labelledby", "data-p-checked", "data-p-disabled", "data-p"], xn = ["data-p"];
 function Tn(e, t, n, l, a, o) {
   var s = Qe("ripple");
-  return Me((v(), g("button", K({
+  return Re((v(), g("button", K({
     type: "button",
     class: e.cx("root"),
     tabindex: e.tabindex,
@@ -1330,14 +1330,14 @@ function Dn(e, t, n, l, a, o) {
   }), 128))], 16, jn);
 }
 Ce.render = Dn;
-function Rn(e) {
+function Mn(e) {
   return e.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
-function Re(e) {
+function Me(e) {
   return /^[a-z][a-z0-9_]{0,63}$/.test(e);
 }
-function Mn(e) {
-  const t = R(() => `/api/v1/memory/${encodeURIComponent(e.value)}`), n = E(null), l = E(""), a = E(!1), o = E(0);
+function Rn(e) {
+  const t = M(() => `/api/v1/memory/${encodeURIComponent(e.value)}`), n = E(null), l = E(""), a = E(!1), o = E(0);
   let s = 0;
   async function r() {
     const b = ++s;
@@ -1400,11 +1400,11 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
       { value: "rule", label: "Rule", hint: "How the agent must behave. Part of every conversation." },
       { value: "skill", label: "Skill", hint: "Something the agent knows how to do. Recalled when relevant." },
       { value: "lesson", label: "Lesson", hint: "Experience worth reusing. Recalled when relevant." }
-    ], o = E("rule"), s = E(""), r = E(""), i = E(""), m = St("wc-agent-picker"), b = R(() => a.find((L) => L.value === o.value)?.hint || ""), p = R(() => Rn(r.value)), k = R(() => r.value && !Re(p.value) ? "Use a short topic of letters, digits and spaces." : ""), _ = R(() => !!s.value && Re(p.value) && !!i.value.trim()), y = xe(
+    ], o = E("rule"), s = E(""), r = E(""), i = E(""), m = St("wc-agent-picker"), b = M(() => a.find((L) => L.value === o.value)?.hint || ""), p = M(() => Mn(r.value)), k = M(() => r.value && !Me(p.value) ? "Use a short topic of letters, digits and spaces." : ""), _ = M(() => !!s.value && Me(p.value) && !!i.value.trim()), y = xe(
       () => n.memory.memoryId.value ? [n.memory.memoryId.value, o.value] : null,
       (L) => q(n.memory.memoryId.value).topics({ kind: o.value, offset: L }),
       n.memory.revision
-    ), C = R(() => y.rows.value.map((L) => L.key).filter((L) => L !== p.value).slice(0, 8));
+    ), C = M(() => y.rows.value.map((L) => L.key).filter((L) => L !== p.value).slice(0, 8));
     W(o, () => {
       r.value = "";
     });
@@ -1777,7 +1777,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
 }, Bo = {
   key: 2,
   class: "mm-reader"
-}, jo = { class: "mm-head" }, Do = { class: "mm-head-body" }, Ro = { class: "mm-head-top" }, Mo = { class: "kx-chip" }, Uo = { class: "mm-topic" }, No = { class: "mm-head-acts" }, zo = ["disabled"], Ko = ["disabled"], Wo = ["disabled"], Fo = {
+}, jo = { class: "mm-head" }, Do = { class: "mm-head-body" }, Mo = { class: "mm-head-top" }, Ro = { class: "kx-chip" }, Uo = { class: "mm-topic" }, No = { class: "mm-head-acts" }, zo = ["disabled"], Ko = ["disabled"], Wo = ["disabled"], Fo = {
   key: 0,
   class: "mm-edit"
 }, Ho = { class: "mm-edit-acts" }, qo = ["disabled"], Yo = {
@@ -1810,26 +1810,26 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
   },
   emits: ["replaced", "gone", "open", "conversation"],
   setup(e, { emit: t }) {
-    const n = e, l = t, a = E(null), o = E([]), s = E(null), r = E([]), i = E(""), m = E(null), b = E(!1), p = R(() => a.value ? X[a.value.kind] : null), k = R(() => a.value ? X[a.value.kind].icon : "tabler:brain"), _ = R(() => a.value?.status === "current" || a.value?.status === "conflict");
+    const n = e, l = t, a = E(null), o = E([]), s = E(null), r = E([]), i = E(""), m = E(null), b = E(!1), p = M(() => a.value ? X[a.value.kind] : null), k = M(() => a.value ? X[a.value.kind].icon : "tabler:brain"), _ = M(() => a.value?.status === "current" || a.value?.status === "conflict");
     let y = 0;
     async function C(V = 0, w) {
       const h = ++y;
       try {
-        const M = await q(n.memory.memoryId.value).item(n.itemId, V, w);
+        const R = await q(n.memory.memoryId.value).item(n.itemId, V, w);
         if (h !== y) return;
         if (!V) {
-          const te = M.item;
+          const te = R.item;
           if (te.status === "forgotten") {
             l("gone");
             return;
           }
-          a.value = te, r.value = M.provenance;
+          a.value = te, r.value = R.provenance;
         }
-        const G = M.versions;
+        const G = R.versions;
         o.value = V ? [...o.value, ...G.rows] : G.rows, s.value = G.next, i.value = "";
-      } catch (M) {
+      } catch (R) {
         if (h !== y) return;
-        Ve(M) === 404 ? l("gone") : i.value = oe(M);
+        Ve(R) === 404 ? l("gone") : i.value = oe(R);
       }
     }
     W(() => n.itemId, () => {
@@ -1838,7 +1838,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
     async function I() {
       const V = ++y, w = o.value.length;
       try {
-        let h = 0, M = null;
+        let h = 0, R = null;
         const G = [];
         let te = !0;
         do {
@@ -1851,9 +1851,9 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
             }
             a.value = ne.item, r.value = ne.provenance, te = !1;
           }
-          G.push(...ne.versions.rows), M = ne.versions.next, h = M ?? 0;
-        } while (G.length < w && M !== null);
-        o.value = G, s.value = M, i.value = "";
+          G.push(...ne.versions.rows), R = ne.versions.next, h = R ?? 0;
+        } while (G.length < w && R !== null);
+        o.value = G, s.value = R, i.value = "";
       } catch (h) {
         V === y && (Ve(h) === 404 ? l("gone") : i.value = oe(h));
       }
@@ -1900,8 +1900,8 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
             }, null, 8, ["icon"])
           ], 2),
           u("div", Do, [
-            u("div", Ro, [
-              u("span", Mo, $(p.value?.label), 1),
+            u("div", Mo, [
+              u("span", Ro, $(p.value?.label), 1),
               u("span", Uo, $(d(J)(a.value.key)), 1),
               a.value.status !== "current" ? (v(), U(d(Te), {
                 key: 0,
@@ -2083,7 +2083,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
                   key: 1,
                   type: "button",
                   class: "mm-source-link",
-                  onClick: (M) => l("open", h.memory.id)
+                  onClick: (R) => l("open", h.memory.id)
                 }, [
                   u("span", ma, $(d(J)(h.memory.key)), 1),
                   u("span", null, $(h.memory.content), 1)
@@ -2092,7 +2092,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
                   key: 2,
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
-                  onClick: (M) => l("conversation", h.host_id)
+                  onClick: (R) => l("conversation", h.host_id)
                 }, [
                   S(d(O), {
                     icon: "tabler:external-link",
@@ -2156,7 +2156,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
     W([o, r], () => {
       l("filtered"), l("status-change", o.value);
     });
-    const m = E({ instructions: !1, knowhow: !1, plans: !1, people: !1 }), b = R(() => tn.map((k) => ({ ...k, items: i.rows.value.filter((_) => X[_.kind].group === k.id) })).filter((k) => k.items.length)), p = R(() => r.value ? "No memories match this search." : o.value === "superseded" ? "No earlier versions yet." : o.value === "archived" ? "Nothing archived." : "Nothing remembered yet. Memories appear as agents talk with people.");
+    const m = E({ instructions: !1, knowhow: !1, plans: !1, people: !1 }), b = M(() => tn.map((k) => ({ ...k, items: i.rows.value.filter((_) => X[_.kind].group === k.id) })).filter((k) => k.items.length)), p = M(() => r.value ? "No memories match this search." : o.value === "superseded" ? "No earlier versions yet." : o.value === "archived" ? "Nothing archived." : "Nothing remembered yet. Memories appear as agents talk with people.");
     return (k, _) => (v(), g(D, null, [
       u("div", ga, [
         S(Ct, {
@@ -2212,7 +2212,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
             }, null, 8, ["icon"]),
             u("span", $a, $(y.title), 1)
           ], 8, ka),
-          Me(u("div", _a, [
+          Re(u("div", _a, [
             (v(!0), g(D, null, F(y.items, (C) => (v(), g("button", {
               key: C.id,
               type: "button",
@@ -2265,7 +2265,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
 }, La = {
   key: 0,
   class: "kx-notice error mm-page-note"
-}, Ia = { class: "kx-shell" }, Va = { class: "kx-rail" }, Ea = { class: "kx-railhead" }, Ba = { class: "kx-railhead-title" }, ja = { key: 0 }, Da = { class: "kx-railhead-acts" }, Ra = { class: "kx-main" }, Ma = { class: "kx-main-scroll mm-main" }, Ua = {
+}, Ia = { class: "kx-shell" }, Va = { class: "kx-rail" }, Ea = { class: "kx-railhead" }, Ba = { class: "kx-railhead-title" }, ja = { key: 0 }, Da = { class: "kx-railhead-acts" }, Ma = { class: "kx-main" }, Ra = { class: "kx-main-scroll mm-main" }, Ua = {
   key: 3,
   class: "kx-empty kx-empty-spacious mm-empty"
 }, Na = { class: "kx-empty-ico" }, za = /* @__PURE__ */ Y({
@@ -2279,7 +2279,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
         l.value = oe(c);
       }
     }, { immediate: !0 });
-    const o = Mn(R(() => String(a.value.kb_id || ""))), s = E("item"), r = E(String(a.value.route || "")), i = E(!1), m = E("current"), b = R(() => o.status.value?.counts[m.value]), p = R(() => o.status.value?.counts.conflict_groups || 0), k = R(() => (o.status.value?.runs || []).filter((f) => f.status === "failed").length);
+    const o = Rn(M(() => String(a.value.kb_id || ""))), s = E("item"), r = E(String(a.value.route || "")), i = E(!1), m = E("current"), b = M(() => o.status.value?.counts[m.value]), p = M(() => o.status.value?.counts.conflict_groups || 0), k = M(() => (o.status.value?.runs || []).filter((f) => f.status === "failed").length);
     W(() => a.value.route, (f) => {
       const c = typeof f == "string" ? f : "";
       c !== r.value && (_ = !0, r.value = c, c && (s.value = "item"));
@@ -2295,7 +2295,7 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
       n("navigate", f || "");
     });
     function y(f) {
-      n("navigate", `/sessions/${encodeURIComponent(f)}`);
+      n("kickside-chat-open", { kind: "session", sessionId: f });
     }
     function C(f) {
       s.value = "item", f !== r.value && (r.value = f);
@@ -2362,8 +2362,8 @@ const Un = { class: "mm-field" }, Nn = { class: "mm-hint" }, zn = { class: "mm-f
             onStatusChange: c[4] || (c[4] = (x) => m.value = x)
           }, null, 8, ["memory", "selected-id"])
         ]),
-        u("main", Ra, [
-          u("div", Ma, [
+        u("main", Ma, [
+          u("div", Ra, [
             s.value === "conflicts" ? (v(), U(go, {
               key: 0,
               memory: d(o)
