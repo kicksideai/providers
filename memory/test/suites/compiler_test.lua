@@ -107,6 +107,66 @@ local function define_tests()
             test.not_nil(fixture.values(fixture.items(user, memory)).aisle)
         end)
 
+        test.it("applies optional memory capability settings throughout the trait", function()
+            local user = fixture.user()
+            local memory = fixture.memory(user)
+            local session, agent_id = "settings-" .. user, "settings-agent"
+            local spec = { id = agent_id, name = "Settings", prompt = "Use configured capabilities.", model = "test-fast",
+                traits = { { id = "kickside.memory:memory", context = {
+                    memory_id = memory, read_enabled = false, write_enabled = false, recall_limit = 1,
+                } } } }
+
+            local compiled, compile_err = fixture.op(user, "compile", { spec = spec })
+            test.is_nil(compile_err, tostring(compile_err))
+            test.not_nil(compiled.tools.SearchMemory, json.encode(compiled.tools))
+            test.not_nil(compiled.tools.ForgetMemory, json.encode(compiled.tools))
+
+            local run_context = fixture.agent_context(memory, session, agent_id)
+            local activated, activate_err = fixture.op(user, "trait_agent", {
+                spec = spec, payload = fixture.payload("activate", session, agent_id),
+            }, run_context)
+            test.is_nil(activate_err, tostring(activate_err))
+            test.is_false(activated.metadata[1].metadata.pinned)
+
+            fixture.record_chat(user, session, {{ id = "settings-source", role = "user", content = "I prefer trains." }})
+            local captured, capture_err = fixture.op(user, "trait_agent", {
+                spec = spec, payload = fixture.payload("before_step", session, agent_id),
+            }, run_context)
+            test.is_nil(capture_err, tostring(capture_err))
+            test.eq(captured.metadata[1].metadata.capture.reason, "capture_disabled")
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_runs WHERE component_id = $1", {memory}), 0)
+
+            run_context.read_enabled = false
+            local searched, search_err = fixture.op(user, "tool_search", { input = { query = "trains" } }, run_context)
+            test.is_nil(search_err, tostring(search_err))
+            test.is_false(searched.success)
+            test.contains(searched.error, "disabled")
+            local recalled, recall_err = fixture.op(user, "recall", { input = { working_on = "trains" } }, run_context)
+            test.is_nil(recall_err, tostring(recall_err))
+            test.eq(#recalled.memories, 0)
+
+            run_context.write_enabled = false
+            local forgotten, forget_err = fixture.op(user, "tool_forget", { input = { key = "travel" } }, run_context)
+            test.is_nil(forget_err, tostring(forget_err))
+            test.is_false(forgotten.success)
+            test.contains(forgotten.error, "read-only")
+
+            for _, fields in ipairs({
+                { key = "tea", value = "green", content = "The user prefers green tea." },
+                { key = "morning_drink", value = "tea", content = "The user drinks tea with breakfast." },
+            }) do
+                local _, create_err = fixture.op(user, "create", { component_id = memory, fields = {
+                    kind = "preference", scope_family = "owner", key = fields.key, value = fields.value, content = fields.content,
+                } })
+                test.is_nil(create_err, tostring(create_err))
+            end
+            fixture.settle(user, memory)
+            local limit_context = fixture.agent_context(memory, session, agent_id, { recall_limit = 1 })
+            local limited, limited_err = fixture.op(user, "tool_search", { input = { query = "tea" } }, limit_context)
+            test.is_nil(limited_err, tostring(limited_err))
+            test.eq(limited.count, 1)
+        end)
+
         test.it("requires a selected memory for compilation, prompt and tools", function()
             local user = fixture.user()
             local _, compile_err = fixture.op(user, "build", { context = {} })

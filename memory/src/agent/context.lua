@@ -18,6 +18,14 @@ function M.setting(payload: any, name: string): any
     return nil
 end
 
+function M.read_enabled(payload: any): boolean
+    return M.setting(payload, "read_enabled") ~= false
+end
+
+function M.write_enabled(payload: any): boolean
+    return M.setting(payload, "write_enabled") ~= false
+end
+
 function M.memory(payload: any, access: integer): (string?, any?, error?)
     local id = types.trim(M.setting(payload, "memory_id"))
     if id == "" then return nil, nil, types.invalid("the Memory capability has no memory selected") end
@@ -36,15 +44,19 @@ function M.memory(payload: any, access: integer): (string?, any?, error?)
     return id, store, nil
 end
 
-function M.host_ref(host: any): (string, string)
-    if type(host) ~= "table" then return "", "" end
-    return type(host.kind) == "string" and host.kind or "", type(host.id) == "string" and host.id or ""
+function M.host_ref(host: any): (string?, string?)
+    if type(host) ~= "table" then return nil, nil end
+    local kind = type(host.kind) == "string" and types.trim(host.kind) or ""
+    local id = type(host.id) == "string" and types.trim(host.id) or ""
+    if kind == "" or id == "" then return nil, nil end
+    return kind, id
 end
 
 function M.validate(payload: any): error?
     if type(payload) ~= "table" then return types.invalid("payload must be an object") end
-    if type(payload.host) ~= "table" or type(payload.host.kind) ~= "string" or payload.host.kind == "" then return types.invalid("host.kind is required") end
-    if type(payload.host.id) ~= "string" or payload.host.id == "" then return types.invalid("host.id is required") end
+    local host_kind, host_id = M.host_ref(payload.host)
+    if host_kind == nil then return types.invalid("host.kind is required") end
+    if host_id == nil then return types.invalid("host.id is required") end
     if type(payload.agent) ~= "table" or types.trim(payload.agent.id) == "" then return types.invalid("agent.id is required") end
     return nil
 end

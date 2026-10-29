@@ -78,6 +78,7 @@ end
 
 -- Capture reads history after the last committed derive or rejected source.
 function M.capture(payload: any, to_event_id: string?): (any?, error?)
+    if not context.write_enabled(payload) then return { captured = false, reason = "capture_disabled" }, nil end
     local memory_id, store, store_err = context.memory(payload, component.ACCESS.WRITE)
     if store_err then return nil, store_err end
     local function skipped(reason: string): any

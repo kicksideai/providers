@@ -13,6 +13,9 @@ function M.apply(payload: any): (any?, error?)
     if invalid then return nil, invalid end
     local phase = payload.phase
     if phase == "activate" then
+        if not context.read_enabled(payload) then
+            return { messages = {}, metadata = { phase = phase, pinned = false } }, nil
+        end
         local _, err = prompt.pin(payload)
         if err then return nil, err end
         return { messages = {}, metadata = { phase = phase, pinned = true } }, nil

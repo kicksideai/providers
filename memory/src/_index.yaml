@@ -449,6 +449,19 @@ entries:
             default: false
             title: Learn from isolated runs
             description: Keep reusable lessons, skills and stable knowledge from runs without a human conversation. Skip task inputs and one-off results. Recall stays active when this is off.
+          read_enabled:
+            type: boolean
+            title: Recall memory
+            description: Include saved memory in prompts, automatic recall and SearchMemory.
+          write_enabled:
+            type: boolean
+            title: Write memory
+            description: Capture conversations and allow ForgetMemory.
+          recall_limit:
+            type: integer
+            minimum: 1
+            title: Search result limit
+            description: Default number of results from SearchMemory.
         additionalProperties: false
     prompt: |
       Memory learns from the conversation automatically, including facts, corrections

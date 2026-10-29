@@ -24,6 +24,7 @@ local function recall_query(input: any): string
 end
 
 function M.recall(input: any): (any?, error?)
+    if not context.read_enabled({}) then return { memories = {} }, nil end
     local args = type(input) == "table" and input or {}
     local component_id, store, store_err = context.memory({}, component.ACCESS.READ)
     if store_err then return nil, store_err end

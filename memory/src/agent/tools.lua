@@ -18,6 +18,7 @@ end
 
 function M.forget(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
+    if not context.write_enabled({}) then return tool_error("memory is read-only"), nil end
     local key = types.trim(input.key)
     if key == "" then return tool_error("key is required"), nil end
     local memory_id, _, memory_err = context.memory({}, component.ACCESS.WRITE)
@@ -34,11 +35,12 @@ end
 
 function M.search(args: any): (any?, error?)
     local input = type(args) == "table" and args or {}
+    if not context.read_enabled({}) then return tool_error("memory search is disabled"), nil end
     local query = types.trim(input.query)
     if query == "" then return tool_error("query is required"), nil end
     local memory_id, store, err = context.memory({}, component.ACCESS.READ)
     if err then return tool_error(err), nil end
-    local limit = math.floor(tonumber(input.limit) or (store :: any).effective.recall_max_items)
+    local limit = math.floor(tonumber(input.limit) or tonumber(context.setting({}, "recall_limit")) or (store :: any).effective.recall_max_items)
     if limit < 1 or limit > SEARCH_MAX then return tool_error("limit must be between 1 and " .. SEARCH_MAX), nil end
     local offset = 0
     if input.cursor ~= nil then
