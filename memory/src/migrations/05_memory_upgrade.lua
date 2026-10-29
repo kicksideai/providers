@@ -12,10 +12,6 @@ local RETIRED_REFERENCES = {
     ["kickside.memory:runtime_lifecycle"] = "kickside.memory.agent:lifecycle",
     ["kickside.memory:runtime_checkpoint"] = "kickside.memory.agent:checkpoint",
 }
-local DOCUMENT_MEMORY_CONTEXT_FIELDS = {
-    "kb_ids", "write_kb_id", "recall_max_chars", "recall_prompt", "checkpoint_model", "checkpoint_prompt",
-    "checkpoint_temperature", "checkpoint_max_tokens", "checkpoint_source_max_chars",
-}
 local CANCELLED_SOURCE_REASON = "cancelled: source records do not provide author attribution"
 
 local function execute(db: any, statement: string, params: any?)
@@ -76,26 +72,12 @@ local function rewrite_references(value: any): boolean
     return changed
 end
 
-local function has_document_memory_context(context: any): boolean
-    local trait_contexts = type(context) == "table" and context.trait_contexts or nil
-    if type(trait_contexts) ~= "table" then return false end
-    for _, trait_id in ipairs({ "kickside.memory:knowledge_based_memory", "kickside.memory:memory" }) do
-        local memory_context = trait_contexts[trait_id]
-        if type(memory_context) == "table" then
-            for _, field in ipairs(DOCUMENT_MEMORY_CONTEXT_FIELDS) do
-                if memory_context[field] ~= nil then return true end
-            end
-        end
-    end
-    return false
-end
-
 local function migrate_component_references(db: any, sqlite: boolean)
     if not has_table(db, sqlite, "kickside_components") then return end
     for _, row in ipairs(query(db, "SELECT component_id, private_context FROM kickside_components WHERE private_context IS NOT NULL")) do
         local context, decode_err = json.decode(tostring(row.private_context))
         if decode_err then error(tostring(decode_err)) end
-        if type(context) == "table" and not has_document_memory_context(context) then
+        if type(context) == "table" then
             local changed = rewrite_references(context)
             if changed then
                 local encoded, encode_err = json.encode(context)

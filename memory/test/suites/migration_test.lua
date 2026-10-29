@@ -78,66 +78,6 @@ local function define_tests()
             test.is_nil(run_err, tostring(run_err))
             test.eq(ran.response.result, "Memory is ready.")
         end)
-
-        test.it("resolves a published document-backed memory agent", function()
-            local user = fixture.user()
-            local memory = fixture.memory(user)
-            local published_trait = "kickside.memory:knowledge_based_memory"
-            local trait = "kickside.memory:memory"
-            local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
-                name = "published document memory agent", model = "test-fast", traits = { trait },
-                trait_contexts = { [trait] = { memory_id = memory } },
-            })
-            test.is_nil(create_err, tostring(create_err))
-            local db = fixture.db()
-            local rows, read_err = db:query("SELECT private_context FROM kickside_components WHERE component_id = $1", { created.component_id })
-            test.is_nil(read_err, tostring(read_err))
-            local published_context, decode_err = json.decode(tostring(rows[1].private_context))
-            test.is_nil(decode_err, tostring(decode_err))
-            published_context.traits = { published_trait }
-            published_context.tools = { "kickside.memory:memory_recall_tool" }
-            published_context.trait_contexts = {
-                [published_trait] = {
-                    kb_ids = { "document-one", "document-two" }, write_kb_id = "document-two",
-                    read_enabled = true, write_enabled = false, recall_limit = 5, recall_max_chars = 4000,
-                    recall_prompt = "Search selected documents.", checkpoint_model = "test-fast",
-                    checkpoint_prompt = "Keep the active task.", checkpoint_temperature = 0.1,
-                    checkpoint_max_tokens = 321, checkpoint_source_max_chars = 20000,
-                },
-            }
-            local encoded, encode_err = json.encode(published_context)
-            test.is_nil(encode_err, tostring(encode_err))
-            local _, write_err = db:execute("UPDATE kickside_components SET private_context = $1 WHERE component_id = $2", { encoded, created.component_id })
-            db:release()
-            test.is_nil(write_err, tostring(write_err))
-
-            local migrated, migrate_err = fixture.op(user, "migrate", {
-                name = "05_memory_upgrade", id = "published-document-memory", database_id = "app:db",
-            })
-            test.is_nil(migrate_err, tostring(migrate_err))
-            test.eq(migrated.failed, 0, migrated.error)
-            local stored, query_err = fixture.op(user, "migration_query", {
-                database_id = "app:db", statement = "SELECT private_context FROM kickside_components WHERE component_id = $1",
-                params = { created.component_id },
-            })
-            test.is_nil(query_err, tostring(query_err))
-            local context, decode_err = json.decode(tostring(stored[1].private_context))
-            test.is_nil(decode_err, tostring(decode_err))
-            local settings = context.trait_contexts[published_trait]
-            test.eq(context.traits[1], published_trait)
-            test.eq(context.tools[1], "kickside.memory:memory_recall_tool")
-            test.eq(settings.kb_ids[1], "document-one")
-            test.eq(settings.kb_ids[2], "document-two")
-            test.eq(settings.write_kb_id, "document-two")
-            test.eq(settings.recall_max_chars, 4000)
-            test.eq(settings.checkpoint_model, "test-fast")
-
-            local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func", {
-                agent_id = "user_agent:" .. created.component_id,
-            })
-            test.is_nil(resolve_err, tostring(resolve_err))
-            test.not_nil(agent)
-        end)
     end)
 
     test.describe("published pending derives", function()
