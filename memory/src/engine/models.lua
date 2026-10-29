@@ -14,10 +14,16 @@ local TRANSIENT_KINDS = {
     [errors.RATE_LIMITED] = true,
 }
 
+local function persisted_author(author: any): boolean
+    if type(author) ~= "table" then return false end
+    if author.kind == "system" then return true end
+    return (author.kind == "user" or author.kind == "agent") and type(author.id) == "string" and author.id ~= ""
+end
+
 function M.is_statement(message: any, agent_id: string?): boolean
     local author = message.author
+    if not persisted_author(author) then return false end
     if message.role == "tool" then return true end
-    if type(author) ~= "table" then return false end
     if author.kind == "user" then return type(author.id) == "string" and author.id ~= "" end
     return author.kind == "agent" and type(agent_id) == "string" and agent_id ~= "" and author.id == agent_id
 end
@@ -445,17 +451,19 @@ local function candidate_reason(item: any, typed: boolean?): string?
     return nil
 end
 
-local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any, evidence_scopes: any?): (any?, error?)
+local function read_candidates(response: any, step: string, event_ids: { [string]: boolean }?, keys: { any }?, schema: any, evidence_scopes: any?): (any?, error?, { [string]: integer }?)
     local err = response_error(response, step, schema)
     if err then return nil, err end
     local data = response.result
     local known = {}
     for _, row in ipairs(keys or {}) do known[(row.scope_family and (row.scope_family .. ":") or "") .. row.key] = row end
     local out = {}
+    local rejected: { [string]: integer } = {}
     local function read(collection: any, plans: boolean): error?
         for _, item in ipairs(collection) do
             if type(item) == "table" and type(item.key) == "string" then item.key = types.normalize_key(item.key) end
             local reason = candidate_reason(item)
+            local reject = false
             local existing = nil
             if not reason then
                 local family = evidence_scopes and M.scope_family(item, evidence_scopes.authors[item.event_id], evidence_scopes.owner_id)
@@ -469,9 +477,14 @@ local function read_candidates(response: any, step: string, event_ids: { [string
             if not reason and step == "extraction" then
                 if (item.kind == types.KIND.PLAN) ~= plans then reason = "kind"
                 elseif not event_ids[item.event_id] then reason = "evidence" end
+                if not reason and (item.kind == types.KIND.PROFILE_SLOT or item.kind == types.KIND.PREFERENCE)
+                    and M.scope_family(item, evidence_scopes.authors[item.event_id], evidence_scopes.owner_id) ~= types.SCOPE.OWNER then
+                    rejected.kind = (rejected.kind or 0) + 1
+                    reject = true
+                end
             elseif not reason and step == "reflection" and item.kind ~= types.KIND.LESSON then reason = "kind" end
             if reason then return validation_error(step, reason) end
-            out[#out + 1] = item
+            if not reject then out[#out + 1] = item end
         end
         return nil
     end
@@ -483,7 +496,7 @@ local function read_candidates(response: any, step: string, event_ids: { [string
         local plan_err = read(data.plans, true)
         if plan_err then return nil, plan_err end
     end
-    return out, nil
+    return out, nil, rejected
 end
 
 local function key_listing(keys: { any }): (string?, error?)
@@ -523,7 +536,7 @@ function M.conversation(span: { any }, context: { any }?, agent_id: string?): st
     return table.concat(lines, "\n")
 end
 
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, isolated: boolean?, owner_id: string?, agent_id: string?): (any?, error?)
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, isolated: boolean?, owner_id: string?, agent_id: string?): (any?, error?, { [string]: integer }?)
     local ids: { string } = {}
     local allowed = {}
     for _, message in ipairs(span) do
@@ -543,17 +556,11 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
     if budget_err then return nil, budget_err end
     local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, conversation), { model = model, max_tokens = budget })
     if err then return nil, model_error("extraction", err) end
-    local evidence_scopes = nil
-    for _, key in ipairs(keys) do
-        if key.scope_family then
-            evidence_scopes = {authors = {}, owner_id = owner_id}
-            for _, message in ipairs(span) do evidence_scopes.authors[message.id] = message.author end
-            break
-        end
-    end
-    local candidates, read_err = read_candidates(response, "extraction", allowed, keys, schema, evidence_scopes)
+    local evidence_scopes = {authors = {}, owner_id = owner_id}
+    for _, message in ipairs(span) do evidence_scopes.authors[message.id] = message.author end
+    local candidates, read_err, rejected = read_candidates(response, "extraction", allowed, keys, schema, evidence_scopes)
     if read_err then return nil, read_err end
-    return candidates, nil
+    return candidates, nil, rejected
 end
 
 -- A typed value or a lesson maps to exactly one topic; a scalar attribute may

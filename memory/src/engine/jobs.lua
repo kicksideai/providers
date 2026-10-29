@@ -345,18 +345,15 @@ function M.derive_authorized(value: any): any
             end
         end
         local learning = input.isolated or not families[types.SCOPE.OWNER]
-        local candidates, extract_err = models.extract(cfg.extraction_model, span, keys, cfg.extraction_instructions, input.context, learning, input.owner_id, run.agent_id)
+        local candidates, extract_err, rejected_candidates = models.extract(cfg.extraction_model, span, keys, cfg.extraction_instructions, input.context, learning, input.owner_id, run.agent_id)
         if extract_err then return nil, extract_err end
         local owner, learned = {}, {}
         local authors = {}
         for _, message in ipairs(span) do authors[message.id] = message.author end
-        local rejected_candidates: { [string]: integer } = {}
         for _, candidate in ipairs(candidates) do
             local author = authors[candidate.event_id]
             if models.scope_family(candidate, author, input.owner_id) == types.SCOPE.OWNER then
                 owner[#owner + 1] = candidate
-            elseif candidate.kind == types.KIND.PROFILE_SLOT or candidate.kind == types.KIND.PREFERENCE then
-                rejected_candidates.kind = (rejected_candidates.kind or 0) + 1
             elseif run.agent_id and run.agent_id ~= "" then
                 learned[#learned + 1] = candidate
             else
@@ -364,7 +361,7 @@ function M.derive_authorized(value: any): any
             end
         end
         d.stats.candidates = #candidates
-        if next(rejected_candidates) then d.stats.rejected_candidates = rejected_candidates end
+        if rejected_candidates and next(rejected_candidates) then d.stats.rejected_candidates = rejected_candidates end
         for _, group in ipairs({{family = types.SCOPE.OWNER, id = input.owner_id, candidates = owner},
             {family = types.SCOPE.AGENT, id = run.agent_id, candidates = learned}}) do
             local decide_err = reconcile.decide(d, group.candidates, {
