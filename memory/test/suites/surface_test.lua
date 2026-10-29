@@ -51,15 +51,26 @@ local function get_path(user: string?, path: string): any return request(user, "
 local function define_tests()
     test.describe("memory surfaces", function()
 
-        test.it("admits generic content through the selected memory engine", function()
+        test.it("admits generic content through the memory embeddable contract", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local response = request(user, "POST", "/knowledge/" .. id .. "/ingest", {
+            fixture.extraction(id, {})
+            local result, err = fixture.op(user, "embed_contract", { component_id = id, request = {
                 content = "The reference explains accessible travel.", content_type = "text/plain",
                 external_id = "travel-reference", external_version = "1",
-            })
-            test.eq(response.status, 200, response.raw)
-            test.is_true(response.body.success, response.raw)
+            } })
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, json.encode(result))
+            test.eq(result.status, "queued")
+            test.eq(result.kb_id, id)
+            test.eq(result.thread_id, id)
+            test.eq(result.external_id, "travel-reference")
+            test.eq(result.external_version, "1")
+            test.not_nil(result.run_id)
+            local run = fixture.wait_runs(user, id, "derive", 1)[1]
+            test.eq(run.id, result.run_id)
+            test.eq(run.status, "succeeded", tostring(run.last_error))
+            test.eq(run.component_id, id)
         end)
         test.it("exposes oversized source rejections through runs and activity without source text", function()
             local user = fixture.user()
