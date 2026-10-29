@@ -1880,6 +1880,7 @@ const Rn = { class: "mm-field" }, Un = { class: "mm-hint" }, Nn = { class: "mm-f
     }
     function x(A) {
       if (A.line) {
+        if (A.line.role === "tool") return "Tool result";
         const h = A.line.author;
         return h?.kind === "user" ? "They said" : h?.kind === "system" ? "Workflow input" : h?.kind === "agent" ? a.value?.scope_family === "agent" && a.value.scope_id === h.id ? "The agent said" : `Task from ${h.id || "an agent"}` : "Message";
       }

@@ -124,6 +124,7 @@ function sourceIcon(origin: Provenance): string {
 
 function sourceLabel(origin: Provenance): string {
   if (origin.line) {
+    if (origin.line.role === 'tool') return 'Tool result'
     const author = origin.line.author
     if (author?.kind === 'user') return 'They said'
     if (author?.kind === 'system') return 'Workflow input'

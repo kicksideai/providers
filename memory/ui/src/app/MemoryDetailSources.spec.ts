@@ -53,7 +53,7 @@ it('shows history only when the memory has earlier versions', async () => {
 
 it('labels a parent-authored user-role source as a task', async () => {
   const line = provenance[0]!.line!
-  Object.assign(line, { author: { kind: 'agent', id: 'agent:coordinator' } })
+  Object.assign(line, { role: 'user', author: { kind: 'agent', id: 'agent:coordinator' } })
   const wrapper = render()
   await flushPromises()
   expect(wrapper.text()).toContain('Task from agent:coordinator')
@@ -63,7 +63,7 @@ it('labels a parent-authored user-role source as a task', async () => {
 
 it('labels workflow-authored input by its author', async () => {
   const line = provenance[0]!.line!
-  Object.assign(line, { author: { kind: 'system' } })
+  Object.assign(line, { role: 'user', author: { kind: 'system' } })
   const wrapper = render()
   await flushPromises()
   expect(wrapper.text()).toContain('Workflow input')
@@ -71,14 +71,24 @@ it('labels workflow-authored input by its author', async () => {
   wrapper.unmount()
 })
 
+it('labels a tool outcome by its persisted source role', async () => {
+  const line = provenance[0]!.line!
+  Object.assign(line, { role: 'tool', author: { kind: 'system' } })
+  const wrapper = render()
+  await flushPromises()
+  expect(wrapper.text()).toContain('Tool result')
+  Object.assign(line, { role: 'user', author: {kind: 'user', id: 'human:test'} })
+  wrapper.unmount()
+})
+
 it('labels a source written by the running agent', async () => {
   const previous = {scope_family: item.scope_family, scope_id: item.scope_id}
   Object.assign(item, {scope_family: 'agent', scope_id: 'agent:reader'})
-  Object.assign(provenance[0]!.line!, {author: {kind: 'agent', id: 'agent:reader'}})
+  Object.assign(provenance[0]!.line!, {role: 'assistant', author: {kind: 'agent', id: 'agent:reader'}})
   const wrapper = render()
   await flushPromises()
   expect(wrapper.text()).toContain('The agent said')
   Object.assign(item, previous)
-  Object.assign(provenance[0]!.line!, {author: {kind: 'user', id: 'human:test'}})
+  Object.assign(provenance[0]!.line!, {role: 'user', author: {kind: 'user', id: 'human:test'}})
   wrapper.unmount()
 })
