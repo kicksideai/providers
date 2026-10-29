@@ -326,11 +326,13 @@ function M.derive_authorized(value: any): any
         end
         local families = {}
         for _, message in ipairs(span) do
-            local author = message.author
-            if type(author) == "table" and author.kind == "user" and author.id == input.owner_id then
-                families[types.SCOPE.OWNER] = true
-            elseif type(author) == "table" then
-                families[types.SCOPE.AGENT] = true
+            if models.is_statement(message, run.agent_id) then
+                local author = message.author
+                if type(author) == "table" and author.kind == "user" and author.id == input.owner_id then
+                    families[types.SCOPE.OWNER] = true
+                else
+                    families[types.SCOPE.AGENT] = true
+                end
             end
         end
         if not host then families[types.SCOPE.OWNER] = true end
@@ -343,33 +345,33 @@ function M.derive_authorized(value: any): any
             end
         end
         local learning = input.isolated or not families[types.SCOPE.OWNER]
-        local candidates, extract_err = models.extract(cfg.extraction_model, span, keys, cfg.extraction_instructions, input.context, learning, input.owner_id)
+        local candidates, extract_err = models.extract(cfg.extraction_model, span, keys, cfg.extraction_instructions, input.context, learning, input.owner_id, run.agent_id)
         if extract_err then return nil, extract_err end
         local owner, learned = {}, {}
         local authors = {}
         for _, message in ipairs(span) do authors[message.id] = message.author end
+        local rejected_candidates: { [string]: integer } = {}
         for _, candidate in ipairs(candidates) do
             local author = authors[candidate.event_id]
-            if models.scope_family(candidate, author, input.owner_id) == types.SCOPE.OWNER
-                or (not host and input.owner_id ~= nil) then
+            if models.scope_family(candidate, author, input.owner_id) == types.SCOPE.OWNER then
                 owner[#owner + 1] = candidate
+            elseif candidate.kind == types.KIND.PROFILE_SLOT or candidate.kind == types.KIND.PREFERENCE then
+                rejected_candidates.kind = (rejected_candidates.kind or 0) + 1
             elseif run.agent_id and run.agent_id ~= "" then
-                if candidate.kind == types.KIND.PROFILE_SLOT or candidate.kind == types.KIND.PREFERENCE then
-                    return nil, types.invalid("nonhuman evidence cannot establish an owner attribute")
-                end
                 learned[#learned + 1] = candidate
             else
                 return nil, types.invalid("memory evidence has no authorized scope")
             end
         end
         d.stats.candidates = #candidates
+        if next(rejected_candidates) then d.stats.rejected_candidates = rejected_candidates end
         for _, group in ipairs({{family = types.SCOPE.OWNER, id = input.owner_id, candidates = owner},
             {family = types.SCOPE.AGENT, id = run.agent_id, candidates = learned}}) do
             local decide_err = reconcile.decide(d, group.candidates, {
                 embedding_model = store.embedding_model, judge_model = cfg.judge_model,
                 scope_family = group.family, scope_id = types.trim(group.id),
                 host_kind = run.host_kind, host_id = run.host_id, events = events, run_id = run.id,
-                conversation = models.conversation(span, input.context),
+                conversation = models.conversation(span, input.context, run.agent_id),
             })
             if decide_err then return nil, decide_err end
         end

@@ -12,7 +12,7 @@ local function define_tests()
                 local item = fixture.candidate("profile_slot", key, "Bergen", "Lives in Bergen.", "source", nil, "multi")
                 fixture.script.respond(user, "structured_output", { items = { item }, plans = {}, lessons = {} })
                 local result, err = fixture.op(user, "model_step", { step = "extract", span = {
-                    { id = "source", role = "user", text = "I moved to Bergen." },
+                    { id = "source", role = "user", author = {kind = "user", id = user}, text = "I moved to Bergen." },
                 }, keys = { { kind = "profile_slot", key = "home_city", cardinality = "single" } } })
                 test.is_nil(err, tostring(err))
                 local existing = key ~= "residence"
@@ -40,7 +40,7 @@ local function define_tests()
                 local item = fixture.candidate("profile_slot", case.key, "Bergen", "Lives in Bergen.", "source")
                 fixture.script.respond(user, "structured_output", { items = { item }, plans = {}, lessons = {} })
                 local result, err = fixture.op(user, "model_step", { step = "extract", span = {
-                    { id = "source", role = "user", text = "I moved to Bergen." },
+                    { id = "source", role = "user", author = {kind = "user", id = user}, text = "I moved to Bergen." },
                 }, keys = { { kind = "lesson", key = "contact_guidance", cardinality = "multi" } } })
                 test.is_nil(result)
                 test.not_nil(err)
@@ -69,7 +69,7 @@ local function define_tests()
             local attribute = fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement")
             local goal = fixture.candidate("plan", "ticket_booking", { status = "open", next_step = "Compare routes", details = "Travel tickets" }, "The user needs travel tickets.", "statement")
             fixture.extraction(user, { attribute, goal })
-            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", text = "I live in Paris and need travel tickets." } } })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", author = {kind = "user", id = user}, text = "I live in Paris and need travel tickets." } } })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 2)
             test.eq(result.items[1].kind, "profile_slot")
@@ -88,7 +88,7 @@ local function define_tests()
                     status = "open", next_step = "", details = request,
                 }, "The user requests help with a task.", "task-source")
                 fixture.extraction(user, { goal })
-                local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "task-source", role = "user", text = request } } })
+                local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "task-source", role = "user", author = {kind = "user", id = user}, text = request } } })
                 test.is_nil(err, tostring(err))
                 test.eq(#result.items, 1)
                 test.eq(result.items[1].value.status, "open")
@@ -103,7 +103,7 @@ local function define_tests()
             fixture.script.respond(user, "structured_output", { plans = {}, lessons = {}, items = { fixture.candidate("profile_slot", "pet_name", {
                 status = "open", next_step = "", details = "A cat named Biscuit",
             }, "The user's cat is named Biscuit.", "statement") } })
-            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", text = "My cat is Biscuit." } } })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "statement", role = "user", author = {kind = "user", id = user}, text = "My cat is Biscuit." } } })
             test.is_nil(result)
             test.not_nil(err)
             test.eq(err:kind(), errors.UNAVAILABLE)

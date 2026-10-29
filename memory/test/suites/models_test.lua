@@ -80,7 +80,7 @@ local function define_tests()
             local user = fixture.user()
             fixture.extraction(user, {})
             local result, err = fixture.op(user, "model_step", { step = "extract", span = {
-                { id = "request", role = "user", text = "Forget my dietary preferences." },
+                { id = "request", role = "user", author = {kind = "user", id = user}, text = "Forget my dietary preferences." },
             } })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 0)
@@ -95,7 +95,7 @@ local function define_tests()
             local job = candidate("occupation", "engineer")
             fixture.extraction(user, { city, job })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = {
-                { id = "event", role = "user", text = "I live in Oslo and work as an engineer." },
+                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo and work as an engineer." },
             }, keys = { { key = "residence", kind = "profile_slot", cardinality = "single", value = "Paris", content = "Lives in Paris." } } })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 2)
@@ -117,7 +117,7 @@ local function define_tests()
                 for _, data in ipairs({ { items = {}, plans = {}, lessons = {}, mappings = {}, relations = {} }, '{"items":[' }) do
                     fixture.script.respond(user, "structured_output", data, "length")
                     local result, err = fixture.op(user, "model_step", { step = step,
-                        span = { { id = "event", role = "user", text = "I live in Oslo." } },
+                        span = { { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." } },
                         candidates = { candidate("home_city", "Oslo") }, candidate = candidate("home_city", "Oslo"),
                         items = { { id = "a", kind = "fact", key = "a", content = "First source." },
                             { id = "b", kind = "fact", key = "b", content = "Second source." } },
@@ -141,7 +141,7 @@ local function define_tests()
             fixture.script.fail(user, "structured_output", "Model failed to return valid JSON", errors.NOT_FOUND, false,
                 { error_type = "model_error", raw_content = '{"items":[' })
             local result, err = fixture.op(user, "model_step", { step = "extract", span = {
-                { id = "event", role = "user", text = "I live in Oslo." },
+                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." },
             } })
             test.is_nil(result)
             test.not_nil(err)
@@ -176,7 +176,7 @@ local function define_tests()
             local user = fixture.user()
             fixture.script.respond(user, "structured_output", { items = {}, plans = {}, lessons = {} })
             local _, err = fixture.op(user, "model_step", { step = "extract", span = {
-                { id = "event", role = "user", text = "I live in Oslo and need to renew my passport." },
+                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo and need to renew my passport." },
             }, keys = {
                 { key = "residence", kind = "profile_slot", cardinality = "single", value = "Paris", content = "Lives in Paris." },
                 { key = "passport_renewal", kind = "plan", cardinality = "single", content = "Renewing a passport." },
@@ -210,10 +210,10 @@ local function define_tests()
             local user = fixture.user()
             local span, candidates, sources = {}, {}, {}
             local event_id = string.rep("e", 36)
-            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { span = { { id = event_id, role = "user" } } })
+            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { span = { { id = event_id, role = "user", author = {kind = "user", id = user} } } })
             test.is_nil(capacity_err, tostring(capacity_err))
             for i = 1, capacity do
-                span[i] = { id = event_id, role = "user", text = "An attribute." }
+                span[i] = { id = event_id, role = "user", author = {kind = "user", id = user}, text = "An attribute." }
                 candidates[i] = candidate("attribute_" .. tostring(i), "An attribute")
             end
             for i = 1, 2 * capacity do sources[i] = { id = "source-" .. tostring(i), kind = "fact", key = "attribute", content = "An attribute." } end
@@ -255,7 +255,7 @@ local function define_tests()
             for _, step in ipairs({ "extract", "normalize", "reflect", "judge" }) do
                 fixture.script.respond(user, "structured_output", {}, "length")
                 local _, err = fixture.op(user, "model_step", { step = step,
-                    span = { { id = "event", role = "user", text = "An attribute." } },
+                    span = { { id = "event", role = "user", author = {kind = "user", id = user}, text = "An attribute." } },
                     candidates = { candidate("attribute", "An attribute") }, candidate = candidate("attribute", "An attribute"),
                     items = { { id = "a", kind = "fact", key = "attribute", content = "An attribute." },
                         { id = "b", kind = "fact", key = "other", content = "Another attribute." } } })
@@ -297,7 +297,7 @@ local function define_tests()
                     end
                     fixture.script.respond(user, "structured_output", data)
                     local result, err = fixture.op(user, "model_step", { step = step,
-                        span = { { id = "event", role = "user", text = "I live in Oslo." } },
+                        span = { { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." } },
                         candidates = { candidate("home_city", "Oslo") }, candidate = candidate("home_city", "Oslo"),
                         neighbors = { { id = "a", kind = "fact", key = "home_city", content = "Lives in Oslo." } },
                         items = { { id = "a", kind = "fact", key = "home_city", content = "Lives in Oslo." },
@@ -331,7 +331,7 @@ local function define_tests()
                     else city.content = "City" .. string.char(control) end
                     fixture.script.respond(user, "structured_output", data)
                     local result, err = fixture.op(user, "model_step", { step = step,
-                        span = { { id = "event", role = "user", text = "A statement." } },
+                        span = { { id = "event", role = "user", author = {kind = "user", id = user}, text = "A statement." } },
                         candidates = { candidate("home_city", "Oslo") }, candidate = candidate("home_city", "Oslo"),
                         items = { { id = "a", kind = "fact", key = "home_city", content = "Lives in Oslo." },
                             { id = "b", kind = "fact", key = "mobility", content = "Uses trains." } },
@@ -368,7 +368,7 @@ local function define_tests()
             test.not_nil(capacity_err)
             test.is_true(tostring(capacity_err):find("requires a positive output limit", 1, true) ~= nil, tostring(capacity_err))
             local result, err = fixture.op(user, "model_step", { model = "test-no-output", step = "extract", span = {
-                { id = "event", role = "user", text = "I live in Oslo." },
+                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." },
             } })
             test.is_nil(result)
             test.not_nil(err)
@@ -392,7 +392,7 @@ local function define_tests()
         test.it("sizes the largest typical ASCII statement count within the output limit", function()
             local user = fixture.user()
             for _, spec in ipairs({ { model = "test-bounded", limit = 8192 }, { model = "test-fast", limit = 32768 } }) do
-                local span = { { id = string.rep("e", 36), role = "user", text = "An attribute." } }
+                local span = { { id = string.rep("e", 36), role = "user", author = {kind = "user", id = user}, text = "An attribute." } }
                 local capacity, err = fixture.op(user, "extraction_capacity", { model = spec.model, span = span })
                 test.is_nil(err, tostring(err))
                 test.is_true(capacity >= 1)
@@ -421,7 +421,7 @@ local function define_tests()
                 for _, spec in ipairs({ { model = "test-fast", limit = 32768 }, { model = "test-bounded", limit = 8192 } }) do
                     fixture.script.respond(user, "structured_output", {}, "length")
                     local _, err = fixture.op(user, "model_step", { model = spec.model, step = step,
-                        span = { { id = string.rep("e", 36), role = "user", text = "An attribute." } },
+                        span = { { id = string.rep("e", 36), role = "user", author = {kind = "user", id = user}, text = "An attribute." } },
                         candidates = { candidate("attribute", "An attribute") }, candidate = candidate("attribute", "An attribute"),
                         items = { { id = "source-a", kind = "fact", key = "attribute", content = "An attribute." },
                             { id = "source-b", kind = "fact", key = "attribute", content = "An attribute." } } })
@@ -457,7 +457,7 @@ local function define_tests()
                 invalid[example.field] = example.value
                 fixture.extraction(user, { candidate("home_city", "Oslo"), invalid })
                 local result, err = fixture.op(user, "model_step", { step = "extract", span = {
-                    { id = "event", role = "user", text = "I live in Oslo and work as an engineer." },
+                    { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo and work as an engineer." },
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
@@ -607,7 +607,7 @@ local function define_tests()
             local user = fixture.user()
             for _, data in ipairs({ '{"items":[', { items = "invalid", plans = {}, lessons = {} }, { items = { invalid = true }, plans = {}, lessons = {} } }) do
                 fixture.script.respond(user, "structured_output", data)
-                local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", text = "I live in Oslo." } } })
+                local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." } } })
                 test.is_nil(result)
                 test.not_nil(err)
             end
@@ -619,7 +619,7 @@ local function define_tests()
                 candidate("home_city", "Oslo"), candidate("private_value", "private value"),
                 candidate("work_role", "engineer"),
             })
-            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", text = "I live in Oslo." } } })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = { { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." } } })
             test.is_nil(result)
             test.not_nil(err)
             test.eq(err:kind(), errors.UNAVAILABLE)

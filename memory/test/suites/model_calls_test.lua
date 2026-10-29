@@ -10,7 +10,7 @@ local function define_tests()
             local second = fixture.memory(user)
             fixture.script.respond(first, "structured_output", { items = {}, lessons = {}, plans = {} })
             fixture.script.fail(second, "structured_output", "second memory refuses extraction", errors.INVALID)
-            local span = { { id = "statement", role = "user", text = "I live in Oslo." } }
+            local span = { { id = "statement", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." } }
             local _, second_err = fixture.op(user, "model_step", { step = "extract", span = span }, { thread_id = second })
             test.not_nil(second_err)
             test.eq(second_err:details().cause.kind, errors.INVALID)

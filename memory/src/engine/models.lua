@@ -14,10 +14,12 @@ local TRANSIENT_KINDS = {
     [errors.RATE_LIMITED] = true,
 }
 
-local STATEMENT_ROLES = { user = true, tool = true, document = true }
-
-function M.is_statement(message: any): boolean
-    return STATEMENT_ROLES[message.role] == true or (message.role == "assistant" and type(message.author) == "table" and message.author.kind == "agent")
+function M.is_statement(message: any, agent_id: string?): boolean
+    local author = message.author
+    if message.role == "tool" then return true end
+    if type(author) ~= "table" then return false end
+    if author.kind == "user" then return type(author.id) == "string" and author.id ~= "" end
+    return author.kind == "agent" and type(agent_id) == "string" and agent_id ~= "" and author.id == agent_id
 end
 
 local PERSONAL_KINDS = {profile_slot = true, preference = true, plan = true, fact = true}
@@ -104,7 +106,9 @@ Keep generalizable lessons about how to do the work, reusable skills, stable fac
 its domain, tools or sources, and the agent's corrected mistakes. A lesson must help a
 future run with different task inputs. Skip the task's specific inputs, intermediate
 values, one-off results, fetched page contents, and anything meaningful only inside
-this run. An instruction to perform this task is not knowledge about a human.
+this run. Derive a lesson only from an observed outcome, correction, failure or discovery.
+Task instructions, acknowledgements of workflow-supplied preferences, and restatements
+of provided input are context, never evidence of acquired experience.
 Plans qualify only for work explicitly spanning runs. Never extract personal profiles
 or preferences from parent-agent tasks or workflow input. Do not turn requests to
 forget or never remember something into memories. Memory policy applies to every item.
@@ -337,12 +341,12 @@ local function output_budget(schema: any, model: string): (integer?, error?)
     return math.min(limit :: integer, size :: integer), nil
 end
 
-function M.extraction_capacity(model: string, span: { any }?): (integer?, error?)
+function M.extraction_capacity(model: string, span: { any }?, agent_id: string?): (integer?, error?)
     local limit, limit_err = output_limit(model)
     if limit_err then return nil, limit_err end
     local ids = {}
     for _, message in ipairs(span or {}) do
-        if M.is_statement(message) then ids[#ids + 1] = message.id end
+        if M.is_statement(message, agent_id) then ids[#ids + 1] = message.id end
     end
     if #ids == 0 then ids[1] = uuid.v7() end
     local count = 0
@@ -504,13 +508,13 @@ local function key_listing(keys: { any }): (string?, error?)
     return table.concat(lines, "\n"), nil
 end
 
-function M.conversation(span: { any }, context: { any }?): string
+function M.conversation(span: { any }, context: { any }?, agent_id: string?): string
     local lines: { string } = {}
     for _, message in ipairs(context or {}) do
         lines[#lines + 1] = string.format("(%s, preceding context only) %s", message.role, message.text)
     end
     for _, message in ipairs(span) do
-        if M.is_statement(message) then
+        if M.is_statement(message, agent_id) then
             lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role .. (type(message.author) == "table" and ("; author=" .. message.author.kind .. ":" .. tostring(message.author.id or "")) or ""), message.text)
         else
             lines[#lines + 1] = string.format("(%s, context only) %s", message.role, message.text)
@@ -519,11 +523,11 @@ function M.conversation(span: { any }, context: { any }?): string
     return table.concat(lines, "\n")
 end
 
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, isolated: boolean?, owner_id: string?): (any?, error?)
+function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, isolated: boolean?, owner_id: string?, agent_id: string?): (any?, error?)
     local ids: { string } = {}
     local allowed = {}
     for _, message in ipairs(span) do
-        if M.is_statement(message) then ids[#ids + 1] = message.id; allowed[message.id] = true end
+        if M.is_statement(message, agent_id) then ids[#ids + 1] = message.id; allowed[message.id] = true end
     end
     if #ids == 0 then return {}, nil end
     local system = isolated and ISOLATED_EXTRACTION_PROMPT or EXTRACTION_PROMPT
@@ -533,7 +537,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
         system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. (listing :: string)
     end
     if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
-    local conversation = M.conversation(span, context)
+    local conversation = M.conversation(span, context, agent_id)
     local schema = extraction_schema(ids, #ids)
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end

@@ -120,7 +120,7 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
         first_entry = first_entry + 1
     end
     if first_entry > #span then return { captured = true, run_id = rejected_run, memory_id = memory_id }, nil end
-    local maximum, capacity_err = models.extraction_capacity(cfg.extraction_model, span)
+    local maximum, capacity_err = models.extraction_capacity(cfg.extraction_model, span, payload.agent and payload.agent.id)
     if capacity_err then return nil, capacity_err end
     local captures: { any } = {}
     local part: { any } = {}
@@ -138,13 +138,13 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     for i = first_entry, #span do
         local entry = span[i]
         if #entry.text > jobs.INPUT_BYTES then stopped = true; break end
-        if #part > 0 and (size + #entry.text > jobs.INPUT_BYTES or (models.is_statement(entry) and count == maximum)) then
+        if #part > 0 and (size + #entry.text > jobs.INPUT_BYTES or (models.is_statement(entry, payload.agent and payload.agent.id) and count == maximum)) then
             append(part[#part].id)
         end
         part[#part + 1] = entry
         size = size + #entry.text
         entries[#entries + 1] = entry
-        if models.is_statement(entry) then count = count + 1 end
+        if models.is_statement(entry, payload.agent and payload.agent.id) then count = count + 1 end
     end
     append(stopped and part[#part].id or tostring(events[#events].id))
     local first: any = table.remove(captures, 1)
