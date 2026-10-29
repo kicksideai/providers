@@ -50,9 +50,8 @@ type Capture = {
     component_id: string,
     host_kind: string,
     host_id: string,
-    host: any?,
-    agent_id: string,
-    from_event_id: string,
+    agent_id: string?,
+    from_event_id: string?,
     to_event_id: string,
     span: { any },
     context: { any }?,
@@ -98,7 +97,7 @@ local function new_derive_run(run_id: string, capture: Capture): (any?, any?, er
     local identity, row, id_err = frozen_identity()
     if id_err then return nil, nil, id_err end
     local principal = (identity :: any).principal
-    local input: any = { span = capture.span, context = capture.context, isolated = capture.isolated, host = capture.host,
+    local input: any = { span = capture.span, context = capture.context, isolated = capture.isolated,
         owner_id = principal.kind == "user" and not capture.isolated and principal.id or nil }
     return {
         id = run_id :: string, component_id = capture.component_id, run_type = types.RUN_TYPE.DERIVE,
@@ -128,7 +127,7 @@ function M.reject_capture(run: any): (any?, error?)
     local _, settle_err = ledger.settled_head(run.component_id)
     if settle_err then return nil, settle_err end
     local result, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any?, error?)
-        local state, state_err = runs.capture_available_tx(tx, sqlite, run, run.from_event_id or "")
+        local state, state_err = runs.capture_available_tx(tx, sqlite, run, run.from_event_id)
         if state_err then return nil, state_err end
         if not state.available then return { recorded = false, run_id = state.run_id }, nil end
         local _, insert_err = runs.insert_tx(tx, run)
@@ -162,8 +161,8 @@ end
 function M.ingest(component_id: string, source_event_id: string, span: { any }): (any?, error?)
     local run_id, hash_err = canonical_json.hash({ "derive", component_id, "content", source_event_id })
     if hash_err then return nil, hash_err end
-    local capture: Capture = { component_id = component_id, host_kind = "content", host_id = component_id, agent_id = "",
-        from_event_id = "", to_event_id = source_event_id, span = span }
+    local capture: Capture = { component_id = component_id, host_kind = "content", host_id = component_id,
+        to_event_id = source_event_id, span = span }
     local run, identity, err = new_derive_run(run_id :: string, capture)
     if err then
         local details = type(err) == "userdata" and err:details() or nil
@@ -171,7 +170,7 @@ function M.ingest(component_id: string, source_event_id: string, span: { any }):
             return reject_content({
                 id = run_id :: string, component_id = component_id, run_type = types.RUN_TYPE.DERIVE,
                 status = types.RUN_STATUS.REJECTED, finished_at = types.now(), actor_id = types.actor_id(),
-                host_kind = "content", host_id = component_id, agent_id = "", from_event_id = "", to_event_id = source_event_id,
+                host_kind = "content", host_id = component_id, to_event_id = source_event_id,
                 stats = { rejected = 1, rejected_source_too_large = 1, source_bytes = details.source_bytes, input_limit_bytes = details.input_limit_bytes },
                 last_error = "source_too_large: memory source event exceeds " .. tostring(details.input_limit_bytes) .. " bytes (" .. tostring(details.source_bytes) .. " bytes)",
             })
@@ -298,10 +297,10 @@ function M.derive_authorized(value: any): any
     if settings_err then return fail(run.id, settings_err) end
     local deadline = value.job.deadline
     local failed_stats = nil
-    local host = type(run.input) == "table" and run.input.host or nil
+    local captures_history = run.agent_id ~= nil
     local result, write_err = writer.write(run.component_id, "derive:" .. run.id, {
         source = types.ITEM_SOURCE.CAPTURE, deadline = deadline,
-        extra_events = host and {
+        extra_events = captures_history and {
             { type = types.EVENT.CAPTURE_ADVANCED, body = {
                 host_kind = run.host_kind, host_id = run.host_id, agent_id = run.agent_id, from_event_id = run.from_event_id, last_event_id = run.to_event_id,
             } },
@@ -311,10 +310,10 @@ function M.derive_authorized(value: any): any
         local fresh, read_err = runs.get(run.id)
         if read_err then return nil, read_err end
         if not fresh then return nil, types.not_found("memory run not found") end
-        if host then
+        if captures_history then
             local cursor, cursor_err = runs.cursor(run.component_id, run.host_kind, run.host_id)
             if cursor_err then return nil, cursor_err end
-            if (cursor and cursor.last_event_id or "") ~= run.from_event_id then
+            if (cursor and cursor.last_event_id or nil) ~= run.from_event_id then
                 return nil, types.invalid("memory capture predecessor has not advanced the cursor")
             end
         end
@@ -335,17 +334,20 @@ function M.derive_authorized(value: any): any
                 end
             end
         end
-        if not host then families[types.SCOPE.OWNER] = true end
+        if run.host_kind == "content" then families[types.SCOPE.OWNER] = true end
         local keys = {}
-        for _, scope in ipairs({{types.SCOPE.OWNER, types.trim(input.owner_id)}, {types.SCOPE.AGENT, run.agent_id or ""}}) do
-            if scope[2] ~= "" and families[scope[1]] then
+        for _, scope in ipairs({{types.SCOPE.OWNER, input.owner_id}, {types.SCOPE.AGENT, run.agent_id}}) do
+            if scope[2] ~= nil and families[scope[1]] then
                 local rows, keys_err = items.keys(run.component_id, types.scope_key(scope[1], scope[2]), KEY_LIMIT)
                 if keys_err then return nil, keys_err end
                 for _, row in ipairs(rows) do row.scope_family = scope[1]; keys[#keys + 1] = row end
             end
         end
         local learning = input.isolated or not families[types.SCOPE.OWNER]
-        local candidates, extract_err, rejected_candidates = models.extract(cfg.extraction_model, span, keys, cfg.extraction_instructions, input.context, learning, input.owner_id, run.agent_id)
+        local candidates, extract_err, rejected_candidates = models.extract({
+            model = cfg.extraction_model, span = span, keys = keys, instructions = cfg.extraction_instructions,
+            context = input.context, isolated = learning, owner_id = input.owner_id, agent_id = run.agent_id,
+        })
         if extract_err then return nil, extract_err end
         local owner, learned = {}, {}
         local authors = {}
@@ -354,7 +356,7 @@ function M.derive_authorized(value: any): any
             local author = authors[candidate.event_id]
             if models.scope_family(candidate, author, input.owner_id) == types.SCOPE.OWNER then
                 owner[#owner + 1] = candidate
-            elseif run.agent_id and run.agent_id ~= "" then
+            elseif run.agent_id ~= nil then
                 learned[#learned + 1] = candidate
             else
                 return nil, types.invalid("memory evidence has no authorized scope")
@@ -413,7 +415,9 @@ function M.consolidate_authorized(value: any): any
         table.sort(order)
         d.stats.scopes = 0
         for _, scope_id in ipairs(order) do
-            local reflected, reflect_err = models.reflect(cfg.extraction_model, by_scope[scope_id] :: { any })
+            local reflected, reflect_err = models.reflect({
+                model = cfg.extraction_model, items = by_scope[scope_id] :: { any }, instructions = cfg.extraction_instructions,
+            })
             if reflect_err then return nil, reflect_err end
             local reconcile_err = reconcile.decide(d, reflected :: any, {
                 embedding_model = store.embedding_model, judge_model = cfg.judge_model,
