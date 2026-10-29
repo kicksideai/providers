@@ -10,13 +10,17 @@ local function define_tests()
             local user = fixture.user()
             for _, missing in ipairs({ "job", "run" }) do
                 local id = fixture.memory(user)
+                local session = "s-" .. user
+                fixture.record_chat(user, session, {
+                    { id = "instruction", role = "developer", author = { kind = "system" }, content = "Use the available context." },
+                })
                 local db = fixture.db()
                 local statement = missing == "job" and "UPDATE kickside_memory_runs SET job_id = NULL WHERE id = $1"
                     or "DELETE FROM kickside_memory_runs WHERE id = $1"
                 local _, update_err = db:execute(statement, { "consolidate:" .. id })
                 db:release()
                 test.is_nil(update_err, tostring(update_err))
-                local result, err = fixture.apply(user, "deactivate", id, "s-" .. user, "agent-a")
+                local result, err = fixture.apply(user, "deactivate", id, session, "agent-a")
                 test.not_nil(err)
                 test.eq(err:kind(), errors.NOT_FOUND)
                 test.is_nil(result)
@@ -51,7 +55,7 @@ local function define_tests()
             fixture.wait_job(failed.job_id, "dead")
             test.eq(failed.status, "failed")
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
-            test.is_true(cursor == nil or cursor.last_event_id == "")
+            test.is_true(cursor == nil or cursor.last_event_id == nil)
             fixture.extraction(id, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", failed_span.id) })
             local second, second_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(second_err, tostring(second_err))
@@ -119,7 +123,7 @@ local function define_tests()
             test.is_nil(query_err, tostring(query_err))
             test.eq(#attempts, 2)
             test.eq(attempts[1].status, "failed")
-            test.is_true(attempts[1].error_text:find("model_output_invalid_extraction_value", 1, true) ~= nil, attempts[1].error_text)
+            test.eq(attempts[1].error_text, "memory extraction returned malformed output")
             test.eq(attempts[2].status, "completed")
             fixture.settle(user, id)
             test.eq(fixture.items(user, id)[1].value, "Oslo")
@@ -252,7 +256,7 @@ local function define_tests()
 
         test.it("bounds a retained tool outcome to the derive source limit", function()
             local user = fixture.user()
-            local id = fixture.memory(user)
+            local id = fixture.memory(user, { capture_experience = true })
             local session = "s-" .. user
             local events = {
                 { id = "user", role = "user", author = { kind = "user", id = user }, content = "Please inspect the result." },
@@ -361,9 +365,12 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
+            fixture.record_chat(user, session, {
+                { id = "instruction", role = "developer", author = { kind = "system" }, content = "Use the available context." },
+            })
             local result, err = fixture.apply(user, "deactivate", id, session, "agent-a")
             test.is_nil(err, tostring(err))
-            test.eq(result.metadata.capture.reason, "no_new_history")
+            test.eq(result.metadata.capture.reason, "nothing_to_capture")
             local runs = fixture.wait_runs(user, id, "consolidate", 1)
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
         end)

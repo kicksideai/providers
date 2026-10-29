@@ -27,7 +27,8 @@ local function define_tests()
                 test.is_true(capacity >= 1)
                 local events = {}
                 for i = 1, 2 * capacity + 1 do
-                    events[#events + 1] = { id = "batch-" .. tostring(i), role = i % 2 == 1 and "user" or "assistant", content = "Statement " .. tostring(i) .. "." }
+                    events[#events + 1] = { id = "batch-" .. tostring(i), role = i % 2 == 1 and "user" or "assistant",
+                        author = i % 2 == 1 and { kind = "user", id = user } or { kind = "agent", id = "agent-a" }, content = "Statement " .. tostring(i) .. "." }
                 end
                 fixture.record_chat(user, session, events)
                 if phase == "checkpoint" then fixture.script.respond(id, "generate", "Working state.") end
@@ -44,7 +45,7 @@ local function define_tests()
                 local enrolled = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
                 test.eq(#enrolled, 3)
                 table.sort(enrolled, function(a, b) return a.id < b.id end)
-                local previous = ""
+                local previous = nil
                 for i, run in ipairs(enrolled) do
                     test.eq(run.from_event_id, previous)
                     test.eq(#run.input.span, i < 3 and capacity or 1)
@@ -70,7 +71,7 @@ local function define_tests()
                     test.eq(event.last_event_id, enrolled[i].to_event_id)
                 end
                 test.eq(#fixture.script.requests(id, "structured_output"), 3)
-                local seeded = fixture.remember(user, id, { fixture.candidate("fact", "setting", "retained", "A retained setting.", "batch-1") }, "batch-erasure")
+                local seeded = fixture.remember(user, id, { fixture.candidate("fact", "setting", "retained", "A retained setting.", events[1].id) }, "batch-erasure", { host_id = session })
                 fixture.settle(user, id)
                 local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = seeded.item_ids[1] })
                 test.is_nil(forget_err, tostring(forget_err))
@@ -87,13 +88,15 @@ local function define_tests()
             local id = fixture.memory(user)
             local session = "s-" .. user
             local context = fixture.agent_context(id, session, "agent-a", {learn_in_isolation = true})
-            fixture.history.record(session, {{id = "observation", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I inspected the documentation and found no reusable lesson."}})
+            local observation = {id = "observation", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I inspected the documentation and found no reusable lesson."}
+            fixture.record_chat(user, session, {observation})
             hold(id, "structured_output")
             fixture.extraction(id, {})
             local first, first_err = fixture.op(user, "apply", {payload = fixture.payload("before_step", session, "agent-a")}, context)
-            fixture.history.record(session, {{id = "experience", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I corrected my mistake: resolve relative links against the document base URL."}})
-            fixture.extraction(id, {fixture.candidate("lesson", "relative_links", "Resolve relative links against the document base URL.", "Resolve relative links against the document base URL.", "experience")})
-            local second, second_err = fixture.op(user, "apply", {payload = fixture.payload("after_persist", session, "agent-a", {refs = {event_id = "experience"}})}, context)
+            local experience = {id = "experience", role = "assistant", author = {kind = "agent", id = "agent-a"}, content = "I corrected my mistake: resolve relative links against the document base URL."}
+            fixture.record_chat(user, session, {experience})
+            fixture.extraction(id, {fixture.candidate("lesson", "relative_links", "Resolve relative links against the document base URL.", "Resolve relative links against the document base URL.", experience.id)})
+            local second, second_err = fixture.op(user, "apply", {payload = fixture.payload("after_persist", session, "agent-a", {refs = {event_id = experience.id}})}, context)
             fixture.script.release(id, "structured_output")
             test.is_nil(first_err, tostring(first_err))
             test.is_nil(second_err, tostring(second_err))
@@ -106,7 +109,7 @@ local function define_tests()
             test.eq(#learned, 1)
             test.eq(learned[1].scope_family, "agent")
             test.eq(learned[1].scope_id, "agent-a")
-            test.eq(fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = session}).last_event_id, "experience")
+            test.eq(fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = session}).last_event_id, experience.id)
         end)
 
         test.it("does not advance consecutive captures past a failed predecessor", function()
@@ -116,7 +119,7 @@ local function define_tests()
             local capacity = fixture.op(user, "extraction_capacity", { model = "test-bounded" })
             local events = {}
             for i = 1, capacity + 1 do
-                events[i] = { id = "failed-batch-" .. tostring(i), role = "user", content = "A statement." }
+                events[i] = { id = "failed-batch-" .. tostring(i), role = "user", author = { kind = "user", id = user }, content = "A statement." }
             end
             fixture.record_chat(user, session, events)
             fixture.script.fail(id, "structured_output", "Invalid model input", errors.INVALID, false)
@@ -126,7 +129,7 @@ local function define_tests()
             local runs = fixture.wait_runs(user, id, "derive", 2)
             for _, run in ipairs(runs) do test.eq(run.status, "failed", tostring(run.last_error)) end
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
-            test.is_true(cursor == nil or cursor.last_event_id == "")
+            test.is_true(cursor == nil or cursor.last_event_id == nil)
             test.eq(#fixture.script.requests(id, "structured_output"), 1)
         end)
 
@@ -135,14 +138,15 @@ local function define_tests()
             local id = fixture.memory(user, { extraction_model = "test-fast" })
             local session = "s-" .. user
             local first, second = string.rep("a", 14000), string.rep("b", 14000)
-            fixture.record_chat(user, session, {
-                { id = "large-first", role = "user", content = first },
-                { id = "large-second", role = "user", content = second },
-                { id = "trailing-evidence", role = "user", content = "I live in Oslo." },
-            })
+            local events = {
+                { id = "large-first", role = "user", author = { kind = "user", id = user }, content = first },
+                { id = "large-second", role = "user", author = { kind = "user", id = user }, content = second },
+                { id = "trailing-evidence", role = "user", author = { kind = "user", id = user }, content = "I live in Oslo." },
+            }
+            fixture.record_chat(user, session, events)
             hold(id, "structured_output")
             fixture.extraction(id, {})
-            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "trailing-evidence") })
+            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", events[3].id) })
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
             local enrolled = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
@@ -150,14 +154,14 @@ local function define_tests()
             test.eq(#enrolled, 2)
             table.sort(enrolled, function(a, b) return a.id < b.id end)
             test.eq(enrolled[1].input.span[1].text, first)
-            test.eq(enrolled[1].to_event_id, "large-first")
-            test.eq(enrolled[2].from_event_id, "large-first")
+            test.eq(enrolled[1].to_event_id, events[1].id)
+            test.eq(enrolled[2].from_event_id, events[1].id)
             test.eq(enrolled[2].input.span[1].text, second)
-            test.eq(enrolled[2].input.span[2].id, "trailing-evidence")
+            test.eq(enrolled[2].input.span[2].id, events[3].id)
             for _, run in ipairs(fixture.wait_runs(user, id, "derive", 2)) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
             fixture.settle(user, id)
             test.eq(fixture.items(user, id)[1].value, "Oslo")
-            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "trailing-evidence")
+            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, events[3].id)
         end)
 
         for _, phase in ipairs({ "before_step", "after_persist", "deactivate", "checkpoint" }) do
@@ -166,16 +170,17 @@ local function define_tests()
                 local id = fixture.memory(user, { extraction_model = "test-bounded" })
                 local session = "s-" .. user
                 local oversized = string.rep("private-source-", 2000)
-                fixture.record_chat(user, session, {
-                    { id = "first", role = "user", content = "I live in Oslo." },
-                    { id = "oversized", role = "user", content = oversized },
-                    { id = "last", role = "user", content = "I enjoy cycling." },
-                })
+                local events = {
+                    { id = "first", role = "user", author = { kind = "user", id = user }, content = "I live in Oslo." },
+                    { id = "oversized", role = "user", author = { kind = "user", id = user }, content = oversized },
+                    { id = "last", role = "user", author = { kind = "user", id = user }, content = "I enjoy cycling." },
+                }
+                fixture.record_chat(user, session, events)
                 hold(id, "structured_output")
-                fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "first") })
-                fixture.extraction(id, { fixture.candidate("fact", "hobby", "cycling", "The user enjoys cycling.", "last") })
+                fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", events[1].id) })
+                fixture.extraction(id, { fixture.candidate("fact", "hobby", "cycling", "The user enjoys cycling.", events[3].id) })
                 if phase == "deactivate" then fixture.script.respond(id, "structured_output", { items = {} }) end
-                local extra = phase == "after_persist" and { refs = { event_id = "last" } } or nil
+                local extra = phase == "after_persist" and { refs = { event_id = events[3].id } } or nil
                 local applied, err
                 if phase == "checkpoint" then
                     fixture.script.respond(id, "generate", "Working state.")
@@ -191,15 +196,15 @@ local function define_tests()
                 test.eq(#fixture.op(user, "runs", { component_id = id, run_type = "derive" }), 1)
                 fixture.script.release(id, "structured_output")
                 test.eq(fixture.wait_runs(user, id, "derive", 1)[1].status, "succeeded")
-                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "first")
+                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, events[1].id)
                 local resumed, resume_err = fixture.apply(user, "before_step", id, session, "agent-a")
                 test.is_nil(resume_err, tostring(resume_err))
                 test.is_true(resumed.metadata.capture.captured)
                 local enrolled = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
                 test.eq(#enrolled, 3)
                 table.sort(enrolled, function(a, b) return a.id < b.id end)
-                test.eq(enrolled[2].from_event_id, "first")
-                test.eq(enrolled[2].to_event_id, "oversized")
+                test.eq(enrolled[2].from_event_id, events[1].id)
+                test.eq(enrolled[2].to_event_id, events[2].id)
                 test.eq(enrolled[2].status, "rejected")
                 test.not_nil(enrolled[2].finished_at)
                 test.is_nil(enrolled[2].job_id)
@@ -242,7 +247,7 @@ local function define_tests()
                 local values = fixture.values(fixture.items(user, id))
                 test.not_nil(values.Oslo)
                 test.not_nil(values.cycling)
-                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "last")
+                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, events[3].id)
                 local again, again_err = fixture.apply(user, "before_step", id, session, "agent-a")
                 test.is_nil(again_err, tostring(again_err))
                 test.is_false(again.metadata.capture.captured)
@@ -260,11 +265,12 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, {
-                { id = "first", role = "user", content = "A first statement." },
-                { id = "oversized", role = "user", content = string.rep("x", 24001) },
-                { id = "last", role = "user", content = "A later statement." },
-            })
+            local events = {
+                { id = "first", role = "user", author = { kind = "user", id = user }, content = "A first statement." },
+                { id = "oversized", role = "user", author = { kind = "user", id = user }, content = string.rep("x", 24001) },
+                { id = "last", role = "user", author = { kind = "user", id = user }, content = "A later statement." },
+            }
+            fixture.record_chat(user, session, events)
             fixture.extraction(id, {})
             local _, first_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(first_err, tostring(first_err))
@@ -285,15 +291,16 @@ local function define_tests()
             test.is_true(resumed.metadata.capture.captured, "Completed derive retains capture ownership")
             local completed = fixture.wait_runs(user, id, "derive", 3)
             test.eq(#completed, 3)
-            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "last")
+            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, events[3].id)
         end)
 
         test.it("commits a rejected source record and its cursor atomically", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            local event_id = "oversized-" .. user
-            fixture.record_chat(user, session, { { id = event_id, role = "user", content = string.rep("x", 24001) } })
+            local event = { id = "oversized-" .. user, role = "user", author = { kind = "user", id = user }, content = string.rep("x", 24001) }
+            fixture.record_chat(user, session, { event })
+            local event_id = event.id
             local db = fixture.db()
             local sqlite = db:type() == "sqlite"
             local _, setup_err = db:execute(sqlite and [[CREATE TRIGGER refuse_rejected_cursor BEFORE INSERT ON kickside_memory_cursors
@@ -328,13 +335,14 @@ local function define_tests()
                 local session = "s-" .. user
                 local oversized = string.rep("é", 14000)
                 local events = {}
-                if layout == "trailing" then events[#events + 1] = { id = "normal", role = "user", content = "A normal statement." } end
-                events[#events + 1] = { id = "oversized", role = "assistant", content = oversized }
-                if layout == "consecutive" then events[#events + 1] = { id = "oversized-again", role = "user", content = oversized } end
-                if layout == "leading" then events[#events + 1] = { id = "normal", role = "user", content = "A normal statement." } end
+                if layout == "trailing" then events[#events + 1] = { id = "normal", role = "user", author = { kind = "user", id = user }, content = "A normal statement." } end
+                events[#events + 1] = layout == "only"
+                    and { id = "oversized", role = "user", author = { kind = "user", id = user }, content = oversized }
+                    or { id = "oversized", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = oversized }
+                if layout == "consecutive" then events[#events + 1] = { id = "oversized-again", role = "user", author = { kind = "user", id = user }, content = oversized } end
+                if layout == "leading" then events[#events + 1] = { id = "normal", role = "user", author = { kind = "user", id = user }, content = "A normal statement." } end
                 local expected = #events
-                events[#events + 1] = { id = "ignored", role = "system", content = "Host state." }
-                if layout == "only" then events[1].author = {kind = "user", id = user} end
+                events[#events + 1] = { id = "ignored", role = "system", author = { kind = "system" }, content = "Host state." }
                 fixture.record_chat(user, session, events)
                 if layout == "leading" or layout == "trailing" then fixture.extraction(id, {}) end
                 local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
@@ -361,8 +369,9 @@ local function define_tests()
                     else test.eq(run.status, "succeeded", tostring(run.last_error)) end
                 end
                 test.eq(rejected, layout == "consecutive" and 2 or 1)
-                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "ignored")
-                fixture.record_chat(user, session, { { id = "next", role = "user", content = "A later statement." } })
+                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, events[#events].id)
+                local next_event = { id = "next", role = "user", author = { kind = "user", id = user }, content = "A later statement." }
+                fixture.record_chat(user, session, { next_event })
                 fixture.extraction(id, {})
                 local next_capture, next_err = fixture.apply(user, "before_step", id, session, "agent-a")
                 test.is_nil(next_err, tostring(next_err))
@@ -371,7 +380,7 @@ local function define_tests()
                 test.eq(next_run.status, "succeeded", tostring(next_run.last_error))
                 test.is_nil((json.encode(next_run):find("é", 1, true)))
                 test.is_nil((json.encode(fixture.script.prompts(id, "structured_output")):find("é", 1, true)))
-                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "next")
+                test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, next_event.id)
             end)
         end
 
