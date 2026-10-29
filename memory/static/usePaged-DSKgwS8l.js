@@ -60,7 +60,7 @@ function c(e, r, n) {
   if (typeof e != "string" || !r.includes(e)) throw new Error(`Memory response has an invalid ${n}`);
   return e;
 }
-const w = ["identity", "rule", "profile_slot", "fact", "preference", "plan", "skill", "lesson"], M = ["current", "superseded", "conflict", "archived", "forgotten"], q = ["capture", "reflection", "owner"], L = ["derive", "consolidate", "reembed"], D = ["scheduled", "running", "succeeded", "failed", "rejected"];
+const w = ["identity", "rule", "profile_slot", "fact", "preference", "plan", "skill", "lesson"], M = ["current", "superseded", "conflict", "archived", "forgotten"], q = ["capture", "reflection", "owner"], L = ["derive", "consolidate", "reembed"], D = ["scheduled", "running", "succeeded", "failed", "rejected", "cancelled"];
 function y(e) {
   if (!m(e)) throw new Error("Memory response has an invalid item");
   if (typeof e.version != "number" || !Number.isInteger(e.version)) throw new Error("Memory response has an invalid item version");
@@ -209,4 +209,4 @@ export {
   J as r,
   W as u
 };
-//# sourceMappingURL=usePaged-BBuR-les.js.map
+//# sourceMappingURL=usePaged-DSKgwS8l.js.map

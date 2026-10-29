@@ -2,7 +2,7 @@ import { defineComponent as T, ref as d, watch as N, computed as A, openBlock as
 import { Icon as k } from "@iconify/vue";
 import { define as U } from "@wippy-fe/proxy";
 import { u as j, a as q, b as B, e as M, m as $ } from "./types-Dpmtmezp.js";
-import { u as z, a as R, r as G, h as H, _ as J, l as O } from "./usePaged-BBuR-les.js";
+import { u as z, a as R, r as G, h as H, _ as J, l as O } from "./usePaged-DSKgwS8l.js";
 const Q = {
   key: 0,
   class: "kx-notice error"
