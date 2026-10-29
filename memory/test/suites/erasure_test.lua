@@ -6,8 +6,130 @@ local measured_db = require("measured_db")
 
 local DIAGNOSTIC = json.encode({ kind = errors.INTERNAL, code = errors.INTERNAL, explanation = "memory extraction failed", retryable = false })
 
+local function project(user: string, component_id: string, event: any): (any?, error?)
+    return fixture.call_as(user, "kickside.memory.engine:ledger_projection", {
+        thread_id = component_id, range = { to_seq = event.seq }, events = { event },
+    })
+end
+
+local function ledger_event(component_id: string, event_type: string): any
+    local rows = fixture.rows([[SELECT seq, type, body, created_at FROM kickside_event
+        WHERE thread_id = $1 AND type = $2 ORDER BY seq LIMIT 1]], { component_id, event_type })
+    local row = rows[1]
+    if not row then error("ledger event is missing") end
+    row.seq = tonumber(row.seq)
+    row.body = json.decode(row.body)
+    return row
+end
+
+local function retained_run(component_id: string, run_id: string, host_id: string, event_id: string)
+    local insert_err = fixture.insert_run(component_id, run_id, "failed", {
+        span = { { id = event_id, role = "user", text = "Retained source text." } },
+    })
+    if insert_err then error(tostring(insert_err)) end
+    local db = fixture.db()
+    local _, host_err = db:execute("UPDATE kickside_memory_runs SET host_kind = $1, host_id = $2 WHERE id = $3",
+        { "session", host_id, run_id })
+    db:release()
+    if host_err then error(tostring(host_err)) end
+end
+
 local function define_tests()
     test.describe("memory erasure", function()
+
+        test.it("erases only the matching source identity when hosts share an event id", function()
+            local user = fixture.user()
+            local other = fixture.user()
+            local id = fixture.memory(user)
+            local event_id = "shared-event"
+            local first = fixture.remember(user, id, {
+                fixture.candidate("fact", "first_setting", "one", "The first setting is one.", event_id),
+            }, "first-source", { host_id = "host-a", scope_id = user })
+            fixture.settle(user, id)
+            local second = fixture.remember(user, id, {
+                fixture.candidate("fact", "second_setting", "two", "The second setting is two.", event_id),
+            }, "second-source", { host_id = "host-b", scope_id = other })
+            fixture.settle(user, id)
+            local first_run = "retained-a:" .. id
+            local second_run = "retained-b:" .. id
+            retained_run(id, first_run, "host-a", event_id)
+            retained_run(id, second_run, "host-b", event_id)
+            for _, run_id in ipairs({ first_run, second_run }) do
+                local _, enrollment_err = fixture.persistence_op(user, "enroll_sources", { run_id = run_id })
+                test.is_nil(enrollment_err, tostring(enrollment_err))
+            end
+
+            local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = first.item_ids[1] })
+            test.is_nil(forget_err, tostring(forget_err))
+            fixture.settle(user, id)
+
+            test.is_nil(fixture.op(user, "run", { run_id = first_run }).input.span)
+            test.eq(fixture.op(user, "run", { run_id = second_run }).input.span[1].id, event_id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = second.item_ids[1] }).scope_id, other)
+        end)
+
+        test.it("keeps erased provenance absent when an earlier addition is reported again", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local added = fixture.remember(user, id, {
+                fixture.candidate("fact", "delivery_channel", "email", "The delivery channel is email.", "source-event"),
+            }, "delivery-source")
+            fixture.settle(user, id)
+            local event = ledger_event(id, "kickside.memory.events:item.added")
+            local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = added.item_ids[1] })
+            test.is_nil(forget_err, tostring(forget_err))
+            fixture.settle(user, id)
+
+            local _, projection_err = project(user, id, event)
+            test.is_nil(projection_err, tostring(projection_err))
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = added.item_ids[1] }).status, "forgotten")
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { added.item_ids[1] }), 0)
+        end)
+
+        test.it("keeps erased provenance absent when an earlier merge is reported again", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local source = fixture.remember(user, id, {
+                fixture.candidate("fact", "home_city", "Paris", "The current city is Paris.", "source-event"),
+            }, "merge-source")
+            local destination = fixture.create_claim(user, id, "Rome", "multi")
+            local source_item = fixture.op(user, "get", { component_id = id, item_id = source.item_ids[1] })
+            local destination_item = fixture.op(user, "get", { component_id = id, item_id = destination.item_id })
+            local merge = {
+                seq = math.max(source_item.last_seq, destination_item.last_seq) + 1,
+                created_at = "2026-01-01T00:00:00Z", type = "kickside.memory.events:item.merged",
+                body = { into = destination.item_id, item_ids = { source.item_ids[1] } },
+            }
+            local _, merge_err = project(user, id, merge)
+            test.is_nil(merge_err, tostring(merge_err))
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { destination.item_id }), 1)
+            local forgotten = {
+                seq = merge.seq + 1,
+                created_at = "2026-01-01T00:00:00Z", type = "kickside.memory.events:item.forgotten",
+                body = { item_id = destination.item_id },
+            }
+            local _, forget_err = project(user, id, forgotten)
+            test.is_nil(forget_err, tostring(forget_err))
+
+            local _, redelivery_err = project(user, id, merge)
+            test.is_nil(redelivery_err, tostring(redelivery_err))
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = destination.item_id }).status, "forgotten")
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { destination.item_id }), 0)
+        end)
+
+        test.it("records an initial capture coordinate without optional predecessor or agent", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local event = {
+                seq = 1, created_at = "2026-01-01T00:00:00Z", type = "kickside.memory.events:capture.advanced",
+                body = { host_kind = "session", host_id = "initial-host", last_event_id = "first-event" },
+            }
+            local _, projection_err = project(user, id, event)
+            test.is_nil(projection_err, tostring(projection_err))
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = "initial-host" })
+            test.eq(cursor.last_event_id, "first-event")
+            test.is_nil(cursor.agent_id)
+        end)
 
         test.it("selects one eligible claim without reading unrelated values or forgotten versions", function()
             local user = fixture.user()

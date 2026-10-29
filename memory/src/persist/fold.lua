@@ -90,6 +90,12 @@ local function set_status_tx(tx: any, component_id: string, item_id: string, seq
     return nil
 end
 
+local function item_before_seq_tx(tx: any, component_id: string, item_id: string, seq: integer): (any?, boolean?, error?)
+    local item, read_err = items.get_tx(tx, component_id, item_id)
+    if read_err then return nil, nil, read_err end
+    return item, item ~= nil and item.last_seq < seq, nil
+end
+
 local function next_version_tx(tx: any, component_id: string, scope_key: string, key: string): (integer?, error?)
     local rows, err = tx:query(
         "SELECT MAX(version) AS version FROM kickside_memory_items WHERE component_id = $1 AND scope_key = $2 AND key = $3",
@@ -103,7 +109,12 @@ local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: 
     if item_id == "" then return types.invalid("item.added requires item_id") end
     local existing, read_err = items.get_tx(tx, component_id, item_id)
     if read_err then return read_err end
-    if existing then return add_provenance_tx(tx, component_id, item_id, body.provenance, recorded_at) end
+    if existing then
+        if existing.last_seq >= seq then return nil end
+        local provenance_err = add_provenance_tx(tx, component_id, item_id, body.provenance, recorded_at)
+        if provenance_err then return provenance_err end
+        return set_status_tx(tx, component_id, item_id, seq, {})
+    end
     local payload, payload_err = payloads.get_tx(tx, component_id, item_id)
     if payload_err then return payload_err end
     local scope_key = types.scope_key(body.scope_family, body.scope_id)
@@ -171,7 +182,9 @@ local function scrub_runs_tx(tx: any, component_id: string, forgotten: { string 
         local _, err = tx:execute("UPDATE kickside_memory_runs SET input = '{}' WHERE component_id = $1 AND (" ..
             "id IN (SELECT run_id FROM kickside_memory_items WHERE component_id = $1 AND id IN (" .. ids .. ")) OR " ..
             "id IN (SELECT s.run_id FROM kickside_memory_run_sources s JOIN kickside_memory_provenance p " ..
-            "ON p.component_id = s.component_id AND p.event_id = s.event_id WHERE p.component_id = $1 AND p.item_id IN (" .. ids .. ")))", params)
+            "ON p.component_id = s.component_id AND p.event_id = s.event_id JOIN kickside_memory_runs r " ..
+            "ON r.component_id = s.component_id AND r.id = s.run_id AND r.host_kind = p.host_kind AND r.host_id = p.host_id " ..
+            "WHERE p.component_id = $1 AND p.item_id IN (" .. ids .. ")))", params)
         if err then return types.failed("memory source input erase failed", err) end
     end
     return nil
@@ -185,9 +198,10 @@ local function invalidate_pins_tx(tx: any, component_id: string, owner_scope_key
 end
 
 local function apply_forgotten(tx: any, sqlite: boolean, component_id: string, seq: integer, item_id: string, recorded_at: string): error?
-    local item, item_err = items.get_tx(tx, component_id, item_id)
+    local item, before, item_err = item_before_seq_tx(tx, component_id, item_id, seq)
     if item_err then return item_err end
     if not item then return types.internal("memory forgotten item is missing") end
+    if not before then return nil end
     for _, statement in ipairs({
         "DELETE FROM kickside_memory_payloads WHERE component_id = $1 AND owner_item_id = $2",
         "DELETE FROM kickside_memory_embeddings WHERE component_id = $1 AND item_id = $2",
@@ -230,15 +244,23 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         if into_err then return into_err end
         local ids, ids_err = event_ids(body)
         if ids_err then return ids_err end
+        local destination, destination_before, destination_err = item_before_seq_tx(tx, component_id, into :: string, seq)
+        if destination_err then return destination_err end
+        if not destination then return types.internal("memory merge destination is missing") end
+        if not destination_before then return nil end
         for _, item_id in ipairs(ids :: { string }) do
-            local _, copy_err = tx:execute(
-                PROVENANCE_INSERT .. "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance " ..
-                "WHERE component_id = $2 AND item_id = $3 ON CONFLICT DO NOTHING", { into, component_id, item_id })
-            if copy_err then return types.failed("memory provenance merge failed", copy_err) end
-            local err = supersede_tx(tx, component_id, item_id, into, seq, recorded_at)
-            if err then return err end
+            local _, source_before, source_err = item_before_seq_tx(tx, component_id, item_id, seq)
+            if source_err then return source_err end
+            if source_before then
+                local _, copy_err = tx:execute(
+                    PROVENANCE_INSERT .. "SELECT $1, component_id, host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance " ..
+                    "WHERE component_id = $2 AND item_id = $3 ON CONFLICT DO NOTHING", { into, component_id, item_id })
+                if copy_err then return types.failed("memory provenance merge failed", copy_err) end
+                local err = supersede_tx(tx, component_id, item_id, into, seq, recorded_at)
+                if err then return err end
+            end
         end
-        return nil
+        return set_status_tx(tx, component_id, into :: string, seq, {})
     elseif kind == types.EVENT.ITEM_CONFLICTED then
         local ids, ids_err = event_ids(body)
         if ids_err then return ids_err end
@@ -255,6 +277,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         local item, item_err = items.get_tx(tx, component_id, item_id :: string)
         if item_err then return item_err end
         if not item then return types.internal("memory archived item is missing") end
+        if item.last_seq >= seq then return nil end
         local pin_err = invalidate_pins_tx(tx, component_id, item.scope_key)
         if pin_err then return pin_err end
         return set_status_tx(tx, component_id, item_id :: string, seq, {
@@ -266,6 +289,7 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
         local item, item_err = items.get_tx(tx, component_id, item_id :: string)
         if item_err then return item_err end
         if not item then return types.internal("memory restored item is missing") end
+        if item.last_seq >= seq then return nil end
         local pin_err = invalidate_pins_tx(tx, component_id, item.scope_key)
         if pin_err then return pin_err end
         return set_status_tx(tx, component_id, item_id :: string, seq, {
@@ -278,10 +302,19 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
     elseif kind == types.EVENT.PROVENANCE_ADDED then
         local item_id, item_err = event_string(body, "item_id")
         if item_err then return item_err end
-        return add_provenance_tx(tx, component_id, item_id :: string, { body }, recorded_at)
+        local item, before, read_err = item_before_seq_tx(tx, component_id, item_id :: string, seq)
+        if read_err then return read_err end
+        if not item then return types.internal("memory provenance item is missing") end
+        if not before then return nil end
+        local provenance_err = add_provenance_tx(tx, component_id, item_id :: string, { body }, recorded_at)
+        if provenance_err then return provenance_err end
+        return set_status_tx(tx, component_id, item_id :: string, seq, {})
     elseif kind == types.EVENT.CAPTURE_ADVANCED then
-        for _, name in ipairs({ "host_kind", "host_id", "agent_id", "from_event_id", "last_event_id" }) do
-            if type(body[name]) ~= "string" then return types.internal("malformed ledger event") end
+        for _, name in ipairs({ "host_kind", "host_id", "last_event_id" }) do
+            if type(body[name]) ~= "string" or body[name] == "" then return types.internal("malformed ledger event") end
+        end
+        for _, name in ipairs({ "agent_id", "from_event_id" }) do
+            if body[name] ~= nil and (type(body[name]) ~= "string" or body[name] == "") then return types.internal("malformed ledger event") end
         end
         return runs.advance_cursor_tx(tx, component_id, body, recorded_at)
     elseif kind == types.EVENT.CONSOLIDATION_COMPLETED then
@@ -290,23 +323,45 @@ local function apply_event(tx: any, sqlite: boolean, component_id: string, event
     return types.internal("unknown memory ledger event: " .. tostring(kind))
 end
 
--- Item sequence numbers make redelivery idempotent within the fenced transaction.
 function M.fold(component_id: string, events: { any }): (any?, error?)
     return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
-        local forgotten: { string } = {}
-        for _, event in ipairs(events) do
+        local event_index = 1
+        while event_index <= #events do
+            local event = events[event_index]
             if type(event) ~= "table" or type(event.body) ~= "table" then return nil, types.internal("malformed ledger event") end
-            if event.type == types.EVENT.ITEM_FORGOTTEN then
-                local item_id, item_err = event_string(event.body, "item_id")
-                if item_err then return nil, item_err end
-                forgotten[#forgotten + 1] = item_id :: string
+            if event.type ~= types.EVENT.ITEM_FORGOTTEN then
+                local err = apply_event(tx, sqlite, component_id, event)
+                if err then return nil, err end
+                event_index = event_index + 1
+            else
+                local forgotten: { string } = {}
+                local block_end = event_index
+                while block_end <= #events do
+                    local candidate = events[block_end]
+                    if type(candidate) ~= "table" or type(candidate.body) ~= "table" then
+                        return nil, types.internal("malformed ledger event")
+                    end
+                    if candidate.type ~= types.EVENT.ITEM_FORGOTTEN then break end
+                    if type(candidate.seq) ~= "number"
+                        or candidate.seq ~= math.floor(candidate.seq) or candidate.seq < 1 or not types.utc(candidate.created_at) then
+                        return nil, types.internal("malformed ledger event")
+                    end
+                    local item_id, item_err = event_string(candidate.body, "item_id")
+                    if item_err then return nil, item_err end
+                    local item, before, read_err = item_before_seq_tx(tx, component_id, item_id :: string, candidate.seq :: integer)
+                    if read_err then return nil, read_err end
+                    if not item then return nil, types.internal("memory forgotten item is missing") end
+                    if before then forgotten[#forgotten + 1] = item_id :: string end
+                    block_end = block_end + 1
+                end
+                local scrub_err = scrub_runs_tx(tx, component_id, forgotten)
+                if scrub_err then return nil, scrub_err end
+                for current = event_index, block_end - 1 do
+                    local err = apply_event(tx, sqlite, component_id, events[current])
+                    if err then return nil, err end
+                end
+                event_index = block_end
             end
-        end
-        local scrub_err = scrub_runs_tx(tx, component_id, forgotten)
-        if scrub_err then return nil, scrub_err end
-        for _, event in ipairs(events) do
-            local err = apply_event(tx, sqlite, component_id, event)
-            if err then return nil, err end
         end
         return true, nil
     end)
