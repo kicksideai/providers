@@ -39,12 +39,6 @@ local index = {}
 
 index.VECTOR_DIMENSIONS = 512
 
--- vec0 resolves the k nearest neighbors in the partition first and applies the
--- remaining WHERE filters to that set, so a filtered SQLite search over-fetches
--- k and trims to the limit. The cap bounds the worst-case KNN scan.
-local VECTOR_OVERFETCH_FACTOR = 8
-local VECTOR_OVERFETCH_MAX = 500
-
 -- Lexical ranks weigh three times a dense rank when the query carries a
 -- digit-bearing term, which anchors identifiers.
 local ANCHORED_LEXICAL_WEIGHT = 3
@@ -138,14 +132,6 @@ local function append_filters(query: string, params: { any }, idx: integer, filt
     return query, idx
 end
 
-local function has_filters(filters: { Filter }?): boolean
-    if not filters then return false end
-    for _, filter in ipairs(filters) do
-        if filter.values and #filter.values > 0 then return true end
-    end
-    return false
-end
-
 -- An HNSW index scan returns its ef_search nearest rows before the partition
 -- and row filters apply, so a filtered pgvector search could come back short
 -- or empty while eligible rows exist. Iterative scan keeps walking the graph,
@@ -182,8 +168,8 @@ local function group_error(spec: Spec, opts: SearchOptions): error?
     return errors.new({kind = errors.INVALID, message = "search group must be a row column"})
 end
 
--- Nearest rows by vector distance. Each row carries `similarity` in [0, 1]:
--- exp(-distance) for vec0 L2, 1 - cosine_distance/2 for pgvector.
+-- Nearest rows by cosine distance. Each row carries `similarity` in [-1, 1],
+-- the cosine similarity derived from the native distance function.
 function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts: SearchOptions): (any, any?)
     local invalid_group = group_error(spec, opts)
     if invalid_group then return nil, invalid_group end
@@ -197,7 +183,7 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
     local query: string
     if opts.group_by then
         local group = opts.group_by :: string
-        local distance = sqlite and ("vec_distance_L2(e." .. vector_column .. ", $1)") or
+        local distance = sqlite and ("vec_distance_cosine(e." .. vector_column .. ", $1)") or
             ("e." .. vector_column .. " <=> ($1::vector)")
         query = "SELECT n." .. group .. " AS id, MIN(" .. distance .. ") AS vector_distance FROM " .. spec.rows ..
             " n JOIN " .. spec.vectors .. " e ON n." .. spec.row_key .. " = e." .. spec.vector_key ..
@@ -206,18 +192,14 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
         query, idx = append_filters(query, params, 2, opts.filters, aliases)
         query = query .. " GROUP BY n." .. group .. " ORDER BY vector_distance, n." .. group .. " LIMIT $" .. (idx + 1)
     elseif sqlite then
-        local knn_k = limit
-        if has_filters(opts.filters) then
-            knn_k = math.min(limit * VECTOR_OVERFETCH_FACTOR, VECTOR_OVERFETCH_MAX)
-        end
-        query = "SELECT " .. row_select(spec, "n", "e") .. ", e.distance AS vector_distance" ..
+        query = "SELECT " .. row_select(spec, "n", "e") .. ", vec_distance_cosine(e." .. vector_column .. ", $1) AS vector_distance" ..
             " FROM " .. spec.vectors .. " e JOIN " .. spec.rows .. " n ON n." .. spec.row_key .. " = e." .. spec.vector_key ..
-            " WHERE e." .. vector_column .. " MATCH $1 AND e." .. spec.partition .. " = $2 AND e.k = $3"
-        params = { index.vector_literal(query_vector), opts.partition, knn_k }
-        idx = 3
+            " WHERE e." .. spec.partition .. " = $2"
+        params = { index.vector_literal(query_vector), opts.partition }
+        idx = 2
         query, idx = append_filters(query, params, idx, opts.filters, aliases)
         idx = idx + 1
-        query = query .. " ORDER BY e.distance LIMIT $" .. idx
+        query = query .. " ORDER BY vector_distance ASC, e." .. spec.vector_key .. " ASC LIMIT $" .. idx
     else
         query = "SELECT " .. row_select(spec, "n", nil) ..
             ", e." .. vector_column .. " <=> ('" .. index.vector_literal(query_vector) .. "'::vector) AS vector_distance" ..
@@ -240,7 +222,7 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
     rows = rows or {}
     for _, row in ipairs(rows) do
         local distance = tonumber(row.vector_distance) or 0
-        row.similarity = sqlite and math.exp(-distance) or (1 - distance / 2)
+        row.similarity = 1 - distance
         row.vector_distance = nil
     end
     decode_json_columns(spec, rows)

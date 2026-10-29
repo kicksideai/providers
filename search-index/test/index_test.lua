@@ -167,6 +167,17 @@ local function define_tests()
             test.eq(rows[1].id, current)
         end)
 
+        test.it("reports cosine similarity for non-unit collinear and orthogonal vectors", function()
+            local part = uuid.v7()
+            local collinear = insert(part, "fact", "current", "collinear", vector(2, 0))
+            local orthogonal = insert(part, "fact", "current", "orthogonal", vector(0, 2))
+            local rows = search({ partition = part, limit = 2, vector = vector(4, 0) })
+            test.eq(rows[1].id, collinear)
+            test.is_true(math.abs(rows[1].similarity - 1) < 0.000001)
+            test.eq(rows[2].id, orthogonal)
+            test.is_true(math.abs(rows[2].similarity) < 0.000001)
+        end)
+
         test.it("keeps filtered vector retrieval compatible with the installed pgvector capabilities", function()
             local db, sqlite = open()
             if not sqlite then
