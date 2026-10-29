@@ -335,13 +335,77 @@ function M.group_members(component_id: string, groups: { string }, scope_keys: {
     end)
 end
 
+local function provenance_rows(conn: any, component_id: string, item_id: string): (any?, error?)
+    local rows, err = conn:query(
+        "SELECT host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance WHERE component_id = $1 AND item_id = $2 ORDER BY recorded_at, event_id",
+        { component_id, item_id })
+    if err then return nil, types.failed("memory provenance read failed", err) end
+    return rows or {}, nil
+end
+
 function M.provenance(component_id: string, item_id: string): (any?, error?)
     return db.read(function(conn: any, _sqlite: boolean): (any, error?)
-        local rows, err = conn:query(
-            "SELECT host_kind, host_id, event_id, recorded_at FROM kickside_memory_provenance WHERE component_id = $1 AND item_id = $2 ORDER BY recorded_at, event_id",
-            { component_id, item_id })
-        if err then return nil, types.failed("memory provenance read failed", err) end
-        return rows or {}, nil
+        return provenance_rows(conn, component_id, item_id)
+    end)
+end
+
+local SOURCE_LINES = [[SELECT p.event_id, r.input FROM kickside_memory_provenance p
+    JOIN kickside_memory_run_sources s ON s.component_id = p.component_id AND s.event_id = p.event_id
+    JOIN kickside_memory_runs r ON r.component_id = s.component_id AND r.id = s.run_id
+        AND r.host_kind = p.host_kind AND r.host_id = p.host_id
+    WHERE p.component_id = $1 AND p.item_id = $2 AND p.host_kind <> 'item']]
+
+local function source_lines(conn: any, component_id: string, item_id: string): ({ [string]: any }?, error?)
+    local rows, err = conn:query(SOURCE_LINES, { component_id, item_id })
+    if err then return nil, types.failed("memory source line read failed", err) end
+    local lines: { [string]: any } = {}
+    for _, row in ipairs(rows or {}) do
+        local input, input_err = types.decode_object(row.input, "input")
+        if input_err then return nil, input_err end
+        for _, messages in ipairs({ (input :: any).span or {}, (input :: any).context or {} }) do
+            for _, message in ipairs(messages) do
+                if tostring(message.id) == row.event_id then
+                    lines[row.event_id] = { role = message.role, text = message.text, created_at = message.created_at }
+                end
+            end
+        end
+    end
+    return lines, nil
+end
+
+local function source_memories(conn: any, component_id: string, ids: { string }): ({ [string]: any }?, error?)
+    local memories: { [string]: any } = {}
+    local err = in_batches(ids, function(batch: { any }): error?
+        local params: { any } = { component_id }
+        for _, id in ipairs(batch) do params[#params + 1] = id end
+        local rows, query_err = conn:query("SELECT id, kind, key, content, status FROM kickside_memory_items WHERE component_id = $1 AND id IN (" ..
+            index.placeholders(#batch, 2) .. ")", params)
+        if query_err then return types.failed("memory source item read failed", query_err) end
+        for _, row in ipairs(rows or {}) do memories[row.id] = row end
+        return nil
+    end)
+    if err then return nil, err end
+    return memories, nil
+end
+
+-- Sources attach the retained conversation line or source memory that each provenance reference names.
+function M.sources(component_id: string, item_id: string): (any?, error?)
+    return db.read(function(conn: any, _sqlite: boolean): (any, error?)
+        local rows, err = provenance_rows(conn, component_id, item_id)
+        if err then return nil, err end
+        local lines, lines_err = source_lines(conn, component_id, item_id)
+        if lines_err then return nil, lines_err end
+        local ids: { string } = {}
+        for _, row in ipairs(rows :: any) do
+            if row.host_kind == "item" then ids[#ids + 1] = row.host_id end
+        end
+        local memories, memories_err = source_memories(conn, component_id, ids)
+        if memories_err then return nil, memories_err end
+        for _, row in ipairs(rows :: any) do
+            if row.host_kind == "item" then row.memory = (memories :: any)[row.host_id]
+            else row.line = (lines :: any)[row.event_id] end
+        end
+        return rows, nil
     end)
 end
 

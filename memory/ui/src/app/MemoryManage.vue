@@ -50,6 +50,10 @@ watch(selectedId, (id) => {
   emit('navigate', id || '')
 })
 
+function openConversation(sessionId: string) {
+  emit('navigate', `/sessions/${encodeURIComponent(sessionId)}`)
+}
+
 function open(id: string) {
   view.value = 'item'
   if (id === selectedId.value) return
@@ -95,7 +99,7 @@ function added(id: string) {
           <ConflictView v-if="view === 'conflicts'" :memory="memory" />
           <ActivityView v-else-if="view === 'activity'" :memory="memory" />
           <MemoryDetail v-else-if="selectedId" :key="selectedId" :memory="memory" :item-id="selectedId"
-            @replaced="open" @gone="selectedId = ''" />
+            @replaced="open" @open="open" @conversation="openConversation" @gone="selectedId = ''" />
           <div v-else class="kx-empty kx-empty-spacious mm-empty">
             <span class="kx-empty-ico"><Icon icon="tabler:brain" aria-hidden="true" /></span>
             <p class="kx-empty-title">Select a memory</p>

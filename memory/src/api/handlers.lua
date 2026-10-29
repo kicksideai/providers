@@ -181,7 +181,7 @@ function M.get_item()
     local item, err = items.get(id :: string, item_id)
     if err then return fail(res, err) end
     if not item then return refuse(res, http.STATUS.NOT_FOUND, "memory item not found") end
-    local provenance, prov_err = items.provenance(id :: string, item_id)
+    local provenance, prov_err = items.sources(id :: string, item_id)
     if prov_err then return fail(res, prov_err) end
     local history, history_err = items.list(id :: string, {
         scope_keys = { (item :: any).scope_key }, key = (item :: any).key, limit = (limit :: integer) + 1, offset = offset,

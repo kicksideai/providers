@@ -20,7 +20,18 @@ export interface MemoryItem {
   source: 'capture' | 'reflection' | 'owner'
 }
 
-export interface Provenance { host_kind: string; host_id: string; event_id: string; recorded_at?: string }
+export interface SourceLine { role: 'user' | 'assistant' | 'tool'; text: string; created_at?: string }
+
+export interface SourceMemory { id: string; kind: MemoryKind; key: string; content: string; status: MemoryStatus }
+
+export interface Provenance {
+  host_kind: string
+  host_id: string
+  event_id: string
+  recorded_at?: string
+  line?: SourceLine
+  memory?: SourceMemory
+}
 
 export interface ConflictGroup { group_id: string; items: MemoryItem[] }
 

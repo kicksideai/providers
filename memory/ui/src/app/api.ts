@@ -27,6 +27,19 @@ function itemRow(raw: unknown): MemoryItem {
   if (typeof raw.version !== 'number' || !Number.isInteger(raw.version)) throw new Error('Memory response has an invalid item version')
   return { id: text(raw.id, 'item'), kind: oneOf(raw.kind, KINDS, 'item kind'), scope_family: oneOf(raw.scope_family, ['agent', 'owner'] as const, 'item scope_family'), scope_id: text(raw.scope_id, 'item scope_id'), key: text(raw.key, 'item key'), cardinality: oneOf(raw.cardinality, ['single', 'multi'] as const, 'item cardinality'), content: text(raw.content, 'item content'), status: oneOf(raw.status, STATUSES, 'item status'), version: raw.version, valid_at: text(raw.valid_at, 'item valid_at'), invalid_at: typeof raw.invalid_at === 'string' || raw.invalid_at === null ? raw.invalid_at : undefined, recorded_at: text(raw.recorded_at, 'item recorded_at'), superseded_by: typeof raw.superseded_by === 'string' || raw.superseded_by === null ? raw.superseded_by : undefined, source: oneOf(raw.source, SOURCES, 'item source') }
 }
+function provenanceRow(raw: unknown): Provenance {
+  const origin = response(raw)
+  const row: Provenance = { host_kind: text(origin.host_kind, 'provenance host_kind'), host_id: text(origin.host_id, 'provenance host_id'), event_id: text(origin.event_id, 'provenance event_id'), recorded_at: typeof origin.recorded_at === 'string' ? origin.recorded_at : undefined }
+  if (origin.line !== undefined) {
+    const line = response(origin.line)
+    row.line = { role: oneOf(line.role, ['user', 'assistant', 'tool'] as const, 'source line role'), text: text(line.text, 'source line text'), created_at: typeof line.created_at === 'string' ? line.created_at : undefined }
+  }
+  if (origin.memory !== undefined) {
+    const memory = response(origin.memory)
+    row.memory = { id: text(memory.id, 'source memory'), kind: oneOf(memory.kind, KINDS, 'source memory kind'), key: text(memory.key, 'source memory key'), content: text(memory.content, 'source memory content'), status: oneOf(memory.status, STATUSES, 'source memory status') }
+  }
+  return row
+}
 function runRow(raw: unknown): MemoryRun {
   if (!isRecord(raw)) throw new Error('Memory response has an invalid run')
   return { id: text(raw.id, 'run'), run_type: oneOf(raw.run_type, RUN_TYPES, 'run type'), status: oneOf(raw.status, RUN_STATUSES, 'run status'), created_at: text(raw.created_at, 'run created_at'), last_error: typeof raw.last_error === 'string' || raw.last_error === null ? raw.last_error : undefined, stats: isRecord(raw.stats) ? raw.stats as Record<string, number> : undefined, host_kind: typeof raw.host_kind === 'string' ? raw.host_kind : undefined, started_at: typeof raw.started_at === 'string' || raw.started_at === null ? raw.started_at : undefined, finished_at: typeof raw.finished_at === 'string' || raw.finished_at === null ? raw.finished_at : undefined }
@@ -80,7 +93,7 @@ export function memoryApi(id: string) {
       const { data } = await api.get(`${base}/items/${encodeURIComponent(itemId)}${params.size ? `?${params}` : ''}`)
       const value = response(data)
       if (!isRecord(value.item) || !Array.isArray(value.provenance)) throw new Error('Memory detail response is malformed')
-      return { item: itemRow(value.item), provenance: value.provenance.map((row) => { const origin = response(row); return { host_kind: text(origin.host_kind, 'provenance host_kind'), host_id: text(origin.host_id, 'provenance host_id'), event_id: text(origin.event_id, 'provenance event_id'), recorded_at: typeof origin.recorded_at === 'string' ? origin.recorded_at : undefined } }), versions: page(value, 'versions', itemRow) }
+      return { item: itemRow(value.item), provenance: value.provenance.map(provenanceRow), versions: page(value, 'versions', itemRow) }
     },
     async create(input: Record<string, unknown>): Promise<string> {
       const { data } = await api.post(`${base}/items`, input)

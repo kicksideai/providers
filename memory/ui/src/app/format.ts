@@ -26,10 +26,6 @@ export function topicLabel(key: string): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key
 }
 
-export function aboutLabel(item: Pick<MemoryItem, 'scope_family'>): string {
-  return item.scope_family === 'agent' ? 'The agent' : 'A person it talked with'
-}
-
 const SOURCE_LABEL: Record<MemoryItem['source'], string> = {
   capture: 'learned in conversation',
   reflection: 'from consolidation',

@@ -5,13 +5,18 @@ import { Icon } from '@iconify/vue'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from './chrome/ConfirmDialog.vue'
-import { KIND_META, aboutLabel, fullTime, relativeTime, sourceLabel, topicLabel, STATUS_LABEL, severity } from './format'
+import { KIND_META, fullTime, relativeTime, topicLabel, STATUS_LABEL, severity } from './format'
 import { errorText, type MemoryItem, type Provenance } from './types'
 import { type Memory } from './useMemory'
 import { httpStatus, memoryApi } from './api'
 
 const props = defineProps<{ memory: Memory; itemId: string }>()
-const emit = defineEmits<{ (e: 'replaced', id: string): void; (e: 'gone'): void }>()
+const emit = defineEmits<{
+  (e: 'replaced', id: string): void
+  (e: 'gone'): void
+  (e: 'open', id: string): void
+  (e: 'conversation', id: string): void
+}>()
 
 const item = ref<MemoryItem | null>(null)
 const versions = ref<MemoryItem[]>([])
@@ -109,11 +114,21 @@ async function forget() {
   }
 }
 
-function sourceOf(origin: Provenance): { label: string; icon: string } {
-  if (origin.host_kind === 'session') return { label: 'Conversation', icon: 'tabler:message-circle' }
-  if (origin.host_kind === 'dataflow') return { label: 'Workflow run', icon: 'tabler:route' }
-  if (origin.host_kind === 'content') return { label: 'Document', icon: 'tabler:file-text' }
-  return { label: origin.host_kind, icon: 'tabler:database' }
+const SPEAKER: Record<string, string> = { user: 'They said', assistant: 'The agent said', tool: 'Tool result' }
+
+function sourceIcon(origin: Provenance): string {
+  if (origin.host_kind === 'item') return 'tabler:brain'
+  if (origin.host_kind === 'content') return 'tabler:file-text'
+  if (origin.host_kind === 'dataflow') return 'tabler:route'
+  return 'tabler:message-circle'
+}
+
+function sourceLabel(origin: Provenance): string {
+  if (origin.line) return SPEAKER[origin.line.role] || 'Message'
+  if (origin.host_kind === 'item') return origin.memory ? 'From the memory' : 'From a memory that is no longer kept'
+  if (origin.host_kind === 'content') return 'A document'
+  if (origin.host_kind === 'dataflow') return 'A workflow run'
+  return 'A conversation whose text is no longer kept'
 }
 </script>
 
@@ -154,16 +169,14 @@ function sourceOf(origin: Provenance): { label: string; icon: string } {
         </div>
         <h2 v-else class="mm-title">{{ item.content }}</h2>
         <div class="mm-facts">
-          <span class="mm-fact"><Icon icon="tabler:user-circle" aria-hidden="true" />{{ aboutLabel(item) }}</span>
+          <span v-if="item.scope_family === 'agent'" class="mm-fact"><Icon icon="tabler:robot" aria-hidden="true" />About the agent itself</span>
           <span class="mm-fact" :title="fullTime(item.valid_at)"><Icon icon="tabler:calendar-event" aria-hidden="true" />True since {{ relativeTime(item.valid_at) }}</span>
           <span v-if="item.invalid_at" class="mm-fact" :title="fullTime(item.invalid_at)"><Icon icon="tabler:calendar-off" aria-hidden="true" />Until {{ relativeTime(item.invalid_at) }}</span>
-          <span class="mm-fact" :title="fullTime(item.recorded_at)"><Icon icon="tabler:sparkles" aria-hidden="true" />{{ sourceLabel(item.source) }}</span>
-          <span class="mm-fact"><Icon icon="tabler:stack-2" aria-hidden="true" />{{ item.cardinality === 'single' ? 'One value at a time' : 'Can hold several values' }}</span>
         </div>
       </div>
     </header>
 
-    <section class="mm-sec" aria-labelledby="mm-history">
+    <section v-if="versions.length > 1 || nextVersions !== null" class="mm-sec" aria-labelledby="mm-history">
       <h3 id="mm-history" class="mm-sec-h">History</h3>
       <ol class="mm-timeline">
         <li v-for="version in versions" :key="version.id" :class="{ now: version.id === item.id, past: version.status !== 'current' }">
@@ -181,10 +194,24 @@ function sourceOf(origin: Provenance): { label: string; icon: string } {
       <h3 id="mm-sources" class="mm-sec-h">Learned from</h3>
       <p v-if="!provenance.length" class="mm-muted">{{ item.source === 'owner' ? 'Added by a person on this page.' : 'No conversation recorded for this memory.' }}</p>
       <ul v-else class="mm-sources">
-        <li v-for="origin in provenance" :key="origin.host_kind + origin.host_id + origin.event_id">
-          <Icon :icon="sourceOf(origin).icon" aria-hidden="true" />
-          <span>{{ sourceOf(origin).label }}</span>
-          <span v-if="origin.recorded_at" class="mm-muted" :title="fullTime(origin.recorded_at)">{{ relativeTime(origin.recorded_at) }}</span>
+        <li v-for="origin in provenance" :key="origin.host_kind + origin.host_id + origin.event_id" class="mm-source">
+          <Icon class="mm-source-ic" :icon="sourceIcon(origin)" aria-hidden="true" />
+          <div class="mm-source-body">
+            <div class="mm-source-head">
+              <span>{{ sourceLabel(origin) }}</span>
+              <span v-if="origin.line?.created_at || origin.recorded_at" class="mm-muted"
+                :title="fullTime(origin.line?.created_at || origin.recorded_at || '')">{{ relativeTime(origin.line?.created_at || origin.recorded_at || '') }}</span>
+            </div>
+            <blockquote v-if="origin.line" class="mm-quote">{{ origin.line.text }}</blockquote>
+            <button v-if="origin.memory" type="button" class="mm-source-link" @click="emit('open', origin.memory.id)">
+              <span class="mm-source-topic">{{ topicLabel(origin.memory.key) }}</span>
+              <span>{{ origin.memory.content }}</span>
+            </button>
+            <button v-if="origin.host_kind === 'session'" type="button" class="kx-btn kx-btn-ghost sm"
+              @click="emit('conversation', origin.host_id)">
+              <Icon icon="tabler:external-link" aria-hidden="true" />Open conversation
+            </button>
+          </div>
         </li>
       </ul>
     </section>

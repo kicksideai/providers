@@ -1,8 +1,8 @@
 import { openBlock as u, createElementBlock as m, mergeProps as g, createElementVNode as b, resolveComponent as X, createVNode as L, normalizeStyle as fe, normalizeClass as N, renderSlot as w, createCommentVNode as k, toHandlers as V, createBlock as $, resolveDynamicComponent as O, defineComponent as F, unref as S, toDisplayString as I, computed as E, Fragment as U, renderList as Y, createTextVNode as ge, ref as T, watch as be, withCtx as ye } from "vue";
 import { Icon as ve } from "@iconify/vue";
 import { define as we } from "@wippy-fe/proxy";
-import { B as H, l as R, p as $e, M as ee, s as te, u as Ce, a as Ie, b as ke, c as Se, e as xe, m as Be } from "./types-ClUwdCNm.js";
-import { s as De, a as oe, b as Pe, f as se, c as Me, u as Ae, d as Ve } from "./useWidget-i33BV3A3.js";
+import { B as H, l as R, p as $e, M as ee, s as te, u as Ce, a as Ie, b as ke, c as Se, e as xe, m as Be } from "./types-D3kJ2ulw.js";
+import { s as De, a as oe, b as Pe, f as se, c as Me, u as Ae, d as Ve } from "./useWidget-wVsuCND0.js";
 var Oe = `
 .p-icon {
     display: inline-block;

@@ -176,6 +176,51 @@ local function define_tests()
             test.eq(table.concat(statuses, ","), "current:Pepper,forgotten:nil,forgotten:nil")
         end)
 
+        test.it("resolves item sources to the conversation line and the source memory", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session_id = "s-sources-" .. user
+            fixture.history.record(session_id, {
+                { id = "line-1", role = "user", content = "I started teaching chemistry at Lincoln Academy." },
+                { id = "line-2", role = "assistant", content = "Congratulations on the new role." },
+            })
+            fixture.extraction(id, {
+                fixture.candidate("profile_slot", "employer", "Lincoln Academy", "The user works at Lincoln Academy.", "line-1"),
+            })
+            local _, err = fixture.apply(user, "before_step", id, session_id, "agent-a")
+            test.is_nil(err, tostring(err))
+            local derived_runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(derived_runs[1].status, "succeeded", tostring(derived_runs[1].last_error))
+            fixture.settle(user, id)
+            local learned = fixture.values(fixture.items(user, id))["Lincoln Academy"]
+            local detail = get_path(user, "/memory/" .. id .. "/items/" .. learned.id)
+            test.eq(detail.status, 200, detail.raw)
+            local source = detail.body.provenance[1]
+            test.eq(source.host_kind, "session")
+            test.eq(source.host_id, session_id)
+            test.eq(source.line.role, "user")
+            test.eq(source.line.text, "I started teaching chemistry at Lincoln Academy.")
+
+            local lessons, lesson_err = fixture.persistence_op(user, "seed", { component_id = id, user = user,
+                count = 1, kind = "lesson", distinct_keys = true, idempotency = "source-lesson" })
+            test.is_nil(lesson_err, tostring(lesson_err))
+            fixture.settle(user, id)
+            local lesson_id = lessons.item_ids[1]
+            local db = fixture.db()
+            local _, insert_err = db:execute([[INSERT INTO kickside_memory_provenance (component_id, item_id, host_kind, host_id, event_id, recorded_at)
+                VALUES ($1, $2, 'item', $3, '', '2026-01-01T00:00:00Z')]], { id, lesson_id, learned.id })
+            db:release()
+            test.is_nil(insert_err, tostring(insert_err))
+            local derived = get_path(user, "/memory/" .. id .. "/items/" .. lesson_id)
+            test.eq(derived.status, 200, derived.raw)
+            local origin = derived.body.provenance[1]
+            test.eq(origin.host_kind, "item")
+            test.eq(origin.memory.id, learned.id)
+            test.eq(origin.memory.key, "employer")
+            test.eq(origin.memory.content, "The user works at Lincoln Academy.")
+            test.is_nil(origin.line)
+        end)
+
         test.it("archives restores and edits items through memory page endpoints", function()
             local user = fixture.user()
             local id = fixture.memory(user)
