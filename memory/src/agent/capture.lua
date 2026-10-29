@@ -86,12 +86,11 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     local cfg = (store :: any).effective
     if cfg.capture_conversation == false and cfg.capture_experience ~= true then return skipped("capture_disabled"), nil end
     local host_kind, host_id = context.host_ref(payload.host)
-    if host_kind == "" or host_id == "" then return nil, types.invalid("lifecycle host is required for capture") end
+    if host_kind == nil or host_id == nil then return nil, types.invalid("lifecycle host is required for capture") end
     local from, position_err = runs.capture_position(memory_id :: string, host_kind, host_id)
     if position_err then return nil, position_err end
-    from = from :: string
     local selector: any
-    if from ~= "" then
+    if from ~= nil then
         selector = { mode = "since_id", from_id = from }
     else
         selector = { mode = "window", last = history.FIRST_CAPTURE_WINDOW }
@@ -101,7 +100,7 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     local result, history_err = history.read(payload, requested or selector)
     if history_err then return nil, history_err end
     local events = (result :: any).events
-    if requested and from ~= "" then
+    if requested and from ~= nil then
         local remaining, remaining_err = history.read(payload, selector)
         if remaining_err then return nil, remaining_err end
         local eligible: { [string]: boolean } = {}
@@ -170,7 +169,7 @@ function M.capture(payload: any, to_event_id: string?): (any?, error?)
     local count, size, prior_context = 0, 0, context_window(entries)
     local function append(to_id: string)
         captures[#captures + 1] = {
-            component_id = memory_id :: string, host_kind = host_kind, host_id = host_id, host = payload.host,
+            component_id = memory_id :: string, host_kind = host_kind, host_id = host_id,
             agent_id = types.trim(payload.agent and payload.agent.id), from_event_id = from,
             to_event_id = to_id, span = part, context = prior_context, isolated = not conversational,
         }

@@ -11,6 +11,17 @@ local jobs_wake = require("jobs_wake")
 
 local M = {}
 
+local function required_text(value: any, name: string): (string?, error?)
+    if type(value) ~= "string" or types.trim(value) == "" then return nil, types.invalid(name .. " is required") end
+    return value, nil
+end
+
+local function optional_text(value: any, name: string): (string?, error?)
+    if value == nil then return nil, nil end
+    if type(value) ~= "string" or types.trim(value) == "" then return nil, types.invalid(name .. " must be absent or a non-empty string") end
+    return value, nil
+end
+
 local SELECT = "SELECT id, component_id, run_type, status, job_id, host_kind, host_id, agent_id, from_event_id, " ..
     "to_event_id, input, stats, last_error, actor_id, actor_context, created_at, started_at, cycle, finished_at FROM kickside_memory_runs"
 
@@ -42,6 +53,42 @@ type RunInput = {
     finished_at: string?,
 }
 
+function M.validate(run: RunInput): error?
+    local run_type, run_type_err = required_text(run.run_type, "memory run type")
+    if run_type_err then return run_type_err end
+    if type(run.input) == "table" and run.input.host ~= nil then
+        return types.invalid("memory run input cannot own a host")
+    end
+    if run_type == types.RUN_TYPE.DERIVE then
+        local host_kind, host_kind_err = required_text(run.host_kind, "memory derive host kind")
+        if host_kind_err then return host_kind_err end
+        local host_id, host_id_err = required_text(run.host_id, "memory derive host id")
+        if host_id_err then return host_id_err end
+        local _, to_err = required_text(run.to_event_id, "memory derive source event id")
+        if to_err then return to_err end
+        local _, agent_err = optional_text(run.agent_id, "memory derive agent id")
+        if agent_err then return agent_err end
+        local _, from_err = optional_text(run.from_event_id, "memory derive predecessor event id")
+        if from_err then return from_err end
+        if host_kind == "content" then
+            if host_id ~= run.component_id then return types.invalid("memory content derive host id must be its component") end
+            if run.agent_id ~= nil or run.from_event_id ~= nil then
+                return types.invalid("memory content derive has no agent or predecessor event")
+            end
+        elseif run.agent_id == nil then
+            return types.invalid("memory capture derive agent id is required")
+        end
+        return nil
+    end
+    if run_type ~= types.RUN_TYPE.CONSOLIDATE and run_type ~= types.RUN_TYPE.REEMBED then
+        return types.invalid("memory run type is unsupported")
+    end
+    for _, field in ipairs({ "host_kind", "host_id", "agent_id", "from_event_id", "to_event_id" }) do
+        if run[field] ~= nil then return types.invalid("memory maintenance run " .. field .. " must be absent") end
+    end
+    return nil
+end
+
 local function sources_tx(tx: any, run: any): error?
     local input = run.input or {}
     for _, messages in ipairs({ input.span or {}, input.context or {} }) do
@@ -61,6 +108,8 @@ function M.sources_tx(tx: any, run: any): error?
 end
 
 local function insert_tx(tx: any, run: RunInput): (any?, error?)
+    local shape_err = M.validate(run)
+    if shape_err then return nil, shape_err end
     local existing, read_err = tx:query("SELECT id, job_id FROM kickside_memory_runs WHERE id = $1", { run.id })
     if read_err then return nil, types.failed("memory run lookup failed", read_err) end
     if existing and #existing > 0 then
@@ -74,8 +123,8 @@ local function insert_tx(tx: any, run: RunInput): (any?, error?)
     local _, err = tx:execute(
         "INSERT INTO kickside_memory_runs (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, " ..
         "to_event_id, input, stats, actor_id, actor_context, created_at, last_error, finished_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
-        { run.id, run.component_id, run.run_type, run.status or types.RUN_STATUS.SCHEDULED, run.host_kind or "", run.host_id or "",
-            run.agent_id or "", run.from_event_id or "", run.to_event_id or "", input,
+        { run.id, run.component_id, run.run_type, run.status or types.RUN_STATUS.SCHEDULED, run.host_kind or sql.NULL, run.host_id or sql.NULL,
+            run.agent_id or sql.NULL, run.from_event_id or sql.NULL, run.to_event_id or sql.NULL, input,
             stats, run.actor_id or sql.NULL, run.actor_context or sql.NULL, types.now(), run.last_error or sql.NULL, run.finished_at or sql.NULL })
     if err then return nil, types.failed("memory run insert failed", err) end
     local sources_err = sources_tx(tx, run)
@@ -88,17 +137,17 @@ local function capture_state(conn: any, sqlite: boolean, run: {component_id: str
         "SELECT last_event_id FROM kickside_memory_cursors WHERE component_id = $1 AND host_kind = $2 AND host_id = $3" ..
         (lock and not sqlite and " FOR UPDATE" or ""), {run.component_id, run.host_kind, run.host_id})
     if read_err then return nil, types.failed("memory cursor read failed", read_err) end
-    local current = rows and rows[1] and tostring(rows[1].last_event_id or "") or ""
+    local current = rows and rows[1] and rows[1].last_event_id or nil
     local active, active_err = conn:query([[SELECT r.id, r.from_event_id, r.to_event_id FROM kickside_memory_runs r
         JOIN kickside_job j ON j.id = r.job_id
         WHERE r.component_id = $1 AND r.host_kind = $2 AND r.host_id = $3
-        AND r.run_type = $4 AND r.agent_id <> '' AND r.status <> $5 AND j.status NOT IN ('done', 'dead', 'cancelled')
+        AND r.run_type = $4 AND r.agent_id IS NOT NULL AND r.status <> $5 AND j.status NOT IN ('done', 'dead', 'cancelled')
         ORDER BY r.created_at, r.id]],
         {run.component_id, run.host_kind, run.host_id, types.RUN_TYPE.DERIVE, types.RUN_STATUS.SUCCEEDED})
     if active_err then return nil, types.failed("memory capture ownership read failed", active_err) end
     local position = current
     for _, pending in ipairs(active or {}) do
-        if (pending.from_event_id or "") ~= position then
+        if pending.from_event_id ~= position then
             return {committed = current, position = current, blocked = true, run_id = active[1].id}, nil
         end
         position = pending.to_event_id
@@ -114,7 +163,7 @@ function M.capture_position(component_id: string, host_kind: string, host_id: st
     end)
 end
 
-function M.capture_available_tx(tx: any, sqlite: boolean, run: RunInput, expected: string): (any?, error?)
+function M.capture_available_tx(tx: any, sqlite: boolean, run: RunInput, expected: string?): (any?, error?)
     local state, err = capture_state(tx, sqlite, run, true)
     if err then return nil, err end
     return {available = state.committed == expected and state.run_id == nil, run_id = state.run_id}, nil
@@ -125,19 +174,30 @@ function M.insert_tx(tx: any, run: RunInput): (any?, error?)
 end
 
 function M.advance_cursor_tx(tx: any, component_id: string, body: any, updated_at: string): error?
+    local host_kind, host_kind_err = required_text(body.host_kind, "memory cursor host kind")
+    if host_kind_err then return host_kind_err end
+    local host_id, host_id_err = required_text(body.host_id, "memory cursor host id")
+    if host_id_err then return host_id_err end
+    local agent_id, agent_id_err = optional_text(body.agent_id, "memory cursor agent id")
+    if agent_id_err then return agent_id_err end
+    local from_event_id, from_err = optional_text(body.from_event_id, "memory cursor predecessor event id")
+    if from_err then return from_err end
+    local last_event_id, last_err = required_text(body.last_event_id, "memory cursor event id")
+    if last_err then return last_err end
     local _, err = tx:execute([[INSERT INTO kickside_memory_cursors
         (component_id, host_kind, host_id, agent_id, last_event_id, updated_at) VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET agent_id = CASE WHEN kickside_memory_cursors.pinned_prompt IS NULL
             THEN excluded.agent_id ELSE kickside_memory_cursors.agent_id END, last_event_id = excluded.last_event_id,
-            updated_at = excluded.updated_at WHERE kickside_memory_cursors.last_event_id = $7]],
-        { component_id, body.host_kind, body.host_id, body.agent_id, body.last_event_id, updated_at, body.from_event_id })
+            updated_at = excluded.updated_at WHERE (kickside_memory_cursors.last_event_id = $7
+                OR (kickside_memory_cursors.last_event_id IS NULL AND $7 IS NULL))]],
+        { component_id, host_kind, host_id, agent_id or sql.NULL, last_event_id, updated_at, from_event_id or sql.NULL })
     if err then return types.failed("memory cursor advance failed", err) end
     return nil
 end
 
 function M.schedule(run: RunInput, params: any, expected: string?, following: { any }?): (any?, error?)
     local scheduled, err = db.write(run.component_id, function(tx: any, sqlite: boolean): (any, error?)
-        if expected ~= nil then
+        if run.run_type == types.RUN_TYPE.DERIVE and run.agent_id ~= nil then
             local state, state_err = capture_state(tx, sqlite, run, true)
             if state_err then return nil, state_err end
             if state.blocked or state.position ~= expected then return {scheduled = false, run_id = state.run_id}, nil end
@@ -211,9 +271,11 @@ function M.pin(component_id: string, host_kind: string, host_id: string, agent_i
         if encode_err then return nil, types.internal("memory pin ids encode failed", { cause = tostring(encode_err) }) end
         local _, err = tx:execute(
             "INSERT INTO kickside_memory_cursors (component_id, host_kind, host_id, agent_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at) " ..
-            "VALUES ($1, $2, $3, $4, $5, '', $6, $7, $8, $9) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
-            "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, owner_scope_key = excluded.owner_scope_key, updated_at = excluded.updated_at WHERE kickside_memory_cursors.pinned_prompt IS NULL",
-            { component_id, host_kind, host_id, agent_id, scope_key, head, prompt, item_ids_json, types.now() })
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (component_id, host_kind, host_id) DO UPDATE SET pinned_head = excluded.pinned_head, " ..
+            "pinned_prompt = excluded.pinned_prompt, pinned_ids = excluded.pinned_ids, agent_id = excluded.agent_id, owner_scope_key = excluded.owner_scope_key, updated_at = excluded.updated_at " ..
+            "WHERE kickside_memory_cursors.pinned_prompt IS NULL OR kickside_memory_cursors.agent_id <> excluded.agent_id " ..
+            "OR kickside_memory_cursors.owner_scope_key IS NULL OR kickside_memory_cursors.owner_scope_key <> excluded.owner_scope_key",
+            { component_id, host_kind, host_id, agent_id, scope_key, sql.NULL, head, prompt, item_ids_json, types.now() })
         if err then return nil, types.failed("memory pin failed", err) end
         return true, nil
     end)
@@ -224,7 +286,11 @@ function M.get(run_id: string): (any?, error?)
         local rows, err = conn:query(SELECT .. " WHERE id = $1", { run_id })
         if err then return nil, types.failed("memory run read failed", err) end
         if not rows or #rows == 0 then return nil, nil end
-        return decode(rows[1])
+        local run, decode_err = decode(rows[1])
+        if decode_err then return nil, decode_err end
+        local shape_err = M.validate(run :: RunInput)
+        if shape_err then return nil, shape_err end
+        return run, nil
     end)
 end
 
@@ -251,6 +317,8 @@ function M.list(component_id: string, run_type: string?, limit: integer): (any?,
         for _, row in ipairs(rows or {}) do
             local decoded, decode_err = decode(row)
             if decode_err then return nil, decode_err end
+            local shape_err = M.validate(decoded :: RunInput)
+            if shape_err then return nil, shape_err end
             out[#out + 1] = decoded
         end
         return out, nil
