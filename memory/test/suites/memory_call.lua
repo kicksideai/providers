@@ -26,7 +26,15 @@ local lifecycle = require("agent_lifecycle")
 local recall = require("memory_recall")
 
 local OPS: { [string]: (any) -> (any, any) } = {
-    recall_scopes = function(a: any) return recall.visible_scopes(a.agent_id), nil end,
+    recall_scopes = function(a: any) return recall.visible_scopes(a.agent_id) end,
+    recall_scope_failure = function(a: any)
+        local returned, scopes, err = pcall(function() return recall.visible_scopes(a.agent_id) end)
+        if not returned then
+            return { raised = true, kind = scopes:kind(), message = scopes:message() }, nil
+        end
+        return { raised = false, count = scopes and #scopes or 0,
+            kind = err and err:kind() or nil, message = err and err:message() or nil }, nil
+    end,
     descriptor = function(a: any)
         local err = config.validate_descriptor(a.meta)
         if err then return nil, err end

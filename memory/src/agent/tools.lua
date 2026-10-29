@@ -46,10 +46,11 @@ function M.search(args: any): (any?, error?)
         if not parsed or parsed < 0 or math.floor(parsed) ~= parsed then return tool_error("cursor is invalid", "invalid_input"), nil end
         offset = math.floor(parsed)
     end
-    local scopes = recall.visible_scopes(ctx.get("agent_id"))
+    local scopes, scopes_err = recall.visible_scopes(ctx.get("agent_id"))
+    if scopes_err then return nil, scopes_err end
     local rows, search_err = recall.search({
         component_id = memory_id :: string, query = query, limit = offset + limit + 1,
-        scopes = scopes,
+        scopes = scopes :: { string },
     })
     if search_err then return nil, search_err end
     local page: { any } = {}
@@ -64,14 +65,14 @@ function M.search(args: any): (any?, error?)
     end
     local contested, contested_err = recall.search({
         component_id = memory_id :: string, query = query, limit = offset + limit + 1, group_by = "conflict_group",
-        scopes = scopes, statuses = { types.STATUS.CONFLICT },
+        scopes = scopes :: { string }, statuses = { types.STATUS.CONFLICT },
     })
     if contested_err then return nil, contested_err end
     local group_ids: { string } = {}
     for _, row in ipairs(contested :: any) do group_ids[#group_ids + 1] = row.id end
     local page_groups: { string } = {}
     for i = offset + 1, math.min(offset + limit, #group_ids) do page_groups[#page_groups + 1] = group_ids[i] end
-    local members, members_err = items.group_members(memory_id :: string, page_groups, scopes)
+    local members, members_err = items.group_members(memory_id :: string, page_groups, scopes :: { string })
     if members_err then return nil, members_err end
     local groups: { [string]: any } = {}
     local alternatives: { any } = {}

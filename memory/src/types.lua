@@ -215,12 +215,12 @@ function M.actor_id(): string
     return actor and actor:id() or ""
 end
 
-function M.human_id(): string?
+function M.human_id(): (string?, error?)
     local id = M.actor_id()
-    if id == "" then return nil end
+    if id == "" then return nil, nil end
     local principal, err = execution_identity.principal_of_key(id)
-    if err then error(err) end
-    return principal.kind == "user" and principal.id or nil
+    if err then return nil, err end
+    return principal and principal.kind == "user" and principal.id or nil, nil
 end
 
 function M.scope_key(scope_family: string, scope_id: string): string

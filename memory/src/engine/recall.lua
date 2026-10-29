@@ -7,13 +7,14 @@ local models = require("memory_models")
 
 local M = {}
 
-function M.visible_scopes(agent_id: string?): { string }
+function M.visible_scopes(agent_id: string?): ({ string }?, error?)
     local scopes: { string } = {}
-    local actor_id = types.human_id()
+    local actor_id, actor_err = types.human_id()
+    if actor_err then return nil, actor_err end
     if actor_id then scopes[#scopes + 1] = types.scope_key(types.SCOPE.OWNER, actor_id) end
     local agent = types.trim(agent_id)
     if agent ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.AGENT, agent) end
-    return scopes
+    return scopes, nil
 end
 
 type SearchRequest = {

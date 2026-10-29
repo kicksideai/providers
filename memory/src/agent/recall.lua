@@ -35,9 +35,11 @@ function M.recall(input: any): (any?, error?)
     local exclude: { [string]: boolean } = {}
     for _, id in ipairs(type(args.previous_memories) == "table" and args.previous_memories or {}) do exclude[tostring(id)] = true end
     local agent_id = types.trim(ctx.get("agent_id"))
+    local scopes, scopes_err = recall.visible_scopes(agent_id)
+    if scopes_err then return nil, scopes_err end
     local rows, err = recall.search({
         component_id = component_id :: string, query = query, limit = max_items, kinds = RECALL_KINDS,
-        scopes = recall.visible_scopes(agent_id), exclude = exclude,
+        scopes = scopes :: { string }, exclude = exclude,
     })
     if err then return nil, err end
     local memories: { any } = {}

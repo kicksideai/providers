@@ -162,9 +162,11 @@ function M.query(value: any): (any?, error?)
     end
     local offset = req.offset == nil and 0 or tonumber(req.offset)
     if not offset or offset % 1 ~= 0 or offset < 0 then return nil, types.invalid("offset must be a non-negative integer") end
+    local scopes, scopes_err = recall.visible_scopes(ctx.get("agent_id"))
+    if scopes_err then return nil, scopes_err end
     local rows, err = recall.search({
         component_id = component_id :: string, query = query, limit = (offset + limit + 1) :: integer,
-        scopes = recall.visible_scopes(ctx.get("agent_id")),
+        scopes = scopes :: { string },
     })
     if err then return nil, err end
     local page: { any } = {}
