@@ -42,7 +42,7 @@ entries:
     meta:
       comment: Implementation for kickside.memory.migrations:05_memory_upgrade.
     source: file://05_memory_upgrade.lua
-    modules: [json]
+    modules: [json, sql]
     imports:
       migration: wippy.migration:migration
       canonical_json: kickside.contract:canonical_json

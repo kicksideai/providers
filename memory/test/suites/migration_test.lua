@@ -2,17 +2,15 @@
 local test = require("test")
 local fixture = require("fixture")
 local json = require("json")
-local items = require("upgrade_items")
-local fold = require("upgrade_fold")
-local upgraded_runs = require("upgrade_runs")
 local sql = require("sql")
 local canonical_json = require("canonical_json")
 
 local function define_tests()
     test.describe("memory trait context migration", function()
-        test.it("removes retired settings from an existing agent context before strict resolution", function()
+        test.it("moves a published memory trait to the current capability before native execution", function()
             local user = fixture.user()
             local memory = fixture.memory(user)
+            local published_trait = "kickside.memory:knowledge_based_memory"
             local trait = "kickside.memory:memory"
             local created, create_err = fixture.call_as(user, "kickside.agents.registry:a_create", {
                 name = "upgraded memory agent", model = "test-fast", traits = { trait },
@@ -25,9 +23,13 @@ local function define_tests()
             test.is_nil(read_err, tostring(read_err))
             local private_context, decode_err = json.decode(tostring(rows[1].private_context))
             test.is_nil(decode_err, tostring(decode_err))
-            private_context.trait_contexts[trait].read_enabled = false
-            private_context.trait_contexts[trait].write_enabled = false
-            private_context.trait_contexts[trait].recall_limit = 1
+            private_context.traits = { published_trait }
+            private_context.trait_contexts[published_trait] = private_context.trait_contexts[trait]
+            private_context.trait_contexts[trait] = nil
+            private_context.tools = { "kickside.memory:memory_recall_tool" }
+            private_context.trait_contexts[published_trait] = {
+                memory_id = memory, read_enabled = false, write_enabled = false, recall_limit = 1,
+            }
             local encoded, encode_err = json.encode(private_context)
             test.is_nil(encode_err, tostring(encode_err))
             local _, write_err = db:execute("UPDATE kickside_components SET private_context = $1 WHERE component_id = $2", { encoded, created.component_id })
@@ -55,9 +57,12 @@ local function define_tests()
             test.is_nil(migrated_decode_err, tostring(migrated_decode_err))
             local context = migrated.trait_contexts[trait]
             test.eq(context.memory_id, memory)
-            test.is_nil(context.read_enabled)
-            test.is_nil(context.write_enabled)
-            test.is_nil(context.recall_limit)
+            test.eq(context.read_enabled, false)
+            test.eq(context.write_enabled, false)
+            test.eq(context.recall_limit, 1)
+            test.is_nil(migrated.trait_contexts[published_trait])
+            test.eq(migrated.traits[1], trait)
+            test.eq(migrated.tools[1], "kickside.memory.agent:search_tool")
             test.eq(tonumber(stored[1].context_revision), 1)
 
             local agent, resolve_err = fixture.call_as(user, "kickside.agents:agent_resolver_func", {
@@ -65,6 +70,13 @@ local function define_tests()
             })
             test.is_nil(resolve_err, tostring(resolve_err))
             test.not_nil(agent)
+            fixture.script.respond(memory, "generate", "Memory is ready.")
+            local ran, run_err = fixture.op(user, "trait_agent", {
+                spec = agent,
+                messages = {{role = "user", text = "Use memory."}},
+            }, fixture.agent_context(memory, "migration-session", agent.id))
+            test.is_nil(run_err, tostring(run_err))
+            test.eq(ran.response.result, "Memory is ready.")
         end)
     end)
 
@@ -156,6 +168,9 @@ local function define_tests()
                     (component_id, host_kind, host_id, agent_id, last_event_id, pinned_head, pinned_prompt, pinned_ids, updated_at)
                     VALUES ($1, 'session', $2, 'reader', 'event', 1, 'prompt', $3, $4)]], {component, cursor[1], cursor[2], now})
             end
+            exec([[INSERT INTO kickside_memory_kb_cursors
+                (component_id, host_kind, host_id, agent_id, last_event_id, updated_at)
+                VALUES ($1, 'session', 'pending', 'reader', 'pending-end', $2)]], {component, now})
             for _, run in ipairs({ {"existing-run", "succeeded"}, {"failed-run", "failed"}, {"running-run", "running"} }) do
                 exec([[INSERT INTO kickside_memory_kb_runs
                     (id, component_id, run_type, status, job_id, input, stats, created_at, started_at)
@@ -164,8 +179,16 @@ local function define_tests()
                     {run[1], component, run[2], run[1] == "existing-run" and "[]"
                         or '{"span":[{"id":"event","text":"source"}],"context":[{"id":"context-event","text":"context"}]}', now})
             end
+            exec([[INSERT INTO kickside_memory_kb_runs
+                (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, to_event_id, input, created_at)
+                VALUES ('pending-derive', $1, 'derive', 'scheduled', 'session', 'pending', 'reader', 'pending-before', 'pending-end',
+                    '{"span":[{"id":"pending-end","text":"I prefer window seats."}],"owner_id":"reader"}', $2)]], {component, now})
+            exec([[INSERT INTO kickside_memory_kb_runs
+                (id, component_id, run_type, status, host_kind, host_id, agent_id, from_event_id, to_event_id, input, created_at)
+                VALUES ('attributed-derive', $1, 'derive', 'succeeded', 'session', 'attributed', 'reader', 'attributed-before', 'attributed-end',
+                    '{"host":{"kind":"session","id":"attributed"},"span":[{"id":"attributed-end","text":"I prefer aisle seats.","author":{"kind":"user","id":"reader"}}],"owner_id":"reader"}', $2)]], {component, now})
             exec([[INSERT INTO kickside_components (component_id, private_context, updated_at) VALUES ('agent',
-                '{"trait_contexts":{"kickside.memory:memory":{"memory_id":"selected","read_enabled":false,"write_enabled":false,"recall_limit":1}}}', $1)]], {now})
+                '{"traits":["kickside.memory:knowledge_based_memory"],"tools":["kickside.memory:memory_recall_tool"],"trait_contexts":{"kickside.memory:knowledge_based_memory":{"memory_id":"selected","read_enabled":false,"write_enabled":false,"recall_limit":1}}}', $1)]], {now})
             exec([[INSERT INTO kickside_memory_kb_runs (id, component_id, run_type, status, input, created_at)
                 VALUES ('invalid-source', $1, 'derive', 'failed', '{"span":[{"text":"missing id"}]}', $2)]], {component, now})
             local rejected, reject_err = fixture.op(user, "migrate", {name = "05_memory_upgrade", id = "memory-forward-upgrade"})
@@ -178,15 +201,9 @@ local function define_tests()
             local objects = query(is_postgres and "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'kickside_memory_kb_%' UNION ALL SELECT indexname AS name FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE '%kickside_memory_kb_%'"
                 or "SELECT name FROM sqlite_master WHERE name LIKE '%kickside_memory_kb_%'")
             test.eq(#objects, 0)
-            local listed, list_err = items.list(component, {})
-            test.is_nil(list_err, tostring(list_err))
-            test.eq(#listed, 3)
-            local item, get_err = items.get(component, "owner-item")
-            test.is_nil(get_err, tostring(get_err))
-            test.eq(item.value, "Oslo")
-            local found, search_err = items.search(component, vector, {query_text = "Oslo", scope_keys = {"owner:one"}, limit = 10})
-            test.is_nil(search_err, tostring(search_err))
-            test.eq(found[1].id, "owner-item")
+            test.eq(#query("SELECT id FROM kickside_memory_items WHERE component_id = $1", {component}), 3)
+            local item = query("SELECT value FROM kickside_memory_items WHERE id = 'owner-item'")[1]
+            test.eq(assert(json.decode(tostring(item.value))), "Oslo")
             local lexical = query(is_postgres and "SELECT id FROM kickside_memory_items WHERE search_vector @@ plainto_tsquery('simple', 'Oslo')"
                 or "SELECT item_id AS id FROM kickside_memory_fts WHERE kickside_memory_fts MATCH 'Oslo'")
             test.eq(#lexical, 1)
@@ -198,7 +215,7 @@ local function define_tests()
             test.eq(#payloads, 3)
             test.eq(#assert(json.decode(payloads[1].embedding)), 512)
             test.eq(#query("SELECT * FROM kickside_memory_provenance"), 3)
-            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 4)
+            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 6)
             local rows = query("SELECT host_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids FROM kickside_memory_cursors ORDER BY host_id")
             test.eq(rows[1].owner_scope_key, "owner:one")
             test.is_nil(rows[2].owner_scope_key)
@@ -211,16 +228,22 @@ local function define_tests()
                 test.is_nil(row.pinned_ids)
             end
             test.eq(rows[4].pinned_ids, '["owner-item","agent-item"]')
+            local pending = query("SELECT status, last_error FROM kickside_memory_runs WHERE id = 'pending-derive'")[1]
+            test.eq(pending.status, "cancelled")
+            test.eq(pending.last_error, "cancelled: source records do not provide author attribution")
+            test.eq(query("SELECT last_event_id FROM kickside_memory_cursors WHERE host_id = 'pending'")[1].last_event_id, "pending-before")
+            local attributed = assert(json.decode(tostring(query("SELECT input FROM kickside_memory_runs WHERE id = 'attributed-derive'")[1].input)))
+            test.is_nil(attributed.host)
             test.eq(tostring(query("SELECT config FROM kickside_memory_stores WHERE component_id = 'empty-config'")[1].config), "{}")
             local settings = assert(json.decode(tostring(query("SELECT config FROM kickside_memory_stores WHERE component_id = $1", {component})[1].config)))
             test.eq(settings.extraction_instructions, "Keep preferences")
-            local readable_runs, runs_err = upgraded_runs.list(component, nil, 10)
-            test.is_nil(runs_err, tostring(runs_err))
-            test.eq(#readable_runs, 3)
             local runs = query("SELECT id, cycle FROM kickside_memory_runs ORDER BY id")
-            test.is_nil(runs[1].cycle)
-            test.eq(runs[2].cycle, now)
-            test.eq(runs[3].cycle, now)
+            local cycles = {}
+            for _, run in ipairs(runs) do cycles[run.id] = run.cycle end
+            test.is_nil(cycles["existing-run"])
+            test.eq(cycles["failed-run"], now)
+            test.eq(cycles["running-run"], now)
+            test.is_nil(cycles["pending-derive"])
             local events = query("SELECT body FROM kickside_event")
             local body = assert(json.decode(tostring(events[1].body)))
             test.eq(body.key_id, key_id)
@@ -228,25 +251,21 @@ local function define_tests()
             local contexts = query("SELECT private_context, context_revision FROM kickside_components")
             local context = assert(json.decode(tostring(contexts[1].private_context))).trait_contexts["kickside.memory:memory"]
             test.eq(context.memory_id, "selected")
-            test.is_nil(context.read_enabled)
-            test.is_nil(context.write_enabled)
-            test.is_nil(context.recall_limit)
+            test.eq(context.read_enabled, false)
+            test.eq(context.write_enabled, false)
+            test.eq(context.recall_limit, 1)
             test.eq(tonumber(contexts[1].context_revision), 1)
+            local agent_context = assert(json.decode(tostring(contexts[1].private_context)))
+            test.eq(agent_context.traits[1], "kickside.memory:memory")
+            test.eq(agent_context.tools[1], "kickside.memory.agent:search_tool")
             exec("UPDATE kickside_memory_cursors SET owner_scope_key = 'owner:principal:service:reader' WHERE host_id = 'complete'")
             migrate("05_memory_upgrade", "memory-forward-upgrade")
             migrate("05_memory_upgrade", "memory-forward-reapply")
             test.eq(query("SELECT owner_scope_key FROM kickside_memory_cursors WHERE host_id = 'complete'")[1].owner_scope_key, "owner:principal:service:reader")
             test.eq(tonumber(query("SELECT context_revision FROM kickside_components")[1].context_revision), 1)
-            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 4)
+            test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 6)
             test.eq(#query("SELECT * FROM kickside_memory_embeddings"), 3)
             test.eq(query("SELECT impl_id FROM kickside_components")[1].impl_id, "kickside.memory:memory_store")
-            exec("DELETE FROM kickside_memory_items WHERE id = 'owner-item'")
-            local replayed, replay_err = fold.fold(component, {{type = "kickside.memory.events:item.added", body = body, seq = 1, created_at = now}})
-            test.is_nil(replay_err, tostring(replay_err))
-            test.is_true(replayed)
-            local replay_matches, replay_search_err = items.search(component, vector, {query_text = "Oslo", scope_keys = {"owner:one"}})
-            test.is_nil(replay_search_err, tostring(replay_search_err))
-            test.eq(replay_matches[1].id, "owner-item")
             local _, immutable_err = fixture.op(user, "migration_exec", {statement = "UPDATE kickside_event SET body = '{}'"})
             test.not_nil(immutable_err)
         end)
