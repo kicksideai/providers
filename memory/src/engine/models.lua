@@ -18,19 +18,33 @@ M.is_statement = evidence_policy.is_statement
 M.scope_family = evidence_policy.scope_family
 M.conversation = evidence_policy.conversation
 
+local function extraction_evidence(span: { any }, agent_id: string?): ({ string }?, string?, error?)
+    local ids: { string } = {}
+    local evidence = nil
+    for _, message in ipairs(span) do
+        if M.is_statement(message, agent_id) then
+            local kind = message.author.kind == "document" and "document" or "conversation"
+            if evidence and evidence ~= kind then
+                return nil, nil, types.invalid("memory extraction does not accept mixed document and conversation evidence")
+            end
+            evidence = kind
+            ids[#ids + 1] = message.id
+        end
+    end
+    return ids, evidence or "conversation", nil
+end
+
 function M.extraction_capacity(model: string, span: { any }?, agent_id: string?): (integer?, error?)
     local limit, limit_err = schema_util.output_limit(model)
     if limit_err then return nil, limit_err end
-    local ids = {}
-    for _, message in ipairs(span or {}) do
-        if M.is_statement(message, agent_id) then ids[#ids + 1] = message.id end
-    end
+    local ids, evidence, evidence_err = extraction_evidence(span or {}, agent_id)
+    if evidence_err then return nil, evidence_err end
     if #ids == 0 then ids[1] = uuid.v7() end
     local count = 0
     -- Capacity uses typical compact ASCII output so 8,192-token models remain usable;
     -- call budgets cover the four-byte bound up to the model card limit.
     while true do
-        local size, size_err = schema_util.schema_bytes(schema_util.extraction_schema(ids, count + 1), 1)
+        local size, size_err = schema_util.schema_bytes(schema_util.extraction_schema(ids, count + 1, evidence), 1)
         if size_err then return nil, size_err end
         if (size :: integer) > (limit :: integer) then break end
         count = count + 1
@@ -144,21 +158,21 @@ function M.extract(request: any): (any?, error?, { [string]: integer }?)
     local isolated = request.isolated
     local owner_id = request.owner_id
     local agent_id = request.agent_id
-    local ids: { string } = {}
-    local allowed = {}
-    for _, message in ipairs(span) do
-        if M.is_statement(message, agent_id) then ids[#ids + 1] = message.id; allowed[message.id] = true end
-    end
+    local ids, evidence, evidence_err = extraction_evidence(span, agent_id)
+    if evidence_err then return nil, evidence_err end
     if #ids == 0 then return {}, nil end
-    local system = isolated and prompts.ISOLATED_EXTRACTION_PROMPT or prompts.EXTRACTION_PROMPT
+    local allowed = {}
+    for _, id in ipairs(ids) do allowed[id] = true end
+    local system = evidence == "document" and prompts.DOCUMENT_EXTRACTION_PROMPT
+        or (isolated and prompts.ISOLATED_EXTRACTION_PROMPT or prompts.EXTRACTION_PROMPT)
     if #keys > 0 then
         local listing, listing_err = key_listing(keys)
         if listing_err then return nil, listing_err end
-        system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. (listing :: string)
+        system = system .. "\n\nKinds and keys already in use; an item about one of these attributes reuses its kind and key:\n" .. (listing :: string)
     end
     system = prompts.with_policy(system, instructions)
     local conversation = M.conversation(span, context, agent_id)
-    local schema = schema_util.extraction_schema(ids, #ids)
+    local schema = schema_util.extraction_schema(ids, #ids, evidence)
     local data, call_err = model_calls.structured("extraction", schema, system .. prompts.JSON_FORMAT, conversation, model)
     if call_err then return nil, call_err end
     canonicalize_keys(data.items)

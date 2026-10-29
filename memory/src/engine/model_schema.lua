@@ -61,11 +61,12 @@ function M.item_schema(allowed: { string }, value: any, cardinalities: { string 
     return { type = "object", additionalProperties = false, required = required, properties = properties }
 end
 
-function M.extraction_schema(event_ids: { string }, count: integer): any
+function M.extraction_schema(event_ids: { string }, count: integer, evidence: string): any
     local event_id = M.enum_string(event_ids)
     local scalar_kinds = {}
     for _, kind in ipairs(CANDIDATE_KINDS) do
-        if kind ~= types.KIND.PLAN and kind ~= types.KIND.LESSON then scalar_kinds[#scalar_kinds + 1] = kind end
+        if kind ~= types.KIND.PLAN and kind ~= types.KIND.LESSON
+            and (evidence ~= "document" or kind == types.KIND.FACT) then scalar_kinds[#scalar_kinds + 1] = kind end
     end
     local scalar = M.item_schema(scalar_kinds, M.bounded_string(M.LIMITS.value, 1), { "single", "multi" }, event_id, M.bounded_string(M.LIMITS.valid_at))
     local goal = M.item_schema({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
@@ -76,10 +77,10 @@ function M.extraction_schema(event_ids: { string }, count: integer): any
     }, { "single" }, event_id, M.bounded_string(M.LIMITS.valid_at))
     return { type = "object", additionalProperties = false, required = { "items", "lessons", "plans" }, properties = {
         items = { type = "array", maxItems = count * M.LIMITS.per_statement, items = scalar },
-        lessons = { type = "array", maxItems = count * M.LIMITS.per_statement,
+        lessons = { type = "array", maxItems = evidence == "document" and 0 or count * M.LIMITS.per_statement,
             items = M.item_schema({ types.KIND.LESSON }, M.bounded_string(M.LIMITS.value, 1), { "multi" }, event_id, M.bounded_string(M.LIMITS.valid_at)),
         },
-        plans = { type = "array", maxItems = count, items = goal },
+        plans = { type = "array", maxItems = evidence == "document" and 0 or count, items = goal },
     } }
 end
 

@@ -99,6 +99,64 @@ local function define_tests()
             test.eq(#fixture.script.requests(user, "structured_output"), 0)
         end)
 
+        test.it("requests document instructions and a fact-only schema from document authorship", function()
+            for _, isolated in ipairs({ false, true }) do
+                local user = fixture.user()
+                fixture.extraction(user, {})
+                local result, err = fixture.op(user, "model_step", { step = "extract", isolated = isolated,
+                    instructions = "Retain source specifications only.", owner_id = user,
+                    span = {
+                        { id = "context", role = "assistant", author = { kind = "system" }, text = "Context only." },
+                        { id = "document", role = "user", author = { kind = "document" }, text = "The scanner is rated IP67." },
+                    }, context = { { role = "user", text = "I prefer tea." } } })
+                test.is_nil(err, tostring(err))
+                test.eq(#result.items, 0)
+                local prompt = fixture.script.prompts(user, "structured_output")[1].system
+                test.is_true(prompt:find("source-grounded facts", 1, true) ~= nil)
+                test.is_true(prompt:find("boilerplate", 1, true) ~= nil)
+                test.is_true(prompt:find("Memory policy:", 1, true) ~= nil)
+                test.is_true(prompt:find("Retain source specifications only.", 1, true) ~= nil)
+                test.is_nil(prompt:find("personal attributes and actionable goals", 1, true))
+                test.is_nil(prompt:find("from this agent's experience", 1, true))
+                local schema = fixture.script.requests(user, "structured_output")[1]
+                test.eq(table.concat(schema.properties.items.items.properties.kind.enum, ","), "fact")
+                test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "document")
+                test.eq(schema.properties.lessons.maxItems, 0)
+                test.eq(schema.properties.plans.maxItems, 0)
+            end
+        end)
+
+        test.it("constrains every document candidate to facts with no lessons or plans", function()
+            local user = fixture.user()
+            fixture.extraction(user, {})
+            local _, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "document", role = "document", author = { kind = "document" }, text = "The scanner is rated IP67." },
+            } })
+            test.is_nil(err, tostring(err))
+            local schema = fixture.script.requests(user, "structured_output")[1]
+            test.eq(table.concat(schema.properties.items.items.properties.kind.enum, ","), "fact")
+            test.eq(schema.properties.lessons.maxItems, 0)
+            test.eq(schema.properties.plans.maxItems, 0)
+        end)
+
+        test.it("rejects mixed document and conversation evidence before requesting extraction", function()
+            local user = fixture.user()
+            local document = { id = "document", role = "document", author = { kind = "document" }, text = "The scanner is rated IP67." }
+            local statement = { id = "statement", role = "user", author = { kind = "user", id = user }, text = "I prefer tea." }
+            for _, span in ipairs({ { document, statement }, { statement, document } }) do
+                local result, err = fixture.op(user, "model_step", { step = "extract", span = span, owner_id = user })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.INVALID)
+                test.is_true(tostring(err):find("mixed document and conversation evidence", 1, true) ~= nil)
+                local capacity, capacity_err = fixture.op(user, "extraction_capacity", { span = span })
+                test.is_nil(capacity)
+                test.not_nil(capacity_err)
+                test.eq(capacity_err:kind(), errors.INVALID)
+            end
+            test.eq(#fixture.script.requests(user, "structured_output"), 0)
+        end)
+
         test.it("admits document facts without treating imported text as an owner profile", function()
             local user = fixture.user()
             local fact = fixture.candidate("fact", "travel_policy", "advance booking", "The document recommends advance booking.", "document-event")
@@ -115,8 +173,9 @@ local function define_tests()
             local profiles, profile_err = fixture.op(user, "model_step", { step = "extract", span = {
                 { id = "document-event", role = "document", author = {kind = "document"}, text = "I live in Oslo." },
             }, owner_id = user })
-            test.is_nil(profile_err, tostring(profile_err))
-            test.eq(#profiles.items, 0)
+            test.is_nil(profiles)
+            test.not_nil(profile_err)
+            test.eq(profile_err:details().code, "model_output_malformed")
         end)
 
         test.it("extracts canonical independent attributes in one call while reusing existing keys", function()
