@@ -25,17 +25,17 @@ const RUN_STATUSES = ['scheduled', 'running', 'succeeded', 'failed', 'rejected']
 function itemRow(raw: unknown): MemoryItem {
   if (!isRecord(raw)) throw new Error('Memory response has an invalid item')
   if (typeof raw.version !== 'number' || !Number.isInteger(raw.version)) throw new Error('Memory response has an invalid item version')
-  return { id: text(raw.id, 'item'), kind: oneOf(raw.kind, KINDS, 'item kind'), scope_family: oneOf(raw.scope_family, ['agent', 'owner'] as const, 'item scope_family'), scope_id: text(raw.scope_id, 'item scope_id'), key: text(raw.key, 'item key'), cardinality: oneOf(raw.cardinality, ['single', 'multi'] as const, 'item cardinality'), content: text(raw.content, 'item content'), status: oneOf(raw.status, STATUSES, 'item status'), version: raw.version, valid_at: text(raw.valid_at, 'item valid_at'), invalid_at: typeof raw.invalid_at === 'string' || raw.invalid_at === null ? raw.invalid_at : undefined, recorded_at: text(raw.recorded_at, 'item recorded_at'), superseded_by: typeof raw.superseded_by === 'string' || raw.superseded_by === null ? raw.superseded_by : undefined, source: oneOf(raw.source, SOURCES, 'item source') }
+  return { id: text(raw.id, 'item'), kind: oneOf(raw.kind, KINDS, 'item kind'), scope_family: oneOf(raw.scope_family, ['agent', 'owner'] as const, 'item scope_family'), scope_id: text(raw.scope_id, 'item scope_id'), key: text(raw.key, 'item key'), cardinality: oneOf(raw.cardinality, ['single', 'multi'] as const, 'item cardinality'), content: text(raw.content, 'item content'), value: raw.value, status: oneOf(raw.status, STATUSES, 'item status'), version: raw.version, valid_at: text(raw.valid_at, 'item valid_at'), invalid_at: typeof raw.invalid_at === 'string' || raw.invalid_at === null ? raw.invalid_at : undefined, recorded_at: text(raw.recorded_at, 'item recorded_at'), superseded_by: typeof raw.superseded_by === 'string' || raw.superseded_by === null ? raw.superseded_by : undefined, source: oneOf(raw.source, SOURCES, 'item source') }
 }
 function provenanceRow(raw: unknown): Provenance {
   const origin = response(raw)
   const row: Provenance = { host_kind: text(origin.host_kind, 'provenance host_kind'), host_id: text(origin.host_id, 'provenance host_id'), event_id: text(origin.event_id, 'provenance event_id'), recorded_at: typeof origin.recorded_at === 'string' ? origin.recorded_at : undefined }
   if (origin.line !== undefined) {
     const line = response(origin.line)
-    row.line = { role: oneOf(line.role, ['user', 'assistant', 'tool'] as const, 'source line role'), text: text(line.text, 'source line text'), created_at: typeof line.created_at === 'string' ? line.created_at : undefined }
+    row.line = { role: oneOf(line.role, ['user', 'assistant', 'tool', 'document'] as const, 'source line role'), text: text(line.text, 'source line text'), created_at: typeof line.created_at === 'string' ? line.created_at : undefined }
     if (line.author !== undefined) {
       const author = response(line.author)
-      row.line.author = { kind: oneOf(author.kind, ['user', 'agent', 'system'] as const, 'source author kind'), id: author.id === undefined ? undefined : text(author.id, 'source author id') }
+      row.line.author = { kind: oneOf(author.kind, ['user', 'agent', 'system', 'unknown', 'document'] as const, 'source author kind'), id: author.id === undefined ? undefined : text(author.id, 'source author id') }
     }
   }
   if (origin.memory !== undefined) {
@@ -105,8 +105,8 @@ export function memoryApi(id: string) {
       if (typeof value.item_id !== 'string' || !value.item_id) throw new Error('Memory create response is missing item_id')
       return value.item_id
     },
-    async edit(itemId: string, content: string): Promise<string | undefined> {
-      const { data } = await api.put(`${base}/items/${encodeURIComponent(itemId)}`, { content })
+    async edit(itemId: string, fields: { content: string; value?: unknown }): Promise<string | undefined> {
+      const { data } = await api.put(`${base}/items/${encodeURIComponent(itemId)}`, fields)
       const value = response(data)
       if (value.item_id !== undefined && typeof value.item_id !== 'string') throw new Error('Memory edit response is malformed')
       return value.item_id

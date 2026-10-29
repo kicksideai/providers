@@ -1,5 +1,5 @@
 import { useId as W, mergeProps as g, openBlock as A, createElementBlock as U, ref as z, onMounted as K } from "vue";
-import { h as L, f as F, C as q, s as N, g as S, F as J, N as b, S as _, B as m, d as Q, z as X, w as Y, e as Z } from "./types-D3kJ2ulw.js";
+import { h as L, f as w, C as q, s as N, g as S, F as J, N as b, S as _, B as m, d as Q, z as X, x as Y, e as Z } from "./types-Dpmtmezp.js";
 import { loadByTagName as ee } from "@wippy-fe/proxy";
 function I(...t) {
   if (t) {
@@ -266,7 +266,7 @@ var le = {
           }, this.$styleOptions), V), _.setLoadedStyleName(this.$style.name);
         }
         if (!_.isStyleNameLoaded("layer-order")) {
-          var $, w, R = ($ = this.$style) === null || $ === void 0 || (w = $.getLayerOrderThemeCSS) === null || w === void 0 ? void 0 : w.call($);
+          var $, F, R = ($ = this.$style) === null || $ === void 0 || (F = $.getLayerOrderThemeCSS) === null || F === void 0 ? void 0 : F.call($);
           m.load(R, o({
             name: "layer-order",
             first: !0
@@ -325,7 +325,7 @@ var le = {
     },
     _getPTClassValue: function() {
       var e = this._getOptionValue.apply(this, arguments);
-      return F(e) || q(e) ? {
+      return w(e) || q(e) ? {
         class: e
       } : e;
     },
@@ -346,7 +346,7 @@ var le = {
       };
       if (e != null && e.hasOwnProperty("_usept")) {
         var u, s = e._usept || ((u = this.$primevueConfig) === null || u === void 0 ? void 0 : u.ptOptions) || {}, d = s.mergeSections, f = d === void 0 ? !0 : d, l = s.mergeProps, c = l === void 0 ? !1 : l, p = a(e.originalValue), h = a(e.value);
-        return p === void 0 && h === void 0 ? void 0 : F(h) ? h : F(p) ? p : f || !f && h ? c ? this._mergeProps(c, p, h) : o(o({}, p), h) : h;
+        return p === void 0 && h === void 0 ? void 0 : w(h) ? h : w(p) ? p : f || !f && h ? c ? this._mergeProps(c, p, h) : o(o({}, p), h) : h;
       }
       return a(e);
     },
@@ -1024,7 +1024,7 @@ function ke(t, e, n, i, r, a) {
   }, a.attrs), null, 16, Ce);
 }
 Oe.render = ke;
-function Fe(t) {
+function we(t) {
   const e = z(!!customElements.get(t)), n = z("");
   return K(async () => {
     if (!e.value)
@@ -1043,6 +1043,6 @@ export {
   Oe as d,
   I as f,
   le as s,
-  Fe as u
+  we as u
 };
-//# sourceMappingURL=useWidget-wVsuCND0.js.map
+//# sourceMappingURL=useWidget-ASETQ9fG.js.map

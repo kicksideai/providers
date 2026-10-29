@@ -6,7 +6,7 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from './chrome/ConfirmDialog.vue'
 import { KIND_META, fullTime, relativeTime, topicLabel, STATUS_LABEL, severity } from './format'
-import { errorText, type MemoryItem, type Provenance } from './types'
+import { errorText, isRecord, type MemoryItem, type Provenance } from './types'
 import { type Memory } from './useMemory'
 import { httpStatus, memoryApi } from './api'
 
@@ -24,11 +24,15 @@ const nextVersions = ref<number | null>(null)
 const provenance = ref<Provenance[]>([])
 const loadError = ref('')
 const editing = ref<string | null>(null)
+const editingValue = ref<string | null>(null)
+const editError = ref('')
 const forgetting = ref(false)
 
 const meta = computed(() => (item.value ? KIND_META[item.value.kind] : null))
 const icon = computed(() => item.value ? KIND_META[item.value.kind].icon : 'tabler:brain')
 const live = computed(() => item.value?.status === 'current' || item.value?.status === 'conflict')
+const planValue = computed(() => item.value?.kind === 'plan' && isRecord(item.value.value) ? item.value.value : null)
+const valueText = computed(() => item.value?.value === undefined ? '' : JSON.stringify(item.value.value, null, 2))
 
 let generation = 0
 async function load(offset = 0, limit?: number) {
@@ -60,6 +64,8 @@ watch(() => props.itemId, () => {
   item.value = null
   versions.value = []
   editing.value = null
+  editingValue.value = null
+  editError.value = ''
   forgetting.value = false
   void load()
 }, { immediate: true })
@@ -100,11 +106,23 @@ function post(action: 'archive' | 'restore' | 'forget') {
 async function save() {
   const content = (editing.value || '').trim()
   if (!content || !item.value) return
+  let value: unknown
+  if (editingValue.value !== null) {
+    try { value = JSON.parse(editingValue.value) } catch (_) { editError.value = 'Claim value must be valid JSON.'; return }
+  }
   const ok = await props.memory.act(async () => {
-    const replacement = await memoryApi(props.memory.memoryId.value).edit(props.itemId, content)
+    const fields = editingValue.value === null ? { content } : { content, value }
+    const replacement = await memoryApi(props.memory.memoryId.value).edit(props.itemId, fields)
     if (replacement && replacement !== props.itemId) emit('replaced', replacement)
   })
-  if (ok) editing.value = null
+  if (ok) { editing.value = null; editingValue.value = null; editError.value = '' }
+}
+
+function startEdit() {
+  if (!item.value) return
+  editing.value = item.value.content
+  editingValue.value = item.value.value === undefined ? null : JSON.stringify(item.value.value, null, 2)
+  editError.value = ''
 }
 
 async function forget() {
@@ -125,6 +143,7 @@ function sourceIcon(origin: Provenance): string {
 function sourceLabel(origin: Provenance): string {
   if (origin.line) {
     if (origin.line.role === 'tool') return 'Tool result'
+    if (origin.line.role === 'document') return 'Document'
     const author = origin.line.author
     if (author?.kind === 'user') return 'They said'
     if (author?.kind === 'system') return 'Workflow input'
@@ -150,7 +169,7 @@ function sourceLabel(origin: Provenance): string {
           <span class="mm-topic">{{ topicLabel(item.key) }}</span>
           <Tag v-if="item.status !== 'current'" class="kx-tag-sm" :severity="severity(item.status)" :value="STATUS_LABEL[item.status]" />
           <span class="mm-head-acts">
-            <button v-if="live && editing === null" type="button" class="kx-btn kx-btn-ghost sm" @click="editing = item.content">
+            <button v-if="live && editing === null" type="button" class="kx-btn kx-btn-ghost sm" @click="startEdit">
               <Icon icon="tabler:pencil" aria-hidden="true" />Edit
             </button>
             <button v-if="live" type="button" class="kx-btn kx-btn-ghost sm" :disabled="memory.busy.value" @click="post('archive')">
@@ -165,12 +184,18 @@ function sourceLabel(origin: Provenance): string {
           </span>
         </div>
         <div v-if="editing !== null" class="mm-edit">
-          <Textarea v-model="editing" auto-resize rows="2" aria-label="Memory text" />
+          <label class="mm-label" for="memory_content">Display text</label>
+          <Textarea id="memory_content" v-model="editing" auto-resize rows="2" aria-label="Memory text" />
+          <template v-if="editingValue !== null">
+            <label class="mm-label" for="memory_value">Claim value</label>
+            <Textarea id="memory_value" v-model="editingValue" auto-resize rows="5" aria-label="Claim value" />
+            <span v-if="editError" class="mm-hint mm-hint-err">{{ editError }}</span>
+          </template>
           <div class="mm-edit-acts">
             <button type="button" class="kx-btn kx-btn-primary sm" :disabled="memory.busy.value || !editing.trim()" @click="save">
-              <Icon icon="tabler:check" aria-hidden="true" />Save text
+              <Icon icon="tabler:check" aria-hidden="true" />Save
             </button>
-            <button type="button" class="kx-btn kx-btn-ghost sm" @click="editing = null">Cancel</button>
+            <button type="button" class="kx-btn kx-btn-ghost sm" @click="editing = null; editingValue = null; editError = ''">Cancel</button>
           </div>
         </div>
         <h2 v-else class="mm-title">{{ item.content }}</h2>
@@ -181,6 +206,16 @@ function sourceLabel(origin: Provenance): string {
         </div>
       </div>
     </header>
+
+    <section v-if="editing === null && item.value !== undefined" class="mm-sec" aria-labelledby="mm-claim-value">
+      <h3 id="mm-claim-value" class="mm-sec-h">Claim value</h3>
+      <dl v-if="planValue" class="mm-value-fields">
+        <div><dt>Details</dt><dd>{{ planValue.details }}</dd></div>
+        <div><dt>Next step</dt><dd>{{ planValue.next_step }}</dd></div>
+        <div><dt>Status</dt><dd>{{ planValue.status === 'done' ? 'Done' : planValue.status }}</dd></div>
+      </dl>
+      <pre v-else class="mm-value">{{ valueText }}</pre>
+    </section>
 
     <section v-if="versions.length > 1 || nextVersions !== null" class="mm-sec" aria-labelledby="mm-history">
       <h3 id="mm-history" class="mm-sec-h">History</h3>

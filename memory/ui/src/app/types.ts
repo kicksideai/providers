@@ -11,6 +11,7 @@ export interface MemoryItem {
   key: string
   cardinality: 'single' | 'multi'
   content: string
+  value?: unknown
   status: MemoryStatus
   version: number
   valid_at: string
@@ -20,9 +21,9 @@ export interface MemoryItem {
   source: 'capture' | 'reflection' | 'owner'
 }
 
-export interface EventAuthor { kind: 'user' | 'agent' | 'system'; id?: string }
+export interface EventAuthor { kind: 'user' | 'agent' | 'system' | 'unknown' | 'document'; id?: string }
 
-export interface SourceLine { author?: EventAuthor; role: 'user' | 'assistant' | 'tool'; text: string; created_at?: string }
+export interface SourceLine { author?: EventAuthor; role: 'user' | 'assistant' | 'tool' | 'document'; text: string; created_at?: string }
 
 export interface SourceMemory { id: string; kind: MemoryKind; key: string; content: string; status: MemoryStatus }
 
@@ -84,15 +85,6 @@ export function errorText(err: unknown): string {
     if (typeof err.message === 'string') return err.message
   }
   return String(err)
-}
-
-export function pageOf<T>(data: unknown, field: string): Page<T> {
-  if (!isRecord(data) || !Array.isArray(data[field])) throw new Error(`Memory response is missing ${field}`)
-  const next = data.next_offset
-  if (next !== undefined && (typeof next !== 'number' || !Number.isInteger(next) || next < 0)) {
-    throw new Error('Memory response has an invalid next_offset')
-  }
-  return { rows: data[field] as T[], next: typeof next === 'number' ? next : null }
 }
 
 export interface MemoryContext { memory_id: string; learn_in_isolation?: boolean }

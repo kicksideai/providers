@@ -29,27 +29,20 @@ watch(() => props.value.config, (raw) => {
 }, { immediate: true, deep: true })
 
 const choices = usePaged<MemoryChoice>(() => debounced.value, (offset) => listMemories(debounced.value, offset))
-const current = ref<MemoryChoice | null>(null)
-const resolving = ref(false)
 const resolveError = ref('')
 const unavailable = ref(false)
 watch(memoryId, async (id) => {
-  current.value = null
   resolveError.value = ''
   unavailable.value = false
   if (!id) return
-  resolving.value = true
   try {
-    const data = await resolveMemory(id)
+    await resolveMemory(id)
     if (id !== memoryId.value) return
-    current.value = data
   } catch (err) {
     if (id === memoryId.value) {
       if ([403, 404].includes(httpStatus(err) ?? 0) || errorText(err) === 'Selected resource is not a memory') unavailable.value = true
       else resolveError.value = errorText(err)
     }
-  } finally {
-    if (id === memoryId.value) resolving.value = false
   }
 }, { immediate: true })
 
@@ -97,7 +90,7 @@ function pick(choice: MemoryChoice): void {
       <div class="mm-choices" role="radiogroup" aria-labelledby="trait_memory">
         <button v-for="(choice, index) in choices.rows.value" :key="choice.id" type="button" role="radio" class="mm-choice"
           :data-memory-choice="choice.id" :class="{ on: choice.id === memoryId }" :aria-checked="choice.id === memoryId"
-          :tabindex="choice.id === memoryId || (!memoryId && index === 0) ? 0 : -1" @click="pick(choice)" @keydown="onChoiceKeydown($event, index)">
+          :tabindex="choice.id === memoryId || (!choices.rows.value.some((entry) => entry.id === memoryId) && index === 0) ? 0 : -1" @click="pick(choice)" @keydown="onChoiceKeydown($event, index)">
           <span class="mm-choice-ic"><Icon :icon="choice.id === memoryId ? 'tabler:circle-check-filled' : 'tabler:brain'" aria-hidden="true" /></span>
           <span class="mm-choice-main">
             <span class="mm-choice-t">{{ choice.name }}</span>

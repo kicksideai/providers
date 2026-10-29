@@ -1,166 +1,160 @@
-import { defineComponent as I, ref as m, watch as D, computed as L, openBlock as n, createElementBlock as a, toDisplayString as u, createElementVNode as l, withDirectives as F, vModelCheckbox as P, createVNode as v, unref as s, createCommentVNode as d, Fragment as C, renderList as U, normalizeClass as j, createTextVNode as _ } from "vue";
-import { Icon as b } from "@iconify/vue";
-import { define as q } from "@wippy-fe/proxy";
-import { u as B, a as $, b as z, e as M, m as R } from "./types-D3kJ2ulw.js";
-import { u as G, a as H, r as J, h as O, _ as Q, l as W } from "./usePaged-Co1PX6mr.js";
-const X = {
+import { defineComponent as T, ref as d, watch as N, computed as A, openBlock as n, createElementBlock as a, toDisplayString as m, createElementVNode as r, withDirectives as I, vModelCheckbox as L, createVNode as v, unref as s, createCommentVNode as c, Fragment as C, renderList as F, normalizeClass as P, createTextVNode as b } from "vue";
+import { Icon as k } from "@iconify/vue";
+import { define as U } from "@wippy-fe/proxy";
+import { u as j, a as q, b as B, e as M, m as $ } from "./types-Dpmtmezp.js";
+import { u as z, a as R, r as G, h as H, _ as J, l as O } from "./usePaged-BBuR-les.js";
+const Q = {
   key: 0,
   class: "kx-notice error"
-}, Y = {
+}, W = {
   key: 1,
   class: "mm-trait"
-}, Z = { class: "mm-toggle" }, ee = { class: "mm-field" }, te = {
+}, X = { class: "mm-toggle" }, Y = { class: "mm-field" }, Z = {
   key: 0,
   class: "kx-notice error"
-}, oe = {
+}, ee = {
   key: 1,
   class: "kx-notice warn"
-}, se = {
+}, oe = {
   class: "mm-choices",
   role: "radiogroup",
   "aria-labelledby": "trait_memory"
-}, ne = ["data-memory-choice", "aria-checked", "tabindex", "onClick", "onKeydown"], ae = { class: "mm-choice-ic" }, le = { class: "mm-choice-main" }, re = { class: "mm-choice-t" }, ie = {
+}, te = ["data-memory-choice", "aria-checked", "tabindex", "onClick", "onKeydown"], se = { class: "mm-choice-ic" }, ne = { class: "mm-choice-main" }, ae = { class: "mm-choice-t" }, re = {
   key: 0,
   class: "mm-choice-s"
-}, me = {
+}, le = {
   key: 0,
   class: "mm-choice-empty"
-}, ue = {
+}, ie = {
   key: 1,
   class: "mm-choice-empty mm-hint-err"
-}, ce = {
+}, me = {
   key: 2,
   class: "mm-choice-empty"
-}, de = ["disabled"], ve = /* @__PURE__ */ I({
+}, ue = ["disabled"], de = /* @__PURE__ */ T({
   __name: "MemorySettings",
-  setup(he) {
-    const K = B(), T = $(), r = m(""), p = m(!1), y = m(""), k = m(""), g = G(k, 250, (o) => o.trim());
-    D(() => K.value.config, (o) => {
+  setup(ye) {
+    const S = j(), D = q(), i = d(""), y = d(!1), f = d(""), g = d(""), w = z(g, 250, (t) => t.trim());
+    N(() => S.value.config, (t) => {
       try {
-        const e = z(o);
-        r.value = typeof e.memory_id == "string" ? e.memory_id : "", p.value = e.learn_in_isolation === !0, y.value = "";
+        const e = B(t);
+        i.value = typeof e.memory_id == "string" ? e.memory_id : "", y.value = e.learn_in_isolation === !0, f.value = "";
       } catch (e) {
-        y.value = M(e);
+        f.value = M(e);
       }
     }, { immediate: !0, deep: !0 });
-    const i = H(() => g.value, (o) => W(g.value, o)), E = m(null), V = m(!1), f = m(""), w = m(!1);
-    D(r, async (o) => {
-      if (E.value = null, f.value = "", w.value = !1, !!o) {
-        V.value = !0;
+    const l = R(() => w.value, (t) => O(w.value, t)), h = d(""), x = d(!1);
+    N(i, async (t) => {
+      if (h.value = "", x.value = !1, !!t)
         try {
-          const e = await J(o);
-          if (o !== r.value) return;
-          E.value = e;
+          if (await G(t), t !== i.value) return;
         } catch (e) {
-          o === r.value && ([403, 404].includes(O(e) ?? 0) || M(e) === "Selected resource is not a memory" ? w.value = !0 : f.value = M(e));
-        } finally {
-          o === r.value && (V.value = !1);
+          t === i.value && ([403, 404].includes(H(e) ?? 0) || M(e) === "Selected resource is not a memory" ? x.value = !0 : h.value = M(e));
         }
-      }
     }, { immediate: !0 });
-    function N() {
-      T("config-changed", { context: { memory_id: r.value, learn_in_isolation: p.value } });
+    function E() {
+      D("config-changed", { context: { memory_id: i.value, learn_in_isolation: y.value } });
     }
-    const c = L(() => i.rows.value);
-    function A(o, e) {
-      if (!["ArrowDown", "ArrowUp"].includes(o.key) || !c.value.length) return;
-      o.preventDefault();
-      const t = o.key === "ArrowDown" ? 1 : -1, h = c.value[(e + t + c.value.length) % c.value.length];
-      S(h), o.currentTarget.parentElement?.querySelectorAll(".mm-choice")?.[(e + t + c.value.length) % c.value.length]?.focus();
+    const u = A(() => l.rows.value);
+    function K(t, e) {
+      if (!["ArrowDown", "ArrowUp"].includes(t.key) || !u.value.length) return;
+      t.preventDefault();
+      const o = t.key === "ArrowDown" ? 1 : -1, _ = u.value[(e + o + u.value.length) % u.value.length];
+      V(_), t.currentTarget.parentElement?.querySelectorAll(".mm-choice")?.[(e + o + u.value.length) % u.value.length]?.focus();
     }
-    function S(o) {
-      r.value = o.id, N();
+    function V(t) {
+      i.value = t.id, E();
     }
-    return (o, e) => y.value ? (n(), a("div", X, u(y.value), 1)) : (n(), a("div", Y, [
-      l("label", Z, [
-        F(l("input", {
-          "onUpdate:modelValue": e[0] || (e[0] = (t) => p.value = t),
+    return (t, e) => f.value ? (n(), a("div", Q, m(f.value), 1)) : (n(), a("div", W, [
+      r("label", X, [
+        I(r("input", {
+          "onUpdate:modelValue": e[0] || (e[0] = (o) => y.value = o),
           type: "checkbox",
-          onChange: N
+          onChange: E
         }, null, 544), [
-          [P, p.value]
+          [L, y.value]
         ]),
-        e[3] || (e[3] = l("span", null, "Learn from isolated runs", -1))
+        e[3] || (e[3] = r("span", null, "Learn from isolated runs", -1))
       ]),
-      e[8] || (e[8] = l("p", { class: "mm-hint" }, "Keep reusable lessons, skills and stable knowledge from runs without a human conversation. Task inputs and one-off results stay out of memory. Recall stays active when this is off.", -1)),
-      l("div", ee, [
-        e[6] || (e[6] = l("span", {
+      e[8] || (e[8] = r("p", { class: "mm-hint" }, "Keep reusable lessons, skills and stable knowledge from runs without a human conversation. Task inputs and one-off results stay out of memory. Recall stays active when this is off.", -1)),
+      r("div", Y, [
+        e[6] || (e[6] = r("span", {
           id: "trait_memory",
           class: "mm-label"
         }, "Memory", -1)),
-        e[7] || (e[7] = l("span", { class: "mm-hint" }, "Memory learns from conversations automatically and supplies recall. Models, limits, memory rules and cadence are set on the memory.", -1)),
-        f.value ? (n(), a("div", te, [
-          v(s(b), {
+        e[7] || (e[7] = r("span", { class: "mm-hint" }, "Memory learns from conversations automatically and supplies recall. Models, limits, memory rules and cadence are set on the memory.", -1)),
+        h.value ? (n(), a("div", Z, [
+          v(s(k), {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
-          l("span", null, u(f.value), 1)
-        ])) : w.value ? (n(), a("div", oe, [
-          v(s(b), {
+          r("span", null, m(h.value), 1)
+        ])) : x.value ? (n(), a("div", ee, [
+          v(s(k), {
             icon: "tabler:alert-triangle",
             "aria-hidden": "true"
           }),
-          e[4] || (e[4] = l("span", null, "The memory this agent used is not available to you, or is not a Memory knowledge base. Pick one below.", -1))
-        ])) : d("", !0),
-        v(Q, {
-          modelValue: k.value,
-          "onUpdate:modelValue": e[1] || (e[1] = (t) => k.value = t),
+          e[4] || (e[4] = r("span", null, "The memory this agent used is not available to you, or is not a Memory knowledge base. Pick one below.", -1))
+        ])) : c("", !0),
+        v(J, {
+          modelValue: g.value,
+          "onUpdate:modelValue": e[1] || (e[1] = (o) => g.value = o),
           placeholder: "Find a memory…",
           label: "Find a memory"
         }, null, 8, ["modelValue"]),
-        l("div", se, [
-          (n(!0), a(C, null, U(s(i).rows.value, (t, h) => (n(), a("button", {
-            key: t.id,
+        r("div", oe, [
+          (n(!0), a(C, null, F(s(l).rows.value, (o, _) => (n(), a("button", {
+            key: o.id,
             type: "button",
             role: "radio",
-            class: j(["mm-choice", { on: t.id === r.value }]),
-            "data-memory-choice": t.id,
-            "aria-checked": t.id === r.value,
-            tabindex: t.id === r.value || !r.value && h === 0 ? 0 : -1,
-            onClick: (x) => S(t),
-            onKeydown: (x) => A(x, h)
+            class: P(["mm-choice", { on: o.id === i.value }]),
+            "data-memory-choice": o.id,
+            "aria-checked": o.id === i.value,
+            tabindex: o.id === i.value || !s(l).rows.value.some((p) => p.id === i.value) && _ === 0 ? 0 : -1,
+            onClick: (p) => V(o),
+            onKeydown: (p) => K(p, _)
           }, [
-            l("span", ae, [
-              v(s(b), {
-                icon: t.id === r.value ? "tabler:circle-check-filled" : "tabler:brain",
+            r("span", se, [
+              v(s(k), {
+                icon: o.id === i.value ? "tabler:circle-check-filled" : "tabler:brain",
                 "aria-hidden": "true"
               }, null, 8, ["icon"])
             ]),
-            l("span", le, [
-              l("span", re, u(t.name), 1),
-              t.description || t.item_count !== void 0 ? (n(), a("span", ie, [
-                _(u(t.description), 1),
-                t.description && t.item_count !== void 0 ? (n(), a(C, { key: 0 }, [
-                  _(" · ")
-                ], 64)) : d("", !0),
-                t.item_count !== void 0 ? (n(), a(C, { key: 1 }, [
-                  _(u(t.item_count) + " memories", 1)
-                ], 64)) : d("", !0)
-              ])) : d("", !0)
+            r("span", ne, [
+              r("span", ae, m(o.name), 1),
+              o.description || o.item_count !== void 0 ? (n(), a("span", re, [
+                b(m(o.description), 1),
+                o.description && o.item_count !== void 0 ? (n(), a(C, { key: 0 }, [
+                  b(" · ")
+                ], 64)) : c("", !0),
+                o.item_count !== void 0 ? (n(), a(C, { key: 1 }, [
+                  b(m(o.item_count) + " memories", 1)
+                ], 64)) : c("", !0)
+              ])) : c("", !0)
             ])
-          ], 42, ne))), 128)),
-          s(i).loading.value && !s(i).rows.value.length ? (n(), a("div", me, [
-            v(s(b), {
+          ], 42, te))), 128)),
+          s(l).loading.value && !s(l).rows.value.length ? (n(), a("div", le, [
+            v(s(k), {
               icon: "tabler:loader-2",
               class: "spin",
               "aria-hidden": "true"
             }),
-            e[5] || (e[5] = _("Loading memories…", -1))
-          ])) : s(i).error.value ? (n(), a("div", ue, u(s(i).error.value), 1)) : s(i).rows.value.length ? d("", !0) : (n(), a("div", ce, u(s(g) ? "No memory matches." : "No memories yet. Create one from Knowledge → New knowledge base → Memory."), 1))
+            e[5] || (e[5] = b("Loading memories…", -1))
+          ])) : s(l).error.value ? (n(), a("div", ie, m(s(l).error.value), 1)) : s(l).rows.value.length ? c("", !0) : (n(), a("div", me, m(s(w) ? "No memory matches." : "No memories yet. Create one from Knowledge → New knowledge base → Memory."), 1))
         ]),
-        s(i).next.value !== null ? (n(), a("button", {
+        s(l).next.value !== null ? (n(), a("button", {
           key: 2,
           type: "button",
           class: "kx-btn kx-btn-ghost sm",
-          disabled: s(i).loading.value,
+          disabled: s(l).loading.value,
           onClick: e[2] || (e[2] = //@ts-ignore
-          (...t) => s(i).more && s(i).more(...t))
-        }, "Show more", 8, de)) : d("", !0)
+          (...o) => s(l).more && s(l).more(...o))
+        }, "Show more", 8, ue)) : c("", !0)
       ])
     ]));
   }
-}), pe = { props: { type: "object", properties: { config: { type: "object", description: "Memory trait context { memory_id }.", default: {} } } } }, ye = {
-  wippy: pe
-}, fe = R(ve, ye.wippy.props);
-q(import.meta.url, fe);
+}), ce = { props: { type: "object", properties: { config: { type: "object", description: "Memory trait context { memory_id }.", default: {} } } } }, pe = {
+  wippy: ce
+}, ve = $(de, pe.wippy.props);
+U(import.meta.url, ve);
 //# sourceMappingURL=memory_settings.js.map

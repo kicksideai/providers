@@ -81,6 +81,17 @@ it('labels a tool outcome by its persisted source role', async () => {
   wrapper.unmount()
 })
 
+it('labels document provenance without inferring an author from its role', async () => {
+  const line = provenance[0]!.line!
+  Object.assign(line, { role: 'document', author: { kind: 'unknown' }, text: 'Imported reference text.' })
+  const wrapper = render()
+  await flushPromises()
+  expect(wrapper.text()).toContain('Document')
+  expect(wrapper.find('.mm-quote').text()).toBe('Imported reference text.')
+  Object.assign(line, { role: 'user', author: { kind: 'user', id: 'human:test' }, text: 'I started teaching chemistry at Lincoln Academy.' })
+  wrapper.unmount()
+})
+
 it('labels a source written by the running agent', async () => {
   const previous = {scope_family: item.scope_family, scope_id: item.scope_id}
   Object.assign(item, {scope_family: 'agent', scope_id: 'agent:reader'})

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { computed, onUnmounted, ref, watch, type Ref } from 'vue'
-import { api, on } from '@wippy-fe/proxy'
+import { on } from '@wippy-fe/proxy'
 import { useHostVisibilityRefresh } from '@wippy-fe/webcomponent-vue'
 import { memoryApi } from './api'
 import { errorText, type MemoryStatusView } from './types'

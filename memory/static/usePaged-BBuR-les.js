@@ -1,7 +1,7 @@
 import { defineComponent as U, openBlock as k, createElementBlock as b, createVNode as $, unref as x, createElementVNode as A, createCommentVNode as C, ref as p, watch as E, onScopeDispose as I } from "vue";
 import { Icon as S } from "@iconify/vue";
 import { api as l } from "@wippy-fe/proxy";
-import { x as m, e as T } from "./types-D3kJ2ulw.js";
+import { w as m, e as T } from "./types-Dpmtmezp.js";
 const V = { class: "kx-search" }, N = ["value", "placeholder", "aria-label"], Y = /* @__PURE__ */ U({
   __name: "SearchField",
   props: {
@@ -64,15 +64,15 @@ const w = ["identity", "rule", "profile_slot", "fact", "preference", "plan", "sk
 function y(e) {
   if (!m(e)) throw new Error("Memory response has an invalid item");
   if (typeof e.version != "number" || !Number.isInteger(e.version)) throw new Error("Memory response has an invalid item version");
-  return { id: i(e.id, "item"), kind: c(e.kind, w, "item kind"), scope_family: c(e.scope_family, ["agent", "owner"], "item scope_family"), scope_id: i(e.scope_id, "item scope_id"), key: i(e.key, "item key"), cardinality: c(e.cardinality, ["single", "multi"], "item cardinality"), content: i(e.content, "item content"), status: c(e.status, M, "item status"), version: e.version, valid_at: i(e.valid_at, "item valid_at"), invalid_at: typeof e.invalid_at == "string" || e.invalid_at === null ? e.invalid_at : void 0, recorded_at: i(e.recorded_at, "item recorded_at"), superseded_by: typeof e.superseded_by == "string" || e.superseded_by === null ? e.superseded_by : void 0, source: c(e.source, q, "item source") };
+  return { id: i(e.id, "item"), kind: c(e.kind, w, "item kind"), scope_family: c(e.scope_family, ["agent", "owner"], "item scope_family"), scope_id: i(e.scope_id, "item scope_id"), key: i(e.key, "item key"), cardinality: c(e.cardinality, ["single", "multi"], "item cardinality"), content: i(e.content, "item content"), value: e.value, status: c(e.status, M, "item status"), version: e.version, valid_at: i(e.valid_at, "item valid_at"), invalid_at: typeof e.invalid_at == "string" || e.invalid_at === null ? e.invalid_at : void 0, recorded_at: i(e.recorded_at, "item recorded_at"), superseded_by: typeof e.superseded_by == "string" || e.superseded_by === null ? e.superseded_by : void 0, source: c(e.source, q, "item source") };
 }
 function O(e) {
   const r = a(e), n = { host_kind: i(r.host_kind, "provenance host_kind"), host_id: i(r.host_id, "provenance host_id"), event_id: i(r.event_id, "provenance event_id"), recorded_at: typeof r.recorded_at == "string" ? r.recorded_at : void 0 };
   if (r.line !== void 0) {
     const t = a(r.line);
-    if (n.line = { role: c(t.role, ["user", "assistant", "tool"], "source line role"), text: i(t.text, "source line text"), created_at: typeof t.created_at == "string" ? t.created_at : void 0 }, t.author !== void 0) {
+    if (n.line = { role: c(t.role, ["user", "assistant", "tool", "document"], "source line role"), text: i(t.text, "source line text"), created_at: typeof t.created_at == "string" ? t.created_at : void 0 }, t.author !== void 0) {
       const o = a(t.author);
-      n.line.author = { kind: c(o.kind, ["user", "agent", "system"], "source author kind"), id: o.id === void 0 ? void 0 : i(o.id, "source author id") };
+      n.line.author = { kind: c(o.kind, ["user", "agent", "system", "unknown", "document"], "source author kind"), id: o.id === void 0 ? void 0 : i(o.id, "source author id") };
     }
   }
   if (r.memory !== void 0) {
@@ -153,7 +153,7 @@ function Q(e) {
       return o.item_id;
     },
     async edit(n, t) {
-      const { data: o } = await l.put(`${r}/items/${encodeURIComponent(n)}`, { content: t }), s = a(o);
+      const { data: o } = await l.put(`${r}/items/${encodeURIComponent(n)}`, t), s = a(o);
       if (s.item_id !== void 0 && typeof s.item_id != "string") throw new Error("Memory edit response is malformed");
       return s.item_id;
     },
@@ -209,4 +209,4 @@ export {
   J as r,
   W as u
 };
-//# sourceMappingURL=usePaged-Co1PX6mr.js.map
+//# sourceMappingURL=usePaged-BBuR-les.js.map
