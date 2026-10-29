@@ -31,6 +31,65 @@ local function define_tests()
             test.eq(#fixture.items(user, id, { kinds = { "fact" } }), 1)
         end)
 
+        test.it("retains identical document facts through direct and projected content", function()
+            local user = fixture.user()
+            local direct_id = fixture.memory(user)
+            local projected_id = fixture.memory(user)
+            local title = "Travel guidance"
+            local content = "The route uses accessible transit. I live in Oslo."
+            fixture.script.hold(direct_id, "structured_output")
+            fixture.script.hold(projected_id, "structured_output")
+            local direct, direct_err = fixture.op(user, "embed_contract", { component_id = direct_id, request = {
+                title = title, content = content, content_type = "text/plain", external_id = "guide", external_version = "1",
+            } })
+            test.is_nil(direct_err, tostring(direct_err))
+            test.is_true(direct.success)
+            local direct_run = fixture.op(user, "run", { run_id = direct.run_id })
+            local projected, projected_err = fixture.call_as(user, "kickside.memory.engine:ledger_projection", {
+                thread_id = projected_id, range = { to_seq = 1 }, events = {
+                    { id = "projected-document", seq = 1, created_at = "2026-10-01T10:00:00Z",
+                        type = "kickside.knowledge.events:content.upserted", body = { title = title, content = content } },
+                },
+            })
+            test.is_nil(projected_err, tostring(projected_err))
+            test.eq(projected.last_seq, 1)
+            local projected_run = fixture.op(user, "runs", { component_id = projected_id, run_type = "derive" })[1]
+            local direct_source = direct_run.input.span[1]
+            local projected_source = projected_run.input.span[1]
+            for _, source in ipairs({ direct_source, projected_source }) do
+                test.eq(source.role, "document")
+                test.eq(source.author.kind, "document")
+                test.is_nil(source.author.id)
+                test.eq(source.text, title .. "\n\n" .. content)
+            end
+            local function candidates(event_id: string): { any }
+                return {
+                    fixture.candidate("fact", "travel_access", "accessible transit", "The document records accessible transit.", event_id),
+                    fixture.candidate("profile_slot", "home_city", "Oslo", "The owner lives in Oslo.", event_id, nil, "single"),
+                    fixture.candidate("preference", "travel_mode", "transit", "The owner prefers transit.", event_id, nil, "single"),
+                    fixture.candidate("plan", "trip", { status = "open", next_step = "", details = "Visit Oslo" }, "The owner plans a visit.", event_id),
+                }
+            end
+            fixture.extraction(direct_id, candidates(direct_source.id))
+            fixture.extraction(projected_id, candidates(projected_source.id))
+            fixture.script.release(direct_id, "structured_output")
+            fixture.script.release(projected_id, "structured_output")
+            local direct_done = fixture.wait_runs(user, direct_id, "derive", 1)[1]
+            local projected_done = fixture.wait_runs(user, projected_id, "derive", 1)[1]
+            for _, run in ipairs({ direct_done, projected_done }) do
+                test.eq(run.status, "succeeded", tostring(run.last_error))
+                test.eq(run.stats.rejected_candidates.kind, 3)
+            end
+            fixture.settle(user, direct_id)
+            fixture.settle(user, projected_id)
+            for _, id in ipairs({ direct_id, projected_id }) do
+                local facts = fixture.items(user, id, { kinds = { "fact" } })
+                test.eq(#facts, 1)
+                test.eq(facts[1].key, "travel_access")
+                test.eq(#fixture.items(user, id, { kinds = { "profile_slot", "preference", "plan" } }), 0)
+            end
+        end)
+
         test.it("rejects an oversized document without blocking later projection events", function()
             local user = fixture.user()
             local id = fixture.memory(user)
@@ -41,7 +100,7 @@ local function define_tests()
                     { id = "cursor-advance", seq = 2, created_at = "2026-10-01T10:00:01Z",
                         type = "kickside.memory.events:capture.advanced", body = {
                             host_kind = "session", host_id = "projection-source", agent_id = "agent-a",
-                            from_event_id = "", last_event_id = "tail-event",
+                            last_event_id = "tail-event",
                         } },
                 },
             }

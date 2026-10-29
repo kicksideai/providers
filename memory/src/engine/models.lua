@@ -85,7 +85,7 @@ local function read_candidates(response: any, step: string, event_ids: { [string
                     rejected.kind = (rejected.kind or 0) + 1
                     reject = true
                 end
-                if not reason and (item.kind == types.KIND.PROFILE_SLOT or item.kind == types.KIND.PREFERENCE or item.kind == types.KIND.PLAN)
+                if not reason and not reject and (item.kind == types.KIND.PROFILE_SLOT or item.kind == types.KIND.PREFERENCE or item.kind == types.KIND.PLAN)
                     and M.scope_family(item, evidence_scopes.authors[item.event_id], evidence_scopes.owner_id) ~= types.SCOPE.OWNER then
                     rejected.kind = (rejected.kind or 0) + 1
                     reject = true

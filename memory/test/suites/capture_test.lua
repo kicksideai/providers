@@ -42,7 +42,8 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "failed-span", role = "user", content = "I prefer aisle seats." } })
+            local failed_span = { id = "failed-span", role = "user", author = { kind = "user", id = user }, content = "I prefer aisle seats." }
+            fixture.record_chat(user, session, { failed_span })
             fixture.script.fail(id, "structured_output", "provider rejects aisle seats", errors.INVALID)
             local first, first_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(first_err, tostring(first_err))
@@ -51,7 +52,7 @@ local function define_tests()
             test.eq(failed.status, "failed")
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
             test.is_true(cursor == nil or cursor.last_event_id == "")
-            fixture.extraction(id, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "failed-span") })
+            fixture.extraction(id, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", failed_span.id) })
             local second, second_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(second_err, tostring(second_err))
             test.is_true(second.metadata.capture.captured)
@@ -63,17 +64,18 @@ local function define_tests()
             test.eq(retained.status, "failed")
             test.eq(json.decode(retained.last_error).explanation, "memory extraction failed")
             cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
-            test.eq(cursor.last_event_id, "failed-span")
+            test.eq(cursor.last_event_id, failed_span.id)
         end)
 
         test.it("retries malformed output through the enrolled job and retains each failed attempt", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "retry-source", role = "user", content = "I live in Oslo." } })
+            local retry_source = { id = "retry-source", role = "user", author = { kind = "user", id = user }, content = "I live in Oslo." }
+            fixture.record_chat(user, session, { retry_source })
             fixture.script.fail(id, "structured_output", "invalid JSON", errors.NOT_FOUND, false,
                 { error_type = "model_error", raw_content = '{"items":[' })
-            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "retry-source") })
+            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", retry_source.id) })
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
             local run = fixture.wait_runs(user, id, "derive", 1)[1]
@@ -93,16 +95,17 @@ local function define_tests()
             test.is_true(attempts[1].error_text:find("memory extraction returned malformed output", 1, true) ~= nil, attempts[1].error_text)
             fixture.settle(user, id)
             test.eq(fixture.items(user, id)[1].value, "Oslo")
-            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "retry-source")
+            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, retry_source.id)
         end)
 
         test.it("retries invalid extraction through the existing job before advancing capture", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "validation-source", role = "user", content = "I live in Oslo." } })
-            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "", "The user lives in Oslo.", "validation-source") })
-            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "validation-source") })
+            local validation_source = { id = "validation-source", role = "user", author = { kind = "user", id = user }, content = "I live in Oslo." }
+            fixture.record_chat(user, session, { validation_source })
+            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "", "The user lives in Oslo.", validation_source.id) })
+            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", validation_source.id) })
             local _, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
             local run = fixture.wait_runs(user, id, "derive", 1)[1]
@@ -120,14 +123,15 @@ local function define_tests()
             test.eq(attempts[2].status, "completed")
             fixture.settle(user, id)
             test.eq(fixture.items(user, id)[1].value, "Oslo")
-            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, "validation-source")
+            test.eq(fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session }).last_event_id, validation_source.id)
         end)
 
         test.it("retains an exhausted transient failure and captures its source after recovery", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "seat-request", role = "user", content = "I prefer aisle seats." } })
+            local seat_request = { id = "seat-request", role = "user", author = { kind = "user", id = user }, content = "I prefer aisle seats." }
+            fixture.record_chat(user, session, { seat_request })
             for i = 1, 3 do fixture.script.fail(id, "structured_output", "Rejected private span text", errors.TIMEOUT) end
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
@@ -139,8 +143,9 @@ local function define_tests()
             test.eq(diagnostic.kind, errors.TIMEOUT)
             test.eq(diagnostic.explanation, "memory extraction failed")
             test.is_nil((failed.last_error:find("private span text", 1, true)))
-            fixture.record_chat(user, session, { { id = "continue", role = "user", content = "Let us continue." } })
-            fixture.extraction(id, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "seat-request") })
+            local continued = { id = "continue", role = "user", author = { kind = "user", id = user }, content = "Let us continue." }
+            fixture.record_chat(user, session, { continued })
+            fixture.extraction(id, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", seat_request.id) })
             local recovered, recovery_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(recovery_err, tostring(recovery_err))
             test.is_true(recovered.metadata.capture.captured)
@@ -158,8 +163,9 @@ local function define_tests()
             local seed = fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "seed", "2026-09-01T10:00:00Z") }, "normalize-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "move", role = "user", content = "I moved to Berlin." } })
-            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "move") })
+            local moved = { id = "move", role = "user", author = { kind = "user", id = user }, content = "I moved to Berlin." }
+            fixture.record_chat(user, session, { moved })
+            fixture.extraction(id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", moved.id) })
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
             test.is_true(applied.metadata.capture.captured)
@@ -178,17 +184,19 @@ local function define_tests()
             local session = "s-" .. user
             fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "seed") }, "context-seed")
             fixture.settle(user, id)
-            fixture.record_chat(user, session, {
-                { id = "greeting", role = "user", content = "Help me plan a trip." },
-                { id = "question", role = "assistant", content = "Where are you planning to travel?" },
-            })
+            local initial_events = {
+                { id = "greeting", role = "user", author = { kind = "user", id = user }, content = "Help me plan a trip." },
+                { id = "question", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Where are you planning to travel?" },
+            }
+            fixture.record_chat(user, session, initial_events)
             fixture.extraction(id, {})
             local initial, initial_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(initial_err, tostring(initial_err))
             test.is_true(initial.metadata.capture.captured)
             fixture.wait_runs(user, id, "derive", 1)
-            fixture.record_chat(user, session, { { id = "answer", role = "user", content = "London" } })
-            fixture.extraction(id, { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "", details = "Travel to London" }, "The user wants to travel to London.", "answer") })
+            local answer = { id = "answer", role = "user", author = { kind = "user", id = user }, content = "London" }
+            fixture.record_chat(user, session, { answer })
+            fixture.extraction(id, { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "", details = "Travel to London" }, "The user wants to travel to London.", answer.id) })
             local answered, answer_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(answer_err, tostring(answer_err))
             test.is_true(answered.metadata.capture.captured)
@@ -196,7 +204,7 @@ local function define_tests()
             for _, run in ipairs(runs) do test.eq(run.status, "succeeded", tostring(run.last_error)) end
             local prompts = fixture.script.prompts(id, "structured_output")
             test.is_true(prompts[2].user:find("Where are you planning to travel?", 1, true) ~= nil, prompts[2].user)
-            test.eq(table.concat(fixture.script.requests(id, "structured_output")[2].properties.items.items.properties.event_id.enum, ","), "answer")
+            test.eq(table.concat(fixture.script.requests(id, "structured_output")[2].properties.items.items.properties.event_id.enum, ","), answer.id)
             test.eq(#prompts, 2)
             test.eq(fixture.items(user, id, { key = "home_city" })[1].value, "Berlin")
             test.eq(fixture.items(user, id, { key = "trip_tickets" })[1].value.details, "Travel to London")
@@ -206,17 +214,18 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user, { capture_experience = true })
             local session = "s-" .. user
-            fixture.record_chat(user, session, {
+            local events = {
                 { id = "h1", role = "user", author = { kind = "user", id = user }, content = "Hi! I live in Paris and I am vegetarian." },
                 { id = "h2", role = "developer", author = { kind = "system" }, content = "- The user likes jazz.", metadata = { memory_ids = { "x" } } },
                 { id = "h3", role = "tool", author = { kind = "system" }, content = "{\"query\":\"vegetarian\"}", metadata = {
                     function_name = "lookup", status = "error", result = "pagination requires page_size",
                 } },
                 { id = "h4", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Nice to meet you." },
-            })
+            }
+            fixture.record_chat(user, session, events)
             fixture.extraction(id, {
-                fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "h1"),
-                fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", "h1"),
+                fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", events[1].id),
+                fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", events[1].id),
             })
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(err, tostring(err))
@@ -225,10 +234,10 @@ local function define_tests()
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
             local span = runs[1].input.span
             test.eq(#span, 3)
-            test.eq(span[1].id, "h1")
+            test.eq(span[1].id, events[1].id)
             test.eq(span[2].role, "tool")
             test.eq(span[2].text, "tool lookup error\npagination requires page_size")
-            test.eq(span[3].id, "h4")
+            test.eq(span[3].id, events[4].id)
             test.eq(runs[1].input.owner_id, user)
             fixture.settle(user, id)
             local items = fixture.values(fixture.items(user, id))
@@ -236,21 +245,22 @@ local function define_tests()
             test.eq(items.vegetarian.kind, "preference")
             local provenance = fixture.op(user, "provenance", { component_id = id, item_id = items.Paris.id })
             test.eq(#provenance, 1)
-            test.eq(provenance[1].event_id, "h1")
+            test.eq(provenance[1].event_id, events[1].id)
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
-            test.eq(cursor.last_event_id, "h4")
+            test.eq(cursor.last_event_id, events[4].id)
         end)
 
         test.it("bounds a retained tool outcome to the derive source limit", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, {
+            local events = {
                 { id = "user", role = "user", author = { kind = "user", id = user }, content = "Please inspect the result." },
                 { id = "tool", role = "tool", author = { kind = "system" }, content = "{}", metadata = {
                     function_name = "inspect", status = "error", result = string.rep("x", 30000),
                 } },
-            })
+            }
+            fixture.record_chat(user, session, events)
             fixture.extraction(id, {})
             fixture.extraction(id, {})
             local applied, err = fixture.apply(user, "before_step", id, session, "agent-a")
@@ -260,7 +270,7 @@ local function define_tests()
             local tool_entry
             for _, run in ipairs(captured) do
                 for _, entry in ipairs(run.input.span) do
-                    if entry.id == "tool" then tool_entry = entry end
+                    if entry.id == events[2].id then tool_entry = entry end
                 end
             end
             test.not_nil(tool_entry)
@@ -272,10 +282,11 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, {
-                { id = "n0", role = "user", content = "Hello." },
-                { id = "n1", role = "assistant", content = "You told me you live in Rome and love opera." },
-            })
+            local initial_events = {
+                { id = "n0", role = "user", author = { kind = "user", id = user }, content = "Hello." },
+                { id = "n1", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "You told me you live in Rome and love opera." },
+            }
+            fixture.record_chat(user, session, initial_events)
             fixture.extraction(id, {})
             local applied, apply_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(apply_err, tostring(apply_err))
@@ -285,20 +296,21 @@ local function define_tests()
             test.eq(runs[1].stats.candidates, 0)
             test.eq(#fixture.items(user, id), 0)
 
-            fixture.record_chat(user, session, {
-                { id = "n2", role = "user", content = "Book me an opera night next week." },
-                { id = "n3", role = "assistant", content = "Sure, Rome has great opera." },
-            })
-            fixture.extraction(id, { fixture.candidate("preference", "evening", "opera", "The user wants an opera night.", "n2") })
+            local follow_up_events = {
+                { id = "n2", role = "user", author = { kind = "user", id = user }, content = "Book me an opera night next week." },
+                { id = "n3", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Sure, Rome has great opera." },
+            }
+            fixture.record_chat(user, session, follow_up_events)
+            fixture.extraction(id, { fixture.candidate("preference", "evening", "opera", "The user wants an opera night.", follow_up_events[1].id) })
             local next_applied, next_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(next_err, tostring(next_err))
             test.is_true(next_applied.metadata.capture.captured)
             fixture.wait_runs(user, id, "derive", 2)
             local schema = fixture.script.requests(id, "structured_output")[2]
-            test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "n2,n3")
+            test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), table.concat({ follow_up_events[1].id, follow_up_events[2].id }, ","))
             local span = fixture.script.prompts(id, "structured_output")[2].user
-            test.is_true(span:find("[n2]", 1, true) ~= nil, span)
-            test.is_true(span:find("[n3]", 1, true) ~= nil, span)
+            test.is_true(span:find("[" .. follow_up_events[1].id .. "]", 1, true) ~= nil, span)
+            test.is_true(span:find("[" .. follow_up_events[2].id .. "]", 1, true) ~= nil, span)
             test.is_true(span:find("author=agent:agent-a", 1, true) ~= nil, span)
         end)
 
@@ -311,7 +323,8 @@ local function define_tests()
             }, "keys-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "k1", role = "user", content = "You can call me Sam, that's my preferred name." } })
+            local name_message = { id = "k1", role = "user", author = { kind = "user", id = user }, content = "You can call me Sam, that's my preferred name." }
+            fixture.record_chat(user, session, { name_message })
             fixture.extraction(id, {})
             local applied, apply_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(apply_err, tostring(apply_err))
@@ -331,8 +344,9 @@ local function define_tests()
             }, "city-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "c1", role = "user", content = "I moved to Berlin last month.", created_at = "2026-10-08T10:00:00Z" } })
-            fixture.extraction(id, { fixture.candidate("profile_slot", "residence", "Berlin", "The user lives in Berlin.", "c1") })
+            local city_update = { id = "c1", role = "user", author = { kind = "user", id = user }, content = "I moved to Berlin last month.", created_at = "2026-10-08T10:00:00Z" }
+            fixture.record_chat(user, session, { city_update })
+            fixture.extraction(id, { fixture.candidate("profile_slot", "residence", "Berlin", "The user lives in Berlin.", city_update.id) })
             fixture.relations(id, { "updates" })
             local applied, apply_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(apply_err, tostring(apply_err))
@@ -358,15 +372,16 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, {
-                { id = "p1", role = "user", content = "My manager is Dana." },
-                { id = "p2", role = "assistant", content = "Noted." },
-            })
-            fixture.extraction(id, { fixture.candidate("fact", "manager", "Dana", "The user's manager is Dana.", "p1") })
-            local persisted, err = fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p2" } })
+            local initial_events = {
+                { id = "p1", role = "user", author = { kind = "user", id = user }, content = "My manager is Dana." },
+                { id = "p2", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Noted." },
+            }
+            fixture.record_chat(user, session, initial_events)
+            fixture.extraction(id, { fixture.candidate("fact", "manager", "Dana", "The user's manager is Dana.", initial_events[1].id) })
+            local persisted, err = fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = initial_events[2].id } })
             test.is_nil(err, tostring(err))
             test.is_true(persisted.metadata.capture.captured)
-            local again, again_err = fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p2" } })
+            local again, again_err = fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = initial_events[2].id } })
             test.is_nil(again_err, tostring(again_err))
             test.eq(again.metadata.capture.captured, false)
             fixture.wait_runs(user, id, "derive", 1)
@@ -375,15 +390,16 @@ local function define_tests()
             test.is_nil(step_err, tostring(step_err))
             test.eq(step.metadata.capture.captured, false)
             test.eq(step.metadata.capture.reason, "no_new_history")
-            fixture.record_chat(user, session, { { id = "p3", role = "user", content = "Dana moved to the Berlin office." } })
-            fixture.extraction(id, { fixture.candidate("fact", "manager_office", "Berlin", "The user's manager Dana works in the Berlin office.", "p3") })
+            local office_update = { id = "p3", role = "user", author = { kind = "user", id = user }, content = "Dana moved to the Berlin office." }
+            fixture.record_chat(user, session, { office_update })
+            fixture.extraction(id, { fixture.candidate("fact", "manager_office", "Berlin", "The user's manager Dana works in the Berlin office.", office_update.id) })
             fixture.relations(id, { "unrelated" })
             local next_step, next_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(next_err, tostring(next_err))
             test.is_true(next_step.metadata.capture.captured)
             fixture.wait_runs(user, id, "derive", 2)
             fixture.settle(user, id)
-            local stale, stale_err = fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = "p3" } })
+            local stale, stale_err = fixture.apply(user, "after_persist", id, session, "agent-a", { refs = { event_id = office_update.id } })
             test.is_nil(stale_err, tostring(stale_err))
             test.eq(stale.metadata.capture.reason, "already_captured")
             local runs = fixture.wait_runs(user, id, "derive", 2)

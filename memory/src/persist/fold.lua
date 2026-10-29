@@ -54,12 +54,20 @@ local function set_fts_tx(tx: any, sqlite: boolean, item_id: string, content: st
     return nil
 end
 
-local function add_provenance_tx(tx: any, component_id: string, item_id: string, refs: any, recorded_at: string): error?
+local function provenance_refs(refs: any): ({ any }?, error?)
     local values, array_err = event_array(refs)
-    if array_err then return array_err end
+    if array_err then return nil, array_err end
     for _, ref in ipairs(values :: { any }) do
         if type(ref) ~= "table" or type(ref.host_kind) ~= "string" or type(ref.host_id) ~= "string" or type(ref.event_id) ~= "string"
-            or (ref.event_id == "" and (ref.host_kind ~= "item" or ref.host_id == "")) then return types.internal("malformed ledger event") end
+            or (ref.event_id == "" and (ref.host_kind ~= "item" or ref.host_id == "")) then return nil, types.internal("malformed ledger event") end
+    end
+    return values, nil
+end
+
+local function add_provenance_tx(tx: any, component_id: string, item_id: string, refs: any, recorded_at: string): error?
+    local values, refs_err = provenance_refs(refs)
+    if refs_err then return refs_err end
+    for _, ref in ipairs(values :: { any }) do
         local _, err = tx:execute(
             PROVENANCE_INSERT .. "VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
             { item_id, component_id, ref.host_kind, ref.host_id, ref.event_id, recorded_at })
@@ -107,6 +115,8 @@ end
 local function apply_added(tx: any, sqlite: boolean, component_id: string, seq: integer, body: any, recorded_at: string): error?
     local item_id = types.trim(body.item_id)
     if item_id == "" then return types.invalid("item.added requires item_id") end
+    local _, provenance_err = provenance_refs(body.provenance)
+    if provenance_err then return provenance_err end
     local existing, read_err = items.get_tx(tx, component_id, item_id)
     if read_err then return read_err end
     if existing then

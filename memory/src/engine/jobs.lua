@@ -46,6 +46,12 @@ function M.document_text(title: any, content: string): string
     return heading == "" and content or heading .. "\n\n" .. content
 end
 
+function M.ingest_document(component_id: string, source_event_id: string, title: any, content: string, created_at: any): (any?, error?)
+    return M.ingest(component_id, source_event_id, {
+        { id = source_event_id, role = "document", author = { kind = "document" }, text = M.document_text(title, content), created_at = created_at },
+    })
+end
+
 type Capture = {
     component_id: string,
     host_kind: string,
