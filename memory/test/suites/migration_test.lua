@@ -333,6 +333,13 @@ local function define_tests()
             test.eq(#payloads, 3)
             test.eq(#assert(json.decode(payloads[1].embedding)), 512)
             test.eq(#query("SELECT * FROM kickside_memory_provenance"), 3)
+            local provenance_indexes = query(is_postgres
+                and "SELECT indexname AS name FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'kickside_memory_provenance'"
+                or "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'kickside_memory_provenance'")
+            local index_names: { [string]: boolean } = {}
+            for _, index in ipairs(provenance_indexes) do index_names[index.name] = true end
+            test.is_true(index_names.idx_kickside_memory_provenance_host)
+            test.is_nil(index_names.idx_kickside_memory_provenance_component)
             test.eq(#query("SELECT * FROM kickside_memory_run_sources"), 7)
             local rows = query("SELECT host_id, owner_scope_key, last_event_id, pinned_head, pinned_prompt, pinned_ids FROM kickside_memory_cursors ORDER BY host_id")
             test.eq(rows[1].owner_scope_key, "owner:one")

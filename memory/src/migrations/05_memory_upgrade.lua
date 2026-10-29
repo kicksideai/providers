@@ -294,6 +294,7 @@ local function upgrade(db: any, sqlite: boolean)
     rename_schema(db, sqlite)
     execute(db, [[CREATE INDEX IF NOT EXISTS idx_kickside_memory_provenance_host
         ON kickside_memory_provenance (component_id, item_id, event_id, host_kind, host_id)]])
+    execute(db, "DROP INDEX IF EXISTS idx_kickside_memory_provenance_component")
     for _, field in ipairs({{"stores", "config"}, {"runs", "input"}, {"runs", "stats"}}) do
         local predicate = sqlite and ("json(" .. field[2] .. ") = '[]'") or (field[2] .. " = '[]'::jsonb")
         execute(db, "UPDATE kickside_memory_" .. field[1] .. " SET " .. field[2] .. " = '{}' WHERE " .. predicate)
