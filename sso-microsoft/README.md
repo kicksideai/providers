@@ -19,7 +19,7 @@ Configure the Entra OIDC client, tenant settings, and callback URI, then enable 
 
 ## Requirements
 
-Wippy 0.3.x; repository validation uses 0.3.55a. Use current Hub dependencies
+Wippy 0.3.x; repository validation uses the latest stable Wippy release. Use current Hub dependencies
 for the contracts declared by the module.
 The standalone harness uses SQLite and declares a PostgreSQL test profile.
 Development uses Make and the Wippy CLI.
