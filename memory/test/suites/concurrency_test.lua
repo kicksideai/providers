@@ -210,11 +210,11 @@ local function define_tests()
             local user = fixture.user()
             local component_id = fixture.memory(user)
             local session_id = "capture-" .. user
-            fixture.remember(user, component_id, { fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "held-message") }, "before-capture", { host_id = session_id })
-            fixture.settle(user, component_id)
-            local original = fixture.items(user, component_id)[1]
             local held_message = { id = "held-message", role = "user", author = { kind = "user", id = user }, content = "I live in Paris." }
             fixture.record_chat(user, session_id, { held_message })
+            fixture.remember(user, component_id, { fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", held_message.id) }, "before-capture", { host_id = session_id })
+            fixture.settle(user, component_id)
+            local original = fixture.items(user, component_id)[1]
             fixture.script.hold(component_id, "structured_output")
             fixture.extraction(component_id, { fixture.candidate("fact", "city_knowledge", "Paris", "The user resides in Paris.", held_message.id) })
             local _, capture_err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") }, fixture.agent_context(component_id, session_id, "agent-a"))
