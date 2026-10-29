@@ -77,6 +77,32 @@ local function define_tests()
 
         end
 
+        test.it("grounds a tool precondition in its corrected outcome without a narrated lesson", function()
+            local user, id, run, context, apply = setup(true, nil, {capture_experience = true})
+            fixture.history.record(run, {
+                {id = "task", role = "user", author = {kind = "system"}, content = "Read record task-42."},
+                {id = "refused", role = "function", author = {kind = "system"}, content = "Select the compact representation before reading.", metadata = {function_name = "read", status = "error", error = "Select the compact representation before reading."}},
+                {id = "accepted", role = "function", author = {kind = "system"}, content = "Read accepted; record task-42 contains transient text.", metadata = {function_name = "read", status = "completed", result = "Read accepted; record task-42 contains transient text."}},
+            })
+            fixture.extraction(id, {fixture.candidate("lesson", "reader_representation", "Select the compact representation before reading.",
+                "The reader requires the compact representation.", "accepted")})
+            local result, err = apply("before_step")
+            test.is_nil(err, tostring(err))
+            test.is_true(result.metadata.capture.captured)
+            local runs = fixture.wait_runs(user, id, "derive", 1)
+            test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
+            fixture.settle(user, id)
+            local items = fixture.items(user, id)
+            test.eq(#items, 1)
+            test.eq(items[1].scope_family, "agent")
+            test.eq(items[1].scope_id, "agent:reader")
+            local provenance = fixture.op(user, "provenance", {component_id = id, item_id = items[1].id})
+            test.eq(provenance[1].event_id, "accepted")
+            local instructions = fixture.script.prompts(id, "structured_output")[1].system
+            test.contains(instructions, "Tool validation errors establish observed")
+            test.contains(instructions, "omit\n" .. "the concrete argument values and returned task data")
+        end)
+
         test.it("rejects agent runner capture for content", function()
             local user, id, run, context, apply = setup(true, "content")
             fixture.history.record(run, {

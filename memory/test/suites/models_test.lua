@@ -99,6 +99,26 @@ local function define_tests()
             test.eq(#fixture.script.requests(user, "structured_output"), 0)
         end)
 
+        test.it("constrains effective times before asking the extraction model", function()
+            local user = fixture.user()
+            fixture.extraction(user, {})
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I prefer tea." },
+            }, owner_id = user })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 0)
+            local schema = fixture.script.requests(user, "structured_output")[1]
+            for _, collection in ipairs({ "items", "lessons", "plans" }) do
+                local clock = schema.properties[collection].items.properties.valid_at
+                for _, value in ipairs({ "confidence_0.99", "2026-10-29", "2026-13-01T00:00:00Z", "2026-10-29T99:00:00Z" }) do
+                    test.is_false(json.validate_string(clock, assert(json.encode(value))) == true, collection .. ": " .. value)
+                end
+                for _, value in ipairs({ "", "2026-10-29T00:00:00Z", "2026-10-29T15:54:29.692905962-04:00" }) do
+                    test.is_true(json.validate_string(clock, assert(json.encode(value))) == true, collection .. ": " .. value)
+                end
+            end
+        end)
+
         test.it("requests document instructions and a fact-only schema from document authorship", function()
             for _, isolated in ipairs({ false, true }) do
                 local user = fixture.user()
@@ -550,7 +570,7 @@ local function define_tests()
                 } })
                 test.is_nil(result)
                 test.not_nil(err)
-                test.eq(err:details().code, example.code or (example.field == "valid_at" and "model_output_invalid_extraction_time" or "model_output_malformed"))
+                test.eq(err:details().code, example.code or "model_output_malformed")
                 test.is_true(err:retryable())
             end
             local schema = fixture.script.requests(user, "structured_output")[1]

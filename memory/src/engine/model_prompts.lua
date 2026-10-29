@@ -111,9 +111,16 @@ Return all three arrays, {"items": [], "lessons": [], "plans": []}, when no fact
 M.ISOLATED_EXTRACTION_PROMPT = [[Extract only reusable knowledge from this agent's experience.
 Keep generalizable lessons about how to do the work, reusable skills, stable facts about
 its domain, tools or sources, and the agent's corrected mistakes. A lesson must help a
-future run with different task inputs. Skip the task's specific inputs, intermediate
-values, one-off results, fetched page contents, and anything meaningful only inside
-this run. Derive a lesson only from an observed outcome, correction, failure or discovery.
+future run with different task inputs. Tool validation errors establish observed
+requirements of that tool: a rejected representation or missing argument can teach a
+reusable precondition. A successful corrected call confirms that precondition. Extract
+the general requirement as a lesson, citing the diagnostic or corrected outcome; omit
+the concrete argument values and returned task data. These observed requirements are
+experience, even when the tool expresses its diagnostic as an instruction. A successful
+result with no new requirement, correction or discovery teaches nothing by itself.
+Skip the task's specific inputs, intermediate values, one-off results, fetched page
+contents, and anything meaningful only inside this run. Derive a lesson only from an
+observed outcome, correction, failure or discovery.
 Task instructions, acknowledgements of workflow-supplied preferences, and restatements
 of provided input are context, never evidence of acquired experience.
 Plans qualify only for work explicitly spanning runs. Never extract personal profiles

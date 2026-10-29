@@ -63,22 +63,24 @@ end
 
 function M.extraction_schema(event_ids: { string }, count: integer, evidence: string): any
     local event_id = M.enum_string(event_ids)
+    local effective_time = M.bounded_string(M.LIMITS.valid_at)
+    effective_time.pattern = [[^(|[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9]))$]]
     local scalar_kinds = {}
     for _, kind in ipairs(CANDIDATE_KINDS) do
         if kind ~= types.KIND.PLAN and kind ~= types.KIND.LESSON
             and (evidence ~= "document" or kind == types.KIND.FACT) then scalar_kinds[#scalar_kinds + 1] = kind end
     end
-    local scalar = M.item_schema(scalar_kinds, M.bounded_string(M.LIMITS.value, 1), { "single", "multi" }, event_id, M.bounded_string(M.LIMITS.valid_at))
+    local scalar = M.item_schema(scalar_kinds, M.bounded_string(M.LIMITS.value, 1), { "single", "multi" }, event_id, effective_time)
     local goal = M.item_schema({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
         required = { "status", "next_step", "details" }, properties = {
             status = M.enum_string({ "open", "done" }),
             next_step = M.bounded_string(M.LIMITS.next_step), details = M.bounded_string(M.LIMITS.details, 1),
         },
-    }, { "single" }, event_id, M.bounded_string(M.LIMITS.valid_at))
+    }, { "single" }, event_id, effective_time)
     return { type = "object", additionalProperties = false, required = { "items", "lessons", "plans" }, properties = {
         items = { type = "array", maxItems = count * M.LIMITS.per_statement, items = scalar },
         lessons = { type = "array", maxItems = evidence == "document" and 0 or count * M.LIMITS.per_statement,
-            items = M.item_schema({ types.KIND.LESSON }, M.bounded_string(M.LIMITS.value, 1), { "multi" }, event_id, M.bounded_string(M.LIMITS.valid_at)),
+            items = M.item_schema({ types.KIND.LESSON }, M.bounded_string(M.LIMITS.value, 1), { "multi" }, event_id, effective_time),
         },
         plans = { type = "array", maxItems = evidence == "document" and 0 or count, items = goal },
     } }
