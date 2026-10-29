@@ -41,7 +41,7 @@ function M.host_ref(host: any): (string, string)
     if host.kind == "session" then return "session", types.trim(host.session_id) end
     if host.kind == "dataflow" then
         return "dataflow", table.concat({ types.trim(host.dataflow_id), types.trim(host.node_id),
-            types.trim(host.run_id), tostring(host.iteration or 0) }, ":")
+            types.trim(host.run_id) }, ":")
     end
     return "", ""
 end

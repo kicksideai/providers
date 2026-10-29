@@ -120,6 +120,25 @@ local function define_tests()
             test.eq(bob_err:message(), "Component not found or access denied")
         end)
 
+        test.it("keeps one dataflow activation pin across iteration changes", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, { fixture.candidate("preference", "format", "numbered steps", "The user prefers numbered steps.", "m1") }, "dataflow-pin")
+            fixture.settle(user, id)
+            local host = { kind = "dataflow", dataflow_id = "flow-" .. user, node_id = "node-a", iteration = 1 }
+            local context = fixture.agent_context(id, "unused", "agent-a")
+            context.agent_run.host = host
+            local payload = fixture.payload("activate", "unused", "agent-a", {host = host})
+            local _, err = fixture.op(user, "apply", {payload = payload}, context)
+            test.is_nil(err, tostring(err))
+            local first = fixture.op(user, "prompt", {}, context)
+            test.contains(first, "numbered steps")
+            host.iteration = 2
+            test.eq(fixture.op(user, "prompt", {}, context), first)
+            host.iteration = 9
+            test.eq(fixture.op(user, "prompt", {}, context), first)
+        end)
+
         test.it("renders the pinned owner slice byte-identically until the next activation", function()
             local user = fixture.user()
             local id = fixture.memory(user)
