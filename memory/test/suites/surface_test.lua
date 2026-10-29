@@ -446,7 +446,7 @@ local function define_tests()
 
             local pinned, pin_err = fixture.op(user, "pin", {
                 component_id = component_id, host_kind = "session", host_id = "surface-" .. user, agent_id = "agent-a",
-                head = 1, prompt = "## What you know about the user\n- [preference] The user drinks tea.",
+                owner_scope_key = "owner:" .. user, head = 1, prompt = "## What you know about the user\n- [preference] The user drinks tea.",
                 selected = { { id = item.id, version = item.version, content_hash = item.content_hash } },
             })
             test.is_nil(pinned)
@@ -467,7 +467,7 @@ local function define_tests()
             local item = fixture.op(user, "get", { component_id = component_id, item_id = added.item_id })
             local pinned, pin_err = fixture.op(user, "pin", {
                 component_id = component_id, host_kind = "session", host_id = host_id, agent_id = "agent-a",
-                head = 1, prompt = "## What you know about the user\n- [preference] The user drinks tea.",
+                owner_scope_key = "owner:" .. user, head = 1, prompt = "## What you know about the user\n- [preference] The user drinks tea.",
                 selected = { { id = item.id, version = item.version, content_hash = item.content_hash } },
             })
             test.is_true(pinned, tostring(pin_err))
@@ -516,7 +516,7 @@ local function define_tests()
 
             local pinned, pin_err = fixture.op(user, "pin", {
                 component_id = component_id, host_kind = "session", host_id = "surface-" .. user, agent_id = "agent-a",
-                head = 1, prompt = "## What you know about the user\n- [preference] The user drinks tea.",
+                owner_scope_key = "owner:" .. user, head = 1, prompt = "## What you know about the user\n- [preference] The user drinks tea.",
                 selected = { { id = item.id, version = item.version, content_hash = item.content_hash } },
             })
             test.is_nil(pinned)

@@ -190,9 +190,9 @@ function M.cursor(component_id: string, host_kind: string, host_id: string): (an
     end)
 end
 
-function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, selected: { any }, owner_scope_key: string?): (any?, error?)
+function M.pin(component_id: string, host_kind: string, host_id: string, agent_id: string, head: integer, prompt: string, selected: { any }, owner_scope_key: string): (any?, error?)
     local scope_key = types.trim(owner_scope_key)
-    if scope_key == "" then scope_key = types.scope_key(types.SCOPE.OWNER, types.actor_id()) end
+    if scope_key == "" then return nil, types.invalid("memory pin owner scope is required") end
     return db.write(component_id, function(tx: any, sqlite: boolean): (any, error?)
         local item_ids: { string } = {}
         for _, item in ipairs(selected) do

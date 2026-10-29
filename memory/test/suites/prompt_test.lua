@@ -388,7 +388,22 @@ local function define_tests()
             assert_action("forget")
         end)
 
-        test.it("invalidates a pin made through the previous pin signature", function()
+        test.it("requires an explicit owner scope before writing a pin", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            for _, input in ipairs({{}, {owner_scope_key = ""}, {owner_scope_key = " "}}) do
+                input.component_id, input.host_kind, input.host_id, input.agent_id = id, "session", "unscoped", "agent-a"
+                input.head, input.prompt, input.selected = 0, "prompt", {}
+                local pinned, pin_err = fixture.op(user, "pin", input)
+                test.is_nil(pinned)
+                test.not_nil(pin_err)
+                test.eq(pin_err:kind(), errors.INVALID)
+                test.eq(pin_err:message(), "memory pin owner scope is required")
+                test.is_nil(fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = "unscoped"}))
+            end
+        end)
+
+        test.it("invalidates an explicitly scoped owner pin when its item is forgotten", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local item, create_err = fixture.op(user, "create", { component_id = id, fields = {
@@ -398,14 +413,14 @@ local function define_tests()
             fixture.settle(user, id)
             local current = fixture.op(user, "get", { component_id = id, item_id = item.item_id })
             local pinned, pin_err = fixture.op(user, "pin", {
-                component_id = id, host_kind = "session", host_id = "legacy-pin", agent_id = "agent-a", head = 1,
-                prompt = "legacy prompt", selected = { { id = current.id, version = current.version, content_hash = current.content_hash } },
+                component_id = id, host_kind = "session", host_id = "owner-pin", agent_id = "agent-a", owner_scope_key = "owner:" .. user, head = 1,
+                prompt = "owner prompt", selected = { { id = current.id, version = current.version, content_hash = current.content_hash } },
             })
             test.is_true(pinned, tostring(pin_err))
             local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = item.item_id })
             test.is_nil(forget_err, tostring(forget_err))
             fixture.settle(user, id)
-            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = "legacy-pin" })
+            local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = "owner-pin" })
             test.is_nil(cursor.pinned_prompt)
         end)
 
