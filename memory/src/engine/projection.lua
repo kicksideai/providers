@@ -8,23 +8,16 @@ local jobs = require("memory_jobs")
 
 local M = {}
 
-local function content_text(body: any): string
-    local content = type(body) == "table" and body.content or nil
-    if type(content) ~= "string" then return "" end
-    return jobs.document_text(body.title, content)
-end
-
 function M.run(input: any): (any?, error?)
     local component_id = types.trim(input and input.thread_id)
     if component_id == "" then return nil, types.invalid("memory projection requires thread_id") end
     local ledger_events: { any } = {}
     for _, event in ipairs(input.events or {}) do
         if event.type == types.CONTENT_UPSERTED then
-            local text = content_text(event.body)
-            if text ~= "" then
-                local _, ingest_err = jobs.ingest(component_id, tostring(event.id), {
-                    { id = tostring(event.id), role = "document", text = text, created_at = event.created_at },
-                })
+            local body = type(event.body) == "table" and event.body or nil
+            local content = body and body.content or nil
+            if type(content) == "string" and types.trim(content) ~= "" then
+                local _, ingest_err = jobs.ingest_document(component_id, tostring(event.id), body.title, content, event.created_at)
                 if ingest_err then return nil, ingest_err end
             end
         else

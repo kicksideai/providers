@@ -33,6 +33,24 @@ end
 local function define_tests()
     test.describe("memory consolidation", function()
 
+        test.it("applies memory policy to reflection", function()
+            local user = fixture.user()
+            local instructions = "Retain work and sleep facts, but do not retain contact-time guidance."
+            local id = fixture.memory(user, { extraction_instructions = instructions })
+            fixture.remember(user, id, {
+                fixture.candidate("fact", "work_schedule", "night", "The user works at night.", "work-source"),
+                fixture.candidate("fact", "rest_period", "day", "The user rests during the day.", "rest-source"),
+            }, "reflection-policy-seed", { source = "owner" })
+            fixture.settle(user, id)
+            fixture.script.respond(id, "structured_output", { items = {} })
+            local _, wake_err = fixture.op(user, "wake", { component_id = id })
+            test.is_nil(wake_err, tostring(wake_err))
+            local run = fixture.wait_runs(user, id, "consolidate", 1)[1]
+            test.eq(run.status, "succeeded", tostring(run.last_error))
+            local prompt = fixture.script.prompts(id, "structured_output")[1].system
+            test.is_true(prompt:find("Memory policy:\n" .. instructions, 1, true) ~= nil, prompt)
+        end)
+
         test.it("fails consolidation without persisting any lesson when reflection is invalid", function()
             local user = fixture.user()
             local id = fixture.memory(user)

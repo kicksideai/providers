@@ -122,14 +122,9 @@ function M.embed_content(value: any): (any?, error?)
     if type(content) ~= "string" or types.trim(content) == "" then
         return { success = false, error = "content is required" }, nil
     end
-    local human, human_err = types.human_id()
-    if human_err then return nil, human_err end
-    local author = human and {kind = "user", id = human} or {kind = "system"}
     local source_event_id, hash_err = canonical_json.hash({ operation = "memory.embed_content", component_id = component_id, external_id = req.external_id, external_version = req.external_version, content = content })
     if hash_err then return { success = false, error = "memory ingest failed: " .. tostring(hash_err) }, nil end
-    local queued, err = jobs.ingest(component_id :: string, source_event_id :: string, {
-        { id = source_event_id, role = "document", author = author, text = jobs.document_text(req.title, content), created_at = types.now() },
-    })
+    local queued, err = jobs.ingest_document(component_id :: string, source_event_id :: string, req.title, content, types.now())
     if err or not queued then return { success = false, error = "memory ingest failed: " .. tostring(err) }, nil end
     return { success = true, status = "queued", kb_id = component_id,
         thread_id = component_id, run_id = (queued :: any).run_id, external_id = req.external_id, external_version = req.external_version }, nil

@@ -6,6 +6,31 @@ local json = require("json")
 
 local function define_tests()
     test.describe("memory contract bindings", function()
+
+        test.it("retains projected content with document provenance", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.script.hold(id, "structured_output")
+            local projected, project_err = fixture.call_as(user, "kickside.memory.engine:ledger_projection", {
+                thread_id = id, range = { to_seq = 1 }, events = {
+                    { id = "document-event", seq = 1, created_at = "2026-10-01T10:00:00Z",
+                        type = "kickside.knowledge.events:content.upserted", body = { title = "Travel", content = "Book travel in advance." } },
+                },
+            })
+            test.is_nil(project_err, tostring(project_err))
+            test.eq(projected.last_seq, 1)
+            local runs = fixture.op(user, "runs", { component_id = id, run_type = "derive" })
+            test.eq(#runs, 1)
+            test.eq(runs[1].input.span[1].author.kind, "document")
+            fixture.extraction(id, { fixture.candidate("fact", "travel_policy", "advance booking",
+                "The document recommends advance booking.", "document-event") })
+            fixture.script.release(id, "structured_output")
+            local completed = fixture.wait_runs(user, id, "derive", 1)[1]
+            test.eq(completed.status, "succeeded", tostring(completed.last_error))
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id, { kinds = { "fact" } }), 1)
+        end)
+
         test.it("rejects an oversized document without blocking later projection events", function()
             local user = fixture.user()
             local id = fixture.memory(user)

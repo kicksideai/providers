@@ -89,6 +89,26 @@ local function define_tests()
             test.is_true(instruction:find("instructions about stored memory", 1, true) ~= nil)
         end)
 
+        test.it("admits document facts without treating imported text as an owner profile", function()
+            local user = fixture.user()
+            local fact = fixture.candidate("fact", "travel_policy", "advance booking", "The document recommends advance booking.", "document-event")
+            fixture.extraction(user, { fact })
+            local result, err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "document-event", role = "document", author = {kind = "document"}, text = "Book travel in advance." },
+            }, owner_id = user })
+            test.is_nil(err, tostring(err))
+            test.eq(#result.items, 1)
+            test.eq(result.items[1].kind, "fact")
+
+            local profile = fixture.candidate("profile_slot", "home_city", "Oslo", "The document says the owner lives in Oslo.", "document-event", nil, "single")
+            fixture.extraction(user, { profile })
+            local profiles, profile_err = fixture.op(user, "model_step", { step = "extract", span = {
+                { id = "document-event", role = "document", author = {kind = "document"}, text = "I live in Oslo." },
+            }, owner_id = user })
+            test.is_nil(profile_err, tostring(profile_err))
+            test.eq(#profiles.items, 0)
+        end)
+
         test.it("extracts canonical independent attributes in one call while reusing existing keys", function()
             local user = fixture.user()
             local city = candidate("residence", "Oslo")

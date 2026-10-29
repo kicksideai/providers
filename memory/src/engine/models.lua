@@ -5,6 +5,9 @@ local json = require("json")
 local uuid = require("uuid")
 local types = require("types")
 local error_envelope = require("error_envelope")
+local evidence_policy = require("evidence_policy")
+local prompts = require("model_prompts")
+local schema_util = require("model_schema")
 
 local M = {}
 
@@ -14,29 +17,9 @@ local TRANSIENT_KINDS = {
     [errors.RATE_LIMITED] = true,
 }
 
-local function persisted_author(author: any): boolean
-    if type(author) ~= "table" then return false end
-    if author.kind == "system" then return true end
-    return (author.kind == "user" or author.kind == "agent") and type(author.id) == "string" and author.id ~= ""
-end
-
-function M.is_statement(message: any, agent_id: string?): boolean
-    local author = message.author
-    if not persisted_author(author) then return false end
-    if message.role == "tool" then return true end
-    if author.kind == "user" then return type(author.id) == "string" and author.id ~= "" end
-    return author.kind == "agent" and type(agent_id) == "string" and agent_id ~= "" and author.id == agent_id
-end
-
-local PERSONAL_KINDS = {profile_slot = true, preference = true, plan = true, fact = true}
-
-function M.scope_family(candidate: any, author: any, owner_id: string?): string
-    if type(owner_id) == "string" and owner_id ~= "" and PERSONAL_KINDS[candidate.kind]
-        and type(author) == "table" and author.kind == "user" and author.id == owner_id then
-        return types.SCOPE.OWNER
-    end
-    return types.SCOPE.AGENT
-end
+M.is_statement = evidence_policy.is_statement
+M.scope_family = evidence_policy.scope_family
+M.conversation = evidence_policy.conversation
 
 local EXTRACTION_PROMPT = string.format([[You extract personal attributes and actionable goals from new conversation statements.
 
@@ -74,7 +57,8 @@ personal goals. Prompt roles do not establish authorship. Tasks from parent agen
 workflow inputs never establish owner attributes. Agent-authored statements and tool
 experience may establish reusable agent lessons, skills or stable domain/tool facts;
 skip their task-specific inputs, intermediate values, one-off results and fetched page
-contents. Agent plans qualify only for work explicitly spanning runs.
+contents. Imported documents may establish only source-grounded facts; they never
+establish a profile, preference or personal goal. Agent plans qualify only for work explicitly spanning runs.
 Cite new events that supply evidence, preserving their author. Preceding context
 and existing memories explain meaning but supply no new evidence. Assistant suggestions,
 answers, narration and recalled-memory notes are not user statements. Raw tool output
@@ -200,7 +184,7 @@ Each lesson has kind lesson, a short stable topic key, cardinality multi, value 
 few words), content (one sentence of guidance), based_on (at least two distinct memory
 numbers), empty event_id and valid_at, and confidence from 0 to 1.]], types.KEY_MAX)
 
-local JSON_FORMAT = "\n\nReturn one compact JSON object on one line, with no whitespace outside strings, reasoning or extra text."
+local JSON_FORMAT = prompts.JSON_FORMAT
 
 local WORKING_SUMMARY_PROMPT = [[Summarize the conversation so far as working state for continuing it:
 goals, decisions, open questions, constraints and the next step. Be compact and factual.]]
@@ -217,36 +201,19 @@ local LIMITS = { per_statement = 4, parts = 4, lessons = 4,
 local NUMBER_BYTES = 24
 local REFLECTION_MIN_SOURCES = 2
 
-local function codepoints(text: string): integer
-    local _, count = text:gsub("[^\128-\191]", "")
-    return count
-end
-
-local CONTROL_FREE = "^[^\\u0000-\\u001F]*$"
-
-local function bounded_string(maximum: integer, minimum: integer?): any
-    return { type = "string", maxLength = maximum, minLength = minimum, pattern = CONTROL_FREE }
-end
-
-local function enum_string(values: { string }): any
-    local maximum = 0
-    for _, value in ipairs(values) do maximum = math.max(maximum, codepoints(value)) end
-    return { type = "string", enum = values, maxLength = maximum, pattern = CONTROL_FREE }
-end
-
 local CANDIDATE_KINDS = types.MEMORY_KINDS
 local CANDIDATE_KIND_SET = {}
 for _, kind in ipairs(CANDIDATE_KINDS) do CANDIDATE_KIND_SET[kind] = true end
 
 -- Kind compatibility with existing topics is validated after decoding.
-local TOPIC_SCHEMA = { type = "string", maxLength = LIMITS.key, pattern = "^[a-z][a-z0-9_]{0," .. tostring(types.KEY_MAX - 1) .. "}$" }
+local TOPIC_SCHEMA = schema_util.topic_key(LIMITS.key)
 
 local function item_schema(allowed: { string }, value: any, cardinalities: { string }, event_id: any, valid_at: any, based_on: any?): any
     local required = { "kind", "key", "cardinality", "value", "content", "event_id", "valid_at", "confidence" }
     local properties = {
-        kind = enum_string(allowed), key = TOPIC_SCHEMA,
-        cardinality = enum_string(cardinalities), value = value,
-        content = bounded_string(LIMITS.content, 1), event_id = event_id,
+        kind = schema_util.enum_string(allowed), key = TOPIC_SCHEMA,
+        cardinality = schema_util.enum_string(cardinalities), value = value,
+        content = schema_util.bounded_string(LIMITS.content, 1), event_id = event_id,
         valid_at = valid_at, confidence = { type = "number", minimum = 0, maximum = 1 },
     }
     if based_on then
@@ -257,22 +224,22 @@ local function item_schema(allowed: { string }, value: any, cardinalities: { str
 end
 
 local function extraction_schema(event_ids: { string }, count: integer): any
-    local event_id = enum_string(event_ids)
+    local event_id = schema_util.enum_string(event_ids)
     local scalar_kinds = {}
     for _, kind in ipairs(CANDIDATE_KINDS) do
         if kind ~= types.KIND.PLAN and kind ~= types.KIND.LESSON then scalar_kinds[#scalar_kinds + 1] = kind end
     end
-    local scalar = item_schema(scalar_kinds, bounded_string(LIMITS.value, 1), { "single", "multi" }, event_id, bounded_string(LIMITS.valid_at))
+    local scalar = item_schema(scalar_kinds, schema_util.bounded_string(LIMITS.value, 1), { "single", "multi" }, event_id, schema_util.bounded_string(LIMITS.valid_at))
     local goal = item_schema({ types.KIND.PLAN }, { type = "object", additionalProperties = false,
         required = { "status", "next_step", "details" }, properties = {
-            status = enum_string({ "open", "done" }),
-            next_step = bounded_string(LIMITS.next_step), details = bounded_string(LIMITS.details, 1),
+            status = schema_util.enum_string({ "open", "done" }),
+            next_step = schema_util.bounded_string(LIMITS.next_step), details = schema_util.bounded_string(LIMITS.details, 1),
         },
-    }, { "single" }, event_id, bounded_string(LIMITS.valid_at))
+    }, { "single" }, event_id, schema_util.bounded_string(LIMITS.valid_at))
     return { type = "object", additionalProperties = false, required = { "items", "lessons", "plans" }, properties = {
         items = { type = "array", maxItems = count * LIMITS.per_statement, items = scalar },
         lessons = { type = "array", maxItems = count * LIMITS.per_statement,
-            items = item_schema({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }, event_id, bounded_string(LIMITS.valid_at)),
+            items = item_schema({ types.KIND.LESSON }, schema_util.bounded_string(LIMITS.value, 1), { "multi" }, event_id, schema_util.bounded_string(LIMITS.valid_at)),
         },
         plans = { type = "array", maxItems = count, items = goal },
     } }
@@ -281,7 +248,7 @@ end
 local function reflection_schema(numbers: { integer }, count: integer): any
     return { type = "object", additionalProperties = false, required = { "items" }, properties = {
         items = { type = "array", maxItems = count,
-            items = item_schema({ types.KIND.LESSON }, bounded_string(LIMITS.value, 1), { "multi" }, enum_string({ "" }), enum_string({ "" }),
+            items = item_schema({ types.KIND.LESSON }, schema_util.bounded_string(LIMITS.value, 1), { "multi" }, schema_util.enum_string({ "" }), schema_util.enum_string({ "" }),
                 { type = "array", items = { type = "integer", enum = numbers }, minItems = REFLECTION_MIN_SOURCES, maxItems = #numbers }),
         },
     } }
@@ -387,7 +354,7 @@ local function exceeds_bounds(value: any, schema: any): boolean
     end
     if schema.type == "object" and type(value) ~= "table" then return true end
     if type(value) == "string" and schema.maxLength then
-        return codepoints(value) > schema.maxLength
+        return schema_util.codepoints(value) > schema.maxLength
     elseif type(value) == "table" and schema.type == "object" then
         for _, key in ipairs(schema.required or {}) do if value[key] == nil then return true end end
         for key, child in pairs(value) do
@@ -477,7 +444,12 @@ local function read_candidates(response: any, step: string, event_ids: { [string
             if not reason and step == "extraction" then
                 if (item.kind == types.KIND.PLAN) ~= plans then reason = "kind"
                 elseif not event_ids[item.event_id] then reason = "evidence" end
-                if not reason and (item.kind == types.KIND.PROFILE_SLOT or item.kind == types.KIND.PREFERENCE)
+                local author = evidence_scopes.authors[item.event_id]
+                if not reason and type(author) == "table" and author.kind == "document" and item.kind ~= types.KIND.FACT then
+                    rejected.kind = (rejected.kind or 0) + 1
+                    reject = true
+                end
+                if not reason and (item.kind == types.KIND.PROFILE_SLOT or item.kind == types.KIND.PREFERENCE or item.kind == types.KIND.PLAN)
                     and M.scope_family(item, evidence_scopes.authors[item.event_id], evidence_scopes.owner_id) ~= types.SCOPE.OWNER then
                     rejected.kind = (rejected.kind or 0) + 1
                     reject = true
@@ -521,22 +493,15 @@ local function key_listing(keys: { any }): (string?, error?)
     return table.concat(lines, "\n"), nil
 end
 
-function M.conversation(span: { any }, context: { any }?, agent_id: string?): string
-    local lines: { string } = {}
-    for _, message in ipairs(context or {}) do
-        lines[#lines + 1] = string.format("(%s, preceding context only) %s", message.role, message.text)
-    end
-    for _, message in ipairs(span) do
-        if M.is_statement(message, agent_id) then
-            lines[#lines + 1] = string.format("[%s][%s][%s] %s", message.id, message.created_at or "", message.role .. (type(message.author) == "table" and ("; author=" .. message.author.kind .. ":" .. tostring(message.author.id or "")) or ""), message.text)
-        else
-            lines[#lines + 1] = string.format("(%s, context only) %s", message.role, message.text)
-        end
-    end
-    return table.concat(lines, "\n")
-end
-
-function M.extract(model: string, span: { any }, keys: { any }, instructions: string?, context: { any }?, isolated: boolean?, owner_id: string?, agent_id: string?): (any?, error?, { [string]: integer }?)
+function M.extract(request: any): (any?, error?, { [string]: integer }?)
+    local model = request.model
+    local span = request.span or {}
+    local keys = request.keys or {}
+    local instructions = request.instructions
+    local context = request.context
+    local isolated = request.isolated
+    local owner_id = request.owner_id
+    local agent_id = request.agent_id
     local ids: { string } = {}
     local allowed = {}
     for _, message in ipairs(span) do
@@ -549,7 +514,7 @@ function M.extract(model: string, span: { any }, keys: { any }, instructions: st
         if listing_err then return nil, listing_err end
         system = system .. "\n\nKinds and keys already in use for this person; an item about one of these attributes reuses its kind and key:\n" .. (listing :: string)
     end
-    if instructions and instructions ~= "" then system = system .. "\n\nMemory policy:\n" .. instructions end
+    system = prompts.with_policy(system, instructions)
     local conversation = M.conversation(span, context, agent_id)
     local schema = extraction_schema(ids, #ids)
     local budget, budget_err = output_budget(schema, model)
@@ -569,7 +534,7 @@ local function single_part(candidate: any): boolean
     return type(candidate.value) ~= "string" or candidate.kind == types.KIND.LESSON
 end
 
-function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?): (any?, error?)
+function M.normalize(model: string, candidates: { any }, keys: { any }, conversation: string?, instructions: string?): (any?, error?)
     if #candidates == 0 then return candidates, nil end
     local known: { [string]: any } = {}
     for _, row in ipairs(keys) do known[row.key] = row end
@@ -583,14 +548,14 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
         end
         local lesson = candidate.kind == types.KIND.LESSON
         local mapping_properties = {
-            key = TOPIC_SCHEMA, kind = enum_string(kinds),
-            cardinality = enum_string(lesson and { "multi" } or { "single", "multi" }),
+            key = TOPIC_SCHEMA, kind = schema_util.enum_string(kinds),
+            cardinality = schema_util.enum_string(lesson and { "multi" } or { "single", "multi" }),
         }
         local mapping_required = { "key", "kind", "cardinality" }
         local mappings: any = { type = "array", minItems = 1, maxItems = single_part(candidate) and 1 or LIMITS.parts }
         if type(candidate.value) == "string" then
-            mapping_properties.value = bounded_string(LIMITS.value, 1)
-            mapping_properties.content = bounded_string(LIMITS.content, 1)
+            mapping_properties.value = schema_util.bounded_string(LIMITS.value, 1)
+            mapping_properties.content = schema_util.bounded_string(LIMITS.content, 1)
             mapping_required[#mapping_required + 1] = "value"
             mapping_required[#mapping_required + 1] = "content"
         end
@@ -607,7 +572,7 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     if budget_err then return nil, budget_err end
     local payload, encode_err = json.encode({ candidates = candidates, existing_keys = keys, conversation = conversation })
     if encode_err then return nil, types.internal("memory normalization input encode failed", { cause = tostring(encode_err) }) end
-    local response, err = llm.structured_output(schema, messages(NORMALIZATION_PROMPT .. JSON_FORMAT, payload), { model = model, max_tokens = budget })
+    local response, err = llm.structured_output(schema, messages(prompts.with_policy(NORMALIZATION_PROMPT, instructions) .. JSON_FORMAT, payload), { model = model, max_tokens = budget })
     if err then return nil, model_error("normalization", err) end
     local response_err = response_error(response, "normalization", schema)
     if response_err then return nil, response_err end
@@ -647,7 +612,10 @@ function M.normalize(model: string, candidates: { any }, keys: { any }, conversa
     return out, nil
 end
 
-function M.reflect(model: string, items: { any }): (any?, error?)
+function M.reflect(request: any): (any?, error?)
+    local model = request.model
+    local items = request.items or {}
+    local instructions = request.instructions
     if #items < REFLECTION_MIN_SOURCES then return {}, nil end
     local lines: { string } = {}
     local numbers: { integer } = {}
@@ -658,7 +626,8 @@ function M.reflect(model: string, items: { any }): (any?, error?)
     local schema = reflection_schema(numbers, math.min(LIMITS.lessons, math.floor(#items / REFLECTION_MIN_SOURCES)))
     local budget, budget_err = output_budget(schema, model)
     if budget_err then return nil, budget_err end
-    local response, err = llm.structured_output(schema, messages(REFLECTION_PROMPT .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = budget })
+    local system = prompts.with_policy(REFLECTION_PROMPT, instructions)
+    local response, err = llm.structured_output(schema, messages(system .. JSON_FORMAT, table.concat(lines, "\n")), { model = model, max_tokens = budget })
     if err then return nil, model_error("reflection", err) end
     local candidates, read_err = read_candidates(response, "reflection", nil, nil, schema)
     if read_err then return nil, read_err end
@@ -680,7 +649,7 @@ function M.reflect(model: string, items: { any }): (any?, error?)
             grounded[#grounded + 1] = candidate
         else return nil, validation_error("reflection", "grounding") end
     end
-    return M.normalize(model, grounded, items, nil)
+    return M.normalize(model, grounded, items, nil, instructions)
 end
 
 -- First matching relation wins. An update selects the first updated single-valued
@@ -705,7 +674,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
     for index, item in ipairs(neighbors) do
         local number = tostring(index)
         required[#required + 1] = number
-        properties[number] = enum_string(types.compatible_kinds(candidate.kind, item.kind) and allowed or { "unrelated" })
+        properties[number] = schema_util.enum_string(types.compatible_kinds(candidate.kind, item.kind) and allowed or { "unrelated" })
         listing[number] = { id = item.id, kind = item.kind, key = item.key, cardinality = item.cardinality,
             value = item.value, content = item.content, valid_at = item.valid_at }
     end
@@ -715,7 +684,7 @@ function M.judge(model: string, candidate: any, neighbors: { any }, actions: { s
         required = { "relations", "reason" },
         properties = {
             relations = { type = "object", additionalProperties = false, required = required, properties = properties },
-            reason = bounded_string(LIMITS.reason),
+            reason = schema_util.bounded_string(LIMITS.reason),
         },
     }
     local budget, budget_err = output_budget(schema, model)

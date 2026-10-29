@@ -43,9 +43,9 @@ local OPS: { [string]: (any) -> (any, any) } = {
     model_step = function(a: any)
         local model = a.model or "test-fast"
         local result, err
-        if a.step == "extract" then result, err = models.extract(model, a.span, a.keys or {}, nil, a.context,
-            a.isolated, a.owner_id, a.agent_id)
-        elseif a.step == "reflect" then result, err = models.reflect(model, a.items)
+        if a.step == "extract" then result, err = models.extract({ model = model, span = a.span, keys = a.keys or {},
+            instructions = a.instructions, context = a.context, isolated = a.isolated, owner_id = a.owner_id, agent_id = a.agent_id })
+        elseif a.step == "reflect" then result, err = models.reflect({ model = model, items = a.items, instructions = a.instructions })
         elseif a.step == "judge" then result, err = models.judge(model, a.candidate, a.items, a.actions or { "ADD", "NOOP" })
         else result, err = models.normalize(model, a.candidates, a.keys or {}, nil) end
         if err then return nil, err end

@@ -33,6 +33,29 @@ entries:
       llm: wippy.llm:llm
       types: kickside.memory:types
       error_envelope: kickside.contract:error_envelope
+      evidence_policy: kickside.memory.engine:evidence_policy
+      model_prompts: kickside.memory.engine:model_prompts
+      model_schema: kickside.memory.engine:model_schema
+
+  - name: model_prompts
+    kind: library.lua
+    meta:
+      comment: Shared model prompt composition.
+    source: file://model_prompts.lua
+
+  - name: model_schema
+    kind: library.lua
+    meta:
+      comment: Bounded structured-output schema primitives.
+    source: file://model_schema.lua
+
+  - name: evidence_policy
+    kind: library.lua
+    meta:
+      comment: Evidence admission and scope assignment for retained memory.
+    source: file://evidence_policy.lua
+    imports:
+      types: kickside.memory:types
 
   - name: reconcile
     kind: library.lua
