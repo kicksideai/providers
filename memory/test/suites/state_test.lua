@@ -141,8 +141,9 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "e1", role = "user", content = "My locker code is Kestrel-42." } })
-            fixture.extraction(id, { fixture.candidate("fact", "locker_code", "Kestrel-42", "The user's locker code is Kestrel-42.", "e1") })
+            local source = { id = "e1", role = "user", author = { kind = "user", id = user }, content = "My locker code is Kestrel-42." }
+            fixture.record_chat(user, session, { source })
+            fixture.extraction(id, { fixture.candidate("fact", "locker_code", "Kestrel-42", "The user's locker code is Kestrel-42.", source.id) })
             local applied, apply_err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") }, fixture.agent_context(id, session, "agent-a"))
             test.is_nil(apply_err, tostring(apply_err))
             test.is_true(applied.metadata.capture.captured)

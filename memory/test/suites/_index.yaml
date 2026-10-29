@@ -16,6 +16,30 @@ entries:
       script: app.llm:script
       history: app.suites:history
 
+  - name: session_history
+    kind: function.lua
+    source: file://session_history.lua
+    method: record
+    modules: [uuid, contract]
+    imports:
+      context_repo: wippy.session.persist:context_repo
+      session_repo: wippy.session.persist:session_repo
+      writer: wippy.session.persist:writer
+      message_handlers: wippy.session.process:message_handlers
+      consts: wippy.session:consts
+
+  - name: session_history_read
+    kind: function.lua
+    source: file://session_history.lua
+    method: read
+    modules: [uuid, contract]
+    imports:
+      context_repo: wippy.session.persist:context_repo
+      session_repo: wippy.session.persist:session_repo
+      writer: wippy.session.persist:writer
+      message_handlers: wippy.session.process:message_handlers
+      consts: wippy.session:consts
+
   - name: memory_call
     kind: function.lua
     meta: { comment: Runs a named memory operation in the caller's frame. }
@@ -332,6 +356,16 @@ entries:
     source: file://runner_memory_test.lua
     method: run
     modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+
+  - name: run_shape_test
+    kind: function.lua
+    meta: { type: test, suite: memory_run_shape, timeout: 300s }
+    source: file://run_shape_test.lua
+    method: run
+    modules: [json, contract, security]
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture

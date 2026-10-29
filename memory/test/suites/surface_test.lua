@@ -50,12 +50,23 @@ local function get_path(user: string?, path: string): any return request(user, "
 
 local function define_tests()
     test.describe("memory surfaces", function()
+
+        test.it("admits generic content through the selected memory engine", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local response = request(user, "POST", "/knowledge/" .. id .. "/ingest", {
+                content = "The reference explains accessible travel.", content_type = "text/plain",
+                external_id = "travel-reference", external_version = "1",
+            })
+            test.eq(response.status, 200, response.raw)
+            test.is_true(response.body.success, response.raw)
+        end)
         test.it("exposes oversized source rejections through runs and activity without source text", function()
             local user = fixture.user()
             local id = fixture.memory(user, { extraction_model = "test-bounded" })
             local session_id = "s-" .. user
             local source = string.rep("private-source-", 2000)
-            fixture.record_chat(user, session_id, { { id = "oversized", role = "user", content = source } })
+            fixture.record_chat(user, session_id, { { id = "oversized", role = "user", author = { kind = "user", id = user }, content = source } })
             local _, err = fixture.apply(user, "before_step", id, session_id, "agent-a")
             test.is_nil(err, tostring(err))
             local finished = fixture.wait_runs(user, id, "derive", 1)[1]
@@ -80,10 +91,11 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session_id = "s-" .. user
-            local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "event")
-            local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", "event")
+            local event = { id = "event", role = "user", author = { kind = "user", id = user }, content = "I live in Oslo." }
+            fixture.record_chat(user, session_id, { event })
+            local good = fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", event.id)
+            local bad = fixture.candidate("profile_slot", "private_value", "private value", "Private statement", event.id)
             for i = 1, 3 do fixture.extraction(id, { good, bad }) end
-            fixture.record_chat(user, session_id, { { id = "event", role = "user", content = "I live in Oslo." } })
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") },
                 fixture.agent_context(id, session_id, "agent-a"))
             test.is_nil(err, tostring(err))
@@ -92,7 +104,7 @@ local function define_tests()
             test.eq(job.attempts, 3)
             test.eq(fixture.op(user, "run", { run_id = runs[1].id }).status, "failed")
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session_id })
-            test.is_true(cursor == nil or cursor.last_event_id == "")
+            test.is_true(cursor == nil or cursor.last_event_id == nil)
             local response = get_path(user, "/memory/" .. id .. "/status")
             test.eq(response.status, 200, response.raw)
             local found = false
@@ -180,12 +192,13 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session_id = "s-sources-" .. user
-            fixture.record_chat(user, session_id, {
-                { id = "line-1", role = "user", content = "I started teaching chemistry at Lincoln Academy." },
-                { id = "line-2", role = "assistant", content = "Congratulations on the new role." },
-            })
+            local events = {
+                { id = "line-1", role = "user", author = { kind = "user", id = user }, content = "I started teaching chemistry at Lincoln Academy." },
+                { id = "line-2", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Congratulations on the new role." },
+            }
+            fixture.record_chat(user, session_id, events)
             fixture.extraction(id, {
-                fixture.candidate("profile_slot", "employer", "Lincoln Academy", "The user works at Lincoln Academy.", "line-1"),
+                fixture.candidate("profile_slot", "employer", "Lincoln Academy", "The user works at Lincoln Academy.", events[1].id),
             })
             local _, err = fixture.apply(user, "before_step", id, session_id, "agent-a")
             test.is_nil(err, tostring(err))
@@ -482,6 +495,7 @@ local function define_tests()
             local user = fixture.user()
             local component_id = fixture.memory(user)
             local session = "surface-" .. user
+            fixture.record_chat(user, session, {})
             local context = fixture.agent_context(component_id, session, "agent-a")
             local added = fixture.op(user, "create", { component_id = component_id, fields = {
                 kind = "preference", scope_family = "owner", key = "drink", value = "tea", content = "The user drinks tea.",

@@ -204,7 +204,9 @@ local function define_tests()
                 local id = fixture.memory(user)
                 local session = "s-" .. id
                 local parts = example.parts
-                fixture.record_chat(user, session, { { id = "compound-source", role = "user", content = example.content } })
+                local compound_source = { id = "compound-source", role = "user", author = { kind = "user", id = user }, content = example.content }
+                fixture.record_chat(user, session, { compound_source })
+                for _, part in ipairs(parts) do part.event_id = compound_source.id end
                 fixture.extraction(id, parts)
                 local _, err = fixture.apply(user, "before_step", id, session, "agent-a")
                 test.is_nil(err, tostring(err))
@@ -212,10 +214,12 @@ local function define_tests()
                 fixture.settle(user, id)
                 local first = fixture.items(user, id, { key = parts[1].key })[1]
                 local second = fixture.items(user, id, { key = parts[2].key })[1]
-                test.eq(fixture.op(user, "provenance", { component_id = id, item_id = first.id })[1].event_id, "compound-source")
-                test.eq(fixture.op(user, "provenance", { component_id = id, item_id = second.id })[1].event_id, "compound-source")
+                test.eq(fixture.op(user, "provenance", { component_id = id, item_id = first.id })[1].event_id, compound_source.id)
+                test.eq(fixture.op(user, "provenance", { component_id = id, item_id = second.id })[1].event_id, compound_source.id)
                 local changed = fixture.candidate("profile_slot", parts[1].key, example.changed, "The user changes this attribute.", "change-source")
-                fixture.record_chat(user, session, { { id = "change-source", role = "user", content = changed.content } })
+                local change_source = { id = "change-source", role = "user", author = { kind = "user", id = user }, content = changed.content }
+                fixture.record_chat(user, session, { change_source })
+                changed.event_id = change_source.id
                 fixture.extraction(id, { changed })
                 local _, change_err = fixture.apply(user, "before_step", id, session, "agent-a")
                 test.is_nil(change_err, tostring(change_err))
@@ -266,7 +270,8 @@ local function define_tests()
             fixture.settle(user, id)
             local denied = fixture.op(user, "tool_forget", { input = { key = "secret", value = "x" } }, context)
             test.eq(denied.success, false)
-            fixture.record_chat(user, session, { { id = "forget-dog", role = "user", content = "Forget my dog's name." } })
+            local forgotten_source = { id = "forget-dog", role = "user", author = { kind = "user", id = user }, content = "Forget my dog's name." }
+            fixture.record_chat(user, session, { forgotten_source })
             local forgotten = fixture.op(user, "tool_forget", { input = { key = "dog_name", value = "Rex" } }, context)
             test.is_true(forgotten.success)
         end)

@@ -92,8 +92,9 @@ local function define_tests()
             for _ in pairs(stepped.compiled.tools) do tool_count = tool_count + 1 end
             test.eq(tool_count, 2, json.encode(stepped.compiled.tools))
             test.not_nil(stepped.compiled.tools.ForgetMemory, "ForgetMemory tool")
-            fixture.record_chat(user, session, { { id = "trait-capture", role = "user", content = "Remember that I prefer aisle seats." } })
-            fixture.extraction(memory, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", "trait-capture") })
+            local source = { id = "trait-capture", role = "user", author = { kind = "user", id = user }, content = "Remember that I prefer aisle seats." }
+            fixture.record_chat(user, session, { source })
+            fixture.extraction(memory, { fixture.candidate("preference", "seat_position", "aisle", "The user prefers aisle seats.", source.id) })
             fixture.relations(memory, { "unrelated" })
             local captured, capture_err = fixture.op(user, "trait_agent", {
                 spec = spec, payload = fixture.payload("before_step", session, agent_id),
@@ -128,7 +129,8 @@ local function define_tests()
             test.is_nil(activate_err, tostring(activate_err))
             test.is_false(activated.metadata[1].metadata.pinned)
 
-            fixture.record_chat(user, session, {{ id = "settings-source", role = "user", content = "I prefer trains." }})
+            local source = { id = "settings-source", role = "user", author = { kind = "user", id = user }, content = "I prefer trains." }
+            fixture.record_chat(user, session, { source })
             local captured, capture_err = fixture.op(user, "trait_agent", {
                 spec = spec, payload = fixture.payload("before_step", session, agent_id),
             }, run_context)

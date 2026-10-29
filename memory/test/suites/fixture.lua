@@ -12,18 +12,22 @@ local history = require("history")
 local json = require("json")
 
 local M = { script = script, history = history }
+local ensure_user
 
-local RUN_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.suites:history_binding" }
+local RUN_CONTEXT = { contract = "wippy.agent:run_context", binding = "wippy.session.run_context:binding" }
 
-function M.record_chat(user_id: string, host_id: string, messages: { any })
-    for _, message in ipairs(messages) do
-        if not message.author then
-            if message.role == "user" then message.author = {kind = "user", id = user_id}
-            elseif message.role == "assistant" then message.author = {kind = "agent", id = "agent-a"}
-            else message.author = {kind = "system"} end
-        end
-    end
-    history.record(host_id, messages)
+function M.record_chat(user_id: string, host_id: string, messages: { any }): { string }
+    ensure_user(user_id)
+    local event_ids, err = M.call_as(user_id, "app.suites:session_history", {
+        user_id = user_id, session_id = host_id, messages = messages,
+    })
+    if err then error(tostring(err)) end
+    for index, event_id in ipairs(event_ids) do messages[index].id = event_id end
+    return event_ids
+end
+
+function M.read_chat(user_id: string, args: any): (any?, any?)
+    return M.call_as(user_id, "app.suites:session_history_read", args)
 end
 
 function M.payload(phase: string, session_id: string, agent_id: string, extra: any?): any
@@ -109,7 +113,7 @@ function M.db(): any
     return db
 end
 
-local function ensure_user(user_id: string)
+ensure_user = function(user_id: string)
     local db = M.db()
     local sqlite = db:type() == sql.type.SQLITE
     local email = user_id:gsub("[^%w_%-]", "_") .. "@memory.test"
@@ -323,6 +327,7 @@ function M.values(items: { any }): { [string]: any }
 end
 
 function M.apply(user: string, phase: string, memory: string, session: string, agent: string, extra: any?): (any, any)
+    M.record_chat(user, session, {})
     return M.op(user, "apply", { payload = M.payload(phase, session, agent, extra) },
         M.agent_context(memory, session, agent))
 end

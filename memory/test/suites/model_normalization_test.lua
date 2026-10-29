@@ -121,12 +121,17 @@ local function define_tests()
             }, "The user needs tickets.", "seed", "2026-09-01T00:00:00Z") }, "goal-state-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "request", role = "user", content = "Help me plan a trip." }, { id = "question", role = "assistant", content = "Where are you heading?" } })
+            local prompt_events = {
+                { id = "request", role = "user", author = { kind = "user", id = user }, content = "Help me plan a trip." },
+                { id = "question", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "Where are you heading?" },
+            }
+            fixture.record_chat(user, session, prompt_events)
             fixture.extraction(id, {})
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 1)
-            fixture.record_chat(user, session, { { id = "answer", role = "user", content = "London" } })
-            fixture.extraction(id, { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", "answer") })
+            local answer = { id = "answer", role = "user", author = { kind = "user", id = user }, content = "London" }
+            fixture.record_chat(user, session, { answer })
+            fixture.extraction(id, { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", answer.id) })
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 2)
             local prompt = fixture.script.prompts(id, "structured_output")[2].system
@@ -251,10 +256,11 @@ local function define_tests()
             fixture.remember(user, id, { fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "seed") }, "normalization-seed")
             fixture.settle(user, id)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "goal", role = "user", content = "I need tickets to London." } })
+            local goal = { id = "goal", role = "user", author = { kind = "user", id = user }, content = "I need tickets to London." }
+            fixture.record_chat(user, session, { goal })
             fixture.script.respond(user, "structured_output", { mappings = { ["1"] = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } } })
             local normalized, err = fixture.op(user, "model_step", { step = "normalize", candidates = {
-                fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", "goal"),
+                fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare tickets", details = "London" }, "The user plans a London trip.", goal.id),
             }, keys = { { key = "home_city", kind = "profile_slot", cardinality = "single" } } })
             test.is_nil(normalized)
             test.not_nil(err)

@@ -2,6 +2,8 @@
 
 local test = require("test")
 local fixture = require("fixture")
+local contract = require("contract")
+local security = require("security")
 
 local function define_tests()
     test.describe("memory run shape", function()
@@ -17,13 +19,56 @@ local function define_tests()
             fixture.script.hold(scope, method)
         end
 
+        test.it("captures authors from the session run-context binding", function()
+            local user = fixture.user()
+            local session = "s-" .. user
+            fixture.record_chat(user, session, {
+                { id = "admitted", role = "user", author = { kind = "user", id = user }, content = "I prefer a quiet room." },
+            })
+            local definition, definition_err = contract.get("wippy.agent:run_context")
+            test.is_nil(definition_err, tostring(definition_err))
+            local scope, scope_err = security.named_scope("wippy.security:process")
+            test.is_nil(scope_err, tostring(scope_err))
+            local binding, binding_err = definition:with_actor(security.new_actor(user, {})):with_scope(scope):open("wippy.session.run_context:binding")
+            test.is_nil(binding_err, tostring(binding_err))
+            local history, history_err = binding:get_history({ host = { kind = "session", session_id = session }, selector = { mode = "all" } })
+            test.is_nil(history_err, tostring(history_err))
+            test.eq(history.events[1].author.kind, "user")
+            test.eq(history.events[1].author.id, user)
+        end)
+
+        test.it("requires an explicit author for each admitted message", function()
+            local user = fixture.user()
+            local ok, err = pcall(fixture.record_chat, user, "s-" .. user, {
+                { id = "missing-author", role = "user", content = "I prefer a quiet room." },
+            })
+            test.is_false(ok)
+            test.is_true(tostring(err):find("author are required", 1, true) ~= nil)
+        end)
+
+        test.it("uses native event identifiers for every recorded message", function()
+            local user = fixture.user()
+            local session = "s-" .. user
+            local messages = {
+                { id = "submitted-user", role = "user", author = { kind = "user", id = user }, content = "I prefer a quiet room." },
+                { id = "submitted-agent", role = "assistant", author = { kind = "agent", id = "agent-a" }, content = "I will keep that in mind." },
+            }
+            local ids = fixture.record_chat(user, session, messages)
+            test.neq(ids[1], "submitted-user")
+            test.neq(ids[2], "submitted-agent")
+            local history, history_err = fixture.read_chat(user, { host = { kind = "session", session_id = session }, selector = { mode = "all" } })
+            test.is_nil(history_err, tostring(history_err))
+            test.eq(history.events[2].author.kind, "agent")
+            test.eq(history.events[2].author.id, "agent-a")
+        end)
+
         test.it("persists capture coordinates separately from its evidence", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, {
-                { id = "first", role = "user", content = "I prefer a quiet room." },
-            })
+            local source = { id = "first", role = "user", author = { kind = "user", id = user }, content = "I prefer a quiet room." }
+            local event_ids = fixture.record_chat(user, session, { source })
+            local source_id = event_ids[1]
             hold(id, "structured_output")
             local applied, apply_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(apply_err, tostring(apply_err))
@@ -33,14 +78,14 @@ local function define_tests()
             test.eq(run.host_id, session)
             test.eq(run.agent_id, "agent-a")
             test.is_nil(run.from_event_id)
-            test.eq(run.to_event_id, "first")
+            test.eq(run.to_event_id, source_id)
             test.is_nil(run.input.host)
-            fixture.extraction(id, { fixture.candidate("preference", "room_noise", "quiet", "The user prefers a quiet room.", "first") })
+            fixture.extraction(id, { fixture.candidate("preference", "room_noise", "quiet", "The user prefers a quiet room.", source_id) })
             fixture.script.release(id, "structured_output")
             local finished = fixture.wait_runs(user, id, "derive", 1)[1]
             test.eq(finished.status, "succeeded", tostring(finished.last_error))
             local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
-            test.eq(cursor.last_event_id, "first")
+            test.eq(cursor.last_event_id, source_id)
         end)
 
         test.it("persists document and maintenance runs without empty source fields", function()
@@ -76,9 +121,8 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, {
-                { id = "uncaptured", role = "user", content = "I prefer a quiet room." },
-            })
+            local source = { id = "uncaptured", role = "user", author = { kind = "user", id = user }, content = "I prefer a quiet room." }
+            fixture.record_chat(user, session, { source })
             hold(id, "structured_output")
             local first, first_err = fixture.apply(user, "before_step", id, session, "agent-a")
             test.is_nil(first_err, tostring(first_err))

@@ -460,7 +460,7 @@ local function define_tests()
                 test.is_false(result.ok)
                 test.is_true(result.job_error:find("JSON object", 1, true) ~= nil)
                 local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
-                test.is_true(cursor == nil or cursor.last_event_id == "")
+                test.is_true(cursor == nil or cursor.last_event_id == nil)
             end
         end)
 
@@ -938,7 +938,7 @@ local function define_tests()
             fixture.script.fail(id, "structured_output", "provider overloaded")
             fixture.script.fail(id, "structured_output", "provider overloaded")
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "h1", role = "user", content = "I moved to Oslo last month." } })
+            fixture.record_chat(user, session, { { id = "h1", role = "user", author = { kind = "user", id = user }, content = "I moved to Oslo last month." } })
             local applied, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))

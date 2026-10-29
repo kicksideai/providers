@@ -43,7 +43,8 @@ local function define_tests()
             fixture.script.release(first, "structured_output")
             test.is_nil(fixture.script.await_release(first, "structured_output"))
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "summary", role = "user", content = "A working task." } })
+            local summary = { id = "summary", role = "user", author = { kind = "user", id = user }, content = "A working task." }
+            fixture.record_chat(user, session, { summary })
             local _, unscripted_err = fixture.op(user, "checkpoint", { payload = fixture.payload("checkpoint", session, "agent-a") },
                 fixture.agent_context(second, session, "agent-a"))
             test.not_nil(unscripted_err)
@@ -60,10 +61,11 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            fixture.record_chat(user, session, { { id = "contact", role = "user", content = "I prefer weekly contact by email." } })
+            local contact = { id = "contact", role = "user", author = { kind = "user", id = user }, content = "I prefer weekly contact by email." }
+            fixture.record_chat(user, session, { contact })
             fixture.extraction(id, {
-                fixture.candidate("preference", "contact_channel", "email", "The user prefers email.", "contact"),
-                fixture.candidate("preference", "contact_frequency", "weekly", "The user prefers weekly contact.", "contact"),
+                fixture.candidate("preference", "contact_channel", "email", "The user prefers email.", contact.id),
+                fixture.candidate("preference", "contact_frequency", "weekly", "The user prefers weekly contact.", contact.id),
             })
             fixture.relations(id, { "unrelated" })
             local _, err = fixture.apply(user, "before_step", id, session, "agent-a")
@@ -91,7 +93,9 @@ local function define_tests()
             for index, statement in ipairs(statements) do
                 local before = #fixture.script.requests(id, "structured_output")
                 local embeddings = #fixture.script.requests(user, "embed")
-                fixture.record_chat(user, session, { { id = statement.event_id, role = "user", content = statement.content } })
+                local source = { id = statement.event_id, role = "user", author = { kind = "user", id = user }, content = statement.content }
+                fixture.record_chat(user, session, { source })
+                statement.event_id = source.id
                 fixture.extraction(id, { statement })
                 if index == 4 then fixture.relations(id, { "same" }) end
                 local _, err = fixture.apply(user, "before_step", id, session, "agent-a")

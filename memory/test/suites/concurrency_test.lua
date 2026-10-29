@@ -70,10 +70,11 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local session = "s-" .. user
-            local role = fixture.candidate("profile_slot", "occupation", "engineer", "Occupation: engineer.", "role-source")
+            local source = { id = "role-source", role = "user", author = { kind = "user", id = user }, content = "I am an engineer." }
+            fixture.record_chat(user, session, { source })
+            local role = fixture.candidate("profile_slot", "occupation", "engineer", "Occupation: engineer.", source.id)
             fixture.script.hold(id, "extraction")
             fixture.extraction(id, { role })
-            fixture.record_chat(user, session, { { id = "role-source", role = "user", content = "I am an engineer." } })
             local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))
@@ -212,9 +213,10 @@ local function define_tests()
             fixture.remember(user, component_id, { fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "held-message") }, "before-capture", { host_id = session_id })
             fixture.settle(user, component_id)
             local original = fixture.items(user, component_id)[1]
-            fixture.record_chat(user, session_id, { { id = "held-message", role = "user", content = "I live in Paris." } })
+            local held_message = { id = "held-message", role = "user", author = { kind = "user", id = user }, content = "I live in Paris." }
+            fixture.record_chat(user, session_id, { held_message })
             fixture.script.hold(component_id, "structured_output")
-            fixture.extraction(component_id, { fixture.candidate("fact", "city_knowledge", "Paris", "The user resides in Paris.", "held-message") })
+            fixture.extraction(component_id, { fixture.candidate("fact", "city_knowledge", "Paris", "The user resides in Paris.", held_message.id) })
             local _, capture_err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session_id, "agent-a") }, fixture.agent_context(component_id, session_id, "agent-a"))
             test.is_nil(capture_err, tostring(capture_err))
             wait_for_model_request(1, component_id)

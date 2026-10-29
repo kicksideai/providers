@@ -3,6 +3,8 @@ local test = require("test")
 local fixture = require("fixture")
 local json = require("json")
 
+local HISTORY_CONTEXT = { contract = "wippy.agent:run_context", binding = "app.suites:history_binding" }
+
 local function define_tests()
     test.describe("prompt", function()
 
@@ -10,6 +12,18 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local host = "identity-" .. user
+            local function context(agent_id)
+                local context = fixture.agent_context(id, host, agent_id)
+                context.agent_run.run_context = { contract = HISTORY_CONTEXT.contract, binding = HISTORY_CONTEXT.binding,
+                    host = { kind = "session", id = host, session_id = host } }
+                return context
+            end
+            local function activate(principal, agent_id)
+                local payload = fixture.payload("activate", host, agent_id)
+                payload.run_context = { contract = HISTORY_CONTEXT.contract, binding = HISTORY_CONTEXT.binding,
+                    host = { kind = "session", id = host, session_id = host } }
+                return fixture.op(principal, "apply", { payload = payload }, context(agent_id))
+            end
             fixture.remember(user, id, {fixture.candidate("preference", "format", "numbered steps", "The user prefers numbered steps.", "seed")}, "identity-seed")
             local _, rule_err = fixture.op(user, "create", {component_id = id, fields = {
                 kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "procedure",
@@ -17,9 +31,9 @@ local function define_tests()
             }})
             test.is_nil(rule_err, tostring(rule_err))
             fixture.settle(user, id)
-            local _, activate_err = fixture.apply(user, "activate", id, host, "agent-a")
+            local _, activate_err = activate(user, "agent-a")
             test.is_nil(activate_err, tostring(activate_err))
-            local original = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+            local original = fixture.op(user, "prompt", {}, context("agent-a"))
             test.contains(original, "numbered steps")
             for _, principal in ipairs({"principal:group:research", "principal:service:research"}) do
                 local grant, grant_err = fixture.call_as(user, "kickside.component.binding:grant_subtree_func", {
@@ -27,21 +41,21 @@ local function define_tests()
                 })
                 test.is_nil(grant_err, tostring(grant_err))
                 test.is_true(grant.success, json.encode(grant))
-                local prompt, prompt_err = fixture.op(principal, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+                local prompt, prompt_err = fixture.op(principal, "prompt", {}, context("agent-a"))
                 test.is_nil(prompt_err, tostring(prompt_err))
                 test.eq(prompt, "")
-                local _, principal_activate_err = fixture.apply(principal, "activate", id, host, "agent-a")
+                local _, principal_activate_err = activate(principal, "agent-a")
                 test.is_nil(principal_activate_err, tostring(principal_activate_err))
-                local principal_prompt = fixture.op(principal, "prompt", {}, fixture.agent_context(id, host, "agent-a"))
+                local principal_prompt = fixture.op(principal, "prompt", {}, context("agent-a"))
                 test.contains(principal_prompt, "Follow the declared procedure.")
                 test.is_nil(principal_prompt:find("numbered steps", 1, true), principal_prompt)
             end
-            local different_agent, agent_err = fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-b"))
+            local different_agent, agent_err = fixture.op(user, "prompt", {}, context("agent-b"))
             test.is_nil(agent_err, tostring(agent_err))
             test.eq(different_agent, "")
-            local _, restore_err = fixture.apply(user, "activate", id, host, "agent-a")
+            local _, restore_err = activate(user, "agent-a")
             test.is_nil(restore_err, tostring(restore_err))
-            test.eq(fixture.op(user, "prompt", {}, fixture.agent_context(id, host, "agent-a")), original)
+            test.eq(fixture.op(user, "prompt", {}, context("agent-a")), original)
         end)
 
         test.it("replaces the host snapshot for each agent activation", function()
@@ -81,14 +95,15 @@ local function define_tests()
             local id = fixture.memory(user)
             local host = "capture-binding-" .. user
             fixture.apply(user, "activate", id, host, "agent-a")
-            fixture.record_chat(user, host, {{id = "later", role = "user", content = "Continue the task."}})
+            local later = {id = "later", role = "user", author = { kind = "user", id = user }, content = "Continue the task."}
+            fixture.record_chat(user, host, { later })
             fixture.extraction(id, {})
             local _, capture_err = fixture.apply(user, "before_step", id, host, "agent-b")
             test.is_nil(capture_err, tostring(capture_err))
             test.eq(fixture.wait_runs(user, id, "derive", 1)[1].status, "succeeded")
             local cursor = fixture.op(user, "cursor", {component_id = id, host_kind = "session", host_id = host})
             test.eq(cursor.agent_id, "agent-a")
-            test.eq(cursor.last_event_id, "later")
+            test.eq(cursor.last_event_id, later.id)
         end)
 
         test.it("renders agent memory once within one budget in the model request", function()
@@ -105,6 +120,7 @@ local function define_tests()
             end
             fixture.settle(user, id)
             local host = "request-" .. user
+            fixture.record_chat(user, host, {})
             local run_context = fixture.agent_context(id, host, "agent-a")
             local spec = {id = "agent-a", prompt = "Research carefully.", model = "test-fast", traits = {
                 {id = "kickside.memory:memory", context = {memory_id = id}},
@@ -136,7 +152,8 @@ local function define_tests()
             test.is_nil(create_err, tostring(create_err))
             fixture.settle(user, id)
             local host = "learning-request-" .. user
-            fixture.record_chat(user, host, {{id = "task", role = "user", content = "Resolve relative links."}})
+            local task = {id = "task", role = "user", author = { kind = "user", id = user }, content = "Resolve relative links."}
+            fixture.record_chat(user, host, { task })
             local run_context = fixture.agent_context(id, host, "agent-a")
             local spec = {id = "agent-a", prompt = "Research carefully.", model = "test-fast", traits = {
                 {id = "kickside.memory:memory", context = {memory_id = id}},
@@ -317,7 +334,9 @@ local function define_tests()
             local host = { kind = "dataflow", id = "run-" .. user, dataflow_id = "flow-" .. user, node_id = "node-a", iteration = 1 }
             local context = fixture.agent_context(id, "unused", "agent-a")
             context.agent_run.host = host
+            context.agent_run.run_context = { contract = HISTORY_CONTEXT.contract, binding = HISTORY_CONTEXT.binding, host = host }
             local payload = fixture.payload("activate", "unused", "agent-a", {host = host})
+            payload.run_context = { contract = HISTORY_CONTEXT.contract, binding = HISTORY_CONTEXT.binding, host = host }
             local _, err = fixture.op(user, "apply", {payload = payload}, context)
             test.is_nil(err, tostring(err))
             local first = fixture.op(user, "prompt", {}, context)
