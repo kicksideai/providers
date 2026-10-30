@@ -2,33 +2,79 @@
 version: "1.0"
 namespace: kickside.memory.engine
 
-# The memory knowledge-base engine: ledger writes, model calls, reconciliation,
-# owner operations, deferred runs, the ledger projection and the contract
-# bindings the knowledge control plane and component service call.
-
 entries:
   - name: ledger
     kind: library.lua
     meta:
       comment: Typed ledger events on the memory thread with expected-head appends in the writer's transaction.
     source: file://ledger.lua
-    modules: [contract, security, json]
+    modules: [contract, security]
     imports:
+      json_encoder: kickside.memory.engine:json_encoder
       types: kickside.memory:types
       threads_append: kickside.core.threads.persist:append
       retention_notifier: kickside.core.retention:notifier
       jobs_wake: kickside.core.jobs.persist:wake
+
+  - name: json_encoder
+    kind: library.lua
+    meta:
+      comment: JSON encoding used by ledger event writes.
+    source: file://json_encoder.lua
+    modules: [json]
 
   - name: models
     kind: library.lua
     meta:
       comment: Extraction, reconcile judge, reflection, vectors and working summary model calls.
     source: file://models.lua
+    modules: [json, uuid]
+    imports:
+      llm: wippy.llm:llm
+      types: kickside.memory:types
+      error_envelope: kickside.contract:error_envelope
+      evidence_policy: kickside.memory.engine:evidence_policy
+      model_prompts: kickside.memory.engine:model_prompts
+      model_schema: kickside.memory.engine:model_schema
+      model_calls: kickside.memory.engine:model_calls
+
+  - name: model_calls
+    kind: library.lua
+    meta:
+      comment: Structured model execution and response validation.
+    source: file://model_calls.lua
     modules: [json]
     imports:
       llm: wippy.llm:llm
       types: kickside.memory:types
       error_envelope: kickside.contract:error_envelope
+      model_schema: kickside.memory.engine:model_schema
+
+  - name: model_prompts
+    kind: library.lua
+    meta:
+      comment: Shared model prompt composition.
+    source: file://model_prompts.lua
+    imports:
+      types: kickside.memory:types
+
+  - name: model_schema
+    kind: library.lua
+    meta:
+      comment: Bounded structured-output schema primitives.
+    source: file://model_schema.lua
+    modules: [json]
+    imports:
+      llm: wippy.llm:llm
+      types: kickside.memory:types
+
+  - name: evidence_policy
+    kind: library.lua
+    meta:
+      comment: Evidence admission and scope assignment for retained memory.
+    source: file://evidence_policy.lua
+    imports:
+      types: kickside.memory:types
 
   - name: reconcile
     kind: library.lua
@@ -39,6 +85,8 @@ entries:
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
       memory_models: kickside.memory.engine:models
+      memory_stores: kickside.memory.persist:stores
+      memory_config: kickside.memory:config
 
   - name: decision
     kind: library.lua
@@ -46,6 +94,7 @@ entries:
       comment: One decision on a memory - the item transitions and state rules every writer shares.
     source: file://decision.lua
     imports:
+      canonical_json: kickside.contract:canonical_json
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
 
@@ -55,8 +104,8 @@ entries:
       comment: The single typed write path - settle, decide, stage payloads, append structure at the head.
     source: file://writer.lua
     imports:
+      memory_payloads: kickside.memory.persist:payloads
       types: kickside.memory:types
-      memory_items: kickside.memory.persist:items
       memory_ledger: kickside.memory.engine:ledger
       memory_decision: kickside.memory.engine:decision
       memory_db: kickside.memory.persist:db
@@ -67,6 +116,7 @@ entries:
       comment: Explicit owner operations - create, edit, resolve conflict, archive, restore, forget.
     source: file://ops.lua
     imports:
+      canonical_json: kickside.contract:canonical_json
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
       memory_stores: kickside.memory.persist:stores
@@ -89,9 +139,13 @@ entries:
     meta:
       comment: Scheduling and execution of derive, consolidation and re-embed runs.
     source: file://jobs.lua
+    modules: [uuid, json]
     imports: &jobs_imports
+      canonical_json: kickside.contract:canonical_json
+      memory_payloads: kickside.memory.persist:payloads
       types: kickside.memory:types
       memory_config: kickside.memory:config
+      memory_ledger: kickside.memory.engine:ledger
       memory_runs: kickside.memory.persist:runs
       memory_stores: kickside.memory.persist:stores
       memory_items: kickside.memory.persist:items
@@ -101,6 +155,7 @@ entries:
       component: kickside.component:component
       jobs: kickside.core.jobs:jobs
       execution_identity: kickside.execution:execution_identity
+      memory_db: kickside.memory.persist:db
 
   - name: bindings
     kind: library.lua
@@ -109,6 +164,7 @@ entries:
     source: file://bindings.lua
     modules: &binding_modules [ctx]
     imports: &binding_imports
+      canonical_json: kickside.contract:canonical_json
       types: kickside.memory:types
       memory_config: kickside.memory:config
       memory_stores: kickside.memory.persist:stores
@@ -126,16 +182,17 @@ entries:
     source: file://projection.lua
     method: run
     imports:
+      memory_fold: kickside.memory.persist:fold
       component: kickside.component:component
       types: kickside.memory:types
       memory_items: kickside.memory.persist:items
       memory_jobs: kickside.memory.engine:jobs
 
-  # Deferred workers. Each re-admits the identity its run record holds.
   - name: derive_worker
     kind: function.lua
     meta: { comment: Derive job - started by capture (trait lifecycle phases and checkpoint) and by content ingested into the memory; re-admits the run identity. }
     source: file://jobs.lua
+    modules: [uuid, json]
     method: derive_run
     imports: *jobs_imports
     security:
@@ -145,6 +202,7 @@ entries:
     kind: function.lua
     meta: { comment: Derive run in the requester's frame - extract, reconcile, append. }
     source: file://jobs.lua
+    modules: [uuid, json]
     method: derive_authorized
     imports: *jobs_imports
 
@@ -152,6 +210,7 @@ entries:
     kind: function.lua
     meta: { comment: Consolidation slot job - armed when the memory is created, re-armed on its cadence, brought forward by deactivate and resummarize; re-admits the run identity. }
     source: file://jobs.lua
+    modules: [uuid, json]
     method: consolidate_run
     imports: *jobs_imports
     security:
@@ -161,6 +220,7 @@ entries:
     kind: function.lua
     meta: { comment: Consolidation run in the owner's frame - reflect and reconcile; re-arms on the cadence. }
     source: file://jobs.lua
+    modules: [uuid, json]
     method: consolidate_authorized
     imports: *jobs_imports
 
@@ -168,6 +228,7 @@ entries:
     kind: function.lua
     meta: { comment: Re-embed job - started by the maintainable schedule_reembed method; re-admits the run identity. }
     source: file://jobs.lua
+    modules: [uuid, json]
     method: reembed_run
     imports: *jobs_imports
     security:
@@ -177,10 +238,10 @@ entries:
     kind: function.lua
     meta: { comment: Re-embed run in the requester's frame. }
     source: file://jobs.lua
+    modules: [uuid, json]
     method: reembed_authorized
     imports: *jobs_imports
 
-  # Contract methods.
   - { name: create_store, kind: function.lua, meta: { comment: kb_store_lifecycle create_store }, source: file://bindings.lua, method: create_store, modules: *binding_modules, imports: *binding_imports }
   - { name: get_store, kind: function.lua, meta: { comment: kb_store_lifecycle get_store }, source: file://bindings.lua, method: get_store, modules: *binding_modules, imports: *binding_imports }
   - { name: update_config, kind: function.lua, meta: { comment: kb_store_lifecycle update_config }, source: file://bindings.lua, method: update_config, modules: *binding_modules, imports: *binding_imports }

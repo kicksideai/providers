@@ -8,7 +8,6 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import ModelPicker from './ModelPicker.vue'
 import type { SchemaField } from './types'
 
-// One engine setting, rendered from its config_schema field.
 const props = defineProps<{ name: string; field: SchemaField; value: unknown }>()
 const emit = defineEmits<{ (e: 'update', v: unknown): void }>()
 const title = computed(() => props.field.title || props.name)
@@ -23,12 +22,13 @@ const title = computed(() => props.field.title || props.name)
     <ToggleSwitch :model-value="value === true" :aria-label="title" @update:model-value="emit('update', $event)" />
   </div>
   <div v-else class="mm-field">
-    <label :id="`${name}_label`" class="mm-label" :for="name">{{ title }}</label>
+    <span v-if="field.web_component" :id="`${name}_label`" class="mm-label">{{ title }}</span>
+    <label v-else :id="`${name}_label`" class="mm-label" :for="name">{{ title }}</label>
     <ModelPicker v-if="field.web_component === 'wc-model-picker'" :labelled-by="`${name}_label`" :value="String(value || '')"
       capability="generate" @select="emit('update', $event)" />
     <InputNumber v-else-if="field.type === 'integer' || field.type === 'number'" :input-id="name"
       :model-value="typeof value === 'number' ? value : null" :min="field.minimum" :max="field.maximum"
-      :max-fraction-digits="field.type === 'integer' ? 0 : 6" @update:model-value="$event !== null && emit('update', $event)" />
+      :max-fraction-digits="field.type === 'integer' ? 0 : 6" @update:model-value="emit('update', $event ?? undefined)" />
     <Textarea v-else-if="field.format === 'textarea'" :id="name" :model-value="String(value ?? '')" auto-resize
       @update:model-value="emit('update', $event)" />
     <InputText v-else :id="name" :model-value="String(value ?? '')" @update:model-value="emit('update', $event)" />

@@ -1,8 +1,4 @@
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-# Harness for kickside/memory: host resources (database, processes, routers,
-# permissive test scopes), the knowledge control plane and core platform
-# through kickside/memory's dependency graph, a deterministic model provider,
-# and the memory suites. Harness-only; excluded from publish.
 version: '1.0'
 namespace: app
 entries:
@@ -27,7 +23,13 @@ entries:
   kind: db.sql.sqlite
   foreign_keys: true
   meta:
-    comment: In-memory database for kb10 slice tests.
+    comment: In-memory database for memory tests.
+  file: ':memory:'
+- name: migration_db
+  kind: db.sql.sqlite
+  foreign_keys: true
+  meta:
+    comment: Isolated database for migration upgrade tests.
   file: ':memory:'
 - name: uploads
   kind: fs.directory
@@ -63,16 +65,15 @@ entries:
 - name: api_public
   kind: http.router
   meta:
-    comment: Separate router for wippy/views to avoid colliding views' /components/by-tag/{tag} with the component module's /components/{id}/access
-      on /api.
+    comment: Public router for views; component routes use the authenticated API router.
     server: gateway
   prefix: /public
 - name: user
   kind: security.policy
   meta:
-    comment: Permissive scope the kb10 suites run their scoped actors under.
+    comment: Permissive scope for memory test actors.
   groups:
-  - kb_test
+  - memory_test
   - app:user
   policy:
     resources: '*'
@@ -83,7 +84,7 @@ entries:
   meta:
     comment: Permissive administrator scope used by structured lifecycle grants.
   groups:
-  - kb_test_admin
+  - memory_test_admin
   policy:
     resources: '*'
     actions: '*'
@@ -130,12 +131,6 @@ entries:
     value: app:gateway
   - name: kickside.knowledge.security:user_security_scope
     value: app:user
-  - name: kickside.automation:ui_server
-    value: app:gateway
-  - name: kickside.automation:api_router
-    value: app:api
-  - name: kickside.automation:target_db
-    value: app:db
   - name: kickside.settings:target_db
     value: app:db
   - name: kickside.settings:api_router
@@ -262,27 +257,11 @@ entries:
   - name: kickside.models:process_host
     value: app:processes
 
-- name: legacy_runtime_test
-  kind: function.lua
-  meta:
-    type: test
-    suite: memory_legacy
-  source: file://legacy_runtime_test.lua
-  method: run
-  modules: [sql, registry]
-  imports:
-    test: wippy.test:test
-    runtime: kickside.memory:runtime
-    prompt: wippy.llm:prompt
-
-
 - name: runtime_test
   kind: function.lua
-  meta: {type: test, suite: memory_document}
+  meta: {type: test, suite: memory_resources}
   source: file://runtime_test.lua
   method: run
-  modules: [sql, registry]
+  modules: [registry]
   imports:
     test: wippy.test:test
-    runtime: kickside.memory:runtime
-    prompt: wippy.llm:prompt

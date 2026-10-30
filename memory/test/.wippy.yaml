@@ -4,10 +4,14 @@ vars:
   pg_host: localhost
   pg_port: 5433
   pg_database: kickside_test_memory
+  pg_migration_database: kickside_test_memory_migration
   pg_username: kickside
   pg_password: kickside
 override:
+  kickside.memory.engine:ledger:imports.json_encoder: app.suites:ledger_json
   kickside.memory.persist:items:imports.memory_db: app.suites:measured_db
+  kickside.memory.persist:payloads:imports.memory_db: app.suites:measured_db
+  kickside.memory.persist:fold:imports.memory_db: app.suites:measured_db
 profiles:
   postgres:
     override:
@@ -20,24 +24,18 @@ profiles:
       app:db:options.sslmode: disable
       app:db:pool.max_open: 16
       app:db:pool.max_idle: 8
+      app:migration_db:kind: db.sql.postgres
+      app:migration_db:host: ${pg_host}
+      app:migration_db:port: ${pg_port}
+      app:migration_db:database: ${pg_migration_database}
+      app:migration_db:username: ${pg_username}
+      app:migration_db:password: ${pg_password}
+      app:migration_db:options.sslmode: disable
+      app:migration_db:pool.max_open: 4
+      app:migration_db:pool.max_idle: 2
 workspace:
   replacements:
     kickside/memory: ..
-    kickside/search-index: ../../search-index
-    kickside/component: ../../../kickside/core/component
-    kickside/contract: ../../../kickside/core/contract
-    kickside/core: ../../../kickside/core/core
-    kickside/doc2md: ../../../converters/doc2md
-    kickside/execution: ../../../kickside/core/execution
-    kickside/jobs: ../../../kickside/core/jobs
-    kickside/knowledge: ../../../kickside/platform/knowledge
-    kickside/models: ../../../kickside/platform/models
-    kickside/realtime: ../../../kickside/platform/realtime
-    kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
-    kickside/security: ../../../kickside/platform/security
-    kickside/settings: ../../../kickside/platform/settings
-    kickside/uploads: ../../../kickside/platform/uploads
-    kickside/users: ../../../kickside/platform/users
 registry:
   dispatch_internal_kinds:
   - registry.entry

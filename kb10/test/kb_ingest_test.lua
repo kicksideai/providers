@@ -507,6 +507,7 @@ local function define_tests()
                     content = "The capital of France is Paris. It is known for the Eiffel Tower.",
                     content_type = "text/plain",
                     metadata = { title = "Geography fact", source = "test" },
+                    trace_context = { trace_id = "binding-trace", run_id = "binding-ingest", correlation_key = "binding-ingest" },
                 })
                 test.is_nil(embed_err, "embed_content: " .. tostring(embed_err))
                 test.not_nil(result)
@@ -518,6 +519,8 @@ local function define_tests()
                 test.not_nil(result.external_id)
                 test.not_nil(result.source_ref)
                 test.eq(result.external_id, result.source_ref.external_id)
+                test.not_nil(result.trace_context)
+                test.eq("binding-ingest", result.trace_context.run_id)
 
                 local event = event_for_external(result.thread_id, result.external_id, "kickside.knowledge.events:content.upserted")
                 test.not_nil(event)

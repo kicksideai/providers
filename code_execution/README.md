@@ -19,7 +19,7 @@ Bind an explicit allowed tool set for sandboxed code. The same execution SDK bac
 
 ## Requirements
 
-Wippy 0.3.x; repository validation uses 0.3.47a. Use current Hub dependencies
+Wippy 0.3.x; repository validation uses the latest stable Wippy release. Use current Hub dependencies
 for the contracts declared by the module.
 The standalone harness uses SQLite and declares a PostgreSQL test profile.
 Frontend development also uses Node.js 22, npm, and Make.

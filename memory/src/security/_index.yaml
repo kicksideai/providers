@@ -2,11 +2,6 @@
 version: '1.0'
 namespace: kickside.memory.security
 
-# Module access for Memory. The public policy composes discovery of the module
-# with its private runtime policy and the exact member endpoints; the host binds
-# user_security_scope to the group whose members use the memory surface.
-# Component ACL decides access to each memory knowledge base.
-
 entries:
 - name: module_access
   kind: security.policy
@@ -18,7 +13,7 @@ entries:
     - kickside.memory.security:module_runtime
     - kickside.memory.security:endpoint_access
   groups: []
-  policy:
+  policy: &memory_runtime_policy
     resources:
     - kickside.memory:*
     - kickside.memory.agent:*
@@ -45,27 +40,7 @@ entries:
   meta:
     private: true
   groups: []
-  policy:
-    resources:
-    - kickside.memory:*
-    - kickside.memory.agent:*
-    - kickside.memory.security:*
-    - kickside.memory.engine:*
-    - kickside.memory.persist:*
-    - kickside.memory.api:*
-    - kickside.memory.events:*
-    - kickside.memory.migrations:*
-    actions:
-    - registry.get
-    - registry.find
-    - contract.get
-    - contract.open
-    - contract.call
-    - contract.implementations
-    - contract.security
-    - funcs.call
-    - funcs.security
-    effect: allow
+  policy: *memory_runtime_policy
 
 - name: endpoint_access
   kind: security.policy
@@ -89,7 +64,6 @@ entries:
     actions: access
     effect: allow
 
-# The deferred workers re-admit the identity their run records hold.
 - name: deferred_owner
   kind: security.policy
   meta:
@@ -107,7 +81,7 @@ entries:
   default: kickside.security.groups:members
   meta:
     value_kind: security.scope
-    description: Application security group allowed to use the memory HTTP endpoints.
+    description: "Application security group whose members use the memory module: its endpoints, tools and contracts."
   targets:
   - entry: kickside.memory.security:module_access
     path: .groups +=

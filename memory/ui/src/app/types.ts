@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-// Shapes of the memory HTTP API, the engine config schema and the Memory trait
-// context, with the small helpers the elements share.
 
-export type MemoryKind = 'identity' | 'rule' | 'profile_slot' | 'fact' | 'preference' | 'skill' | 'lesson'
+export type MemoryKind = 'identity' | 'rule' | 'profile_slot' | 'fact' | 'preference' | 'plan' | 'skill' | 'lesson'
 export type MemoryStatus = 'current' | 'superseded' | 'conflict' | 'archived' | 'forgotten'
 
 export interface MemoryItem {
@@ -11,26 +9,45 @@ export interface MemoryItem {
   scope_family: 'agent' | 'owner'
   scope_id: string
   key: string
+  cardinality: 'single' | 'multi'
   content: string
+  value?: unknown
   status: MemoryStatus
   version: number
   valid_at: string
   invalid_at?: string | null
   recorded_at: string
-  source: 'capture' | 'tool' | 'reflection' | 'owner'
+  superseded_by?: string | null
+  source: 'capture' | 'reflection' | 'owner'
 }
 
-export interface Provenance { host_kind: string; host_id: string; event_id: string }
+export interface EventAuthor { kind: 'user' | 'agent' | 'system' | 'unknown' | 'document'; id?: string }
+
+export interface SourceLine { author?: EventAuthor; role: 'user' | 'assistant' | 'tool' | 'document'; text: string; created_at?: string }
+
+export interface SourceMemory { id: string; kind: MemoryKind; key: string; content: string; status: MemoryStatus }
+
+export interface Provenance {
+  host_kind: string
+  host_id: string
+  event_id: string
+  recorded_at?: string
+  line?: SourceLine
+  memory?: SourceMemory
+}
 
 export interface ConflictGroup { group_id: string; items: MemoryItem[] }
 
 export interface MemoryRun {
   id: string
   run_type: 'derive' | 'consolidate' | 'reembed'
-  status: 'scheduled' | 'running' | 'succeeded' | 'failed'
+  status: 'scheduled' | 'running' | 'succeeded' | 'failed' | 'rejected' | 'cancelled'
   last_error?: string | null
   stats?: Record<string, number>
   host_kind?: string
+  from_event_id?: string | null
+  to_event_id?: string | null
+  model_output?: unknown
   created_at: string
   started_at?: string | null
   finished_at?: string | null
@@ -45,23 +62,20 @@ export interface SchemaField {
   format?: string
   web_component?: string
   order?: number
-  group?: 'advanced'
+  section?: string
 }
 
-export interface ConfigSchema { properties?: Record<string, SchemaField> }
+export interface ConfigSchema {
+  type: 'object'
+  properties: Record<string, SchemaField>
+}
 
 export interface MemoryStatusView {
-  config: Record<string, unknown>
-  defaults: Record<string, unknown>
-  config_schema: ConfigSchema
-  counts: { current: number }
+  counts: Partial<Record<MemoryStatus | 'total' | 'conflict_groups', number>>
   runs: MemoryRun[]
 }
 
-export const KIND_LABEL: Record<MemoryKind, string> = {
-  identity: 'Identity', rule: 'Rule', profile_slot: 'Profile', fact: 'Fact',
-  preference: 'Preference', skill: 'Skill', lesson: 'Lesson',
-}
+export interface Page<T> { rows: T[]; next: number | null }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -76,31 +90,35 @@ export function errorText(err: unknown): string {
   return String(err)
 }
 
-// Trait context the Memory capability stores on an agent.
-export interface MemoryContext {
-  memory_id: string
-  write_enabled: boolean
-  [key: string]: unknown
-}
+export interface MemoryContext { memory_id: string; learn_in_isolation?: boolean }
 
 export interface MemoryEvents {
   'config-changed': { context: MemoryContext }
 }
 
-// Select options for memory kinds.
-export function kindOptions(kinds: MemoryKind[] = Object.keys(KIND_LABEL) as MemoryKind[]): { value: MemoryKind; label: string }[] {
-  return kinds.map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))
-}
-
-// The object detail of a shared widget's CustomEvent.
 export function eventDetail(event: Event): Record<string, unknown> {
   return event instanceof CustomEvent && isRecord(event.detail) ? event.detail : {}
 }
 
-// An element's `config` prop arrives as an object or as its JSON text.
 export function parseConfig(raw: unknown): Record<string, unknown> {
-  if (typeof raw === 'string') {
-    try { raw = JSON.parse(raw) } catch { return {} }
+  if (raw === undefined) return {}
+  if (typeof raw === 'string') raw = JSON.parse(raw)
+  if (!isRecord(raw)) throw new Error('Memory configuration must be an object')
+  return raw
+}
+
+export function parseCreateSchema(raw: unknown): ConfigSchema {
+  if (!isRecord(raw) || raw.type !== 'object' || !isRecord(raw.properties) || !Object.keys(raw.properties).length) {
+    throw new Error('Memory create schema must supply object properties')
   }
-  return isRecord(raw) ? raw : {}
+  for (const field of Object.values(raw.properties)) {
+    if (!isRecord(field) || !['string', 'integer', 'number', 'boolean'].includes(String(field.type))) {
+      throw new Error('Memory create schema must supply object properties')
+    }
+  }
+  return { type: 'object', properties: raw.properties as Record<string, SchemaField> }
+}
+
+export interface MemoryCreateEvents {
+  'config-changed': { embedding_model: string; config: Record<string, unknown> }
 }

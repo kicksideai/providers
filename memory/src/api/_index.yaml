@@ -2,16 +2,14 @@
 version: "1.0"
 namespace: kickside.memory.api
 
-# HTTP surface of the memory web component. {id} is the memory knowledge
-# base component id; access is decided by the component service per route.
-
 entries:
-  - name: handlers
-    kind: library.lua
+  - name: list_items
+    kind: function.lua
     meta:
-      comment: Memory item, conflict and status handlers.
+      comment: Lists memory items by kind, status, topic key and search query (READ).
     source: file://handlers.lua
-    modules: [http, json, security]
+    method: list_items
+    modules: [http, security]
     imports: &handler_imports
       http_errors: kickside.contract:http_errors
       component: kickside.component:component
@@ -23,20 +21,11 @@ entries:
       memory_models: kickside.memory.engine:models
       memory_ops: kickside.memory.engine:ops
 
-  - name: list_items
-    kind: function.lua
-    meta:
-      comment: Lists a memory's items filtered by kind, status and scope family (READ).
-    source: file://handlers.lua
-    method: list_items
-    modules: [http, json, security]
-    imports: *handler_imports
-
   - name: list_items.endpoint
     kind: http.endpoint
     meta:
       router: ""
-      comment: Lists a memory's items filtered by kind, status and scope family (READ).
+      comment: Lists memory items by kind, status, topic key and search query (READ).
     method: GET
     func: list_items
     path: /memory/{id}/items
@@ -47,7 +36,7 @@ entries:
       comment: Returns one memory item with its provenance and versions (READ).
     source: file://handlers.lua
     method: get_item
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: get_item.endpoint
@@ -62,17 +51,17 @@ entries:
   - name: create_item
     kind: function.lua
     meta:
-      comment: Adds an identity, rule, skill or lesson item through the ledger (WRITE).
+      comment: Creates a typed memory item through the ledger (WRITE).
     source: file://handlers.lua
     method: create_item
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: create_item.endpoint
     kind: http.endpoint
     meta:
       router: ""
-      comment: Adds an identity, rule, skill or lesson item through the ledger (WRITE).
+      comment: Creates a typed memory item through the ledger (WRITE).
     method: POST
     func: create_item
     path: /memory/{id}/items
@@ -80,17 +69,17 @@ entries:
   - name: edit_item
     kind: function.lua
     meta:
-      comment: Replaces an item's content with a new version that supersedes it (WRITE).
+      comment: Revises item content in place or supersedes it when its value changes (WRITE).
     source: file://handlers.lua
     method: edit_item
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: edit_item.endpoint
     kind: http.endpoint
     meta:
       router: ""
-      comment: Replaces an item's content with a new version that supersedes it (WRITE).
+      comment: Revises item content in place or supersedes it when its value changes (WRITE).
     method: PUT
     func: edit_item
     path: /memory/{id}/items/{item_id}
@@ -101,7 +90,7 @@ entries:
       comment: Forgets an item - erases its text, value, vector, provenance and the captured spans that stated it (WRITE).
     source: file://handlers.lua
     method: forget_item
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: forget_item.endpoint
@@ -119,7 +108,7 @@ entries:
       comment: Archives an item so it leaves recall and the prompt until restored (WRITE).
     source: file://handlers.lua
     method: archive_item
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: archive_item.endpoint
@@ -137,7 +126,7 @@ entries:
       comment: Restores an archived item (WRITE).
     source: file://handlers.lua
     method: restore_item
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: restore_item.endpoint
@@ -155,7 +144,7 @@ entries:
       comment: Lists the memory's conflict groups with their items (READ).
     source: file://handlers.lua
     method: list_conflicts
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: list_conflicts.endpoint
@@ -173,7 +162,7 @@ entries:
       comment: Keeps one item of a conflict group current and supersedes the rest (WRITE).
     source: file://handlers.lua
     method: resolve_conflict
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: resolve_conflict.endpoint
@@ -191,7 +180,7 @@ entries:
       comment: Returns the memory's counts, recent runs, effective configuration and its schema (READ).
     source: file://handlers.lua
     method: status
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: status.endpoint
@@ -209,7 +198,7 @@ entries:
       comment: Lists accessible memory knowledge bases (READ).
     source: file://handlers.lua
     method: list_memories
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: list_memories.endpoint
@@ -227,7 +216,7 @@ entries:
       comment: Lists canonical topics and current item counts (READ).
     source: file://handlers.lua
     method: list_topics
-    modules: [http, json, security]
+    modules: [http, security]
     imports: *handler_imports
 
   - name: list_topics.endpoint

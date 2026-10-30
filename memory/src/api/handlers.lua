@@ -1,10 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- HTTP surface of the memory web component, under /memory/{id}. Every route
--- authorizes the memory component for the action, then reads the read model or
--- appends typed operations through the engine.
 
 local http = require("http")
-local json = require("json")
 local security = require("security")
 local http_errors = require("http_errors")
 local component = require("component")
@@ -19,6 +15,7 @@ local models = require("memory_models")
 local M = {}
 
 local MAX_PAGE = 200
+local MAX_OFFSET = 1000000
 
 local function reply(res: any, status: any, payload: any)
     res:set_content_type(http.CONTENT.JSON)
@@ -35,8 +32,6 @@ local function fail(res: any, err: any)
     refuse(res, status, (type(err) == "userdata" and classification.kind ~= nil) and err:message() or tostring(err))
 end
 
--- Request preamble: HTTP context, actor, memory id, access, and the memory's
--- store, which also proves the knowledge base is a memory.
 local function open(access: integer): (any?, any?, string?, any?)
     local res = http.response()
     local req = http.request()
@@ -57,20 +52,10 @@ local function open(access: integer): (any?, any?, string?, any?)
     return res, req, id, store
 end
 
-local function body_of(req: any): any
+local function body_of(req: any): (any?, error?)
     local raw = req:body()
     if type(raw) ~= "string" or raw == "" then return {} end
-    local decoded, err = json.decode(raw)
-    if err or type(decoded) ~= "table" then return nil end
-    return decoded
-end
-
-local function list_param(req: any, name: string): { string }?
-    local raw = types.trim(req:query(name))
-    if raw == "" then return nil end
-    local out: { string } = {}
-    for part in raw:gmatch("[^,]+") do out[#out + 1] = types.trim(part) end
-    return out
+    return types.decode_object(raw, "body")
 end
 
 local function int_param(req: any, name: string, default: integer, min: integer, max: integer): (integer?, string?)
@@ -83,13 +68,33 @@ local function int_param(req: any, name: string, default: integer, min: integer,
     return math.floor(n), nil
 end
 
+local function page_params(req: any, default_limit: integer): (integer?, integer?, string?)
+    local limit, limit_err = int_param(req, "limit", default_limit, 1, MAX_PAGE)
+    if limit_err then return nil, nil, limit_err end
+    local offset, offset_err = int_param(req, "offset", 0, 0, MAX_OFFSET)
+    if offset_err then return nil, nil, offset_err end
+    return limit, offset, nil
+end
+
+local function paged(rows: { any }, limit: integer, offset: integer): ({ any }, integer?)
+    local page: { any } = {}
+    for i = 1, math.min(limit, #rows) do page[i] = rows[i] end
+    return page, #rows > limit and offset + limit or nil
+end
+
+local function list_param(req: any, name: string): { string }?
+    local raw = types.trim(req:query(name))
+    if raw == "" then return nil end
+    local out: { string } = {}
+    for part in raw:gmatch("[^,]+") do out[#out + 1] = types.trim(part) end
+    return out
+end
+
 function M.list_items()
     local res, req, id, store = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local query = types.trim(req:query("q"))
     local filter = {
         kinds = list_param(req, "kind"), statuses = list_param(req, "status"), limit = (limit :: integer) + 1, offset = offset,
@@ -108,10 +113,9 @@ function M.list_items()
         for i = (offset :: integer) + 1, #(ranked or {}) do rows[#rows + 1] = ranked[i] end
     end
     if err then return fail(res, err) end
-    local page: { any } = {}
-    for i = 1, math.min(limit :: integer, #(rows :: any)) do page[i] = (rows :: any)[i] end
+    local page, next_offset = paged(rows :: { any }, limit :: integer, offset :: integer)
     local result: { [string]: any } = { success = true, items = page, count = #page }
-    if #(rows :: any) > (limit :: integer) then result.next_offset = (offset :: integer) + (limit :: integer) end
+    if next_offset then result.next_offset = next_offset end
     reply(res, http.STATUS.OK, result)
 end
 
@@ -119,17 +123,15 @@ function M.list_memories()
     local res, req = http.response(), http.request()
     if not res or not req then return end
     if not security.actor() then return refuse(res, http.STATUS.UNAUTHORIZED, "authentication required") end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local query = types.trim(req:query("q")):lower()
     local matches, scanned = 0, 0
     local page: { any } = {}
     local more = false
     while true do
         local rows, err = component.query({
-            impl_ids = { "kickside.memory:memory_kb" }, include = { meta = true }, access_mask = component.ACCESS.READ,
+            impl_ids = { "kickside.memory:memory_store" }, include = { meta = true }, access_mask = component.ACCESS.READ,
             text = query, order_by = { field = "created_at", direction = "DESC" }, limit = MAX_PAGE, offset = scanned,
         })
         if err then return fail(res, err) end
@@ -156,10 +158,8 @@ end
 function M.list_topics()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local family, kind = types.trim(req:query("scope_family")), types.trim(req:query("kind"))
     if family ~= "" and not types.SCOPE_SET[family] then return refuse(res, http.STATUS.BAD_REQUEST, "invalid scope_family") end
     if kind ~= "" and not types.KIND_SET[kind] then return refuse(res, http.STATUS.BAD_REQUEST, "invalid kind") end
@@ -175,15 +175,13 @@ end
 function M.get_item()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 50, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 50)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local item_id = types.trim(req:param("item_id"))
     local item, err = items.get(id :: string, item_id)
     if err then return fail(res, err) end
     if not item then return refuse(res, http.STATUS.NOT_FOUND, "memory item not found") end
-    local provenance, prov_err = items.provenance(id :: string, item_id)
+    local provenance, prov_err = items.sources(id :: string, item_id)
     if prov_err then return fail(res, prov_err) end
     local history, history_err = items.list(id :: string, {
         scope_keys = { (item :: any).scope_key }, key = (item :: any).key, limit = (limit :: integer) + 1, offset = offset,
@@ -199,8 +197,8 @@ end
 local function write_op(fn: (string, any, any) -> (any?, error?))
     local res, req, id = open(component.ACCESS.WRITE)
     if not res then return end
-    local body = body_of(req)
-    if not body then return refuse(res, http.STATUS.BAD_REQUEST, "body must be a JSON object") end
+    local body, body_err = body_of(req)
+    if body_err then return refuse(res, http.STATUS.BAD_REQUEST, "body must be a JSON object") end
     local result, err = fn(id :: string, req, body)
     if err then return fail(res, err) end
     local out: { [string]: any } = { success = true }
@@ -244,14 +242,11 @@ function M.resolve_conflict()
     end)
 end
 
--- Conflict groups, a page of whole groups at a time.
 function M.list_conflicts()
     local res, req, id = open(component.ACCESS.READ)
     if not res then return end
-    local limit, limit_err = int_param(req, "limit", 20, 1, MAX_PAGE)
-    if limit_err then return refuse(res, http.STATUS.BAD_REQUEST, limit_err) end
-    local offset, offset_err = int_param(req, "offset", 0, 0, 1000000)
-    if offset_err then return refuse(res, http.STATUS.BAD_REQUEST, offset_err) end
+    local limit, offset, page_err = page_params(req, 20)
+    if page_err then return refuse(res, http.STATUS.BAD_REQUEST, page_err) end
     local page, err = items.conflict_groups(id :: string, offset :: integer, limit :: integer)
     if err then return fail(res, err) end
     local members, members_err = items.group_members(id :: string, (page :: any).groups)
@@ -280,12 +275,7 @@ function M.status()
     local recent, runs_err = runs.list(id :: string, nil, 20)
     if runs_err then return fail(res, runs_err) end
     local view: { any } = {}
-    for _, run in ipairs(recent :: any) do
-        view[#view + 1] = {
-            id = run.id, run_type = run.run_type, status = run.status, last_error = run.last_error, stats = run.stats,
-            host_kind = run.host_kind, created_at = run.created_at, started_at = run.started_at, finished_at = run.finished_at,
-        }
-    end
+    for _, run in ipairs(recent or {}) do view[#view + 1] = runs.view(run) end
     reply(res, http.STATUS.OK, {
         success = true, config = (store :: any).config, defaults = defaults, config_schema = schema,
         counts = counts, runs = view,

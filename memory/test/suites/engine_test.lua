@@ -4,44 +4,531 @@ local fixture = require("fixture")
 local json = require("json")
 local registry = require("registry")
 
-local function rows(statement: string, params: { any }): { any }
-    local db = fixture.db()
-    local result, err = db:query(statement, params)
-    db:release()
-    if err then error(tostring(err)) end
-    return result or {}
-end
-
-local function by_key(items: { any }): { [string]: any }
-    local out = {}
-    for _, item in ipairs(items) do out[item.value .. ""] = item end
-    return out
-end
-
-local function count(statement: string, params: { any }): integer
-    local result = rows(statement, params)
-    return math.floor(tonumber(result[1] and result[1].n) or 0)
-end
-
 local function define_tests()
     test.describe("memory knowledge base engine", function()
-        test.before_each(function() fixture.script.reset() end)
+
+        test.it("preserves a principal lookup failure while selecting recall scopes", function()
+            local result, err = fixture.op("system:memory-recall", "recall_scope_failure", { agent_id = "agent:reader" })
+            test.is_nil(err, tostring(err))
+            test.is_false(result.raised)
+            test.eq(result.count, 0)
+            test.eq(result.kind, errors.INVALID)
+            test.eq(result.message, "framework maintenance actors are never principals")
+        end)
+
+        test.it("supersedes exact single keys without a judge and retains both clocks", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local first = fixture.remember(user, id, { fixture.candidate("profile_slot", "employer", "Northstar", "Works at Northstar.", "first", "2026-01-01T00:00:00Z") }, "single-first")
+            fixture.settle(user, id)
+            local second = fixture.remember(user, id, { fixture.candidate("profile_slot", "employer", "Harbor", "Joined Harbor.", "second", "2026-02-01T00:00:00Z") }, "single-second")
+            test.eq(second.stats.superseded, 1)
+            test.eq(second.stats.judged, 0)
+            test.eq(#fixture.script.requests(id, "structured_output"), 0)
+            fixture.settle(user, id)
+            local old = fixture.op(user, "get", { component_id = id, item_id = first.item_ids[1] })
+            local current = fixture.op(user, "get", { component_id = id, item_id = second.item_ids[1] })
+            test.eq(old.status, "superseded")
+            test.eq(old.invalid_at, "2026-02-01T00:00:00Z")
+            test.eq(old.valid_at, "2026-01-01T00:00:00Z")
+            test.eq(current.status, "current")
+            test.not_nil(old.recorded_at)
+            test.not_nil(current.recorded_at)
+        end)
+
+        test.it("adds without judging unrelated or incompatible nearest memories", function()
+            local user = fixture.user()
+            for _, example in ipairs({
+                { kind = "fact", value = "Rust", content = "Compiles Rust software." },
+                { kind = "plan", value = { status = "open", next_step = "", details = "Study music" }, content = "Studies music." },
+            }) do
+                local id = fixture.memory(user)
+                fixture.remember(user, id, { fixture.candidate(example.kind, "existing_topic", example.value, example.content) }, "near-seed")
+                fixture.settle(user, id)
+                local result = fixture.remember(user, id, { fixture.candidate("fact", "music_study", "piano", "Studies music.") }, "near-candidate")
+                test.eq(result.stats.added, 1)
+                test.eq(result.stats.judged, 0)
+                test.eq(#fixture.script.requests(id, "structured_output"), 0)
+            end
+        end)
+
+        test.it("judges only compatible neighbours meeting the configured similarity floor inclusively", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            fixture.remember(user, id, { fixture.candidate("fact", "music_study", "piano", "Studies music.") }, "threshold-seed")
+            fixture.settle(user, id)
+            fixture.relations(id, { "same" })
+            local result = fixture.remember(user, id, { fixture.candidate("skill", "music_skill", "keyboard", "Studies music.") }, "threshold-match")
+            test.eq(result.stats.judged, 1)
+            test.eq(result.stats.noop, 1)
+            local memories = json.decode(fixture.script.prompts(id, "structured_output")[1].user).existing_memories
+            test.eq(memories["1"].key, "music_study")
+            test.is_nil(memories["2"])
+        end)
+
+        test.it("judges a new alias key and supersedes onto the existing attribute key", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            local first = fixture.remember(user, id, { fixture.candidate("profile_slot", "employer", "Northstar", "The user states their employer.", "first") }, "alias-seed")
+            fixture.settle(user, id)
+            fixture.relations(id, { "updates" })
+            local result = fixture.remember(user, id, { fixture.candidate("fact", "workplace", "Harbor", "The user states their employer.", "second", nil, "multi") }, "alias-update")
+            test.eq(result.stats.judged, 1)
+            test.eq(result.stats.superseded, 1)
+            fixture.settle(user, id)
+            local current = fixture.op(user, "get", { component_id = id, item_id = result.item_ids[1] })
+            test.eq(current.key, "employer")
+            test.eq(current.cardinality, "single")
+            test.eq(current.value, "Harbor")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = first.item_ids[1] }).status, "superseded")
+            test.eq(#fixture.items(user, id, { key = "workplace" }), 0)
+        end)
+
+        test.it("judges compatible alias keys within the same batch", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            fixture.relations(id, { "updates" })
+            local result = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "employer", "Northstar", "The user states their employer.", "first"),
+                fixture.candidate("profile_slot", "workplace", "Harbor", "The user states their employer.", "second"),
+            }, "batch-alias-update")
+            test.eq(result.stats.judged, 1)
+            test.eq(result.stats.superseded, 1)
+            fixture.settle(user, id)
+            local current = fixture.items(user, id, { statuses = { "current" } })
+            test.eq(#current, 1)
+            test.eq(current[1].key, "employer")
+            test.eq(current[1].value, "Harbor")
+        end)
+
+        test.it("treats reflection equivalents of their source lessons as noops without new provenance", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { judge_min_similarity = 1 })
+            local seeded = fixture.remember(user, id, { fixture.candidate("lesson", "contact_window", "evening", "Send requests outside the rest period.", "source") }, "source-lesson")
+            fixture.settle(user, id)
+            local source_id = seeded.item_ids[1]
+            local original = fixture.op(user, "provenance", { component_id = id, item_id = source_id })
+            for _, key in ipairs({ "contact_window", "request_window" }) do
+                local lesson = fixture.candidate("lesson", key, "evening", "Send requests outside the rest period.", "")
+                lesson.source_ids = { source_id }
+                if key ~= "contact_window" then fixture.relations(id, { "same" }) end
+                local result, err = fixture.op(user, "remember", { candidates = { lesson }, idempotency = "duplicate-" .. key,
+                    opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast", scope_family = "owner", scope_id = user, source = "reflection" } })
+                test.is_nil(err, tostring(err))
+                test.eq(result.stats.noop, 1)
+                test.eq(result.stats.added, 0)
+                test.eq(result.stats.judged, key == "contact_window" and 0 or 1)
+                fixture.settle(user, id)
+                test.eq(#fixture.items(user, id), 1)
+                local refs = fixture.op(user, "provenance", { component_id = id, item_id = source_id })
+                test.eq(#refs, #original)
+                for _, ref in ipairs(refs) do test.is_true(ref.host_id ~= source_id) end
+            end
+        end)
+
+        test.it("rejects reverse and self item provenance at both decision recording paths", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "work_hours", "night", "The user works at night.", "work"),
+                fixture.candidate("preference", "rest_hours", "day", "The user rests during the day.", "rest"),
+            }, "provenance-seed")
+            fixture.settle(user, id)
+            local sources = fixture.items(user, id)
+            local lesson = fixture.candidate("lesson", "contact_window", "evening", "Contact outside work and rest hours.", "")
+            lesson.source_ids = { sources[1].id, sources[2].id }
+            fixture.relations(id, { "unrelated", "unrelated" })
+            local derived = fixture.remember(user, id, { lesson }, "valid-derivation", { source = "reflection" })
+            fixture.settle(user, id)
+            for _, entry in ipairs({
+                { item_id = sources[1].id, source_id = sources[2].id },
+                { item_id = derived.item_ids[1], source_id = derived.item_ids[1] },
+            }) do
+                local result, err = fixture.persistence_op(user, "record_provenance", {
+                    component_id = id, item_id = entry.item_id, source_id = entry.source_id,
+                })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:message(), "item provenance requires a lesson and a distinct source item")
+            end
+            local result, err = fixture.persistence_op(user, "record_provenance", {
+                component_id = id, user = user, source_id = sources[1].id,
+            })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:message(), "item provenance requires a lesson and a distinct source item")
+            local _, forget_err = fixture.op(user, "forget", { component_id = id, item_id = sources[1].id })
+            test.is_nil(forget_err, tostring(forget_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = derived.item_ids[1] }).status, "forgotten")
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = sources[2].id }).status, "current")
+        end)
+
+        test.it("rejects cross-kind keys before claim reuse explicit updates and historical reuse", function()
+            local user = fixture.user()
+            for _, status in ipairs({ "current", "archived", "forgotten" }) do
+                for _, same in ipairs({ true, false }) do
+                    local id = fixture.memory(user)
+                    local seeded, seed_err = fixture.remember(user, id, {
+                        fixture.candidate("profile_slot", "contact_time", "evening", "Contact in the evening.", "seed"),
+                    }, "boundary-seed")
+                    test.is_nil(seed_err, tostring(seed_err))
+                    fixture.settle(user, id)
+                    if status ~= "current" then
+                        local _, err = fixture.op(user, status == "archived" and "archive" or "forget", { component_id = id, item_id = seeded.item_ids[1] })
+                        test.is_nil(err, tostring(err))
+                        fixture.settle(user, id)
+                    end
+                    local lesson = fixture.candidate("lesson", "contact_time", same and "evening" or "morning", "A contact lesson.", "")
+                    lesson.source_ids = { seeded.item_ids[1] }
+                    for _, source in ipairs({ "capture", "reflection", "owner" }) do
+                        local result, err = fixture.op(user, "remember", { candidates = { lesson }, idempotency = "boundary-" .. source,
+                            opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast",
+                                scope_family = "owner", scope_id = user, source = source } })
+                        test.is_nil(result)
+                        test.not_nil(err)
+                        test.eq(err:kind(), errors.INVALID)
+                        test.eq(err:message(), "memory key kind is incompatible")
+                    end
+                    local result, err = fixture.op(user, "create", { component_id = id, fields = {
+                        kind = "lesson", scope_family = "owner", key = "contact_time", cardinality = "single",
+                        value = lesson.value, content = lesson.content,
+                    } })
+                    test.is_nil(result)
+                    test.not_nil(err)
+                    test.eq(err:kind(), errors.INVALID)
+                    test.eq(err:message(), "memory key kind is incompatible")
+                    fixture.settle(user, id)
+                    test.eq(#fixture.items(user, id), 1)
+                    local refs = fixture.op(user, "provenance", { component_id = id, item_id = seeded.item_ids[1] })
+                    for _, ref in ipairs(refs) do test.is_true(ref.host_kind ~= "item") end
+                end
+            end
+        end)
+
+        test.it("keeps a date fact separate from a typed plan beside it", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local state = { status = "open", next_step = "Prepare materials", details = "Community workshop" }
+            local seeded = fixture.remember(user, id, { fixture.candidate("plan", "workshop", state, "Organize a workshop.", "seed") }, "plan-seed")
+            fixture.settle(user, id)
+            fixture.remember(user, id, { fixture.candidate("fact", "workshop_date", "March 14", "The workshop date is March 14.", "date") }, "date-fact")
+            fixture.settle(user, id)
+            local plan = fixture.op(user, "get", { component_id = id, item_id = seeded.item_ids[1] })
+            test.eq(plan.status, "current")
+            test.eq(plan.kind, "plan")
+            test.eq(plan.value.details, state.details)
+            test.eq(fixture.items(user, id, { key = "workshop_date" })[1].value, "March 14")
+            local requests = fixture.script.requests(id, "structured_output")
+            test.eq(#requests, 0)
+        end)
+
+        test.it("keeps owner edits authoritative when reusing an existing claim", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.relations(id, { "unrelated" })
+            local seeded = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Paris", "A preferred city.", "first-city", nil, "multi"),
+                fixture.candidate("profile_slot", "home_city", "Berlin", "A preferred city.", "second-city", nil, "multi"),
+            }, "owner-reuse-seed")
+            fixture.settle(user, id)
+            local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = seeded.item_ids[1], fields = {
+                content = "The user prefers Berlin.", value = "Berlin",
+            } })
+            test.is_nil(edit_err, tostring(edit_err))
+            fixture.settle(user, id)
+            local owner = fixture.op(user, "get", { component_id = id, item_id = edited.item_id })
+            test.eq(owner.source, "owner")
+            test.eq(owner.content, "The user prefers Berlin.")
+            local refs = fixture.op(user, "provenance", { component_id = id, item_id = owner.id })
+            test.eq(#refs, 2)
+            local result = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Oslo", "The user prefers Oslo.", "first-city", nil, "multi"),
+            }, "owner-reuse-recapture")
+            test.eq(result.stats.noop, 1)
+            test.eq(result.stats.added, 0)
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id, { key = "home_city", statuses = { "current" } }), 1)
+        end)
+
+        for _, edit_value in ipairs({ false, true }) do
+            test.it("keeps owner " .. (edit_value and "value" or "content") .. " edits ahead of capture of the same evidence", function()
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local seeded = fixture.remember(user, id, {
+                    fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement"),
+                }, "owner-edit-seed")
+                fixture.settle(user, id)
+                local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = seeded.item_ids[1], fields = {
+                    content = edit_value and "The user lives in Berlin." or "Paris is the user's home city.",
+                    value = edit_value and "Berlin" or nil,
+                } })
+                test.is_nil(edit_err, tostring(edit_err))
+                fixture.settle(user, id)
+                local owner = fixture.op(user, "get", { component_id = id, item_id = edited.item_id })
+                test.eq(owner.source, "owner")
+                local refs = fixture.op(user, "provenance", { component_id = id, item_id = owner.id })
+                test.eq(#refs, 1)
+                test.eq(refs[1].event_id, "statement")
+                local result = fixture.remember(user, id, {
+                    fixture.candidate("profile_slot", "home_city", "Oslo", "The user lives in Oslo.", "statement"),
+                }, "owner-edit-recapture")
+                test.eq(result.stats.noop, 1)
+                test.eq(result.stats.added, 0)
+                fixture.settle(user, id)
+                local current = fixture.items(user, id, { key = "home_city", statuses = { "current" } })
+                test.eq(#current, 1)
+                test.eq(current[1].id, owner.id)
+                test.eq(current[1].content, owner.content)
+            end)
+        end
+
+        for _, source in ipairs({ "owner" }) do
+            for _, inferred in ipairs({ "capture", "reflection" }) do
+                for _, cardinality in ipairs({ "single", "multi" }) do
+                    test.it(source .. " interpretation precedes " .. inferred .. " of the same event for a " .. cardinality .. " key", function()
+                        local user = fixture.user()
+                        local id = fixture.memory(user)
+                        fixture.remember(user, id, {
+                            fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "statement", nil, cardinality),
+                        }, "explicit", { source = source })
+                        fixture.settle(user, id)
+                        local before = #fixture.script.requests(id, "structured_output")
+                        local result = fixture.remember(user, id, {
+                            fixture.candidate("profile_slot", "home_city", "Paris", "The user lives in Paris.", "statement", nil, cardinality),
+                        }, "inferred", { source = inferred })
+                        test.eq(result.stats.noop, 1)
+                        test.eq(result.stats.added, 0)
+                        test.eq(result.stats.judged, 0)
+                        test.eq(#fixture.script.requests(id, "structured_output"), before)
+                        fixture.settle(user, id)
+                        local current = fixture.items(user, id, { statuses = { "current" } })
+                        test.eq(#current, 1)
+                        test.eq(current[1].value, "Berlin")
+                        test.eq(current[1].source, source)
+                        test.eq(#fixture.items(user, id), 1)
+                    end)
+                end
+            end
+        end
+
+        test.it("reconciles other keys and later events after an explicit interpretation", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "statement"),
+            }, "explicit", { source = "owner" })
+            fixture.settle(user, id)
+            local other = fixture.remember(user, id, {
+                fixture.candidate("preference", "diet", "vegan", "The user is vegan.", "statement"),
+            }, "other-key")
+            test.eq(other.stats.added, 1)
+            test.eq(other.stats.noop, 0)
+            fixture.settle(user, id)
+            local first = fixture.values(fixture.items(user, id, { statuses = { "current" } }))["Berlin"]
+            local later = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "home_city", "Oslo", "The user moves to Oslo.", "later-statement"),
+            }, "later-event")
+            test.eq(later.stats.superseded, 1)
+            test.eq(later.stats.judged, 0)
+            test.eq(later.stats.noop, 0)
+            fixture.settle(user, id)
+            local current = fixture.values(fixture.items(user, id, { statuses = { "current" } }))
+            test.not_nil(current["Oslo"])
+            test.not_nil(current["vegan"])
+            test.is_nil(current["Berlin"])
+        end)
+
+        test.it("supersedes a single attribute under its canonical target key and forgets every version", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local first = fixture.create_claim(user, id, "Oslo")
+            fixture.relations(id, { "updates" })
+            local changed = fixture.remember(user, id, {
+                fixture.candidate("profile_slot", "residence", "Bergen", "The current city is Bergen.", "move", nil, "multi"),
+            }, "cross-topic")
+            test.eq(changed.stats.superseded, 1)
+            fixture.settle(user, id)
+            local current = fixture.items(user, id, { statuses = { "current" } })
+            test.eq(#current, 1)
+            test.eq(current[1].key, "home_city")
+            test.eq(current[1].cardinality, "single")
+            local erased, err = fixture.op(user, "tool_forget", { input = { key = "home_city" } }, { memory_id = id })
+            test.is_nil(err, tostring(err))
+            test.is_true(erased.success)
+            fixture.settle(user, id)
+            local versions = fixture.items(user, id)
+            test.eq(#versions, 2)
+            for _, version in ipairs(versions) do
+                test.eq(version.status, "forgotten")
+                test.eq(version.content, "")
+                test.is_nil(version.value)
+            end
+        end)
+
+        test.it("rolls back the whole decision when a neighbour relation is missing", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.create_claim(user, id, "Oslo")
+            fixture.relations(id, { "unrelated" })
+            fixture.script.respond(id, "structured_output", { relations = {}, reason = "test" })
+            local result, err = fixture.op(user, "remember", {
+                candidates = {
+                    fixture.candidate("fact", "first_attribute", "recorded", "The current city is recorded."),
+                    fixture.candidate("fact", "second_attribute", "recorded", "The current city is recorded."),
+                },
+                opts = { component_id = id, embedding_model = "test-embed", judge_model = "test-fast",
+                    scope_family = "owner", scope_id = user, source = "capture" },
+                idempotency = "missing-relation",
+            })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:details().code, "model_output_malformed")
+            test.is_true(err:retryable())
+            fixture.settle(user, id)
+            test.eq(#fixture.items(user, id, { statuses = { "current" } }), 1)
+        end)
+
+        test.it("reports corrupt stored configuration and retained run JSON instead of empty defaults", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local db = fixture.db()
+            local corrupt = db:type() == "sqlite" and "{" or '"invalid object"'
+            local _, write_err = db:execute("UPDATE kickside_memory_stores SET config = $1 WHERE component_id = $2", { corrupt, id })
+            db:release()
+            test.is_nil(write_err, tostring(write_err))
+            local store, store_err = fixture.op(user, "store", { component_id = id })
+            test.is_nil(store)
+            test.not_nil(store_err)
+            db = fixture.db()
+            local _, reset_config_err = db:execute("UPDATE kickside_memory_stores SET config = '{}' WHERE component_id = $1", {id})
+            db:release()
+            test.is_nil(reset_config_err, tostring(reset_config_err))
+            for _, column in ipairs({ "input", "stats" }) do
+                db = fixture.db()
+                local _, corrupt_err = db:execute("UPDATE kickside_memory_runs SET " .. column .. " = $1 WHERE id = $2", { corrupt, "consolidate:" .. id })
+                db:release()
+                test.is_nil(corrupt_err, tostring(corrupt_err))
+                local run, run_err = fixture.op(user, "run", { run_id = "consolidate:" .. id })
+                test.is_nil(run)
+                test.not_nil(run_err)
+                local runs, list_err = fixture.op(user, "runs", { component_id = id })
+                test.is_nil(runs)
+                test.not_nil(list_err)
+                db = fixture.db()
+                local _, reset_err = db:execute("UPDATE kickside_memory_runs SET " .. column .. " = '{}' WHERE id = $1", { "consolidate:" .. id })
+                db:release()
+                test.is_nil(reset_err, tostring(reset_err))
+            end
+        end)
+
+        test.it("requires object-shaped configuration, input and stats including empty objects", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            for _, target in ipairs({ { table = "kickside_memory_stores", column = "config", key = "component_id", id = id },
+                { table = "kickside_memory_runs", column = "input", key = "id", id = "consolidate:" .. id },
+                { table = "kickside_memory_runs", column = "stats", key = "id", id = "consolidate:" .. id } }) do
+                for _, encoded in ipairs({ "[]", "[1]", "{}" }) do
+                    local db = fixture.db()
+                    local _, err = db:execute("UPDATE " .. target.table .. " SET " .. target.column .. " = $1 WHERE " .. target.key .. " = $2", { encoded, target.id })
+                    db:release()
+                    test.is_nil(err, tostring(err))
+                    local value, read_err = fixture.op(user, target.column == "config" and "store" or "run", { component_id = id, run_id = target.id })
+                    if encoded == "{}" then
+                        test.is_nil(read_err, tostring(read_err))
+                        test.not_nil(value)
+                    else
+                        test.is_nil(value, target.column .. " accepts " .. encoded)
+                        test.not_nil(read_err)
+                        test.is_true(tostring(read_err):find("JSON object", 1, true) ~= nil)
+                    end
+                end
+            end
+        end)
+
+        test.it("fails array-shaped derive input visibly without advancing the cursor", function()
+            for _, encoded in ipairs({ "[]", "[1]" }) do
+                local user = fixture.user()
+                local id = fixture.memory(user)
+                local run_id, session = "consolidate:" .. id, "s-" .. user
+                local db = fixture.db()
+                local _, err = db:execute("UPDATE kickside_memory_runs SET run_type = 'derive', host_kind = 'session', host_id = $1, to_event_id = 'unprocessed', input = $2 WHERE id = $3", { session, encoded, run_id })
+                db:release()
+                test.is_nil(err, tostring(err))
+                local result, worker_err = fixture.op(user, "derive_worker", { component_id = id, run_id = run_id })
+                test.is_nil(worker_err, tostring(worker_err))
+                test.is_false(result.ok)
+                test.is_true(result.job_error:find("JSON object", 1, true) ~= nil)
+                local cursor = fixture.op(user, "cursor", { component_id = id, host_kind = "session", host_id = session })
+                test.is_true(cursor == nil or cursor.last_event_id == nil)
+            end
+        end)
+
+        test.it("retains an invalid stored identity as the derive run diagnostic", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local session = "s-" .. user
+            local source = { id = "identity-source", role = "user", author = { kind = "user", id = user }, content = "I prefer quiet rooms." }
+            fixture.record_chat(user, session, { source })
+            local run_id = "identity-derive:" .. id
+            local insert_err = fixture.insert_run(id, run_id, "scheduled", {
+                span = { { id = source.id, role = source.role, author = source.author, text = source.content, created_at = "2026-01-01T00:00:00Z" } },
+                owner_id = user,
+            })
+            test.is_nil(insert_err, tostring(insert_err))
+            local db = fixture.db()
+            local _, setup_err = db:execute("UPDATE kickside_memory_runs SET host_kind = $1, host_id = $2, agent_id = $3, to_event_id = $4, actor_context = $5 WHERE id = $6",
+                { "session", session, "agent-a", source.id, "{", run_id })
+            db:release()
+            test.is_nil(setup_err, tostring(setup_err))
+            local result, worker_err = fixture.op(user, "derive_worker", { component_id = id, run_id = run_id })
+            test.is_nil(worker_err, tostring(worker_err))
+            test.is_false(result.ok)
+            local run = fixture.op(user, "run", { run_id = run_id })
+            test.eq(run.status, "failed")
+            local failure = json.decode(run.last_error)
+            test.is_true(failure.explanation:find("requester's stored identity is invalid", 1, true) ~= nil, run.last_error)
+        end)
+
+        test.it("returns a declared error when ledger event encoding fails", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local result, err = fixture.op(user, "ledger_encode_failure", { component_id = id })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.INTERNAL)
+            test.is_true(err:message():find("memory ledger event encode failed", 1, true) ~= nil, tostring(err))
+        end)
+
+        test.it("validates required engine descriptor wiring before applying stored overrides", function()
+            local user = fixture.user()
+            for _, meta in ipairs({ {}, { default_config = {} },
+                { default_config = {}, config_schema = {} },
+                { default_config = {}, config_schema = { type = "object", properties = { bad = false } } },
+                { default_config = {}, config_schema = { type = "object", properties = { capture = { type = "boolean" } } } },
+            }) do
+                local valid, err = fixture.op(user, "descriptor", { meta = meta })
+                test.is_nil(valid)
+                test.not_nil(err)
+                test.is_true(tostring(err):find("descriptor", 1, true) ~= nil)
+            end
+        end)
 
         test.it("creating a memory through the knowledge control plane provisions its store, ledger projection and consolidation slot", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            local store = rows("SELECT kb_type, embedding_model FROM kickside_memory_kb_stores WHERE component_id = $1", { id })
+            local store = fixture.rows("SELECT kb_type, embedding_model FROM kickside_memory_stores WHERE component_id = $1", { id })
             test.eq(#store, 1)
             test.eq(store[1].kb_type, "memory")
             test.eq(store[1].embedding_model, "test-embed")
-            local projections = rows("SELECT kind FROM kickside_projection WHERE thread_id = $1", { id })
+            local projections = fixture.rows("SELECT kind FROM kickside_projection WHERE thread_id = $1", { id })
             local kinds = {}
             for _, row in ipairs(projections) do kinds[row.kind] = true end
             test.is_true(kinds["kickside.memory.ledger"] == true, json.encode(projections))
-            local slot = rows("SELECT run_type, job_id FROM kickside_memory_kb_runs WHERE id = $1", { "consolidate:" .. id })
+            local slot = fixture.rows("SELECT run_type, job_id FROM kickside_memory_runs WHERE id = $1", { "consolidate:" .. id })
             test.eq(#slot, 1)
             test.is_true(type(slot[1].job_id) == "string" and slot[1].job_id ~= "")
-            local job = rows("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { slot[1].job_id })
+            local job = fixture.rows("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { slot[1].job_id })
             test.eq(job[1].status, "pending")
         end)
 
@@ -67,7 +554,7 @@ local function define_tests()
             local _, type_err = fixture.try_memory(user, { capture_conversation = "yes" })
             test.not_nil(type_err)
             local id = fixture.memory(user, { recall_max_items = 7, judge_model = "test-fast" })
-            local store = rows("SELECT config FROM kickside_memory_kb_stores WHERE component_id = $1", { id })
+            local store = fixture.rows("SELECT config FROM kickside_memory_stores WHERE component_id = $1", { id })
             test.eq(json.decode(store[1].config).recall_max_items, 7)
         end)
 
@@ -75,7 +562,7 @@ local function define_tests()
             local user = fixture.user()
             local id = fixture.memory(user)
             local created, err = fixture.op(user, "create", { component_id = id, fields = {
-                kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", content = "You are Ada, a travel assistant.",
+                kind = "identity", scope_family = "agent", scope_id = "agent-a", key = "name", value = "You are Ada, a travel assistant.", content = "You are Ada, a travel assistant.",
             } })
             test.is_nil(err, tostring(err))
             fixture.settle(user, id)
@@ -88,14 +575,14 @@ local function define_tests()
             test.eq(item.version, 1)
         end)
 
-        test.it("edits text items as new versions and other items' text as revisions of the same claim", function()
+        test.it("edits values as new versions and presentation text as revisions of the same claim", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local rule = fixture.op(user, "create", { component_id = id, fields = {
-                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", content = "Answer briefly.",
+                kind = "rule", scope_family = "agent", scope_id = "agent-a", key = "tone", value = "Answer briefly.", content = "Answer briefly.",
             } })
             fixture.settle(user, id)
-            local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = rule.item_id, fields = { content = "Answer in bullet points." } })
+            local edited, edit_err = fixture.op(user, "edit", { component_id = id, item_id = rule.item_id, fields = { value = "Answer in bullet points.", content = "Answer in bullet points." } })
             test.is_nil(edit_err, tostring(edit_err))
             test.is_true(edited.item_id ~= rule.item_id)
             local city = fixture.op(user, "create", { component_id = id, fields = {
@@ -127,7 +614,6 @@ local function define_tests()
             test.eq(first.stats.judged, 0)
             local paris_id = first.item_ids[1]
 
-            fixture.verdict("SUPERSEDE", { paris_id })
             local berlin = fixture.candidate("profile_slot", "home_city", "Berlin", "The user lives in Berlin.", "m2", "2026-06-01T10:00:00Z")
             local second, second_err = fixture.remember(user, id, { berlin }, "t2")
             test.is_nil(second_err, tostring(second_err))
@@ -136,22 +622,21 @@ local function define_tests()
 
             fixture.settle(user, id)
             local items = fixture.items(user, id, { kinds = { "profile_slot" } })
-            local values = by_key(items)
+            local values = fixture.values(items)
             test.eq(values.Paris.status, "superseded")
             test.eq(values.Paris.superseded_by, berlin_id)
             test.eq(values.Berlin.status, "current")
             test.eq(values.Berlin.version, 2)
 
-            fixture.verdict("SUPERSEDE", { berlin_id })
             local lyon = fixture.candidate("profile_slot", "home_city", "Lyon", "The user lives in Lyon.", "m0", "2025-01-01T10:00:00Z")
             local third, third_err = fixture.remember(user, id, { lyon }, "t3")
             test.is_nil(third_err, tostring(third_err))
             fixture.settle(user, id)
-            values = by_key(fixture.items(user, id, { kinds = { "profile_slot" } }))
+            values = fixture.values(fixture.items(user, id, { kinds = { "profile_slot" } }))
             test.eq(values.Lyon.status, "superseded")
             test.eq(values.Lyon.superseded_by, berlin_id)
             test.eq(values.Berlin.status, "current")
-            test.eq(fixture.script.pending("structured_output"), 0)
+            test.eq(fixture.script.pending(id, "structured_output"), 0)
         end)
 
         test.it("keeps contradicting memories in a conflict group until a person resolves it", function()
@@ -160,7 +645,7 @@ local function define_tests()
             local acme = fixture.remember(user, id, {
                 fixture.candidate("fact", "employer", "Acme", "The user works at Acme.", "m1", "2026-05-01T10:00:00Z"),
             }, "c1")
-            fixture.verdict("CONFLICT", { acme.item_ids[1] })
+            fixture.relations(id, { "contradicts" })
             local globex, err = fixture.remember(user, id, {
                 fixture.candidate("fact", "employer", "Globex", "The user works at Globex.", "m2", "2026-05-01T10:00:00Z"),
             }, "c2")
@@ -177,7 +662,7 @@ local function define_tests()
             test.is_nil(resolve_err, tostring(resolve_err))
             test.eq(resolved.superseded, 1)
             fixture.settle(user, id)
-            local values = by_key(fixture.items(user, id, { kinds = { "fact" } }))
+            local values = fixture.values(fixture.items(user, id, { kinds = { "fact" } }))
             test.eq(values.Globex.status, "current")
             test.is_nil(values.Globex.conflict_group)
             test.eq(values.Acme.status, "superseded")
@@ -190,28 +675,25 @@ local function define_tests()
             local first = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "birth_date", "1990-03-03", "The user was born on 3 March 1990.", "b1"),
             }, "slot-1")
-            fixture.verdict("CONFLICT", { first.item_ids[1] })
             local second = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "birth_date", "1990-03-05", "The user was born on 5 March 1990.", "b2"),
             }, "slot-2")
-            test.eq(second.stats.conflicted, 1)
-            local offered = fixture.script.requests("structured_output")[1].properties.action.enum
-            test.eq(table.concat(offered, ","), "SUPERSEDE,MERGE,NOOP,CONFLICT")
+            test.eq(second.stats.superseded, 1)
+            test.eq(second.stats.conflicted, 0)
+            test.eq(second.stats.judged, 0)
 
-            fixture.verdict("ADD", {})
             local fact = fixture.remember(user, id, {
                 fixture.candidate("fact", "sibling", "Ana", "The user has a sister, Ana.", "b3"),
             }, "slot-3")
             test.eq(fact.stats.added, 1)
-            local fact_actions = fixture.script.requests("structured_output")[2].properties.action.enum
-            test.is_true(table.concat(fact_actions, ","):find("ADD", 1, true) ~= nil)
+            test.eq(fact.stats.judged, 0)
 
             local reflected = fixture.remember(user, id, {
                 fixture.candidate("profile_slot", "birth_date", "1990", "The user was born in 1990."),
             }, "slot-4", { source = "reflection" })
             test.eq(reflected.stats.noop, 1)
             test.eq(reflected.stats.added, 0)
-            test.eq(#fixture.script.requests("structured_output"), 2)
+            test.eq(#fixture.script.requests(id, "structured_output"), 0)
         end)
 
         test.it("treats a key as one attribute across kinds: a profile slot value is never added beside another kind's value of that key", function()
@@ -219,12 +701,10 @@ local function define_tests()
             local id = fixture.memory(user)
             fixture.remember(user, id, { fixture.candidate("preference", "diet", "vegetarian", "The user is vegetarian.", "d1") }, "kind-1")
             fixture.settle(user, id)
-            local vegetarian = fixture.items(user, id)[1]
-            fixture.verdict("SUPERSEDE", { vegetarian.id })
             local vegan = fixture.remember(user, id, { fixture.candidate("profile_slot", "diet", "vegan", "The user is vegan.", "d2") }, "kind-2")
             test.eq(vegan.stats.superseded, 1)
-            local offered = fixture.script.requests("structured_output")[1].properties.action.enum
-            test.eq(table.concat(offered, ","), "SUPERSEDE,MERGE,NOOP,CONFLICT")
+            test.eq(vegan.stats.judged, 0)
+            test.eq(#fixture.script.requests(id, "structured_output"), 0)
         end)
 
         test.it("keeps a conflict open when a contested memory is replaced", function()
@@ -233,15 +713,15 @@ local function define_tests()
             local passport = fixture.remember(user, id, {
                 fixture.candidate("fact", "birth_date", "1990-03-03", "The user was born on 3 March 1990.", "m1"),
             }, "o1")
-            fixture.verdict("CONFLICT", { passport.item_ids[1] })
+            fixture.relations(id, { "contradicts" })
             local airline = fixture.remember(user, id, {
                 fixture.candidate("fact", "birth_date", "1990-03-05", "The user was born on 5 March 1990.", "m2"),
             }, "o2")
             fixture.settle(user, id)
             local group = fixture.op(user, "get", { component_id = id, item_id = airline.item_ids[1] }).conflict_group
-            fixture.verdict("MERGE", { passport.item_ids[1] })
+            fixture.relations(id, { "rephrases", "contradicts" })
             local restated = fixture.remember(user, id, {
-                fixture.candidate("fact", "passport_birth_date", "1990-03-03", "The user's passport gives 3 March 1990 as their birth date.", "m3"),
+                fixture.candidate("fact", "passport_birth_date", "1990-03-03", "The user was born on 3 March 1990, according to their passport.", "m3"),
             }, "o3")
             fixture.settle(user, id)
             local successor = fixture.op(user, "get", { component_id = id, item_id = restated.item_ids[1] })
@@ -269,13 +749,13 @@ local function define_tests()
             test.eq(again.stats.added, 0)
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id, { kinds = { "preference" } }), 1)
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_kb_provenance WHERE item_id = $1", { first.item_ids[1] }), 2)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_provenance WHERE item_id = $1", { first.item_ids[1] }), 2)
 
-            local head = rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count
+            local head = fixture.rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count
             local replay, replay_err = fixture.remember(user, id, { tea }, "r1")
             test.is_nil(replay_err, tostring(replay_err))
             test.eq(replay.inserted, 0)
-            test.eq(rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count, head)
+            test.eq(fixture.rows("SELECT event_count FROM kickside_thread WHERE id = $1", { id })[1].event_count, head)
         end)
 
         test.it("archives an item out of query results and restores it", function()
@@ -317,24 +797,34 @@ local function define_tests()
             test.not_nil(limit_err)
         end)
 
-        test.it("stages embeddable content in the erasable derive input without putting it in the ledger", function()
+        test.it("retains embeddable content as document provenance", function()
             local user = fixture.user()
             local id = fixture.memory(user)
             local secret = "Juniper-481 memory ingest text"
-            fixture.extraction({})
-            local result, err = fixture.op(user, "embed", { request = {
+            fixture.script.hold(id, "structured_output")
+            local result, err = fixture.op(user, "embed_contract", { component_id = id, request = {
                 content = secret, content_type = "text/plain", external_id = "ingest-1", external_version = "1",
-            } }, { component_id = id })
+            } })
             test.is_nil(err, tostring(err))
             test.is_true(result.success, json.encode(result))
+            local enrolled = fixture.op(user, "run", {run_id = result.run_id})
+            test.eq(enrolled.input.span[1].author.kind, "document")
+            test.is_nil(enrolled.input.span[1].author.id)
+            fixture.extraction(id, {fixture.candidate("fact", "source_topic", "ingest", "The source records a topic.", enrolled.input.span[1].id)})
+            fixture.script.release(id, "structured_output")
             local runs = fixture.wait_runs(user, id, "derive", 1)
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
             test.is_true(json.encode(runs[1].input):find(secret, 1, true) ~= nil, json.encode(runs[1].input))
+            fixture.settle(user, id)
+            local items = fixture.items(user, id)
+            test.eq(#items, 1)
+            test.eq(items[1].scope_family, "owner")
+            test.eq(items[1].scope_id, user)
             local events = fixture.op(user, "ledger", { component_id = id })
             test.is_true(json.encode(events):find(secret, 1, true) == nil, json.encode(events))
         end)
 
-        test.it("admits embeddable writes before retaining input for readers and unrelated callers", function()
+        test.it("rejects embeddable writes from readers and unrelated callers before retaining input", function()
             local owner, reader, unrelated = fixture.user(), fixture.user(), fixture.user()
             local id = fixture.memory(owner)
             local grant, grant_err = fixture.call_as(owner, "kickside.component.binding:grant_subtree_func", {
@@ -357,7 +847,7 @@ local function define_tests()
             for i, request in ipairs({ {}, { external_id = "document" }, { external_version = "1" },
                 { external_id = "document", external_version = "1" } }) do
                 request.content = "Optional input " .. tostring(i)
-                fixture.extraction({})
+                fixture.extraction(id, {})
                 local result, err = fixture.op(user, "embed_contract", { component_id = id, request = request })
                 test.is_nil(err, tostring(err))
                 test.is_true(result.success, json.encode(result))
@@ -365,20 +855,22 @@ local function define_tests()
             end
         end)
 
-        test.it("bounds direct ingestion before persistence and extraction", function()
+        test.it("records oversized ingestion as a rejected derive run without retaining its source", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            fixture.extraction({})
             local result, err = fixture.op(user, "embed_contract", { component_id = id, request = {
                 content = string.rep("x", 30000) .. "tail-marker", title = string.rep("title", 10000),
                 external_id = "large", external_version = "1",
             } })
             test.is_nil(err, tostring(err))
             test.is_true(result.success, json.encode(result))
-            local run = fixture.wait_runs(user, id, "derive", 1)[1]
-            test.eq(run.status, "succeeded", tostring(run.last_error))
-            test.is_true(#run.input.span[1].text <= 24000)
-            test.is_true(#fixture.script.prompts("structured_output")[1].user < 25000)
+            local run = fixture.op(user, "run", { run_id = result.run_id })
+            test.eq(run.status, "rejected")
+            test.eq(run.stats.rejected_source_too_large, 1)
+            test.eq(run.stats.input_limit_bytes, 24000)
+            test.is_true(run.last_error:find("source_too_large", 1, true) ~= nil)
+            test.is_nil((json.encode(run):find("tail-marker", 1, true)))
+            test.eq(#fixture.script.requests(id, "structured_output"), 0)
         end)
 
         test.it("rolls back ingest enrollment on queue failure and schedules the retry", function()
@@ -411,7 +903,7 @@ local function define_tests()
             db:release()
             test.is_true(failure ~= nil or failed.success == false)
             test.eq(#fixture.op(user, "runs", { component_id = id, run_type = "derive" }), 0)
-            fixture.extraction({})
+            fixture.extraction(id, {})
             local retried, retry_err = fixture.op(user, "embed_contract", { component_id = id, request = request })
             test.is_nil(retry_err, tostring(retry_err))
             test.is_true(retried.success, json.encode(retried))
@@ -437,25 +929,25 @@ local function define_tests()
                 fixture.candidate("fact", "b", "two", "Fact two.", "m2"),
             }, "d1")
             fixture.settle(user, id)
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_memory_kb_items WHERE component_id = $1", { id }), 2)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1", { id }), 2)
             local result, err = fixture.delete_memory(user, id)
             test.is_nil(err, tostring(err))
             test.is_true(result.deleted == true, json.encode(result))
-            for _, table_name in ipairs({ "kickside_memory_kb_items", "kickside_memory_kb_payloads", "kickside_memory_kb_keys", "kickside_memory_kb_provenance", "kickside_memory_kb_embeddings",
-                "kickside_memory_kb_cursors", "kickside_memory_kb_runs", "kickside_memory_kb_stores" }) do
-                test.eq(count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
+            for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_payloads", "kickside_memory_keys", "kickside_memory_provenance", "kickside_memory_embeddings",
+                "kickside_memory_cursors", "kickside_memory_run_sources", "kickside_memory_runs", "kickside_memory_stores" }) do
+                test.eq(fixture.count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
             end
-            test.eq(count("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id = $1", { id }), 0)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id = $1", { id }), 0)
         end)
 
         test.it("records a failed derive run with the model's failure instead of storing nothing", function()
             local user = fixture.user()
             local id = fixture.memory(user)
-            fixture.script.fail("structured_output", "provider overloaded")
-            fixture.script.fail("structured_output", "provider overloaded")
-            fixture.script.fail("structured_output", "provider overloaded")
+            fixture.script.fail(id, "structured_output", "provider overloaded")
+            fixture.script.fail(id, "structured_output", "provider overloaded")
+            fixture.script.fail(id, "structured_output", "provider overloaded")
             local session = "s-" .. user
-            fixture.history.record(session, { { id = "h1", role = "user", content = "I moved to Oslo last month." } })
+            fixture.record_chat(user, session, { { id = "h1", role = "user", author = { kind = "user", id = user }, content = "I moved to Oslo last month." } })
             local applied, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "agent-a") },
                 fixture.agent_context(id, session, "agent-a"))
             test.is_nil(err, tostring(err))
@@ -464,10 +956,97 @@ local function define_tests()
             test.eq(runs[1].status, "failed")
             local job = fixture.wait_job(runs[1].job_id, "dead")
             test.eq(job.attempts, 3)
-            test.eq(fixture.script.pending("structured_output"), 0)
-            test.is_true(tostring(runs[1].last_error):find("provider overloaded", 1, true) ~= nil, tostring(runs[1].last_error))
+            test.eq(fixture.script.pending(id, "structured_output"), 0)
+            test.eq(json.decode(runs[1].last_error).explanation, "memory extraction failed")
             fixture.settle(user, id)
             test.eq(#fixture.items(user, id), 0)
+        end)
+        test.it("requires owner topic keys, rejects rewritten content and preserves false claims", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local fields = { kind = "fact", scope_family = "owner", content = "The access code is Kestrel-42.", value = "Kestrel-42" }
+            local function assert_invalid(err, message)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.INVALID)
+                test.eq(err:message(), message)
+            end
+            local _, missing = fixture.op(user, "create", { component_id = id, fields = fields })
+            assert_invalid(missing, "a topic key of up to 64 letters, digits and underscores is required")
+            fields.key = "the_access_code_is_kestrel_42"
+            local _, rewritten = fixture.op(user, "create", { component_id = id, fields = fields })
+            assert_invalid(rewritten, "topic key must not contain memory content")
+            fields.key = "access_code_kestrel_42"
+            local _, encoded = fixture.op(user, "create", { component_id = id, fields = fields })
+            assert_invalid(encoded, "topic key must not contain the memory value")
+            fields.key = "access_code_kestrel42"
+            local _, compact = fixture.op(user, "create", { component_id = id, fields = fields })
+            assert_invalid(compact, "topic key must not contain the memory value")
+            fields.key = "access_code_12345"
+            fields.content = "The access code is 12345."
+            fields.value = 12345
+            local _, number_key = fixture.op(user, "create", { component_id = id, fields = fields })
+            assert_invalid(number_key, "topic key must not contain the memory value")
+            fields.key = "access_code_code_12345"
+            fields.value = { code = 12345 }
+            local _, object_key = fixture.op(user, "create", { component_id = id, fields = fields })
+            assert_invalid(object_key, "topic key must not contain the memory value")
+            fields.key = "notification_false"
+            fields.content = "The user disables notifications."
+            fields.value = false
+            local _, boolean_key = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.not_nil(boolean_key)
+            fields.key = "notification_setting"
+            fields.content = "The user disables notifications."
+            fields.value = false
+            local added, err = fixture.op(user, "create", { component_id = id, fields = fields })
+            test.is_nil(err, tostring(err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = added.item_id }).value, false)
+        end)
+
+        test.it("validates structured leaves and permits short topic values", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            local _, err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "access_code_kestrel42",
+                value = { code = "Kestrel-42", enabled = true }, content = "The access code is configured.",
+            } })
+            test.not_nil(err)
+            local added, short_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "rating", value = "A", content = "The rating is A.",
+            } })
+            test.is_nil(short_err, tostring(short_err))
+            fixture.settle(user, id)
+            test.eq(fixture.op(user, "get", { component_id = id, item_id = added.item_id }).value, "A")
+            local team, team_err = fixture.op(user, "create", { component_id = id, fields = {
+                kind = "fact", scope_family = "owner", key = "team", value = "tea", content = "The team serves tea.",
+            } })
+            test.is_nil(team_err, tostring(team_err))
+            test.not_nil(team)
+            for _, key in ipairs({ "a", "rating_a" }) do
+                local _, copied = fixture.op(user, "create", { component_id = id, fields = {
+                    kind = "fact", scope_family = "owner", key = key, value = "A", content = "The rating is A.",
+                } })
+                test.not_nil(copied)
+            end
+            fixture.op(user, "forget", { component_id = id, item_id = added.item_id })
+            fixture.settle(user, id)
+            test.is_true(json.encode(fixture.op(user, "ledger", { component_id = id })):find("kestrel", 1, true) == nil)
+            for _, stored in ipairs(fixture.op(user, "stored_text", { component_id = id })) do
+                test.is_true(stored:lower():find("kestrel", 1, true) == nil)
+            end
+        end)
+
+        test.it("judges same-key multi candidates inside one decision", function()
+            local user = fixture.user()
+            local id = fixture.memory(user)
+            fixture.relations(id, { "unrelated" })
+            local written = fixture.remember(user, id, {
+                fixture.candidate("fact", "pets", "cat", "The user has a cat."),
+                fixture.candidate("fact", "pets", "feline", "The user has a feline."),
+            }, "same-key")
+            test.eq(written.stats.judged, 1)
+            test.eq(written.stats.added, 2)
         end)
     end)
 end
