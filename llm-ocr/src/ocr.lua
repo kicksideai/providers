@@ -5,19 +5,7 @@
 local OCR_SYSTEM = "You are an OCR engine. Transcribe ALL text visible in the image " ..
     "exactly as it appears, preserving reading order and structure (headings, tables, " ..
     "labels, lists). Output only the transcribed text as Markdown -- no commentary, no " ..
-    "description of the image. If the image contains no readable text, return an empty text field."
-
-local TRANSCRIPT_SCHEMA = {
-    type = "object",
-    additionalProperties = false,
-    required = { "text" },
-    properties = {
-        text = {
-            type = "string",
-            description = "Only readable text transcribed from the image as Markdown. Empty when the image has no readable text. Never include commentary or a description of the image.",
-        },
-    },
-}
+    "description of the image. If the image contains no readable text, output nothing."
 
 local DEFAULT_USER = "Transcribe the text in this page."
 local DEFAULT_MAX_TOKENS = 4000
@@ -87,7 +75,7 @@ local function new(runtime: any): any
         -- The call carries a bounded timeout (seconds) clamped under the provider
         -- cap, so a hung inference fails fast rather than holding the job open.
         local timeout_ms = clamp_timeout_ms(opts.timeout, PROVIDER_TIMEOUT_CAP_MS)
-        local response, gen_err = llm.structured_output(TRANSCRIPT_SCHEMA, p, {
+        local response, gen_err = llm.generate(p, {
             model = model,
             temperature = 0,
             max_tokens = tonumber(opts.max_tokens) or DEFAULT_MAX_TOKENS,
@@ -98,10 +86,10 @@ local function new(runtime: any): any
         end
 
         local out = (response :: any).result
-        if type(out) ~= "table" or type(out.text) ~= "string" then
+        if type(out) ~= "string" then
             return nil, "ocr: unexpected model result"
         end
-        return out.text, nil
+        return out, nil
     end
 
     return { transcribe = transcribe }

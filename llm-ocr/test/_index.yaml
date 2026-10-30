@@ -182,6 +182,10 @@ entries:
       value: app:api
     - name: kickside.settings:ui_server
       value: app:gateway
+    - name: kickside.widgets:ui_server
+      value: app:gateway
+    - name: kickside.widgets:api_router
+      value: app:api
     - name: kickside.uploads:database_resource
       value: app:db
     - name: kickside.uploads:env_storage
@@ -257,7 +261,7 @@ entries:
     kind: function.lua
     meta: { type: test, suite: llm_ocr }
     source: file://ocr_smoke_test.lua
-    modules: [registry]
+    modules: [registry, contract, security, fs]
     imports:
       test: wippy.test:test
     method: run

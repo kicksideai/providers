@@ -21,9 +21,9 @@ local function fake_prompt(): any
 end
 
 local function fake_llm(reply: any, err: any): any
-    return { structured_output = function(_schema: any, _prompt: any, options: any): (any, any)
+    return { generate = function(_prompt: any, options: any): (any, any)
         if err ~= nil then return nil, err end
-        return { result = { text = type(reply) == "function" and reply(options) or reply } }, nil
+        return { result = type(reply) == "function" and reply(options) or reply }, nil
     end }
 end
 
@@ -138,21 +138,6 @@ local function define_tests()
     end)
 
     test.describe("kickside.llm_ocr:ocr lib", function()
-        test.it("returns no transcript when the structured model reports no readable text", function()
-            local lib = ocr.new({
-                llm = { structured_output = function(schema, prompt, options)
-                    test.eq(schema.properties.text.type, "string")
-                    test.eq(options.model, "class:fast")
-                    return { result = { text = "" } }, nil
-                end },
-                prompt = fake_prompt(),
-                base64 = { encode = function(value) return value, nil end },
-            })
-            local text, err = lib.transcribe("image bytes", { model = "class:fast" })
-            test.is_nil(err)
-            test.eq(text, "")
-        end)
-
         test.it("transcribes image bytes via the model", function()
             local text, err = ocr_with(function(options) return "TEXT[" .. options.model .. "]" end).transcribe(
                 "imgbytes", { model = "class:fast", mime = "image/png" })

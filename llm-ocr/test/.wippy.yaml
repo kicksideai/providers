@@ -1,7 +1,5 @@
 version: '1.0'
 vars:
-  kickside_root: ../../../kickside
-  converters_root: ../../../converters
   pg_host: localhost
   pg_port: 5433
   pg_database: kickside_test_llm_ocr_v2
@@ -20,15 +18,14 @@ profiles:
 workspace:
   replacements:
     kickside/llm-ocr: ..
-    kickside/component: ${kickside_root}/core/component
-    kickside/contract: ${kickside_root}/core/contract
-    kickside/core: ${kickside_root}/core/core
-    kickside/doc2md: ${converters_root}/doc2md
-    kickside/execution: ${kickside_root}/core/execution
-    kickside/jobs: ${kickside_root}/core/jobs
-    kickside/settings: ${kickside_root}/platform/settings
-    kickside/uploads: ${kickside_root}/platform/uploads
-    kickside/users: ${kickside_root}/platform/users
+    kickside/component: ../../../kickside/core/component
+    kickside/contract: ../../../kickside/core/contract
+    kickside/core: ../../../kickside/core/core
+    kickside/doc2md: ../../../converters/doc2md
+    kickside/execution: ../../../kickside/core/execution
+    kickside/jobs: ../../../kickside/core/jobs
+    kickside/uploads: ../../../kickside/platform/uploads
+    kickside/users: ../../../kickside/platform/users
 registry:
   dispatch_internal_kinds:
   - registry.entry

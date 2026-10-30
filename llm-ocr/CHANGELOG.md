@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.14...llm-ocr-v0.1.15) (2026-10-28)
+
+
+### Bug Fixes
+
+* **llm-ocr:** select vision models with the shared picker ([#51](https://github.com/kicksideai/providers/issues/51)) ([e483adc](https://github.com/kicksideai/providers/commit/e483adc7f8e83ec14082d369bd276ac000d36091))
+
 ## [0.1.14](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.13...llm-ocr-v0.1.14) (2026-10-23)
 
 
