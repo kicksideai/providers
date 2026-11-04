@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.3...mcp-client-v0.2.4) (2026-11-04)
+
+
+### Bug Fixes
+
+* **mcp-client:** show the MCP icon on OAuth connections ([ac820ae](https://github.com/kicksideai/providers/commit/ac820ae648f2a7cb1f1d8f90045aea937ba538f3))
+
 ## [0.2.3](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.2...mcp-client-v0.2.3) (2026-10-23)
 
 

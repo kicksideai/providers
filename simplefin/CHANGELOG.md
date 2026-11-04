@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/kicksideai/providers/compare/simplefin-v0.1.15...simplefin-v0.1.16) (2026-11-04)
+
+
+### Bug Fixes
+
+* **mcp-client:** show the MCP icon on OAuth connections ([ac820ae](https://github.com/kicksideai/providers/commit/ac820ae648f2a7cb1f1d8f90045aea937ba538f3))
+
 ## [0.1.15](https://github.com/kicksideai/providers/compare/simplefin-v0.1.14...simplefin-v0.1.15) (2026-10-24)
 
 

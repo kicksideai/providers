@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.44](https://github.com/kicksideai/providers/compare/hubspot-v0.1.43...hubspot-v0.1.44) (2026-11-04)
+
+
+### Bug Fixes
+
+* **mcp-client:** show the MCP icon on OAuth connections ([ac820ae](https://github.com/kicksideai/providers/commit/ac820ae648f2a7cb1f1d8f90045aea937ba538f3))
+
 ## [0.1.43](https://github.com/kicksideai/providers/compare/hubspot-v0.1.42...hubspot-v0.1.43) (2026-10-24)
 
 
