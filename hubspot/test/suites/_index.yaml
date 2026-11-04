@@ -105,3 +105,17 @@ entries:
       test: wippy.test:test
       core: kickside.hubspot.source:pull_core
       config: kickside.hubspot.client:config
+
+  - name: files_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: hubspot
+      comment: HubSpot form file refs parsing and the attachment fetcher on stubbed transport and HTTP.
+    source: file://files_test.lua
+    modules: [registry]
+    imports:
+      refs: kickside.hubspot.files:refs
+      fetcher: kickside.hubspot.files:fetcher
+      test: wippy.test:test
+    method: run
