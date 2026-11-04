@@ -85,6 +85,23 @@ local function define_tests()
             test.eq(out.content_type, "image/png")
         end)
 
+        test.it("takes the type from the extension over the download's header", function()
+            stub({ response = { status_code = 200, body = "%PDF-", headers = { ["Content-Type"] = "binary/octet-stream" } } })
+            test.eq(fetcher.fetch_attachment({ ref = "1" }).content_type, "application/pdf")
+            stub({ response = { status_code = 200, body = "%PDF-", headers = { ["Content-Type"] = "text/html" } } })
+            test.eq(fetcher.fetch_attachment({ ref = "1" }).content_type, "application/pdf")
+        end)
+
+        test.it("uses the header for an unknown extension, never a generic octet-stream", function()
+            local meta = { success = true, data = { name = "notes", extension = "md", size = 3 } }
+            stub({ meta = meta, response = { status_code = 200, body = "# x", headers = { ["Content-Type"] = "text/markdown; charset=utf-8" } } })
+            test.eq(fetcher.fetch_attachment({ ref = "1" }).content_type, "text/markdown")
+            for _, generic in ipairs({ "binary/octet-stream", "application/octet-stream" }) do
+                stub({ meta = meta, response = { status_code = 200, body = "# x", headers = { ["Content-Type"] = generic } } })
+                test.is_nil(fetcher.fetch_attachment({ ref = "1" }).content_type)
+            end
+        end)
+
         test.it("maps HubSpot access and missing files onto shared codes", function()
             stub({ meta = { success = false, status_code = 403 } })
             test.is_true(fetcher.fetch_attachment({ ref = "1" }).error:find("^no_access:") ~= nil)

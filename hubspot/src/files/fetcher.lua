@@ -64,10 +64,18 @@ local function header(headers: unknown, name: string): string
     return trim(value)
 end
 
+-- Generic types a file store answers when it does not know the file's type.
+local GENERIC_TYPES: { [string]: boolean } = { ["application/octet-stream"] = true, ["binary/octet-stream"] = true }
+
+-- content_type_of(headers, ext) -> the type HubSpot's file extension names;
+-- the signed download's Content-Type only when the extension is unknown and
+-- the header is not a generic octet-stream.
 local function content_type_of(headers: unknown, ext: string): string?
-    local declared = header(headers, "Content-Type"):match("^[^;]+")
-    if declared and declared ~= "" and declared ~= "application/octet-stream" then return declared end
-    return CONTENT_TYPES[ext:lower()]
+    local by_ext = CONTENT_TYPES[ext:lower()]
+    if by_ext then return by_ext end
+    local declared = trim(header(headers, "Content-Type"):match("^[^;]+")):lower()
+    if declared ~= "" and not GENERIC_TYPES[declared] then return declared end
+    return nil
 end
 
 -- fetch_attachment({ref, component_id}) -> {bytes, filename, content_type, size}
