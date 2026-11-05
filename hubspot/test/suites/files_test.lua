@@ -6,7 +6,7 @@ local registry = require("registry")
 local LINK = "https://api-na2.hubspot.com/form-integrations/v1/uploaded-files/signed-url-redirect/"
 local SIGNED = "https://cdn.example.test/signed/abc?X-Signature=secret"
 
-type Calls = { meta: integer, url: integer, http: integer, url_seen: string? }
+type Calls = { meta: integer, url: integer, http: integer, url_seen: string?, options: any? }
 
 local function stub(opts: any): Calls
     local calls: Calls = { meta = 0, url = 0, http = 0 }
@@ -26,10 +26,11 @@ local function stub(opts: any): Calls
         end,
     }
     fetcher._http = {
-        request = function(method: string, url: string, _o: any): (any, any)
+        request = function(method: string, url: string, options: any): (any, any)
             calls.http = calls.http + 1
             calls.url_seen = method .. " " .. url
-            if opts.http_err then return nil, "dial " .. url end
+            calls.options = options
+            if opts.http_err then return nil, opts.http_err end
             return opts.response or { status_code = 200, body = "%PDF-",
                 headers = { ["Content-Type"] = "application/pdf" } }, nil
         end,
@@ -56,6 +57,34 @@ local function define_tests()
             test.eq(parsed.skipped, 1)
             test.eq(#refs.parse(nil).refs, 0)
             test.eq(#refs.parse("").refs, 0)
+        end)
+
+        test.it("accepts global and regional HubSpot form upload hosts", function()
+            for _, host in ipairs({ "api.hubspot.com", "api-na1.hubspot.com", "api-eu1.hubspot.com",
+                "api.hubapi.com", "api-na2.hubapi.com", "API-EU1.HUBSPOT.COM" }) do
+                local parsed = refs.parse("https://" .. host .. "/form-integrations/v1/uploaded-files/signed-url-redirect/17?sign=x")
+                test.eq(#parsed.refs, 1)
+                test.eq(parsed.refs[1].ref, "17")
+                test.eq(parsed.skipped, 0)
+            end
+        end)
+
+        test.it("skips lookalike hosts and links outside the form upload path", function()
+            for _, link in ipairs({
+                "https://evil.example/form-integrations/v1/uploaded-files/signed-url-redirect/17",
+                "https://api-na2.hubspot.com.evil.example/form-integrations/v1/uploaded-files/signed-url-redirect/17",
+                "https://evilhubspot.com/form-integrations/v1/uploaded-files/signed-url-redirect/17",
+                "https://api-na2.hubspot.com@evil.example/form-integrations/v1/uploaded-files/signed-url-redirect/17",
+                "https://api-na2.hubspot.com/signed-url-redirect/17",
+                "https://api-na2.hubspot.com/other/form-integrations/v1/uploaded-files/signed-url-redirect/17",
+                "https://api-na2.hubspot.com/form-integrations/v2/uploaded-files/signed-url-redirect/17",
+                "http://api-na2.hubspot.com/form-integrations/v1/uploaded-files/signed-url-redirect/17",
+                LINK .. "17/extra", LINK .. "invalid",
+            }) do
+                local parsed = refs.parse(link)
+                test.eq(#parsed.refs, 0)
+                test.eq(parsed.skipped, 1)
+            end
         end)
 
         test.it("refuses non-string values", function()
@@ -122,14 +151,35 @@ local function define_tests()
             test.eq(calls.http, 0)
         end)
 
+        test.it("bounds downloads with understated or missing metadata size", function()
+            for _, metadata in ipairs({ { size = 1 }, {} }) do
+                local calls = stub({ meta = { success = true, data = metadata },
+                    http_err = "response body too large (max 52428800 bytes)" })
+                local out = fetcher.fetch_attachment({ ref = "1" })
+                test.eq(calls.options.max_response_body, 50 * 1024 * 1024)
+                test.eq(calls.options.timeout, fetcher.DOWNLOAD_TIMEOUT_S)
+                test.eq(out.error, "too_large: download exceeds 52428800 bytes")
+                test.is_nil(out.bytes)
+            end
+        end)
+
+        test.it("maps signed download HTTP status codes", function()
+            for _, entry in ipairs({ { 401, "no_access" }, { 403, "no_access" },
+                { 404, "not_found" }, { 500, "download_failed" } }) do
+                stub({ response = { status_code = entry[1], body = SIGNED } })
+                local out = fetcher.fetch_attachment({ ref = "1" })
+                test.eq(out.error, entry[2] .. ": download HTTP " .. entry[1])
+            end
+        end)
+
         test.it("never returns the signed URL inside an error", function()
-            stub({ http_err = true })
+            stub({ http_err = "dial " .. SIGNED })
             local out = fetcher.fetch_attachment({ ref = "1" })
             test.is_true(out.error:find("^download_failed:") ~= nil)
             test.is_nil(out.error:find("signed", 1, true))
             stub({ response = { status_code = 403, body = SIGNED } })
             out = fetcher.fetch_attachment({ ref = "1" })
-            test.eq(out.error, "download_failed: download HTTP 403")
+            test.eq(out.error, "no_access: download HTTP 403")
         end)
     end)
 

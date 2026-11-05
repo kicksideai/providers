@@ -105,13 +105,18 @@ function M.fetch_attachment(args: any): any
     local url = trim(type(url_res.data) == "table" and (url_res.data :: any).url or nil)
     if url == "" then return fail("download_failed", "HubSpot returned no signed URL") end
 
-    local response, http_err = M._http.request("GET", url, { timeout = M.DOWNLOAD_TIMEOUT_S })
+    local response, http_err = M._http.request("GET", url, {
+        timeout = M.DOWNLOAD_TIMEOUT_S,
+        max_response_body = M.MAX_BYTES,
+    })
+    if http_err and tostring(http_err):find("response body too large", 1, true) then
+        return fail("too_large", string.format("download exceeds %d bytes", M.MAX_BYTES))
+    end
     if http_err or type(response) ~= "table" then return fail("download_failed", "download request failed") end
     local status = tonumber((response :: any).status_code) or 0
-    if status ~= 200 then return fail("download_failed", "download HTTP " .. status) end
+    if status ~= 200 then return api_failure("download", response) end
     local body = (response :: any).body
     if type(body) ~= "string" or body == "" then return fail("download_failed", "empty download") end
-    if #body > M.MAX_BYTES then return fail("too_large", string.format("downloaded %d bytes > %d", #body, M.MAX_BYTES)) end
 
     local ext = trim(meta.extension)
     return ({

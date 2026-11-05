@@ -16,8 +16,13 @@ local function trim(value: string): string
 end
 
 local function file_id(link: string): string?
-    local path = link:match("^[^?#]*") or ""
-    return path:match("/signed%-url%-redirect/(%d+)/?$")
+    local scheme, host, path = link:match("^(%a+)://([^/?#]+)(/[^?#]*)")
+    if not scheme or not host or not path or scheme:lower() ~= "https" then return nil end
+    host = host:lower()
+    if host ~= "api.hubspot.com" and host ~= "api.hubapi.com"
+        and not host:match("^api%-[%l]+%d+%.hubspot%.com$")
+        and not host:match("^api%-[%l]+%d+%.hubapi%.com$") then return nil end
+    return path:match("^/form%-integrations/v1/uploaded%-files/signed%-url%-redirect/(%d+)/?$")
 end
 
 -- parse(value) -> { refs = { {ref} }, skipped = n } in link order, without
