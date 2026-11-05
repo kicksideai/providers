@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local fetcher = require("fetcher")
 local refs = require("refs")
 

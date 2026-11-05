@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local refs = require("refs")
 local fetcher = require("fetcher")
@@ -60,8 +61,8 @@ local function define_tests()
         end)
 
         test.it("accepts global and regional HubSpot form upload hosts", function()
-            for _, host in ipairs({ "api.hubspot.com", "api-na1.hubspot.com", "api-eu1.hubspot.com",
-                "api.hubapi.com", "api-na2.hubapi.com", "API-EU1.HUBSPOT.COM" }) do
+            for _, host in ipairs({ "api.hubspot.com", "api-na1.hubspot.com", "api-eu1.hubspot.com", -- gitleaks:allow
+                "api.hubapi.com", "api-na2.hubapi.com", "API-EU1.HUBSPOT.COM" }) do -- gitleaks:allow
                 local parsed = refs.parse("https://" .. host .. "/form-integrations/v1/uploaded-files/signed-url-redirect/17?sign=x")
                 test.eq(#parsed.refs, 1)
                 test.eq(parsed.refs[1].ref, "17")

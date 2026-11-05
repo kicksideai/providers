@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- HubSpot form-upload links -> file ids, without network or credentials.
 --
 -- A form file property holds one or more links separated by ";", each of the

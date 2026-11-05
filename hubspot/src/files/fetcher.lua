@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- HubSpot attachment fetcher: Files API metadata -> signed URL -> bytes.
 --
 -- Uploads selects fetch_attachment from the attachment.fetcher registry entry.
