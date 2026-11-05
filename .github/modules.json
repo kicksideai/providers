@@ -2,6 +2,29 @@
   "repository": "providers",
   "checks": [],
   "modules": {
+    "airtable": {
+      "path": "airtable",
+      "organization": "kickside",
+      "module": "airtable",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "setup",
+        "verify",
+        "build",
+        "test",
+        "test-pg",
+        "lockrefresh",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_airtable",
+      "extra_tests": []
+    },
     "asr": {
       "path": "asr",
       "organization": "kickside",
@@ -63,6 +86,29 @@
       "pg_database": "kickside_test_bitbucket",
       "extra_tests": []
     },
+    "box": {
+      "path": "box",
+      "organization": "kickside",
+      "module": "box",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "setup",
+        "verify",
+        "build",
+        "test",
+        "test-pg",
+        "lockrefresh",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_box",
+      "extra_tests": []
+    },
     "code_execution": {
       "path": "code_execution",
       "organization": "kickside",
@@ -102,6 +148,29 @@
         "postgres"
       ],
       "pg_database": "kickside_test_discord",
+      "extra_tests": []
+    },
+    "dropbox": {
+      "path": "dropbox",
+      "organization": "kickside",
+      "module": "dropbox",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "setup",
+        "verify",
+        "build",
+        "test",
+        "test-pg",
+        "lockrefresh",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_dropbox",
       "extra_tests": []
     },
     "fireflies": {
@@ -247,6 +316,29 @@
         ]
       ]
     },
+    "linear": {
+      "path": "linear",
+      "organization": "kickside",
+      "module": "linear",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "setup",
+        "verify",
+        "build",
+        "test",
+        "test-pg",
+        "lockrefresh",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_linear",
+      "extra_tests": []
+    },
     "llm-ocr": {
       "path": "llm-ocr",
       "organization": "kickside",
@@ -326,6 +418,29 @@
         ]
       ]
     },
+    "notion": {
+      "path": "notion",
+      "organization": "kickside",
+      "module": "notion",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "setup",
+        "verify",
+        "build",
+        "test",
+        "test-pg",
+        "lockrefresh",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_notion",
+      "extra_tests": []
+    },
     "phantombuster": {
       "path": "phantombuster",
       "organization": "kickside",
@@ -346,6 +461,27 @@
         "postgres"
       ],
       "pg_database": "kickside_test_phantombuster_v2",
+      "extra_tests": []
+    },
+    "search-index": {
+      "path": "search-index",
+      "organization": "kickside",
+      "module": "search-index",
+      "type": "library",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "test",
+        "test-pg",
+        "lockrefresh",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_search_index",
       "extra_tests": []
     },
     "simplefin": {

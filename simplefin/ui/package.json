@@ -68,6 +68,7 @@
   "scripts": {
     "build": "vite build --outDir ../static --emptyOutDir",
     "dev": "vite build --watch --outDir ../static --emptyOutDir",
-    "type-check": "vue-tsc --noEmit -p tsconfig.json"
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
   }
 }

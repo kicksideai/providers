@@ -66,6 +66,7 @@ entries:
     kind: contract.binding
     meta:
       title: Remote MCP OAuth
+      icon: simple-icons:modelcontextprotocol
       provider: mcp_remote
       class: [connection, oauth_connection, mcp]
     contracts:
