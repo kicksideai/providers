@@ -1,7 +1,7 @@
 -- sdk: the curated, whitelist-bounded tool surface exposed to sandboxed agent code.
 --
--- run_code injects a per-run SDK context containing the tool whitelist (id -> descriptor
--- { id, namespace, label, input_schema, ... }) and the run args. A tool's key is ALWAYS
+-- run_code injects a per-run SDK context containing the run args and, for an explicit
+-- whitelist, its descriptors. Allow-all resolves descriptors on demand. A tool's key is ALWAYS
 -- its real registry entry id, so user source reaches a tool under the exact id that exists
 -- in the registry.
 -- This library is loaded into the sandbox as an eval IMPORT. run_code grants its private
@@ -37,15 +37,36 @@ end
 
 local function sdk_context(): any
     local value = (ctx :: any).get(SDK_CONTEXT)
-    if type(value) ~= "table" or type(value.tools) ~= "table" then
+    if type(value) ~= "table" then
         error("SDK run context is required")
     end
     return value
 end
 
--- specs: the per-run tool whitelist injected by run_code (id -> descriptor).
-local function specs(): any
-    return sdk_context().tools
+-- Eval loads this import for each run; resolved descriptors never cross runs.
+local resolved: { [string]: any } = {}
+local resolution_errors: { [string]: string } = {}
+local catalog_ids: any = nil
+local catalog_error: string? = nil
+
+local function specs(ids: any): any
+    local context = sdk_context()
+    if context.tools ~= nil then return context.tools end
+    local requested = {}
+    local seen: { [string]: boolean } = {}
+    for _, id in ipairs(ids) do
+        if type(id) == "string" and id ~= "" and resolved[id] == nil and not seen[id] then
+            requested[#requested + 1] = id
+            seen[id] = true
+        end
+    end
+    if #requested == 0 then return resolved end
+    local result, err = (funcs :: any).call("kickside.code_execution:resolve_sdk_tools", requested)
+    for _, id in ipairs(requested) do
+        resolved[id] = not err and result.tools[id] or false
+        resolution_errors[id] = err and tostring(err) or result.errors[id]
+    end
+    return resolved
 end
 
 -- validate_args: check args against a tool's input_schema via native json.validate.
@@ -71,7 +92,9 @@ end
 -- absent.
 M.tools = setmetatable({}, {
     __index = function(_, id: any): any
-        local spec = specs()[id]
+        local spec = specs({ id })[id]
+        local err = resolution_errors[id]
+        if err then return function(): (any, string?) return nil, err end end
         if not spec then return nil end
         return function(args: any): (any, any?)
             return invoke(spec, args)
@@ -80,35 +103,54 @@ M.tools = setmetatable({}, {
 })
 
 -- list: the ids of the tools available to this run.
-function M.list(): any
+function M.list(): (any, string?)
+    local context = sdk_context()
     local out: { any } = {}
-    for id, _ in pairs(specs()) do out[#out + 1] = id end
+    if context.tools ~= nil then
+        for id in pairs(context.tools) do out[#out + 1] = id end
+    else
+        if catalog_ids == nil and catalog_error == nil then
+            local result, err = (funcs :: any).call("kickside.code_execution:resolve_sdk_tools")
+            if err then
+                catalog_error = tostring(err)
+            else
+                catalog_ids = result.ids
+            end
+        end
+        if catalog_error then return nil, catalog_error end
+        for _, id in ipairs(catalog_ids) do out[#out + 1] = id end
+    end
     return out
 end
 
 -- schema: BOTH schemas a whitelisted tool declares, as { input_schema, output_schema },
 -- or nil for an unknown id. Pure data — no dispatch, no LLM — so the sandbox can inspect a
 -- tool's arguments AND its result shape before deciding how to call and consume it.
-function M.schema(id: any): any
-    local spec = specs()[id]
-    if not spec then return nil end
+function M.schema(id: any): (any, string?)
+    local spec = specs({ id })[id]
+    if not spec then return nil, resolution_errors[id] end
     return { input_schema = spec.input_schema, output_schema = spec.output_schema }
 end
 
 -- schemas: the { input_schema, output_schema } pair for several tools in one call, keyed by
 -- id (unknown ids are skipped). Lets the sandbox inspect a batch of tools without a call per
 -- id. Pure data — no dispatch, no LLM.
-function M.schemas(ids: any): any
+function M.schemas(ids: any): (any, any?)
     local out: { [string]: any } = {}
     if type(ids) ~= "table" then return out end
-    local s = specs()
+    local s = specs(ids)
+    local errors: any = nil
     for _, id in ipairs(ids :: { any }) do
         local spec = s[id]
+        if resolution_errors[id] then
+            errors = errors or {}
+            errors[id] = resolution_errors[id]
+        end
         if spec then
             out[id] = { input_schema = spec.input_schema, output_schema = spec.output_schema }
         end
     end
-    return out
+    return out, errors
 end
 
 -- sleep: pause the run for the requested seconds, clamped to [0, SLEEP_CAP_SECONDS] so a

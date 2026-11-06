@@ -42,8 +42,254 @@ local function run_code_as(config: any, input: any?): (any, any?)
         :call(RUN_CODE, { input = input or {}, config = config })
 end
 
+local function with_malformed_tool(check: () -> ())
+    local entry = assert(registry.get(ECHO))
+    local malformed = assert(registry.get(ECHO))
+    malformed.meta.input_schema = 42
+    local snapshot = assert(registry.snapshot())
+    local changes = snapshot:changes()
+    changes:update(malformed)
+    assert(changes:apply())
+    local ok, err = pcall(check)
+    snapshot = assert(registry.snapshot())
+    changes = snapshot:changes()
+    changes:update(entry)
+    assert(changes:apply())
+    if not ok then error(err) end
+end
+
 local function define_tests()
     test.describe("code_execution.run_code", function()
+        test.it("allow-all maps fields without resolving unused malformed tools", function()
+            with_malformed_tool(function()
+                for _, config in ipairs({
+                    { code = "return { value = __cx_args.value * 2 }" },
+                    { code = "return { value = __cx_args.value * 2 }", tool_ids = {} },
+                }) do
+                    local out, err = run_code_as(config, { value = 21 })
+                    test.is_nil(err, tostring(err))
+                    test.is_true(out.ok, json.encode(out.error or {}))
+                    test.eq(out.result.value, 42)
+                end
+            end)
+        end)
+
+        test.it("allow-all resolves malformed schemas only when the SDK asks for them", function()
+            with_malformed_tool(function()
+                local out, err = run_code_as({ code = [[
+                    local tool = sdk.tools["app:stub_echo_tool"]
+                    local value, tool_err = tool({})
+                    local schema, schema_err = sdk.schema("app:stub_echo_tool")
+                    local batch, batch_errs = sdk.schemas({"app:stub_echo_tool", "app:stub_secret_tool", "app:unknown_tool"})
+                    local _, clean_errs = sdk.schemas({"app:stub_secret_tool"})
+                    return {
+                        callable = type(tool) == "function", value = value, tool_err = tool_err,
+                        schema = schema, schema_err = schema_err, batch = batch,
+                        batch_errs = batch_errs, clean_errs = clean_errs,
+                    }
+                ]] })
+                test.is_nil(err, tostring(err))
+                test.is_true(out.ok, json.encode(out.error or {}))
+                local message = "invalid input_schema for " .. ECHO .. ": schema must be an object or boolean"
+                test.is_true(out.result.callable)
+                test.is_nil(out.result.value)
+                test.eq(out.result.tool_err, message)
+                test.is_nil(out.result.schema)
+                test.eq(out.result.schema_err, message)
+                test.is_nil(out.result.batch[ECHO])
+                test.not_nil(out.result.batch[SECRET])
+                test.is_nil(out.result.batch["app:unknown_tool"])
+                test.eq(out.result.batch_errs[ECHO], message)
+                test.is_nil(out.result.batch_errs[SECRET])
+                test.is_nil(out.result.batch_errs["app:unknown_tool"])
+                test.is_nil(out.result.clean_errs)
+            end)
+        end)
+
+        test.it("allow-all dispatches real ids as the ambient actor and keeps the catalog identical", function()
+            local entries = assert(registry.find({ [".kind"] = "function.lua" }))
+            local expected = {}
+            for _, entry in ipairs(entries) do
+                if entry.meta and entry.meta.type == "tool" then expected[#expected + 1] = entry.id end
+            end
+            table.sort(expected)
+            local out, err = run_code_as({ code = [[
+                local echo = sdk.tools["app:stub_echo_tool"]
+                local result, call_err = echo({ message = "lazy" })
+                local rejected, validation_err = echo({})
+                local schema = sdk.schema("app:stub_echo_tool")
+                local batch = sdk.schemas({"app:stub_echo_tool", "app:stub_secret_tool", "app:unknown_tool"})
+                local names = sdk.list()
+                table.sort(names)
+                return {
+                    result = result, call_err = call_err, rejected = rejected, validation_err = validation_err,
+                    input_type = schema.input_schema.properties.message.type,
+                    batch_type = batch["app:stub_echo_tool"].output_schema.properties.actor_id.type,
+                    has_secret = batch["app:stub_secret_tool"] ~= nil,
+                    has_unknown = sdk.tools["app:unknown_tool"] ~= nil or sdk.schema("app:unknown_tool") ~= nil or batch["app:unknown_tool"] ~= nil,
+                    has_non_tool = sdk.tools["kickside.code_execution:run_code"] ~= nil or sdk.schema("kickside.code_execution:run_code") ~= nil,
+                    names = names,
+                }
+            ]] })
+            test.is_nil(err, tostring(err))
+            test.is_true(out.ok, json.encode(out.error or {}))
+            test.eq(out.result.result.echoed.message, "lazy")
+            test.eq(out.result.result.actor_id, ACTOR)
+            test.is_nil(out.result.call_err)
+            test.is_nil(out.result.rejected)
+            test.contains(out.result.validation_err, "invalid arguments")
+            test.eq(out.result.input_type, "string")
+            test.eq(out.result.batch_type, "string")
+            test.is_true(out.result.has_secret)
+            test.is_false(out.result.has_unknown)
+            test.is_false(out.result.has_non_tool)
+            test.eq(json.encode(out.result.names), json.encode(expected))
+            with_malformed_tool(function()
+                local listed, list_err = run_code_as({ code = [[
+                    local names = sdk.list()
+                    table.sort(names)
+                    return { names = names, schema = sdk.schema("app:stub_secret_tool") }
+                ]] })
+                test.is_nil(list_err, tostring(list_err))
+                test.is_true(listed.ok, json.encode(listed.error or {}))
+                test.eq(json.encode(listed.result.names), json.encode(expected))
+                test.not_nil(listed.result.schema)
+            end)
+        end)
+
+        test.it("resolves descriptors and absent ids once per run", function()
+            local echo = assert(registry.get(ECHO))
+            local promoted = assert(registry.get("app:stub_promoted_tool"))
+            local ok, failure = pcall(function()
+                local out, err = run_code_as({ code = [[
+                    local first = sdk.schema("app:stub_echo_tool")
+                    local unknown = sdk.tools["app:stub_created_tool"]
+                    local non_tool = sdk.schema("app:stub_promoted_tool")
+                    local changed, change_err = sdk.tools["app:stub_catalog_mutation"]({})
+                    local names = sdk.list()
+                    local again, schema_err = sdk.schema("app:stub_echo_tool")
+                    local batch, batch_errs = sdk.schemas({"app:stub_echo_tool", "app:stub_created_tool", "app:stub_promoted_tool"})
+                    local echoed, echo_err = sdk.tools["app:stub_echo_tool"]({message="cached"})
+                    return {
+                        first = first, again = again, schema_err = schema_err,
+                        batch = batch, batch_errs = batch_errs, echoed = echoed, echo_err = echo_err,
+                        changed = changed, change_err = change_err,
+                        unknown_before = unknown ~= nil, non_tool_before = non_tool ~= nil,
+                        unknown_after = sdk.tools["app:stub_created_tool"] ~= nil,
+                        non_tool_after = sdk.tools["app:stub_promoted_tool"] ~= nil,
+                    }
+                ]] })
+                test.is_nil(err, tostring(err))
+                test.is_true(out.ok, json.encode(out.error or {}))
+                test.is_true(out.result.changed)
+                test.is_nil(out.result.change_err)
+                test.eq(json.encode(out.result.first), json.encode(out.result.again))
+                test.is_nil(out.result.schema_err)
+                test.is_nil(out.result.batch_errs)
+                test.not_nil(out.result.batch[ECHO])
+                test.is_nil(out.result.batch["app:stub_created_tool"])
+                test.is_nil(out.result.batch["app:stub_promoted_tool"])
+                test.eq(out.result.echoed.echoed.message, "cached")
+                test.is_nil(out.result.echo_err)
+                test.is_false(out.result.unknown_before)
+                test.is_false(out.result.non_tool_before)
+                test.is_false(out.result.unknown_after)
+                test.is_false(out.result.non_tool_after)
+                local fresh, fresh_err = run_code_as({ code = [[
+                    local schema, err = sdk.schema("app:stub_echo_tool")
+                    return {
+                        schema = schema, err = err,
+                        created = sdk.tools["app:stub_created_tool"] ~= nil,
+                        promoted = sdk.tools["app:stub_promoted_tool"] ~= nil,
+                    }
+                ]] })
+                test.is_nil(fresh_err, tostring(fresh_err))
+                test.is_true(fresh.ok, json.encode(fresh.error or {}))
+                test.is_nil(fresh.result.schema)
+                test.eq(fresh.result.err, "invalid input_schema for " .. ECHO .. ": schema must be an object or boolean")
+                test.is_true(fresh.result.created)
+                test.is_true(fresh.result.promoted)
+            end)
+            local changes = assert(registry.snapshot()):changes()
+            changes:update(echo)
+            changes:update(promoted)
+            if registry.get("app:stub_created_tool") then changes:delete("app:stub_created_tool") end
+            assert(changes:apply())
+            if not ok then error(failure) end
+        end)
+
+        test.it("resolves SDK descriptors when ambient scope grants only the run entry", function()
+            local actor = assert(security.new_actor(ACTOR, {}))
+            local policy = assert(security.policy("app:code_execution_entry_policy"))
+            local scope = assert(security.new_scope({ policy }))
+            local out, err = funcs.new():with_actor(actor):with_scope(scope):call(RUN_CODE, {
+                input = {}, config = { code = [[
+                    return {
+                        input_type = sdk.schema("app:stub_echo_tool").input_schema.properties.message.type,
+                        has_resolver = sdk.tools["kickside.code_execution:resolve_sdk_tools"] ~= nil,
+                        surface_ok = pcall(function() return require("surface") end),
+                    }
+                ]] },
+            })
+            test.is_nil(err, tostring(err))
+            test.is_true(out.ok, json.encode(out.error or {}))
+            test.eq(out.result.input_type, "string")
+            test.is_false(out.result.has_resolver)
+            test.is_false(out.result.surface_ok)
+        end)
+
+        test.it("returns resolver dispatch failures as SDK error values", function()
+            local worker_id = "kickside.code_execution:run_code_worker"
+            local original = assert(registry.get(worker_id))
+            local worker = assert(registry.get(worker_id))
+            worker.data.security.policies = { "kickside.code_execution.security:eval_grant" }
+            local changes = assert(registry.snapshot()):changes()
+            changes:update(worker)
+            assert(changes:apply())
+            local ok, failure = pcall(function()
+                local actor = assert(security.new_actor(ACTOR, {}))
+                local policy = assert(security.policy("app:code_execution_entry_policy"))
+                local scope = assert(security.new_scope({ policy }))
+                local out, err = funcs.new():with_actor(actor):with_scope(scope):call(RUN_CODE, {
+                    input = {}, config = { code = [[
+                        local schema, schema_err = sdk.schema("app:stub_echo_tool")
+                        local tool = sdk.tools["app:stub_secret_tool"]
+                        local value, tool_err = tool({})
+                        local batch, batch_errs = sdk.schemas({"app:stub_echo_tool", "app:stub_secret_tool", "app:stub_filter_tool"})
+                        local names, list_err = sdk.list()
+                        return {
+                            schema = schema, schema_err = schema_err,
+                            callable = type(tool) == "function", value = value, tool_err = tool_err,
+                            batch = batch, batch_errs = batch_errs, names = names, list_err = list_err,
+                        }
+                    ]] },
+                })
+                test.is_nil(err, tostring(err))
+                test.is_true(out.ok, json.encode(out.error or {}))
+                test.is_nil(out.result.schema)
+                test.is_true(out.result.callable)
+                test.is_nil(out.result.value)
+                test.is_nil(out.result.names)
+                test.is_nil(next(out.result.batch))
+                for _, message in ipairs({
+                    out.result.schema_err, out.result.tool_err, out.result.list_err,
+                    out.result.batch_errs[ECHO], out.result.batch_errs[SECRET], out.result.batch_errs["app:stub_filter_tool"],
+                }) do
+                    test.contains(message, "kickside.code_execution:resolve_sdk_tools")
+                end
+                test.not_nil(out.result.schema_err)
+                test.not_nil(out.result.tool_err)
+                test.not_nil(out.result.list_err)
+                test.not_nil(out.result.batch_errs[ECHO])
+                test.not_nil(out.result.batch_errs[SECRET])
+                test.not_nil(out.result.batch_errs["app:stub_filter_tool"])
+            end)
+            changes = assert(registry.snapshot()):changes()
+            changes:update(original)
+            assert(changes:apply())
+            if not ok then error(failure) end
+        end)
+
         test.it("rejects SDK access when the run context is absent", function()
             local real_ok, real_err = pcall(sdk.list)
             local sim_ok, sim_err = pcall(sdk_sim.list)
