@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/kicksideai/providers/compare/code-execution-v0.1.23...code-execution-v0.1.24) (2026-11-06)
+
+
+### Performance Improvements
+
+* **code_execution:** resolve SDK tools on demand ([#63](https://github.com/kicksideai/providers/issues/63)) ([e780dff](https://github.com/kicksideai/providers/commit/e780dffc8456d747c07eba1595d5c223b3b69010))
+
 ## [0.1.23](https://github.com/kicksideai/providers/compare/code-execution-v0.1.22...code-execution-v0.1.23) (2026-11-04)
 
 
