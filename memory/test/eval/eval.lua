@@ -1,10 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Capture and reconcile eval: runs each case on a fresh memory, through an
--- optional seed capture and then a follow-up capture or a consolidation,
--- classifies what that last run did, and scores precision and recall per
--- action. A scripted target
--- answers every model call with the case's ideal answers; a live target names
--- real models and leaves the answers to them.
 
 local registry = require("registry")
 local json = require("json")
@@ -18,9 +12,6 @@ M.ACTIONS = { "ADD", "DEDUPE", "SUPERSEDE", "CONFLICT", "IGNORE" }
 local SEED_AT = "2026-10-01T10:00:00Z"
 local FOLLOW_AT = "2026-10-08T10:00:00Z"
 
--- Target of a run, from the meta of app.eval:target: extraction_model,
--- judge_model, embedding_model, answers ("scripted" or "live"), and user_id
--- to run as an existing user.
 function M.target(): any
     local entry, err = registry.get("app.eval:target")
     if err or type(entry) ~= "table" then error("eval target missing: " .. tostring(err)) end
@@ -29,7 +20,6 @@ function M.target(): any
     return target
 end
 
--- The action a derive run took, from its stats.
 function M.classify(stats: any): string
     if (stats.conflicted or 0) > 0 then return "CONFLICT" end
     if (stats.superseded or 0) > 0 then return "SUPERSEDE" end
@@ -50,33 +40,72 @@ local function stamp(messages: { any }, at: string): { any }
     return out
 end
 
--- Captures messages in a session and returns the derive run of that session.
-local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer): (any?, string?)
-    fixture.history.record(session, stamp(messages, at))
+local function script_verdict(memory: string, verdict: string?, candidate: any?, seeded: { any })
+    if not verdict then return end
+    local relation = ({ ADD = "unrelated", NOOP = "same", SUPERSEDE = "updates", MERGE = "rephrases", CONFLICT = "contradicts" })[verdict]
+    local values, same = {}, {}
+    for _, item in ipairs(seeded) do
+        values[#values + 1] = relation
+        if candidate and item.key == candidate.key then same[#same + 1] = relation end
+    end
+    fixture.relations(memory, #same > 0 and same or values)
+end
+
+local function capture(user: string, memory: string, session: string, messages: { any }, at: string, count: integer,
+    scripted: any?, verdict: string?, seed: boolean?, judgments: any?): (any?, string?)
+    local recorded = stamp(messages, at)
+    local ids = {}
+    for index, message in ipairs(recorded) do ids[message.id] = index end
+    fixture.record_chat(user, session, recorded)
+    local event_ids = {}
+    for source_id, index in pairs(ids) do event_ids[source_id] = recorded[index].id end
+    if scripted then fixture.script.hold(memory, "structured_output") end
     local _, err = fixture.op(user, "apply", { payload = fixture.payload("before_step", session, "eval-agent") },
         fixture.agent_context(memory, session, "eval-agent"))
     if err then return nil, "capture failed: " .. tostring(err) end
-    for _, run in ipairs(fixture.wait_runs(user, memory, "derive", count)) do
+    local enrolled = fixture.op(user, "runs", { component_id = memory, run_type = "derive" })
+    local current = {}
+    for _, run in ipairs(enrolled) do if run.host_id == session then current[#current + 1] = run end end
+    table.sort(current, function(a, b) return a.id < b.id end)
+    if scripted then
+        local seeded = fixture.items(user, memory)
+        for i, run in ipairs(current) do
+            local ids, candidates = {}, {}
+            for _, message in ipairs(run.input.span) do ids[message.id] = true end
+            for _, expected in ipairs(scripted) do
+                local candidate = {}
+                for key, value in pairs(expected) do candidate[key] = value end
+                local candidate_event_id = candidate.event_id
+                if type(candidate_event_id) == "string" then
+                    local native_event_id = event_ids[candidate_event_id] or candidate_event_id
+                    candidate.event_id = native_event_id
+                    if ids[native_event_id] then candidates[#candidates + 1] = candidate end
+                end
+            end
+            fixture.extraction(memory, candidates)
+            for index, candidate in ipairs(scripted) do
+                if type(candidate.event_id) == "string" then
+                    local event_id = event_ids[candidate.event_id] or candidate.event_id
+                    if ids[event_id] and judgments and judgments[index] then fixture.relations(memory, judgments[index]) end
+                end
+            end
+            if not seed then
+                for _, candidate in ipairs(candidates) do
+                    if candidate.cardinality ~= "single" then script_verdict(memory, verdict, candidate, seeded) end
+                end
+            end
+        end
+        fixture.script.release(memory, "structured_output")
+    end
+    local stats = {}
+    for _, run in ipairs(fixture.wait_runs(user, memory, "derive", count + #current)) do
         if run.host_id == session then
             if run.status ~= "succeeded" then return nil, "derive failed: " .. tostring(run.last_error) end
-            fixture.settle(user, memory)
-            return run, nil
+            for key, value in pairs(run.stats) do stats[key] = (stats[key] or 0) + value end
         end
     end
-    return nil, "no derive run for session " .. session
-end
-
--- Scripts a verdict for the ideal follow-up: it targets the seeded memories of
--- the same key, or every seeded memory when none shares it.
-local function script_verdict(verdict: string?, candidate: any?, seeded: { any })
-    if not verdict then return end
-    if verdict == "ADD" then fixture.verdict("ADD", {}); return end
-    local all, same = {}, {}
-    for _, item in ipairs(seeded) do
-        all[#all + 1] = item.id
-        if candidate and item.key == candidate.key then same[#same + 1] = item.id end
-    end
-    fixture.verdict(verdict, #same > 0 and same or all)
+    fixture.settle(user, memory)
+    return { stats = stats, count = count + #current }, nil
 end
 
 local function held(user: string, memory: string): string
@@ -87,23 +116,22 @@ local function held(user: string, memory: string): string
     return table.concat(out, "; ")
 end
 
--- Runs a case's seed capture and its follow-up capture or consolidation; a
--- failed run is the case's outcome.
 local function outcome(case: any, target: any, user: string, memory: string): (string, string)
     local session = "eval-" .. memory .. "-"
     local derived = 0
-    if target.scripted then fixture.script.reset() end
+    if target.scripted then fixture.script.reset(memory) end
     if case.seed then
-        if target.scripted then fixture.extraction(case.ideal.seed) end
-        derived = 1
-        local _, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, derived)
+        local seeded, seed_err = capture(user, memory, session .. "1", case.seed, SEED_AT, derived,
+            target.scripted and case.ideal.seed or nil, nil, true, case.ideal.seed_relations)
         if seed_err then return "ERROR", seed_err end
+        derived = seeded.count
     end
     local stats: any
     if case.reflect then
-        if target.scripted then
-            fixture.extraction(case.ideal.reflection)
-            script_verdict(case.ideal.verdict, nil, {})
+        if target.scripted and #fixture.items(user, memory, { statuses = { "current" } }) >= 2 then
+            fixture.script.respond(memory, "structured_output", { items = case.ideal.reflection })
+            if #case.ideal.reflection > 0 then fixture.normalization(memory, case.ideal.reflection) end
+            script_verdict(memory, case.ideal.verdict, nil, fixture.items(user, memory, { statuses = { "current" } }))
         end
         local _, wake_err = fixture.op(user, "wake", { component_id = memory })
         if wake_err then return "ERROR", tostring(wake_err) end
@@ -111,24 +139,33 @@ local function outcome(case: any, target: any, user: string, memory: string): (s
         if run.status ~= "succeeded" then return "ERROR", "consolidation failed: " .. tostring(run.last_error) end
         stats = run.stats
     else
-        if target.scripted then
-            fixture.extraction(case.ideal.follow)
-            script_verdict(case.ideal.verdict, case.ideal.follow[1], fixture.items(user, memory))
-        end
-        local run, err = capture(user, memory, session .. "2", case.follow, FOLLOW_AT, derived + 1)
+        local run, err = capture(user, memory, session .. "2", case.follow, FOLLOW_AT, derived,
+            target.scripted and case.ideal.follow or nil, case.ideal.verdict)
         if err then return "ERROR", err end
         stats = run.stats
     end
-    if target.scripted and fixture.script.pending("structured_output") > 0 then
+    if target.scripted and fixture.script.pending(memory, "structured_output") > 0 then
         return "ERROR", "the pipeline left a scripted model answer unused"
     end
     fixture.settle(user, memory)
+    if not case.reflect then
+        local current = {}
+        for _, item in ipairs(fixture.items(user, memory, { statuses = { "current" } })) do current[item.key] = item end
+        for _, expected in ipairs(case.ideal.follow) do
+            if expected.kind == "plan" then
+                local item = current[expected.key]
+                if not item or item.kind ~= "plan" or item.value.status ~= expected.value.status
+                    or item.value.next_step ~= expected.value.next_step or item.value.details ~= expected.value.details then
+                    return "ERROR", "the expected typed plan state is absent: " .. expected.key
+                end
+            end
+        end
+    end
     local action = case.reflect and (((stats.added or 0) > 0) and "ADD" or "IGNORE") or M.classify(stats)
     return action, json.encode(stats) .. " " .. held(user, memory)
 end
 
-local function run_case(case: any, target: any): any
-    local user = target.user_id or fixture.user("evaluser")
+local function run_case(case: any, target: any, user: string): any
     local memory = fixture.memory(user, { extraction_model = target.extraction_model, judge_model = target.judge_model },
         target.embedding_model)
     local actual, detail = outcome(case, target, user, memory)
@@ -136,7 +173,6 @@ local function run_case(case: any, target: any): any
     return { case = case.name, expected = case.expect, actual = actual, detail = detail }
 end
 
--- Precision and recall per action over case rows.
 function M.score(rows: { any }): { [string]: any }
     local out = {}
     for _, action in ipairs(M.ACTIONS) do
@@ -176,7 +212,8 @@ end
 
 function M.run(target: any): ({ any }, { [string]: any })
     local rows = {}
-    for _, case in ipairs(cases) do rows[#rows + 1] = run_case(case, target) end
+    local user = target.user_id or fixture.user("evaluser")
+    for _, case in ipairs(cases.for_user(user)) do rows[#rows + 1] = run_case(case, target, user) end
     return rows, M.score(rows)
 end
 

@@ -14,3 +14,16 @@ entries:
   - security
   imports:
     test: wippy.test:test
+- name: outsider_policy
+  kind: security.policy
+  groups: [app:memory_outsider]
+  policy:
+    resources: app:unrelated
+    actions: access
+    effect: allow
+- name: explicit_memory_deny
+  kind: security.policy
+  policy:
+    resources: kickside.memory:memory
+    actions: registry.get
+    effect: deny

@@ -1,167 +1,67 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 # kickside/memory
 
-Long-term memory for KickSide agents. A memory is a Knowledge Base of type
-**Memory**: typed, versioned memory items with provenance, kept on the knowledge
-base's own ledger and searched with hybrid vector and full-text recall.
+Typed long-term memory for agents. Each memory stores versioned facts,
+preferences, profile attributes and goals with provenance. Identity, rules,
+skills and lessons supply agent context. Hybrid search combines vectors and
+full-text retrieval; the memory page shows items, conflicts, activity and settings.
 
-This module installs independently into a [KickSide](https://kickside.ai) host.
-
-## Quick start
-
-In **System → Modules**, select the package from the Wippy Hub and review its
-requirements. For CLI dependency setup, run from the host application directory:
-
-```sh
-wippy add kickside/memory
-wippy install
-```
-
-Then:
-
-1. Create a memory: **Knowledge → + Knowledge Base**, type **Memory**.
-2. Attach it to an agent: mount the **Memory** trait and select the memory.
-   For recall each step, also pick the **Memory** provider with the memory as
-   the agent's memory target.
-3. Chat. Conversations are captured into the memory; the memory page shows
-   what was learned, earlier versions, conflicts to resolve, and every capture
-   and consolidation run.
+Create a Memory knowledge base, attach the **Memory** trait to an agent and
+select its memory. The trait configures recall on each step and requires
+`memory_id`:
 
 ```yaml
 traits:
-  - kickside.memory:knowledge_based_memory
+  - kickside.memory:memory
 trait_contexts:
-  kickside.memory:knowledge_based_memory:
-    memory_id: <memory-knowledge-base-id>
+  kickside.memory:memory:
+    memory_id: <memory-id>
+    learn_in_isolation: false
 ```
 
-The published trait remains `kickside.memory:knowledge_based_memory`. Set its optional
-`memory_id` to select typed Memory storage. Without it, the existing `kb_ids` and
-`write_kb_id` continue using the selected document providers, with the same recall
-and checkpoint behavior. Existing agents, documents and provider settings stay
-in place; no data conversion or installation-specific action is required.
+Memory consumes the published `wippy.agent:run_context` contract. Session identity
+is `host.session_id`; dataflow identity is `host.dataflow_id:host.node_id`, independent
+of iteration. The existing `from_agent_id` context identifies delegated input.
+Tool results retain the public `function` role. Optional persisted author metadata
+identifies automation and parent submissions. Unmarked user messages in a session
+belong to its owner: the session history binding opens the persisted session
+for the current actor and rejects other owners. Only a human principal supplies
+owner evidence. An explicit unknown
+or non-human author never becomes owner evidence. Unknown sources remain context.
+Human-authored attributes and goals belong to that human.
+Parent tasks and workflow input never establish a human profile. Agent lessons,
+skills and work facts stay in agent scope. Runs acting for a person recall their
+profile alongside the agent's rules and relevant learning.
 
-The settings element keeps its published tag `kickside-knowledge-memory` and URL
-`/kickside-memory/knowledge_memory.js`.
+**Learn from isolated runs** defaults to off. Isolated runs still recall memory;
+enabling it captures reusable lessons, skills and stable knowledge. Task inputs,
+intermediate values, fetched page contents and one-off results do not qualify.
+Plans in isolation require work that explicitly spans runs. Human conversation
+capture remains active with either setting. **Memory rules** use the memory's
+existing `extraction_instructions` to specify what to keep and what to skip in
+both modes.
 
-- `memory_id`: Optional typed Memory KB; when set, selects typed capture and recall.
-- `kb_ids`, `write_kb_id`: Document recall bases and write target when `memory_id` is absent. Preserved when typed storage is selected.
-- `read_enabled`, `write_enabled`, `recall_limit`: Document recall or typed SearchMemory enablement, writes/capture and search page size. Typed pinned profiles remain available when SearchMemory is disabled.
-- `recall_max_chars`, `recall_prompt`: Document activation recall budget and guidance; no effect on typed recall, whose budgets belong to the Memory KB.
-- `checkpoint_model`, `checkpoint_prompt`, `checkpoint_temperature`, `checkpoint_max_tokens`, `checkpoint_source_max_chars`: Document checkpoint generation settings; no effect on typed extraction, which uses the Memory KB models. Typed working summaries use the host agent and checkpoint options.
+Requires the runner-neutral `wippy.agent:run_context` contract. The trait supplies SearchMemory and
+ForgetMemory. Background capture learns from conversation automatically.
+Corrections supersede values and retain history. SearchMemory returns canonical
+keys and typed values. ForgetMemory selects the caller's attribute by key and
+erases its versions, payloads, vectors, provenance and retained source input. A
+value narrows it to that value and the versions it replaced, so a value that
+replaced it stays current; a multi-valued key requires the value. Owner-scoped
+items belong to the signed-in user; agent identity and rules are managed on the
+memory page.
 
-## How it works
-
-- Memory items are typed: identity, rule, profile slot, fact, preference,
-  skill, lesson. Identity and rules belong to an agent and are edited on the
-  memory page; everything learned from a user's conversations belongs to that
-  user and is recalled only for them.
-- Capture reads the conversation since the last captured message and schedules
-  a derive run. The extraction model proposes candidate memories, reusing the
-  kinds and keys the person's memories already use; each is matched against
-  existing memories and, when ambiguous, the reconcile model decides, from what
-  the person said, whether it is new, a duplicate, an update, the same memory
-  phrased better, or a contradiction. A profile slot holds one value: a new
-  value replaces or contests it. Updates keep the earlier version; the later
-  event time wins; contradictions wait in a conflict group for a person.
-- The agent's identity and rules are part of its compiled instructions; the
-  user's profile and preferences are pinned when the agent activates and stay
-  byte-identical across steps, so prompt caching holds. With the Memory
-  provider, other relevant memories are recalled each step.
-- Failed runs keep their reason and are listed on the memory page.
-- Forget erases an item: its text, every earlier version of it, and the
-  conversation lines it was learned from; it cannot be undone. Archive hides an
-  item from recall and the prompt until it is restored. Deleting the knowledge
-  base erases the memory and its ledger. Deleting a source conversation or
-  document keeps what was learned from it.
-- The ledger never holds memory text; see src/README.md.
-
-See [src/README.md](src/README.md) for the ledger, tables and contracts.
-
-### Agent tools
-
-- [`SearchMemory`](src/_index.yaml): `query`, `fields`, `limit`, `cursor`.
-- [`Remember`](src/_index.yaml): required `content` and canonical topic `key`; optional `kind`, `value`, `cardinality`, `valid_at`.
-- [`ForgetMemory`](src/_index.yaml): `item_id` (the caller's own memories only).
-
-Tools write only to the memory attached to the agent and only into the calling
-user's own memories, and refuse to write when the trait's `write_enabled` is
-off. Topic keys name an attribute, such as `home_city`, and cannot contain the
-memory text or value. `SearchMemory` returns complete unresolved groups
-separately as `alternatives`, with pagination by group.
-
-### Host requirements
-
-Bind these requirement IDs through the module's dependency declaration or Hub
-plan. Existing explicit bindings take precedence over defaults.
-
-- [`kickside.memory:ui_server`](src/_index.yaml): HTTP server for the web components.
-- [`kickside.memory:api_router`](src/_index.yaml): authenticated router for the memory API.
-- [`kickside.memory:target_db`](src/_index.yaml): the component database for the memory tables.
-- [`kickside.memory.security:user_security_scope`](src/security/_index.yaml): defaults to the platform Members group.
-
-## API
-
-These routes use the ambient authenticated actor and the memory component ACL.
-READ access permits browsing all scopes in a memory; WRITE access permits mutations.
-Responses use `success: true`. Lists accept `limit` (1–200, default 50) and
-`offset` (default 0), return `count` for this page, and include `next_offset`
-only when another page exists. Errors use `success: false` and `error`.
-
-- `GET /memory`: `{success, items: [{id, name, title, description, item_count}], count, next_offset?}`; Optional `q` matches memory names, case-insensitively. The component control plane supplies access, names and counts.
-- `GET /memory/{id}/items`: `{success, items: [item], count, next_offset?}`; Optional comma-separated `status` and `kind`. Nonempty `q` uses the shared hybrid search with the memory's embedding model and returns ranking fields; an absent or empty `q` preserves list ordering.
-- `GET /memory/{id}/topics`: `{success, topics: [{key, cardinality, current_count}], count, next_offset?}`; Optional `scope_family` (`agent` or `owner`) and `kind`. Counts cover current items matching these filters; canonical topics remain available when their current count is zero. Ordered by key and cardinality.
-- `GET /memory/{id}/items/{item_id}`: `{success, item, provenance, versions, next_offset?}`; `limit` and `offset` page versions of the same scope and topic across kinds.
-
-Item rows include `id`, `kind`, `scope_family`, `scope_id`, `key`,
-`cardinality`, `content`, typed `value`, `status`, `version` and validity times.
-Search adds `similarity` and, when lexical and dense ranks are fused,
-`hybrid_score`, `vector_rank`, and `lexical_rank`.
-
-## Requirements
-
-Wippy 0.3.x; repository validation uses 0.3.47a. The `after_persist` capture
-path needs a `wippy/agent` release with that lifecycle phase. The harness uses
-SQLite and declares a PostgreSQL test profile. Frontend development uses
-Node.js, npm and Make.
+The host binds `ui_server`, `api_router`, `target_db` and
+`kickside.memory.security:user_security_scope`. Models, capture settings,
+recall budgets and consolidation cadence belong to each memory's configuration.
 
 ## Development
 
-From this module directory:
+Run `make lockrefresh`, `make lint`, `make test`, `make test-pg` and
+`make build`. The test harness loads this module locally and resolves its
+other dependencies from the Hub. Workspace replacements select local module
+sources. Use dedicated PostgreSQL databases and set the harness's `pg_database`,
+`pg_migration_database` and connection variables. `make ui-kit` materializes
+the shared UI package before frontend installation.
 
-```sh
-make lockrefresh
-make lint
-make test
-make test-pg
-make build
-```
-
-Create a dedicated PostgreSQL database before the profile run and drop it
-afterward; set `pg_host`, `pg_port`, `pg_database`, `pg_username` and
-`pg_password` in the harness configuration. Edit frontend source under `ui/`
-and run `make build`; commit the regenerated `static/` assets with the source.
-
-The suites include a capture and reconcile eval (`test/eval`): duplicates,
-corrections, contradictions, small talk and recalled-memory notes, each captured
-in two sessions on a fresh memory and scored as precision and recall per action.
-The suite run answers every model call with the ideal answer, which checks the
-pipeline; to score real models, override the target on a harness with model
-providers configured:
-
-```bash
-cd test && wippy test -o app.eval:target:meta.extraction_model=<model> \
-  -o app.eval:target:meta.judge_model=<model> -o app.eval:target:meta.embedding_model=<embedding-model> \
-  -o app.eval:target:meta.answers=live
-```
-
-## Links
-
-- [KickSide](https://kickside.ai)
-- [Module authoring](https://github.com/kicksideai/docs/blob/main/building-modules/index.md)
-- [Wippy documentation](https://wippy.ai)
-- [Wippy Hub](https://hub.wippy.ai/kickside/memory)
-
-## License
-
-[KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
+[KickSide Community License 1.0](LICENSE).

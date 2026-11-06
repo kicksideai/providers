@@ -2,11 +2,6 @@
 version: "1.0"
 namespace: kickside.memory.persist
 
-# The memory read model on target_db: store rows, typed items with their
-# provenance, vectors and full-text index, capture cursors and deferred runs.
-# Writes to a live memory's items, vectors, cursors and config run inside the
-# component existence fence.
-
 entries:
   - name: db
     kind: library.lua
@@ -23,7 +18,7 @@ entries:
     meta:
       comment: Memory store rows and the bounded purge of a memory's rows.
     source: file://stores.lua
-    modules: [json]
+    modules: []
     imports:
       memory_db: kickside.memory.persist:db
       types: kickside.memory:types
@@ -32,20 +27,41 @@ entries:
   - name: items
     kind: library.lua
     meta:
-      comment: Ledger fold into typed items, item reads and hybrid search.
+      comment: Item queries and hybrid search.
     source: file://items.lua
+    modules: []
+    imports:
+      memory_db: kickside.memory.persist:db
+      types: kickside.memory:types
+      search_index: kickside.search_index:index
+
+  - name: payloads
+    kind: library.lua
+    source: file://payloads.lua
     modules: [sql, json]
     imports:
       memory_db: kickside.memory.persist:db
       types: kickside.memory:types
       search_index: kickside.search_index:index
 
+  - name: fold
+    kind: library.lua
+    source: file://fold.lua
+    modules: [sql]
+    imports:
+      memory_db: kickside.memory.persist:db
+      types: kickside.memory:types
+      search_index: kickside.search_index:index
+      memory_items: kickside.memory.persist:items
+      memory_payloads: kickside.memory.persist:payloads
+      memory_runs: kickside.memory.persist:runs
+
   - name: runs
     kind: library.lua
     meta:
       comment: Deferred run records with frozen identity, capture cursors and soul pins.
     source: file://runs.lua
-    modules: [sql, json]
+    modules: [sql, json, uuid]
     imports:
       jobs: kickside.core.jobs:jobs
       jobs_wake: kickside.core.jobs.persist:wake

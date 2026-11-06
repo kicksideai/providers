@@ -1,11 +1,16 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Deterministic provider: hashed bag-of-words vectors, scripted structured
--- output and generation.
 
+local ctx = require("ctx")
 local hash = require("hash")
 local script = require("script")
 
 local DIMENSIONS = 512
+
+local function scope(): string
+    local id = ctx.get("thread_id")
+    if type(id) ~= "string" or id == "" then error("scripted model request requires a thread_id scope") end
+    return id
+end
 
 local function vector(text: string): { number }
     local v: { number } = {}
@@ -24,6 +29,7 @@ local function vector(text: string): { number }
 end
 
 local function embed(args: any): (any, any)
+    script.record(args.options.user, "embed", args, {})
     local input = args.input
     if type(input) == "string" then input = { input } end
     local out = {}
@@ -31,25 +37,29 @@ local function embed(args: any): (any, any)
     return { success = true, result = { embeddings = out }, tokens = { prompt_tokens = 1, total_tokens = 1 } }
 end
 
--- Scripted failures preserve the dependency classification. The standard
--- transport failures are transient; every other scripted kind is deterministic.
-local function failed(failure: string, kind: string?, retryable: boolean?): error
+local function failed(failure: string, kind: string?, retryable: boolean?, details: any?): error
     local failure_kind = kind or errors.UNAVAILABLE
     local transient = failure_kind == errors.UNAVAILABLE or failure_kind == errors.TIMEOUT or failure_kind == errors.RATE_LIMITED
-    return errors.new({ kind = failure_kind, retryable = retryable ~= nil and retryable or transient, message = failure })
+    return errors.new({ kind = failure_kind, retryable = retryable ~= nil and retryable or transient, message = failure, details = details })
 end
 
 local function structured_output(args: any): (any, any)
-    script.record("structured_output", args.schema, args.messages)
-    local hold_err = script.await_release("structured_output")
+    script.record(scope(), "structured_output", args.schema, args.messages)
+    script.record(scope(), "structured_options", args.options, {})
+    local hold_err = script.await_release(scope(), "structured_output")
     if hold_err then return nil, errors.new({ kind = errors.INTERNAL, retryable = false, message = hold_err }) end
-    local response, failure, kind, retryable = script.take("structured_output")
-    if failure then return nil, failed(failure, kind, retryable) end
-    return { success = true, result = { data = response }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }
+    local response, failure, kind, retryable, finish_reason, details = script.take(scope(), "structured_output")
+    if failure then return nil, failed(failure, kind, retryable, details) end
+    if args.schema.properties.plans then
+        local extraction_err = script.await_release(scope(), "extraction")
+        if extraction_err then return nil, errors.new({ kind = errors.INTERNAL, message = extraction_err }) end
+    end
+    return { success = true, result = { data = response }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = finish_reason }
 end
 
-local function generate(_args: any): (any, any)
-    local response, failure, kind, retryable = script.take("generate")
+local function generate(args: any): (any, any)
+    script.record(scope(), "generate", args, args.messages)
+    local response, failure, kind, retryable = script.take(scope(), "generate")
     if failure then return nil, failed(failure, kind, retryable) end
     return { success = true, result = { content = tostring(response) }, tokens = { prompt_tokens = 1, completion_tokens = 1, total_tokens = 2 }, finish_reason = "stop" }
 end

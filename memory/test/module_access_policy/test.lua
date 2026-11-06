@@ -86,7 +86,7 @@ local function define_tests()
         test.it("grants module discovery without a blanket grant on other modules", function()
             local scope = composed()
             local actor = security.new_actor("memory-member", {})
-            test.eq(scope:evaluate(actor, "registry.get", "kickside.memory:knowledge_memory_component"), "allow")
+            test.eq(scope:evaluate(actor, "registry.get", "kickside.memory:memory_settings"), "allow")
             test.eq(scope:evaluate(actor, "funcs.call", "kickside.memory.engine:query_func"), "allow")
             for _, action in ipairs({ "access", "registry.get", "funcs.call", "kickside.execution.defer" }) do
                 test.eq(scope:evaluate(actor, action, "unrelated.module:list.endpoint"), "undefined", action)
@@ -98,6 +98,51 @@ local function define_tests()
             test.eq(requirement.data.default, "kickside.security.groups:members")
             test.eq(requirement.meta.value_kind, "security.scope")
             test.eq(requirement.data.targets[3].entry, "kickside.memory.security:endpoint_access")
+        end)
+        test.it("grants members the Memory capability runtime without a blanket grant", function()
+            local requirement, err = registry.get("kickside.memory.security:user_security_scope")
+            test.is_nil(err)
+            test.not_nil(requirement)
+            test.eq(requirement.kind, "ns.requirement")
+            test.eq(requirement.data.default, "kickside.security.groups:members")
+            local targets = requirement.data.targets or {}
+            test.eq(#targets, 3)
+            test.eq(targets[1].entry, "kickside.memory.security:module_access")
+            test.eq(targets[1].path, ".groups +=")
+            test.eq(targets[2].entry, "kickside.memory.security:module_runtime")
+            test.eq(targets[2].path, ".groups +=")
+
+            for _, policy_id in ipairs({
+                "kickside.memory.security:module_access",
+                "kickside.memory.security:module_runtime",
+            }) do
+                local policy = assert(registry.get(policy_id))
+                test.eq(policy.data.groups[1], "app:memory_members", policy_id)
+            end
+
+            local member_policy = assert(security.policy("kickside.memory.security:module_access"))
+            local actor = security.new_actor("memory-member", {})
+            test.eq(member_policy:evaluate(actor, "registry.get", "kickside.memory:memory"), "allow")
+            test.eq(member_policy:evaluate(actor, "registry.get", "unrelated.module:private_trait"), "undefined")
+            test.eq(member_policy:evaluate(actor, "registry.get", "kickside.memory.private:private_trait"), "undefined")
+
+            local explicit_deny = assert(security.policy("kickside.memory.test.module_access:explicit_memory_deny"))
+            local scope = assert(security.new_scope({ member_policy, explicit_deny }))
+            test.eq(scope:evaluate(actor, "registry.get", "kickside.memory:memory"), "deny",
+                "an explicit deny must override the member capability grant")
+        end)
+        test.it("resolves member authority through the configured group without admitting outsiders", function()
+            local policy = assert(registry.get("kickside.memory.security:module_access"))
+            local scope = assert(security.named_scope(policy.data.groups[1]))
+            local actor = security.new_actor("memory-member", {})
+            test.eq(scope:evaluate(actor, "registry.get", "kickside.memory:memory"), "allow")
+            test.not_nil((registry.get("kickside.memory.agent:search_tool")))
+            test.eq(scope:evaluate(actor, "funcs.call", "kickside.memory.agent:search_tool"), "allow")
+            for _, id in ipairs({"unrelated.module:private_trait", "kickside.memory.private:private_trait"}) do
+                test.eq(scope:evaluate(actor, "registry.get", id), "undefined", id)
+            end
+            local outsider = assert(security.named_scope("app:memory_outsider"))
+            test.eq(outsider:evaluate(actor, "registry.get", "kickside.memory:memory"), "undefined")
         end)
     end)
 end

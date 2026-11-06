@@ -1,27 +1,12 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- One decision on a memory: the item transitions every writer shares. Capture,
--- tools, reflection and owner operations all build their change here, after
--- the writer settled the read model at the ledger head, so the same state
--- rules apply whoever decides:
---
--- - an item is a claim (a typed value of a canonical key in a scope) at one
---   occurrence; a recurring claim is a new item with its own valid_at;
--- - a single-valued key holds at most one current value per scope, whatever
---   kind labels its items;
--- - a conflict group is always complete: contesting any member contests the
---   whole group;
--- - an archived item can be restored; a forgotten one is erased.
---
--- The decision collects ledger events (structure only), the payloads and
--- vectors the writer commits with them, and an overlay of the
--- states it changed, so later steps of the same decision see earlier ones.
 
+local canonical_json = require("canonical_json")
 local types = require("types")
 local items = require("memory_items")
 
 local M = {}
 
-local LIVE = { types.STATUS.CURRENT, types.STATUS.CONFLICT }
+local LIVE = types.LIVE_STATUSES
 
 type Fields = {
     kind: string,
@@ -40,6 +25,7 @@ type Fields = {
 local Decision = {}
 Decision.__index = Decision
 
+-- The overlay makes each transition visible to subsequent steps of the same decision.
 function M.new(component_id: string, key: string, source: string, actor: string?): any
     return setmetatable({
         component_id = component_id,
@@ -52,6 +38,7 @@ function M.new(component_id: string, key: string, source: string, actor: string?
         overlay = {},
         added = {},
         touched_keys = {},
+        key_metadata = {},
         sequence = 0,
         stats = {
             added = 0, superseded = 0, merged = 0, conflicted = 0, noop = 0, suppressed = 0, judged = 0,
@@ -64,7 +51,6 @@ function Decision:emit(event_type: string, body: any)
     self.events[#self.events + 1] = { type = event_type, body = body }
 end
 
--- The state of an item as this decision sees it.
 function Decision:get(item_id: string): (any?, error?)
     if self.overlay[item_id] then return self.overlay[item_id], nil end
     return items.get(self.component_id, item_id)
@@ -75,11 +61,9 @@ function Decision:set(item: any, fields: { [string]: any })
     for k, v in pairs(item) do state[k] = v end
     for k, v in pairs(fields) do state[k] = v end
     self.overlay[item.id] = state
-    self.touched_keys[item.scope_key .. "\0" .. item.key] = { scope_key = item.scope_key, key = item.key }
+    self.touched_keys[types.key_identity(item.scope_key, item.key)] = { scope_key = item.scope_key, key = item.key, cardinality = item.cardinality }
 end
 
--- Rows of a filter merged with this decision's overlay, keeping only live ones
--- unless `statuses` is given.
 function Decision:rows(filter: any, matches: (any) -> boolean, statuses: { string }?): ({ any }?, error?)
     local listed, err = items.all(self.component_id, {
         scope_keys = filter.scope_keys, key = filter.key, claim_ids = filter.claim_ids, conflict_groups = filter.conflict_groups,
@@ -102,46 +86,111 @@ function Decision:rows(filter: any, matches: (any) -> boolean, statuses: { strin
     return out, nil
 end
 
--- Live items of a key in a scope.
 function Decision:held(scope_key: string, key: string): ({ any }?, error?)
     return self:rows({ scope_keys = { scope_key }, key = key }, function(state: any): boolean
         return state.scope_key == scope_key and state.key == key
     end)
 end
 
--- Items of a claim in a scope, in any of the given statuses.
 function Decision:claimed(scope_key: string, claim_id: string, statuses: { string }): ({ any }?, error?)
     return self:rows({ scope_keys = { scope_key }, claim_ids = { claim_id } }, function(state: any): boolean
         return state.scope_key == scope_key and state.claim_id == claim_id
     end, statuses)
 end
 
--- The cardinality a key already has in a scope, or nil for a new key.
+function Decision:prepare_keys(keys: { any }): error?
+    local missing, seen = {}, {}
+    for _, key in ipairs(keys) do
+        local id = types.key_identity(key.scope_key, key.key)
+        if not self.key_metadata[id] and not seen[id] then
+            missing[#missing + 1] = key
+            seen[id] = true
+        end
+    end
+    if #missing == 0 then return nil end
+    local rows, err = items.key_metadata(self.component_id, missing)
+    if err then return err end
+    for id in pairs(seen) do self.key_metadata[id] = { kinds = {} } end
+    for _, row in ipairs(rows) do
+        local meta = self.key_metadata[types.key_identity(row.scope_key, row.key)]
+        meta.cardinality = row.cardinality
+        if row.kind then meta.kinds[row.kind] = true end
+    end
+    return nil
+end
+
 function Decision:cardinality_of(scope_key: string, key: string): (string?, error?)
     for _, state in pairs(self.overlay) do
         if state.scope_key == scope_key and state.key == key then return state.cardinality, nil end
     end
-    return items.key_cardinality(self.component_id, scope_key, key)
+    local err = self:prepare_keys({ { scope_key = scope_key, key = key } })
+    if err then return nil, err end
+    return self.key_metadata[types.key_identity(scope_key, key)].cardinality, nil
+end
+
+function Decision:check_key_kind(scope_key: string, key: string, kind: string): error?
+    local err = self:prepare_keys({ { scope_key = scope_key, key = key } })
+    if err then return err end
+    for historical in pairs(self.key_metadata[types.key_identity(scope_key, key)].kinds) do
+        if not types.compatible_kinds(kind, historical) then return types.invalid("memory key kind is incompatible") end
+    end
+    for _, state in pairs(self.overlay) do
+        if state.scope_key == scope_key and state.key == key and not types.compatible_kinds(kind, state.kind) then
+            return types.invalid("memory key kind is incompatible")
+        end
+    end
+    return nil
+end
+
+function Decision:check_provenance(item: any, provenance: { any }): error?
+    for _, ref in ipairs(provenance) do
+        if ref.host_kind == "item" then
+            if item.kind ~= types.KIND.LESSON or ref.host_id == item.id then
+                return types.invalid("item provenance requires a lesson and a distinct source item")
+            end
+            local source, err = self:get(ref.host_id)
+            if err then return err end
+            if not source then return types.invalid("item provenance source does not exist") end
+        end
+    end
+    return nil
 end
 
 type Scope = { scope_family: string, scope_id: string }
 
--- A new item for a claim, with its payload staged and its structure on the
--- ledger. The caller decides what it replaces.
-function Decision:add(scope: Scope, fields: Fields): (any?, error?)
+function Decision:validate(scope: Scope, fields: Fields): error?
+    if not types.KIND_SET[fields.kind] then return types.invalid("unknown memory kind") end
+    if types.trim(fields.content) == "" then return types.invalid("memory content is required") end
+    local value_err = types.validate_value(fields.kind, fields.value)
+    if value_err then return value_err end
+    if fields.kind == types.KIND.PLAN and fields.cardinality ~= types.CARDINALITY.SINGLE then
+        return types.invalid("each plan goal holds one state")
+    end
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
-    local key, key_err = types.topic_key(fields.key, fields.content, fields.value)
-    if key_err then return nil, key_err end
-    if not types.CARDINALITY_SET[fields.cardinality] then return nil, types.invalid("unknown cardinality: " .. tostring(fields.cardinality)) end
-    local established, cardinality_err = self:cardinality_of(scope_key, key :: string)
-    if cardinality_err then return nil, cardinality_err end
-    if established and established ~= fields.cardinality then return nil, types.invalid("memory key cardinality cannot change") end
+    local key_err = types.check_topic_key(fields.key, fields.content, fields.value, fields.kind)
+    if key_err then return key_err end
+    local kind_err = self:check_key_kind(scope_key, fields.key, fields.kind)
+    if kind_err then return kind_err end
+    if not types.CARDINALITY_SET[fields.cardinality] then return types.invalid("unknown cardinality: " .. tostring(fields.cardinality)) end
+    local established, cardinality_err = self:cardinality_of(scope_key, fields.key)
+    if cardinality_err then return cardinality_err end
+    if established and established ~= fields.cardinality then return types.invalid("memory key cardinality cannot change") end
+    return nil
+end
+
+function Decision:add(scope: Scope, fields: Fields): (any?, error?)
+    local validation_err = self:validate(scope, fields)
+    if validation_err then return nil, validation_err end
+    local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
+    local key = fields.key
+    local key_id, topic_err = canonical_json.hash({ "key", self.component_id, scope_key, key })
+    if topic_err then return nil, topic_err end
     local claim_id, claim_err = types.claim_id(self.component_id, scope_key, key, fields.value)
     if claim_err then return nil, claim_err end
     local content_hash, hash_err = types.content_hash(self.component_id, fields.content, fields.value)
     if hash_err then return nil, hash_err end
     self.sequence = self.sequence + 1
-    local item_id, id_err = types.digest({ "item", claim_id :: string, self.key, self.sequence })
+    local item_id, id_err = canonical_json.hash({ "item", claim_id :: string, self.key, self.sequence })
     if id_err then return nil, id_err end
     local item = {
         id = item_id, claim_id = claim_id, kind = fields.kind, scope_family = scope.scope_family, scope_id = scope.scope_id,
@@ -149,13 +198,16 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
         content_hash = content_hash, status = types.STATUS.CURRENT, valid_at = fields.valid_at, priority = fields.priority or 0,
         source = self.source, run_id = fields.run_id,
     }
+    local provenance_err = self:check_provenance(item, fields.provenance or {})
+    if provenance_err then return nil, provenance_err end
     self:emit(types.EVENT.ITEM_ADDED, {
-        item_id = item_id, claim_id = claim_id, content_hash = content_hash, kind = fields.kind, key = key,
+        item_id = item_id, claim_id = claim_id, content_hash = content_hash, kind = fields.kind, key_id = key_id,
         cardinality = fields.cardinality, scope_family = scope.scope_family, scope_id = scope.scope_id,
         valid_at = fields.valid_at, source = self.source, provenance = fields.provenance or {},
         confidence = fields.confidence, priority = fields.priority or 0, run_id = fields.run_id,
     })
     self.staged[#self.staged + 1] = {
+        key_id = key_id, scope_key = scope_key, key = key, cardinality = fields.cardinality,
         payload_id = item_id, owner_item_id = item_id, content = fields.content, value = fields.value, content_hash = content_hash, vector = fields.vector,
     }
     self.added[#self.added + 1] = item_id
@@ -164,9 +216,9 @@ function Decision:add(scope: Scope, fields: Fields): (any?, error?)
     return self.overlay[item_id :: string], nil
 end
 
--- Records that an item was seen again in host records it has no provenance
--- for yet.
 function Decision:seen(item: any, provenance: { any }): error?
+    local provenance_err = self:check_provenance(item, provenance)
+    if provenance_err then return provenance_err end
     for _, ref in ipairs(provenance) do
         local known, err = items.has_provenance(self.component_id, item.id, ref)
         if err then return err end
@@ -179,8 +231,6 @@ function Decision:seen(item: any, provenance: { any }): error?
     return nil
 end
 
--- `successor` replaces `targets`. An older successor (by valid_at) than the
--- newest target is history instead: it is recorded as replaced by that target.
 function Decision:supersede(targets: { any }, successor: any, resolved_group: string?): error?
     local newest = nil
     for _, target in ipairs(targets) do
@@ -195,7 +245,6 @@ function Decision:supersede(targets: { any }, successor: any, resolved_group: st
     return self:replace(targets, successor, resolved_group)
 end
 
--- Applies a replacement chosen by an owner or the temporal evidence policy.
 function Decision:replace(targets: { any }, successor: any, resolved_group: string?): error?
     local contested: { any } = {}
     for _, target in ipairs(targets) do
@@ -213,7 +262,6 @@ function Decision:replace(targets: { any }, successor: any, resolved_group: stri
     return self:inherit_conflict(contested, successor)
 end
 
--- Complete group membership merged with this decision's transitions.
 function Decision:members(groups: { string }): ({ any }?, error?)
     local persisted, err = items.group_members(self.component_id, groups)
     if err then return nil, err end
@@ -240,7 +288,6 @@ function Decision:inherit_conflict(targets: { any }, successor: any): error?
     if #groups == 0 then return nil end
     local members, err = self:members(groups)
     if err then return err end
-    -- The successor replaces a member of an existing group.
     local state = {}
     for k, v in pairs(successor) do state[k] = v end
     state.conflict_group = groups[1]
@@ -248,7 +295,6 @@ function Decision:inherit_conflict(targets: { any }, successor: any): error?
     return self:conflict(members)
 end
 
--- `into` replaces `targets` as the same memory phrased better.
 function Decision:merge(targets: { any }, into: any): error?
     local ids: { string } = {}
     for _, target in ipairs(targets) do
@@ -263,8 +309,6 @@ function Decision:merge(targets: { any }, into: any): error?
     return self:inherit_conflict(targets, into)
 end
 
--- Contests `contested` against each other. Any member already in a conflict
--- group brings its whole group, so the result is one complete group.
 function Decision:conflict(contested: { any }): error?
     local members: { [string]: any } = {}
     local groups: { string } = {}
@@ -296,7 +340,7 @@ function Decision:conflict(contested: { any }): error?
     table.sort(groups)
     local group_id = groups[1]
     if not group_id then
-        local digest, digest_err = types.digest({ "conflict", self.component_id, ids })
+        local digest, digest_err = canonical_json.hash({ "conflict", self.component_id, ids })
         if digest_err then return digest_err end
         group_id = digest
     end
@@ -306,22 +350,20 @@ function Decision:conflict(contested: { any }): error?
     return nil
 end
 
--- Reusing a live claim still applies any replacement and new provenance.
 function Decision:reuse(item: any, provenance: { any }, replaces: { any }): error?
     local seen_err = self:seen(item, provenance)
     if seen_err then return seen_err end
     return self:merge(replaces, item)
 end
 
--- New presentation (text, priority) for an item whose claim does not change.
 function Decision:revise(item: any, content: string, priority: number?, vector: { number }?): error?
     local content_hash, hash_err = types.content_hash(self.component_id, content, item.value)
     if hash_err then return hash_err end
-    local payload_id, id_err = types.digest({ "revision", item.id, self.key })
+    local payload_id, id_err = canonical_json.hash({ "revision", item.id, self.key })
     if id_err then return id_err end
     self.staged[#self.staged + 1] = { payload_id = payload_id, owner_item_id = item.id, content = content, value = item.value, content_hash = content_hash, vector = vector }
-    self:emit(types.EVENT.ITEM_REVISED, { item_id = item.id, payload_id = payload_id, content_hash = content_hash, priority = priority })
-    self:set(item, { content = content, content_hash = content_hash, priority = priority or item.priority })
+    self:emit(types.EVENT.ITEM_REVISED, { item_id = item.id, payload_id = payload_id, content_hash = content_hash, priority = priority, source = self.source })
+    self:set(item, { content = content, content_hash = content_hash, priority = priority or item.priority, source = self.source })
     self.stats.revised = self.stats.revised + 1
     return nil
 end
@@ -332,8 +374,6 @@ function Decision:archive(item: any)
     self.stats.archived = self.stats.archived + 1
 end
 
--- Makes an archived or contested item current again; on a single-valued key it
--- replaces the value held meanwhile.
 function Decision:restore(item: any): error?
     self:emit(types.EVENT.ITEM_RESTORED, { item_id = item.id, actor = self.actor })
     self:set(item, { status = types.STATUS.CURRENT, conflict_group = false, superseded_by = false })
@@ -350,43 +390,72 @@ function Decision:restore(item: any): error?
     return nil
 end
 
--- Erases every item of the claim: its text, value, vector, provenance and the
--- captured spans that stated it.
-function Decision:forget(item: any): error?
-    local versions, err = items.lineage(self.component_id, item)
-    if err then return err end
-    for _, version in ipairs(versions :: any) do
-        self:emit(types.EVENT.ITEM_FORGOTTEN, { item_id = version.id, actor = self.actor })
-        self:set(version, { status = types.STATUS.FORGOTTEN, content = "", value = nil, conflict_group = false })
-        self.stats.forgotten = self.stats.forgotten + 1
+-- Erases every occurrence of the roots' claims, the versions they replaced and
+-- everything derived from the erased versions. With attribute, every version of
+-- the roots' attributes is erased, including the values that replaced them.
+function Decision:forget(roots: { any }, attribute: boolean?): error?
+    local visited = {}
+    local versions, err
+    if attribute then
+        versions, err = items.lineage(self.component_id, roots)
+    else
+        versions, err = items.history(self.component_id, roots)
     end
-    return nil
-end
-
--- The single-value invariant over every key this decision touched.
-function Decision:check(): error?
-    for _, touched in pairs(self.touched_keys) do
-        local cardinality, card_err = self:cardinality_of(touched.scope_key, touched.key)
-        if card_err then return card_err end
-        local counted, err = items.count_current(self.component_id, touched.scope_key, touched.key)
+    while true do
         if err then return err end
-        local current = counted :: number
-        for id, state in pairs(self.overlay) do
-            if state.scope_key == touched.scope_key and state.key == touched.key then
-                local original, original_err = items.get(self.component_id, id)
-                if original_err then return original_err end
-                if original and original.status == types.STATUS.CURRENT then current = current - 1 end
-                if state.status == types.STATUS.CURRENT then current = current + 1 end
+        local ids = {}
+        for _, version in ipairs(versions :: any) do
+            if not visited[version.id] then
+                visited[version.id] = true
+                ids[#ids + 1] = version.id
+                local state = self.overlay[version.id] or version
+                if state.status ~= types.STATUS.FORGOTTEN then
+                    self:emit(types.EVENT.ITEM_FORGOTTEN, { item_id = version.id, actor = self.actor })
+                    self:set(version, { status = types.STATUS.FORGOTTEN, content = "", value = nil, conflict_group = false })
+                    self.stats.forgotten = self.stats.forgotten + 1
+                end
             end
         end
-        local single = cardinality == types.CARDINALITY.SINGLE
-        if single and current > 1 then
-            return types.internal("decision would leave " .. tostring(current) .. " current values of single-valued key "
-                .. touched.key .. " in " .. touched.scope_key)
+        local derived, derived_err = items.derived(self.component_id, ids)
+        if derived_err then return derived_err end
+        local sources, identities = {}, {}
+        for _, source in ipairs(derived) do
+            local identity = types.key_identity(source.scope_key, source.cardinality == types.CARDINALITY.SINGLE and source.key or source.claim_id)
+            if not visited[source.id] and not identities[identity] then
+                sources[#sources + 1] = source
+                identities[identity] = true
+            end
         end
+        if #sources == 0 then return nil end
+        versions, err = items.lineage(self.component_id, sources)
+    end
+end
+
+function Decision:check(tx: any): error?
+    local keys, single, ids = {}, {}, {}
+    for key, touched in pairs(self.touched_keys) do
+        if touched.cardinality == types.CARDINALITY.SINGLE then
+            keys[#keys + 1] = touched
+            single[key] = true
+        end
+    end
+    if #keys == 0 then return nil end
+    for id, state in pairs(self.overlay) do
+        if single[types.key_identity(state.scope_key, state.key)] then ids[#ids + 1] = id end
+    end
+    local snapshot, err = items.invariant_snapshot(tx, self.component_id, keys, ids)
+    if err then return err end
+    local counts = snapshot.counts
+    for _, id in ipairs(ids) do
+        local state = self.overlay[id]
+        local key = types.key_identity(state.scope_key, state.key)
+        local delta = (state.status == types.STATUS.CURRENT and 1 or 0) - (snapshot.statuses[id] == types.STATUS.CURRENT and 1 or 0)
+        counts[key] = (counts[key] or 0) + delta
+    end
+    for _, current in pairs(counts) do
+        if current > 1 then return types.internal("decision would leave multiple current values of a single-valued key") end
     end
     return nil
 end
-
 
 return M

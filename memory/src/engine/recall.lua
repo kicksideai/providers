@@ -1,7 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Recall of current memories in the scopes a caller may read: the memory
--- provider, the SearchMemory tool and the queryable contract all search
--- through here.
 
 local types = require("types")
 local stores = require("memory_stores")
@@ -10,15 +7,14 @@ local models = require("memory_models")
 
 local M = {}
 
--- Scopes an actor may read in a memory: its own owner scope and, when the
--- caller runs as an agent, that agent's scope.
-function M.visible_scopes(agent_id: string?): { string }
+function M.visible_scopes(agent_id: string?): ({ string }?, error?)
     local scopes: { string } = {}
-    local actor_id = types.actor_id()
-    if actor_id ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.OWNER, actor_id) end
+    local actor_id, actor_err = types.human_id()
+    if actor_err then return nil, actor_err end
+    if actor_id then scopes[#scopes + 1] = types.scope_key(types.SCOPE.OWNER, actor_id) end
     local agent = types.trim(agent_id)
     if agent ~= "" then scopes[#scopes + 1] = types.scope_key(types.SCOPE.AGENT, agent) end
-    return scopes
+    return scopes, nil
 end
 
 type SearchRequest = {
@@ -29,11 +25,9 @@ type SearchRequest = {
     kinds: { string }?,
     scopes: { string },
     exclude: { [string]: boolean }?,
-    -- Defaults to current items; unresolved conflicts are searched on their own.
     statuses: { string }?,
 }
 
--- Hybrid search of one memory within the given scopes.
 function M.search(req: SearchRequest): (any?, error?)
     if #req.scopes == 0 then return {}, nil end
     local store, store_err = stores.get(req.component_id)

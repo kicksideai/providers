@@ -1,9 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Explicit operations on a memory by a person with WRITE access: add or edit
--- items, resolve a conflict group, archive and restore, forget. Each runs as
--- one decision through the settled-head writer, under the same state rules as
--- capture: owner authority skips the judge, never the rules.
 
+local canonical_json = require("canonical_json")
 local types = require("types")
 local items = require("memory_items")
 local stores = require("memory_stores")
@@ -35,27 +32,39 @@ local function load(d: any, item_id: string): (any?, error?)
     return item, nil
 end
 
--- Reuses a current claim while applying replacements; otherwise adds a new
--- occurrence that replaces the values held by a single-valued key.
 local function assert_claim(d: any, scope: any, fields: any, replaces: { any }): (any?, error?)
     local scope_key = types.scope_key(scope.scope_family, scope.scope_id)
+    local validation_err = d:validate(scope, fields)
+    if validation_err then return nil, validation_err end
     local claim_id, claim_err = types.claim_id(d.component_id, scope_key, fields.key, fields.value)
     if claim_err then return nil, claim_err end
     local live, live_err = d:claimed(scope_key, claim_id :: string, { types.STATUS.CURRENT })
     if live_err then return nil, live_err end
-    if #(live :: any) > 0 then
-        local destination = (live :: any)[1]
-        local reuse_err = d:reuse(destination, {}, replaces)
-        if reuse_err then return nil, reuse_err end
-        return { item_id = destination.id, unchanged = #replaces == 0 }, nil
-    end
     local targets: { any } = {}
     for _, item in ipairs(replaces) do targets[#targets + 1] = item end
-    if fields.cardinality == types.CARDINALITY.SINGLE then
+    if #(live :: any) == 0 and fields.cardinality == types.CARDINALITY.SINGLE then
         local held, held_err = d:held(scope_key, fields.key)
         if held_err then return nil, held_err end
         for _, item in ipairs(held :: any) do targets[#targets + 1] = item end
     end
+    local provenance: { any } = {}
+    for _, target in ipairs(targets) do
+        local refs, refs_err = items.provenance(d.component_id, target.id)
+        if refs_err then return nil, refs_err end
+        for _, ref in ipairs(refs :: any) do provenance[#provenance + 1] = ref end
+    end
+    if #(live :: any) > 0 then
+        local destination = (live :: any)[1]
+        local reuse_err = d:reuse(destination, provenance, replaces)
+        if reuse_err then return nil, reuse_err end
+        local revised = destination.content ~= fields.content or destination.priority ~= fields.priority or destination.source ~= d.source
+        if revised then
+            local revise_err = d:revise(destination, fields.content, fields.priority, fields.vector)
+            if revise_err then return nil, revise_err end
+        end
+        return { item_id = destination.id, unchanged = #replaces == 0 and not revised }, nil
+    end
+    fields.provenance = provenance
     local item, add_err = d:add(scope, fields)
     if add_err then return nil, add_err end
     if #targets > 0 then
@@ -65,7 +74,6 @@ local function assert_claim(d: any, scope: any, fields: any, replaces: { any }):
     return { item_id = (item :: any).id }, nil
 end
 
--- Adds an item. Owner-scoped items always belong to the caller.
 function M.create(component_id: string, fields: any): (any?, error?)
     local kind = types.trim(fields.kind)
     local scope_family = types.trim(fields.scope_family)
@@ -76,19 +84,20 @@ function M.create(component_id: string, fields: any): (any?, error?)
     if scope_id == "" then return nil, types.invalid("memory scope id is required") end
     if content == "" then return nil, types.invalid("memory content is required") end
     local value = fields.value
-    if value == nil then value = content end
-    local key, key_err = types.topic_key(fields.key, content, value)
+    if value == nil then return nil, types.invalid("memory value is required") end
+    local key = fields.key
+    local key_err = types.check_topic_key(key, content, value, kind)
     if key_err then return nil, key_err end
     local vector, vector_err = vector_for(component_id, content)
     if vector_err then return nil, vector_err end
-    local idempotency, id_err = types.digest({ "owner.create", scope_family, scope_id, key, value })
+    local idempotency, id_err = canonical_json.hash({ "owner.create", scope_family, scope_id, key, value })
     if id_err then return nil, id_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
         local cardinality = types.trim(fields.cardinality)
         if cardinality == "" then
             local established, err = d:cardinality_of(types.scope_key(scope_family, scope_id), key)
             if err then return nil, err end
-            cardinality = established or types.CARDINALITY.MULTI
+            cardinality = established or types.default_cardinality(kind)
         end
         return assert_claim(d, { scope_family = scope_family, scope_id = scope_id }, {
             kind = kind, key = key, cardinality = cardinality, value = value,
@@ -97,13 +106,10 @@ function M.create(component_id: string, fields: any): (any?, error?)
     end)
 end
 
--- Edits an item. A new value (or new text of an item whose value is its text)
--- is a new version replacing it; new text or priority alone is a revision of
--- the same claim.
 function M.edit(component_id: string, item_id: string, fields: any): (any?, error?)
     local content = fields.content ~= nil and types.trim(fields.content) or nil
     if content == "" then return nil, types.invalid("memory content is required") end
-    local idempotency, id_err = types.digest({ "owner.edit", item_id, content or "", fields.value == nil and "" or fields.value })
+    local idempotency, id_err = canonical_json.hash({ "owner.edit", item_id, content or "", fields.value == nil and "" or fields.value })
     if id_err then return nil, id_err end
     return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
@@ -114,7 +120,6 @@ function M.edit(component_id: string, item_id: string, fields: any): (any?, erro
         local vector, vector_err = vector_for(component_id, content or item.content)
         if vector_err then return nil, vector_err end
         local value = fields.value
-        if value == nil and content and item.value == item.content then value = content end
         if value ~= nil then
             local claim_id, claim_err = types.claim_id(component_id, item.scope_key, item.key, value)
             if claim_err then return nil, claim_err end
@@ -137,7 +142,6 @@ function M.edit(component_id: string, item_id: string, fields: any): (any?, erro
     end)
 end
 
--- Keeps `winner_id` current and supersedes every other member of the group.
 function M.resolve_conflict(component_id: string, group_id: string, winner_id: string): (any?, error?)
     return owner_write(component_id, "owner.resolve:" .. group_id .. ":" .. winner_id, function(d: any): (any?, error?)
         local members, err = items.group_members(component_id, { types.trim(group_id) })
@@ -156,7 +160,6 @@ function M.resolve_conflict(component_id: string, group_id: string, winner_id: s
     end)
 end
 
--- Hides an item from recall and the prompt; it can be restored.
 function M.archive(component_id: string, item_id: string): (any?, error?)
     return owner_write(component_id, "owner.archive:" .. item_id, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
@@ -170,7 +173,6 @@ function M.archive(component_id: string, item_id: string): (any?, error?)
     end)
 end
 
--- Brings an archived item back.
 function M.restore(component_id: string, item_id: string): (any?, error?)
     return owner_write(component_id, "owner.restore:" .. item_id, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
@@ -182,16 +184,75 @@ function M.restore(component_id: string, item_id: string): (any?, error?)
     end)
 end
 
--- Erases the item's claim: every version's text, value, vector and provenance,
--- and the captured spans that stated it. It cannot be restored.
 function M.forget(component_id: string, item_id: string): (any?, error?)
     return owner_write(component_id, "owner.forget:" .. item_id, function(d: any): (any?, error?)
         local item, err = load(d, item_id)
         if err then return nil, err end
         if item.status == types.STATUS.FORGOTTEN then return { item_id = item.id, unchanged = true }, nil end
-        local forget_err = d:forget(item)
+        local forget_err = d:forget({ item })
         if forget_err then return nil, forget_err end
         return { item_id = item.id, forgotten = d.stats.forgotten }, nil
+    end)
+end
+
+local SUGGESTIONS = 5
+local SUGGESTION_SCAN = 200
+
+local function key_distance(a: string, b: string): integer
+    local previous: { integer } = {}
+    for j = 0, #b do previous[j + 1] = j end
+    for i = 1, #a do
+        local current: { integer } = { i }
+        for j = 1, #b do
+            local cost = a:sub(i, i) == b:sub(j, j) and 0 or 1
+            current[j + 1] = math.min(current[j] + 1, previous[j + 1] + 1, previous[j] + cost)
+        end
+        previous = current
+    end
+    return previous[#b + 1]
+end
+
+function M.forget_key(component_id: string, key: string, value: any): (any?, error?)
+    local owner = types.actor_id()
+    if owner == "" then return nil, types.invalid("forget requires a signed-in user") end
+    local scope_key = types.scope_key(types.SCOPE.OWNER, owner)
+    local idempotency, hash_err = canonical_json.hash({ operation = "owner.forget_key", scope_key = scope_key, key = key, value = value })
+    if hash_err then return nil, hash_err end
+    return owner_write(component_id, idempotency :: string, function(d: any): (any?, error?)
+        local cardinality, card_err = items.key_cardinality(component_id, scope_key, key)
+        if card_err then return nil, card_err end
+        if cardinality == types.CARDINALITY.MULTI and value == nil then
+            return nil, types.invalid("value is required for a multi-valued key")
+        end
+        local claim, claim_err
+        if value ~= nil then
+            claim, claim_err = types.claim_id(component_id, scope_key, key, value)
+            if claim_err then return nil, claim_err end
+        end
+        local rows, read_err = items.list(component_id, { scope_keys = { scope_key }, key = key,
+            statuses = types.RETAINED_STATUSES, claim_ids = claim and { claim } or nil, limit = 1,
+        })
+        if read_err then return nil, read_err end
+        local selected = rows[1]
+        if not selected then
+            if claim and cardinality then return nil, types.not_found("memory value not found for key: " .. key) end
+            local known, known_err = items.key_names(component_id, scope_key, SUGGESTION_SCAN)
+            if known_err then return nil, known_err end
+            local ranked = {}
+            for _, row in ipairs(known :: any) do
+                ranked[#ranked + 1] = { key = row.key, distance = key_distance(key, row.key) }
+            end
+            table.sort(ranked, function(a, b)
+                if a.distance ~= b.distance then return a.distance < b.distance end
+                return a.key < b.key
+            end)
+            local closest: { string } = {}
+            for i = 1, math.min(SUGGESTIONS, #ranked) do closest[i] = ranked[i].key end
+            return nil, types.not_found("unknown memory key: " .. key .. ". Existing keys, closest first: " .. table.concat(closest, ", "))
+        end
+        local forget_err = d:forget({ selected }, claim == nil)
+        if forget_err then return nil, forget_err end
+        return { key = key, forgotten = d.stats.forgotten }, nil
     end)
 end
 

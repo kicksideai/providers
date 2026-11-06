@@ -4,34 +4,38 @@ import { computed, ref, watch } from 'vue'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import ConfigFields from './ConfigFields.vue'
 import ModelPicker from './ModelPicker.vue'
-import { isRecord, parseConfig, type ConfigSchema } from './types'
+import { errorText, parseConfig, parseCreateSchema, type ConfigSchema, type MemoryCreateEvents } from './types'
 
-// The memory engine's pane of the knowledge base create/edit dialog. The
-// embedding model is fixed when the memory is created; every other setting is
-// rendered from the engine's config_schema and sent back as config.
 interface CreateContext {
   embedding_model?: string
   config?: Record<string, unknown> & { config_schema?: ConfigSchema }
   edit?: boolean
 }
-interface E { 'config-changed': { embedding_model: string; config: Record<string, unknown> } }
 
 const props = useProps<{ config?: unknown }>()
-const emit = useEvents<E>()
+const emit = useEvents<MemoryCreateEvents>()
 
-const ctx = computed(() => parseConfig(props.value.config) as CreateContext)
-const isEdit = computed(() => !!ctx.value.edit)
-const schema = computed<ConfigSchema>(() => (isRecord(ctx.value.config?.config_schema) ? ctx.value.config?.config_schema : {}) as ConfigSchema)
-
+const configError = ref('')
+const ctx = ref<CreateContext>({})
 const embeddingModel = ref('class:embed')
 const values = ref<Record<string, unknown>>({})
-
-watch(ctx, (next) => {
-  const { config_schema: _schema, ...config } = next.config || {}
-  values.value = { ...config }
-  if (next.embedding_model) embeddingModel.value = next.embedding_model
-  publish()
+watch(() => props.value.config, (raw) => {
+  try {
+    const next = parseConfig(raw)
+    const config = next.config
+    if (!config || typeof config !== 'object') throw new Error('Memory create schema must supply object properties')
+    const schema = parseCreateSchema((config as Record<string, unknown>).config_schema)
+    const valueConfig = { ...(config as Record<string, unknown>), config_schema: schema }
+    ctx.value = { ...next, config: valueConfig } as CreateContext
+    const { config_schema: _schema, ...initialValues } = valueConfig
+    values.value = { ...initialValues }
+    embeddingModel.value = ctx.value.embedding_model || 'class:embed'
+    configError.value = ''
+    publish()
+  } catch (err) { configError.value = errorText(err) }
 }, { immediate: true })
+const isEdit = computed(() => !!ctx.value.edit)
+const schema = computed(() => ctx.value.config?.config_schema as ConfigSchema)
 
 function publish() {
   emit('config-changed', { embedding_model: embeddingModel.value, config: { ...values.value } })
@@ -49,13 +53,15 @@ function onValues(next: Record<string, unknown>) {
 </script>
 
 <template>
-  <div class="mm-stack">
-    <div class="mm-field">
-      <span id="embedding_label" class="mm-label">Embedding model</span>
-      <span v-if="isEdit" class="mm-hint">{{ embeddingModel }} — fixed when the memory was created.</span>
-      <ModelPicker v-else labelled-by="embedding_label" :value="embeddingModel" capability="embed" @select="onEmbedding" />
-      <span v-if="!isEdit" class="mm-hint">Vectors are 512-dimensional; the model cannot change later.</span>
-    </div>
-    <ConfigFields :schema="schema" :model-value="values" @update:model-value="onValues" />
-  </div>
+  <div v-if="configError" class="kx-notice error">{{ configError }}</div>
+  <ConfigFields v-else :schema="schema" :model-value="values" @update:model-value="onValues">
+    <template #before-models>
+      <div class="mm-field wide">
+        <span id="embedding_label" class="mm-label">Embedding model</span>
+        <span v-if="isEdit" class="mm-hint">{{ embeddingModel }}, fixed when the memory was created.</span>
+        <ModelPicker v-else labelled-by="embedding_label" :value="embeddingModel" capability="embed" @select="onEmbedding" />
+        <span v-if="!isEdit" class="mm-hint">Turns memories into vectors for search. It cannot change after the memory is created.</span>
+      </div>
+    </template>
+  </ConfigFields>
 </template>

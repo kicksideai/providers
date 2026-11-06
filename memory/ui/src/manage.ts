@@ -3,8 +3,6 @@ import { define } from '@wippy-fe/webcomponent-vue'
 import { memoryElement } from './element.ts'
 import Root from './app/MemoryManage.vue'
 
-// kickside-memory: the memory knowledge base page the knowledge surface
-// mounts for kb_type memory.
 const MemoryKbElement = memoryElement(Root, {
   type: 'object',
   properties: {

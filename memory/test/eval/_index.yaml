@@ -2,9 +2,6 @@
 version: "1.0"
 namespace: app.eval
 
-# Capture and reconcile eval. The target below scripts the ideal model answers;
-# a live run overrides its models and sets answers: live to score real ones.
-
 entries:
   - name: target
     kind: registry.entry
@@ -18,6 +15,8 @@ entries:
   - name: cases
     kind: library.lua
     source: file://cases.lua
+    imports:
+      fixture: app.suites:fixture
 
   - name: eval
     kind: library.lua

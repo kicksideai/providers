@@ -73,6 +73,7 @@ local function handle(request: any)
         external_id = req.external_id,
         external_version = req.external_version,
         source_ref = default_source_ref(req, metadata, content_type, title),
+        trace_context = req.trace_context,
     })
     if ingest_err or not queued then
         return { success = false, error = "ingest enqueue failed: " .. tostring(ingest_err) }
@@ -89,6 +90,7 @@ local function handle(request: any)
         external_id = queued.external_id,
         external_version = queued.external_version,
         source_ref = queued.source_ref,
+        trace_context = queued.trace_context,
         content_length = #content,
     }
 end
