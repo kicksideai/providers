@@ -376,6 +376,7 @@ entries:
     method: run
     modules: [funcs, security, process, channel, time]
     imports:
+      deletion_worker: app:deletion_test_worker
       test: wippy.test:test
       observer: app.suites:lifecycle_observer_real
 
@@ -389,6 +390,7 @@ entries:
     method: soak
     modules: [funcs, security, process, channel, time]
     imports:
+      deletion_worker: app:deletion_test_worker
       test: wippy.test:test
       observer: app.suites:lifecycle_observer_real
 
