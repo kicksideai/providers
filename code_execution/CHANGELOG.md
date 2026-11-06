@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/kicksideai/providers/compare/code-execution-v0.1.24...code-execution-v0.1.25) (2026-11-06)
+
+
+### Features
+
+* **memory:** typed long-term memory configured by the Memory trait ([#53](https://github.com/kicksideai/providers/issues/53)) ([9e5d646](https://github.com/kicksideai/providers/commit/9e5d6468593148ab57ae1b7bfe856b518aaec16f))
+
 ## [0.1.24](https://github.com/kicksideai/providers/compare/code-execution-v0.1.23...code-execution-v0.1.24) (2026-11-06)
 
 

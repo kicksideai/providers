@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/kicksideai/providers/compare/simplefin-v0.1.16...simplefin-v0.1.17) (2026-11-06)
+
+
+### Features
+
+* **memory:** typed long-term memory configured by the Memory trait ([#53](https://github.com/kicksideai/providers/issues/53)) ([9e5d646](https://github.com/kicksideai/providers/commit/9e5d6468593148ab57ae1b7bfe856b518aaec16f))
+
 ## [0.1.16](https://github.com/kicksideai/providers/compare/simplefin-v0.1.15...simplefin-v0.1.16) (2026-11-04)
 
 
