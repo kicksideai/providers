@@ -153,7 +153,7 @@ local function define_tests()
             fixture.extraction(id, { fixture.candidate("plan", "trip_tickets", { status = "open", next_step = "Compare routes", details = "London tickets" }, "The user needs London tickets.", answer.id) })
             fixture.apply(user, "before_step", id, session, "agent-a")
             fixture.wait_runs(user, id, "derive", 2)
-            local prompt = fixture.script.prompts(id, "structured_output")[2].system
+            local prompt = fixture.script.prompts(id, "structured_output")[2].user
             test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
             local schema = fixture.script.requests(id, "structured_output")[2]
             test.eq(schema.properties.plans.items.properties.value.properties.details.minLength, 1)

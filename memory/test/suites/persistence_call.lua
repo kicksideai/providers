@@ -13,9 +13,12 @@ local measured_db = require("measured_db")
 local runs = require("memory_runs")
 local reconcile = require("memory_reconcile")
 local ops = require("memory_ops")
+local stores = require("memory_stores")
 
 local function call(a: any): (any?, error?)
-    if a.op == "record_provenance" then
+    if a.op == "purge_page" then
+        return stores.purge_page(a.component_id)
+    elseif a.op == "record_provenance" then
         return writer.write(a.component_id, "refs:" .. (a.item_id or "new"), { source = "reflection" }, function(d: any): (any?, error?)
             local refs = { { host_kind = "item", host_id = a.source_id, event_id = "" } }
             if a.item_id then

@@ -31,6 +31,25 @@ local function define_tests()
             test.eq(history.events[1].author.id, user)
         end)
 
+        test.it("preserves explicit unknown authors while resolving unmarked session input", function()
+            local user = fixture.user()
+            local session = "s-" .. user
+            fixture.history.record(session, {
+                {id = "unknown", role = "user", event_author = {kind = "unknown"}, content = "I prefer a quiet room."},
+                {id = "unmarked", role = "user", content = "I prefer tea."},
+                {id = "marked", role = "user", author = {kind = "unknown"}, content = "I prefer coffee."},
+            })
+            local payload = fixture.payload("before_step", session, "agent-a")
+            payload.run_context = {contract = "wippy.agent:run_context", binding = "app.suites:history_binding"}
+            local history, err = fixture.op(user, "read_history", {payload = payload, selector = {mode = "all"}})
+            test.is_nil(err, tostring(err))
+            test.eq(history.events[1].author.kind, "unknown")
+            test.is_nil(history.events[1].author.id)
+            test.eq(history.events[2].author.kind, "user")
+            test.eq(history.events[2].author.id, user)
+            test.eq(history.events[3].author.kind, "unknown")
+        end)
+
         test.it("requires an explicit author for each admitted message", function()
             local user = fixture.user()
             local ok, err = pcall(fixture.record_chat, user, "s-" .. user, {

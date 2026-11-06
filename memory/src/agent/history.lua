@@ -49,7 +49,7 @@ function M.read(payload: any, selector: any): (any?, error?)
         end
         event.role, event.metadata = role, metadata
         local author = metadata.author
-        if author == nil and type(event.author) == "table" and event.author.kind ~= "unknown" then author = event.author end
+        if author == nil and type(event.author) == "table" then author = event.author end
         if author == nil then
             if role == "function" then author = {kind = "system"}
             elseif role == "assistant" and types.trim(metadata.agent_id) ~= "" then

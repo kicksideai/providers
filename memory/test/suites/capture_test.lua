@@ -403,7 +403,7 @@ local function define_tests()
             test.is_true(applied.metadata.capture.captured)
             local runs = fixture.wait_runs(user, id, "derive", 1)
             test.eq(runs[1].status, "succeeded", tostring(runs[1].last_error))
-            local prompt = fixture.script.prompts(id, "structured_output")[1].system
+            local prompt = fixture.script.prompts(id, "structured_output")[1].user
             test.is_true(prompt:find("- preference: diet", 1, true) ~= nil, prompt)
             test.is_true(prompt:find("- profile_slot: name", 1, true) ~= nil, prompt)
         end)

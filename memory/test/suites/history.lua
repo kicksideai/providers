@@ -46,6 +46,7 @@ function M.record(host_id: string, messages: { any })
         local metadata = {}
         for key, value in pairs(message.metadata or {}) do metadata[key] = value end
         metadata.author = message.author
+        metadata.event_author = message.event_author
         seq = seq + 1
         local _, write_err = conn:execute("INSERT INTO app_history (host_id, seq, id, role, content, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
             { host_id, seq, message.id, message.role, message.content, json.encode(metadata),
@@ -61,7 +62,7 @@ local function all(conn: any, host_id: string): ({ any }?, any?)
     local out = {}
     for _, row in ipairs(rows) do
         out[#out + 1] = { id = row.id, role = row.role, content = row.content, raw_content = row.content,
-            author = assert(json.decode(row.metadata)).author, metadata = assert(json.decode(row.metadata)), created_at = row.created_at }
+            author = assert(json.decode(row.metadata)).event_author or assert(json.decode(row.metadata)).author, metadata = assert(json.decode(row.metadata)), created_at = row.created_at }
     end
     return out, nil
 end

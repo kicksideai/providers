@@ -78,19 +78,23 @@ function M.purge_page(component_id: string): (any?, error?)
             end
             return { done = false, removed = #ids }, nil
         end
-        for _, statement in ipairs({
-            "DELETE FROM kickside_memory_provenance WHERE component_id = $1",
-            "DELETE FROM kickside_memory_embeddings WHERE component_id = $1",
-            "DELETE FROM kickside_memory_payloads WHERE component_id = $1",
-            "DELETE FROM kickside_memory_keys WHERE component_id = $1",
-            "DELETE FROM kickside_memory_cursors WHERE component_id = $1",
-            "DELETE FROM kickside_memory_run_sources WHERE component_id = $1",
-            "DELETE FROM kickside_memory_runs WHERE component_id = $1",
-            "DELETE FROM kickside_memory_stores WHERE component_id = $1",
+        for _, page in ipairs({
+            { "kickside_memory_provenance", "item_id, host_kind, host_id, event_id" },
+            { "kickside_memory_embeddings", "item_id" },
+            { "kickside_memory_payloads", "item_id" },
+            { "kickside_memory_keys", "id" },
+            { "kickside_memory_cursors", "host_kind, host_id" },
+            { "kickside_memory_run_sources", "run_id, event_id" },
+            { "kickside_memory_runs", "id" },
         }) do
-            local _, del_err = tx:execute(statement, { component_id })
+            local name, key = page[1], page[2]
+            local result, del_err = tx:execute("DELETE FROM " .. name .. " WHERE component_id = $1 AND (" .. key .. ") IN (SELECT " .. key .. " FROM " .. name .. " WHERE component_id = $1 ORDER BY " .. key .. " LIMIT $2)",
+                { component_id, PURGE_PAGE })
             if del_err then return nil, types.failed("memory purge failed", del_err) end
+            if result.rows_affected > 0 then return { done = false, removed = result.rows_affected }, nil end
         end
+        local _, del_err = tx:execute("DELETE FROM kickside_memory_stores WHERE component_id = $1", { component_id })
+        if del_err then return nil, types.failed("memory purge failed", del_err) end
         return { done = true, removed = 0 }, nil
     end)
 end

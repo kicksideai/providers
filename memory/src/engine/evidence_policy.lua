@@ -16,10 +16,10 @@ function M.is_statement(message: any, agent_id: string?): boolean
     return false
 end
 
-function M.scope_family(candidate: any, author: any, owner_id: string?): string
-    if type(owner_id) == "string" and owner_id ~= "" and PERSONAL_KINDS[candidate.kind]
-        and type(author) == "table" and author.kind == "user" and author.id == owner_id then
-        return types.SCOPE.OWNER
+function M.scope_family(candidate: any, author: any, owner_id: string?): string?
+    if PERSONAL_KINDS[candidate.kind] and type(author) == "table" and author.kind == "user" then
+        if type(owner_id) == "string" and owner_id ~= "" and author.id == owner_id then return types.SCOPE.OWNER end
+        return nil
     end
     if type(owner_id) == "string" and owner_id ~= "" and type(author) == "table" and author.kind == "document"
         and candidate.kind == types.KIND.FACT then
