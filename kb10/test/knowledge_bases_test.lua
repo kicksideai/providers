@@ -1,3 +1,4 @@
+local deletion_worker = require("deletion_worker")
 -- Tests for kickside.knowledge:knowledge_bases binding.
 
 local test = require("test")
@@ -318,18 +319,29 @@ local function define_tests()
                 test.is_true(result.in_progress)
                 test.is_false(result.deleted)
                 test.is_true(result.cleanup_pending)
-                test.is_true(result.details.needs_continue)
+                test.not_nil(result.job_id)
                 local rows, read_err = db:query("SELECT deleting_at FROM kickside_components WHERE component_id=$1", { id })
                 test.is_nil(read_err)
                 test.not_nil(rows[1].deleting_at)
                 rows, read_err = db:query("SELECT id FROM kb10_stores WHERE component_id=$1", { id })
                 test.is_nil(read_err)
                 test.eq(#rows, 1)
-                for i = 1, 8 do
-                    local tick, tick_err = exec:call("kickside.component:retention", {})
-                    test.is_nil(tick_err, tostring(tick_err))
-                    test.is_true(tick.success, tostring(tick.error))
+                local first, first_err = deletion_worker.run(id)
+                test.is_nil(first_err, tostring(first_err))
+                test.is_false(first.deleted)
+                test.not_nil(first.rearm)
+                rows, read_err = db:query("SELECT id FROM kb10_stores WHERE component_id=$1", { id })
+                test.is_nil(read_err)
+                test.eq(#rows, 1, "a cleanup page retains the fenced store")
+                local final = first
+                for _ = 1, 8 do
+                    if final.deleted then break end
+                    local worker_err
+                    final, worker_err = deletion_worker.run(id)
+                    test.is_nil(worker_err, tostring(worker_err))
+                    test.is_true(final.success)
                 end
+                test.is_true(final.deleted)
                 for _, table_name in ipairs({ "kickside_components", "kb10_stores", "kickside_component_thread_reap" }) do
                     rows, read_err = db:query("SELECT component_id FROM " .. table_name .. " WHERE component_id=$1", { id })
                     test.is_nil(read_err)
@@ -343,7 +355,7 @@ local function define_tests()
 
         test.describe("QA-P05 ingested knowledge deletion", function()
             for _, kind in ipairs({ "document", "wiki" }) do
-                test.it("immediately deletes an ingested " .. kind .. " and its complete backing state", function()
+                test.it("deletes an ingested " .. kind .. " and its complete backing state", function()
                     local created, create_err = call(exec, "kb_create", {
                         name = prefix .. "immediate-" .. kind, kb_type = kind, embedding_model = "class:embed",
                     })
@@ -361,6 +373,11 @@ local function define_tests()
                     local delete_details = type(delete_err) == "userdata" and delete_err:details() or nil
                     test.is_nil(delete_err, tostring(delete_err) .. " " .. (json.encode(delete_details or {}) or ""))
                     test.eq(deleted.component_id, id)
+                    test.is_true(deleted.in_progress)
+                    test.not_nil(deleted.job_id)
+                    local final, worker_err = deletion_worker.run(id)
+                    test.is_nil(worker_err, tostring(worker_err))
+                    test.is_true(final.deleted)
                     for _, table_name in ipairs({ "kickside_components", "kb10_stores", "kb10_maintenance_runs" }) do
                         local rows, read_err = db:query("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id=$1", { id })
                         test.is_nil(read_err, tostring(read_err))

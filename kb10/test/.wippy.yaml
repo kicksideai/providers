@@ -8,6 +8,7 @@ vars:
 profiles:
   postgres:
     override:
+  kickside.core.jobs.service:worker.service:lifecycle.auto_start: false
       app:db:kind: db.sql.postgres
       app:db:host: ${pg_host}
       app:db:port: ${pg_port}

@@ -74,6 +74,7 @@ entries:
     method: run
     modules: [json, registry]
     imports:
+      deletion_worker: app:deletion_test_worker
       test: wippy.test:test
       fixture: app.suites:fixture
 
@@ -189,3 +190,14 @@ entries:
     source: file://legacy_document.lua
     method: query
     modules: [ctx]
+
+  - name: bounded_deletion_test
+    kind: function.lua
+    meta: {type: test, suite: bounded_memory_delete}
+    source: file://bounded_deletion_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+      deletion_worker: app:deletion_test_worker
