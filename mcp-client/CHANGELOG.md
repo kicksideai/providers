@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.4...mcp-client-v0.2.5) (2026-11-06)
+
+
+### Features
+
+* **memory:** typed long-term memory configured by the Memory trait ([#53](https://github.com/kicksideai/providers/issues/53)) ([9e5d646](https://github.com/kicksideai/providers/commit/9e5d6468593148ab57ae1b7bfe856b518aaec16f))
+
 ## [0.2.4](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.3...mcp-client-v0.2.4) (2026-11-04)
 
 
