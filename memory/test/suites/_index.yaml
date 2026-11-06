@@ -126,6 +126,7 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+      deletion_worker: app:deletion_test_worker
 
   - name: tools_test
     kind: function.lua
@@ -402,3 +403,14 @@ entries:
     imports:
       test: wippy.test:test
       fixture: app.suites:fixture
+
+  - name: bounded_deletion_test
+    kind: function.lua
+    meta: {type: test, suite: bounded_memory_delete}
+    source: file://bounded_deletion_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      fixture: app.suites:fixture
+      deletion_worker: app:deletion_test_worker

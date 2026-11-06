@@ -72,6 +72,7 @@
   "scripts": {
     "build": "vite build --outDir ../static",
     "dev": "vite build --watch --outDir ../static",
+    "test": "vitest run",
     "type-check": "vue-tsc --noEmit"
   }
 }

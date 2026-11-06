@@ -162,6 +162,20 @@ entries:
     imports:
       canonical_json: kickside.contract:canonical_json
 
+  - name: resolve_sdk_tools
+    kind: function.lua
+    meta:
+      private: true
+      comment: Resolves SDK descriptors under the ambient actor without tool dispatch.
+    source: file://sdk/surface.lua
+    method: resolve_sdk_tools
+    modules: [registry, json]
+    imports:
+      canonical_json: kickside.contract:canonical_json
+    security:
+      policies:
+        - kickside.code_execution.security:tool_registry_read
+
   # ─── SDK libraries injected into the eval sandbox ────────────────────
   # sdk dispatches the run's tools under the ambient actor; run_code grants its private
   # import modules (ctx, funcs, json, time) through eval_runner's import table, not the
@@ -230,6 +244,7 @@ entries:
     security:
       policies:
         - kickside.code_execution.security:eval_grant
+        - kickside.code_execution.security:tool_resolver_dispatch
 
   # ─── HTTP endpoints (router app:api) ─────────────────────────────────
   # The callable SDK surface for a whitelist (empty = all): the exact sdk.tools calls with

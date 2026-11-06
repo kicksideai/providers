@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.45](https://github.com/kicksideai/providers/compare/hubspot-v0.1.44...hubspot-v0.1.45) (2026-11-06)
+
+
+### Features
+
+* **hubspot:** download form file attachments (ATN-98) ([fb0f9ae](https://github.com/kicksideai/providers/commit/fb0f9aee9e81de400f241f7b59f51978b6f2db5b))
+
+
+### Bug Fixes
+
+* **hubspot:** bound attachment downloads and validate form links ([d373b79](https://github.com/kicksideai/providers/commit/d373b79bf2a85fa7d76e420314f65e0dacee4e0e))
+* **hubspot:** take a form file's type from its HubSpot extension ([8d0c0d8](https://github.com/kicksideai/providers/commit/8d0c0d8d4ec0add2904210f44939b14413d6abb3))
+
+## [0.1.44](https://github.com/kicksideai/providers/compare/hubspot-v0.1.43...hubspot-v0.1.44) (2026-11-04)
+
+
+### Bug Fixes
+
+* **mcp-client:** show the MCP icon on OAuth connections ([ac820ae](https://github.com/kicksideai/providers/commit/ac820ae648f2a7cb1f1d8f90045aea937ba538f3))
+
 ## [0.1.43](https://github.com/kicksideai/providers/compare/hubspot-v0.1.42...hubspot-v0.1.43) (2026-10-24)
 
 

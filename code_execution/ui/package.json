@@ -46,6 +46,7 @@
   },
   "scripts": {
     "build": "vite build --outDir ../static",
-    "type-check": "vue-tsc --build --force"
+    "type-check": "vue-tsc --build --force",
+    "test": "vitest run"
   }
 }

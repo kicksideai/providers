@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local deletion_worker = require("deletion_worker")
 local test = require("test")
 local fixture = require("fixture")
 local json = require("json")
@@ -932,7 +933,14 @@ local function define_tests()
             test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_memory_items WHERE component_id = $1", { id }), 2)
             local result, err = fixture.delete_memory(user, id)
             test.is_nil(err, tostring(err))
-            test.is_true(result.deleted == true, json.encode(result))
+            test.is_false(result.deleted)
+            test.is_true(result.in_progress)
+            test.not_nil(result.job_id)
+            fixture.wait_job(result.job_id, "done")
+            local finished, finish_err = deletion_worker.await(id)
+            test.is_nil(finish_err, tostring(finish_err))
+            test.is_true(finished)
+            test.eq(fixture.count("SELECT COUNT(*) AS n FROM kickside_components WHERE component_id = $1", { id }), 0)
             for _, table_name in ipairs({ "kickside_memory_items", "kickside_memory_payloads", "kickside_memory_keys", "kickside_memory_provenance", "kickside_memory_embeddings",
                 "kickside_memory_cursors", "kickside_memory_run_sources", "kickside_memory_runs", "kickside_memory_stores" }) do
                 test.eq(fixture.count("SELECT COUNT(*) AS n FROM " .. table_name .. " WHERE component_id = $1", { id }), 0, table_name)
