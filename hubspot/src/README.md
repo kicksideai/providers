@@ -54,3 +54,19 @@ The HubSpot adapter does not enforce this origin check itself.
 This writable origin is separate from the source payload's backfill/live marker.
 Fresh provider installs create the final SQLite and PostgreSQL schemas
 directly without legacy conversion paths.
+
+## Form file attachments
+
+`kickside.hubspot.files:attachment_fetcher` declares HubSpot for the uploads
+`attachment.fetcher` lookup (`provider: hubspot`):
+
+- `fetch_func` — `kickside.hubspot.files:fetch_attachment({ref, component_id})`
+  reads Files API v3 metadata, asks for a signed URL and downloads the bytes
+  (50 MB cap, declared and actual). It returns `{bytes, filename, content_type,
+  size}` or `{error = "<code>: <detail>"}` with `no_access`, `not_found`,
+  `too_large` or `download_failed`. The token and the signed URL never leave the
+  module. Form uploads need the `files.ui_hidden.read` scope.
+- `parse_func` — `kickside.hubspot.files:parse_refs({value})` turns a form file
+  property value (links separated by `;`, each ending in
+  `/signed-url-redirect/<id>`) into `{refs = {{ref}}, skipped}` without network
+  or credentials, in link order and without duplicates.

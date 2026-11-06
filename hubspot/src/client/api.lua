@@ -411,6 +411,20 @@ function M.get_owner(conn: types.Conn, id: string): (types.Result?, error?)
     return M.get(conn, "/crm/v3/owners/" .. encode_segment(id), nil)
 end
 
+-- ── Files ────────────────────────────────────────────────────────────────
+
+-- get_file(conn, id) -> Files API v3 metadata of one file (name, extension,
+-- size, archived). Form uploads need the files.ui_hidden.read scope.
+function M.get_file(conn: types.Conn, id: string): (types.Result?, error?)
+    return M.get(conn, "/files/v3/files/" .. encode_segment(id), nil)
+end
+
+-- get_file_signed_url(conn, id) -> a short-lived download URL for one file.
+-- The URL is a bearer secret: callers must not log or return it.
+function M.get_file_signed_url(conn: types.Conn, id: string): (types.Result?, error?)
+    return M.get(conn, "/files/v3/files/" .. encode_segment(id) .. "/signed-url", nil)
+end
+
 -- ── Write ────────────────────────────────────────────────────────────────
 function M.create_object(conn: types.Conn, object_type: string, properties: unknown): (types.Result?, error?)
     local payload = object_body(properties)

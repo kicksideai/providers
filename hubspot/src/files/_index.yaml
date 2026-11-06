@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.hubspot.files
+
+entries:
+  - name: refs
+    kind: library.lua
+    meta:
+      comment: Parses a HubSpot form file property value into Files API ids without network or credentials.
+    source: file://refs.lua
+
+  - name: fetcher
+    kind: library.lua
+    meta:
+      comment: Shared implementation behind kickside.hubspot.files:fetch_attachment.
+    source: file://fetcher.lua
+    modules: [http_client]
+    imports:
+      transport: kickside.hubspot.client:transport
+
+  - name: fetch_attachment
+    kind: function.lua
+    meta:
+      comment: Resolve a HubSpot file id to bounded bytes for the declared uploads attachment fetcher.
+    source: file://functions.lua
+    method: fetch_attachment
+    imports:
+      fetcher: kickside.hubspot.files:fetcher
+      refs: kickside.hubspot.files:refs
+
+  - name: parse_refs
+    kind: function.lua
+    meta:
+      comment: Parse a HubSpot form file property value into file refs without downloading.
+    source: file://functions.lua
+    method: parse_refs
+    imports:
+      fetcher: kickside.hubspot.files:fetcher
+      refs: kickside.hubspot.files:refs
+
+  - name: attachment_fetcher
+    kind: registry.entry
+    meta:
+      type: attachment.fetcher
+      comment: Resolve HubSpot form-upload file ids; the private-app token and signed URLs stay in the provider.
+    provider: hubspot
+    fetch_func: kickside.hubspot.files:fetch_attachment
+    parse_func: kickside.hubspot.files:parse_refs
