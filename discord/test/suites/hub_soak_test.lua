@@ -1,3 +1,4 @@
+local deletion_worker = require("deletion_worker")
 local test = require("test")
 local funcs = require("funcs")
 local security = require("security")
@@ -70,7 +71,12 @@ local function exercise(delay, first_round, last_round)
             end
             if round % 15 == 0 then
                 local removed_pid = workers[id].pid
-                call("kickside.connection.registry:delete", {component_id = id})
+                local accepted = call("kickside.connection.registry:delete", {component_id = id})
+                test.is_true(accepted.in_progress)
+                test.not_nil(accepted.job_id)
+                local final, worker_err = deletion_worker.run(id)
+                test.is_nil(worker_err, tostring(worker_err))
+                test.is_true(final.deleted)
                 connections[id] = nil
                 wake()
                 wait_for(function() return stopped[removed_pid] end)
@@ -105,7 +111,12 @@ local function exercise(delay, first_round, last_round)
             if selected.channel == events and selected.value.from == hub_pid then hub_exit = selected.value end
         end
     end
-    for id in pairs(connections) do call("kickside.connection.registry:delete", {component_id = id}) end
+    for id in pairs(connections) do
+        call("kickside.connection.registry:delete", {component_id = id})
+        local final, worker_err = deletion_worker.run(id)
+        test.is_nil(worker_err, tostring(worker_err))
+        test.is_true(final.deleted)
+    end
     local _, unregister_err = process.registry.unregister(parent_name, process.registry.CONSISTENT)
     test.is_nil(unregister_err, tostring(unregister_err))
     test.is_true(ok, tostring(failure))
