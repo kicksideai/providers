@@ -213,6 +213,13 @@ entries:
       actions: [funcs.call, funcs.security, registry.get, registry.find]
       effect: allow
 
+  - name: code_execution_entry_policy
+    kind: security.policy
+    policy:
+      resources: kickside.code_execution:run_code
+      actions: funcs.call
+      effect: allow
+
   - name: stub_echo_tool
     kind: function.lua
     meta:
@@ -250,6 +257,21 @@ entries:
   - name: stub_secret_tool
     kind: function.lua
     meta: { type: tool, title: Secret }
+    source: file://stub_tools.lua
+    method: secret
+    modules: [security]
+
+  - name: stub_catalog_mutation
+    kind: function.lua
+    meta: { type: tool }
+    source: file://catalog_mutation.lua
+    method: mutate
+    modules: [registry]
+    security:
+      policies: [app:admin]
+
+  - name: stub_promoted_tool
+    kind: function.lua
     source: file://stub_tools.lua
     method: secret
     modules: [security]

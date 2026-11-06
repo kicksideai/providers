@@ -9,14 +9,15 @@
 -- what the SDK POPULATES: every dispatch still runs under the ambient actor with the tool's
 -- own gates, so no new authority is granted.
 --
--- The resolved descriptors are injected as SDK context data and the sandbox is offered
+-- Explicit whitelist descriptors are injected as SDK context data; allow-all resolves
+-- descriptors on demand. The sandbox is offered
 -- ONLY `json` and the safe stdlib, no host classes. `ctx`, `funcs`, and `time` are private
 -- to the `sdk` import (granted through eval's per-import modules), so user source cannot
 -- require() them — the SDK is the only surface.
 --
 -- `run` injects the real `sdk` (dispatches tools). `dry_run` injects `sdk_sim` (schema-
--- shaped mocks, no dispatch) for a side-effect-free validation of generated code: identical
--- resolution and sandbox, only the injected library differs. Only these functions hold the
+-- shaped mocks, no dispatch) for a side-effect-free validation of generated code with
+-- eager resolution and the same sandbox. Only these functions hold the
 -- eval.* grants (see security/_index.yaml).
 
 local eval_runner = require("eval_runner")
@@ -59,16 +60,17 @@ local function fail(kind: string, message: string): any
     return { ok = false, error = { kind = kind, message = message } }
 end
 
--- resolve_whitelist: shared by run and dry_run. Returns the descriptor map, or a typed
--- failure ({ ok = false, error }) on a bad whitelist.
-local function resolve_whitelist(input: any): (any?, any?)
+-- resolve_whitelist: validate declared subsets eagerly; real allow-all runs defer lookup.
+local function resolve_whitelist(input: any, simulation: boolean): (any?, any?)
     if not is_str(input.source) then
         return nil, fail("invalid", "source is required")
     end
     if input.tool_ids ~= nil and type(input.tool_ids) ~= "table" then
         return nil, fail("invalid", "tool_ids must be an array")
     end
-    local tools, terr = surface.resolve_tools(input.tool_ids)
+    local ids = surface.normalize_ids(input.tool_ids)
+    if not simulation and #ids == 0 then return nil, nil end
+    local tools, terr = surface.resolve_tools(ids)
     if terr then return nil, fail("invalid_tool", terr :: string) end
     return tools, nil
 end
@@ -76,7 +78,7 @@ end
 -- eval_with: resolve the whitelist and run the source with the chosen sdk import.
 local function eval_with(input: any, sdk_id: string): any
     input = input or {}
-    local tools, ferr = resolve_whitelist(input)
+    local tools, ferr = resolve_whitelist(input, sdk_id == SDK_SIM_LIB)
     if ferr then return ferr end
 
     local result, err = eval_runner.run({
@@ -179,8 +181,8 @@ function M.run(request: any): any
     return bounded_eval(input, false)
 end
 
--- dry_run: execute the source against the SIMULATION sdk (sdk_sim) — identical resolution
--- and sandbox, but every tool call returns schema-shaped mock data and dispatches nothing.
+-- dry_run: resolve descriptors eagerly for the SIMULATION sdk (sdk_sim) in the same
+-- sandbox; every tool call returns schema-shaped mock data and dispatches nothing.
 -- Side-effect-free; the generator uses it to validate a draft.
 function M.dry_run(input: any): any
     return bounded_eval(input, true)

@@ -119,36 +119,63 @@ local function normalize_ids(value: any): { string }
     return out
 end
 
--- resolve_tools(tool_ids) -> (id -> descriptor, err?), keyed by the real registry entry id
--- so the sandbox reaches each tool under the exact id that exists in the registry.
--- Empty/absent = every registered tool (allow-all). A non-empty list restricts to that
--- subset and errors on any id that is not a meta.type=tool function.lua entry.
+local function catalog(): (any, string?)
+    local entries, err = registry.find({ [".kind"] = "function.lua", ["meta.type"] = "tool" })
+    if err then return nil, "tool catalog: " .. tostring(err) end
+    return entries or {}, nil
+end
+
+-- Both resolution contracts use this one descriptor path.
+local function resolve_id(id: string): (any, string?, boolean)
+    local entry, err = registry.get(id)
+    if err or not entry then return nil, "unknown tool: " .. id, false end
+    if not is_tool(entry) then return nil, "not a tool: " .. id, false end
+    local descriptor, descriptor_err = tool_descriptor(entry)
+    return descriptor, descriptor_err, true
+end
+
+M.normalize_ids = normalize_ids
+
+-- Empty/absent ids enumerate every reachable tool; a non-empty list is strict.
 function M.resolve_tools(tool_ids: any): (any, string?)
     local ids = normalize_ids(tool_ids)
     local out: Map = {}
-
     if #ids == 0 then
-        local entries, err = registry.find({ [".kind"] = "function.lua" })
-        if err then return nil, "tool catalog: " .. tostring(err) end
-        for _, entry in ipairs(entries or {}) do
-            if is_tool(entry) then
-                local d, descriptor_err = tool_descriptor(entry)
-                if descriptor_err then return nil, descriptor_err end
-                out[d.id] = d
-            end
+        local entries, err = catalog()
+        if err then return nil, err end
+        for _, entry in ipairs(entries) do
+            local descriptor, descriptor_err = tool_descriptor(entry)
+            if descriptor_err then return nil, descriptor_err end
+            out[entry.id] = descriptor
         end
         return out, nil
     end
-
     for _, id in ipairs(ids) do
-        local entry, err = registry.get(id)
-        if err or not entry then return nil, "unknown tool: " .. id end
-        if not is_tool(entry) then return nil, "not a tool: " .. id end
-        local d, descriptor_err = tool_descriptor(entry)
-        if descriptor_err then return nil, descriptor_err end
-        out[d.id] = d
+        local descriptor, err = resolve_id(id)
+        if err then return nil, err end
+        out[id] = descriptor
     end
     return out, nil
+end
+
+-- No ids requests the catalog without constructing descriptors. Lookup errors are data.
+function M.resolve_sdk_tools(tool_ids: any): (any, string?)
+    local ids = normalize_ids(tool_ids)
+    if #ids == 0 then
+        local entries, err = catalog()
+        if err then return nil, err end
+        local out = {}
+        for _, entry in ipairs(entries) do out[#out + 1] = entry.id end
+        return { ids = out }, nil
+    end
+    local tools: Map = {}
+    local errors: Map = {}
+    for _, id in ipairs(ids) do
+        local descriptor, err, tool = resolve_id(id)
+        if descriptor then tools[id] = descriptor end
+        if tool and err then errors[id] = err end
+    end
+    return { tools = tools, errors = errors }, nil
 end
 
 -- Catalog rows identify callable tools; fields selects descriptor details.

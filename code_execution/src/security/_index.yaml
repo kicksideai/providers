@@ -33,3 +33,19 @@ entries:
       resources: kickside.code_execution:run_code_worker
       actions: funcs.call
       effect: allow
+
+  - name: tool_resolver_dispatch
+    kind: security.policy
+    meta: { comment: "Allows the worker to resolve SDK tools under the ambient actor." }
+    policy:
+      resources: kickside.code_execution:resolve_sdk_tools
+      actions: funcs.call
+      effect: allow
+
+  - name: tool_registry_read
+    kind: security.policy
+    meta: { comment: "Allows the SDK resolver to read tool entries and enumerate tool ids." }
+    policy:
+      resources: '*'
+      actions: [registry.get, registry.find]
+      effect: allow
