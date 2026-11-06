@@ -8,7 +8,6 @@ vars:
 profiles:
   postgres:
     override:
-  kickside.core.jobs.service:worker.service:lifecycle.auto_start: false
       app:db:kind: db.sql.postgres
       app:db:host: ${pg_host}
       app:db:port: ${pg_port}
@@ -37,6 +36,7 @@ workspace:
     kickside/uploads: ../../../kickside/platform/uploads
     kickside/users: ../../../kickside/platform/users
 override:
+  kickside.core.jobs.service:worker.service:lifecycle.auto_start: false
   kickside.kb10.graph:enrichment_service.service:lifecycle.auto_start: false
 registry:
   dispatch_internal_kinds:
