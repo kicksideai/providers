@@ -194,6 +194,7 @@ entries:
     method: run
     modules: [sql, json, crypto, funcs, security, contract]
     imports:
+      deletion_worker: app:deletion_test_worker
       test: wippy.test:test
       kb10_types: kickside.kb10:types
       kb10_store: kickside.kb10.persist:store
@@ -356,6 +357,7 @@ entries:
     method: run
     modules: [sql, crypto, funcs, security, contract, json]
     imports:
+      deletion_worker: app:deletion_test_worker
       test: wippy.test:test
       engines: kickside.knowledge:engines
       node_store: kickside.kb10.persist:node_store
@@ -788,3 +790,12 @@ entries:
       test: wippy.test:test
       enrichment_state: app:enrichment_state_under_test
       component_fixture: app:enrichment_component_fixture
+
+  - name: deletion_test_worker
+    kind: library.lua
+    source: file://deletion_test_worker.lua
+    modules: [funcs, sql, time, uuid, process]
+    imports:
+      claim: kickside.core.jobs.persist:claim
+      lifecycle: kickside.core.jobs.persist:lifecycle
+      completion: kickside.core.jobs.service:worker_completion

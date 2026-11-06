@@ -1,5 +1,6 @@
 version: '1.0'
 override:
+  kickside.core.jobs.service:worker.service:lifecycle.auto_start: false
   'kickside.discord.gateway:gateway.service:lifecycle.auto_start': false
 vars:
   pg_host: localhost
