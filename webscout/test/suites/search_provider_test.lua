@@ -258,7 +258,7 @@ local function define_tests()
             test.eq(result.total_results, "1000")
             test.eq(result.next_cursor, "25")
 
-            calls = {}
+            calls = {} :: any
             local next_page, next_err = dispatch.handle({ query = "kickside gtm", num = 3, cursor = result.next_cursor }, {
                 config = config_of("google"), providers = installed({ GOOGLE, ACME }), call = paging,
             })
