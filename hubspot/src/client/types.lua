@@ -19,6 +19,13 @@ type Result = {
     details: unknown?,
 }
 
+-- An HTTP response as the http_client module answers it.
+type HttpResponse = {
+    status_code: integer,
+    body: unknown?,
+    headers: unknown?,
+}
+
 type Conn = {
     component_id: string?,
     api_key: string,
@@ -80,7 +87,19 @@ type AssociationBatchResult = {
     retry_after_ms: number?,
 }
 
+-- http_response(value) -> the value narrowed to HttpResponse, or the reason
+-- it does not have that shape.
+function M.http_response(value: unknown): (HttpResponse?, string?)
+    if type(value) ~= "table" then return nil, "HTTP client returned no response" end
+    local raw = value :: { [string]: unknown }
+    if type(raw.status_code) ~= "number" then return nil, "HTTP response is missing status_code" end
+    if raw.body ~= nil and type(raw.body) ~= "string" then return nil, "HTTP response body must be a string" end
+    if raw.headers ~= nil and type(raw.headers) ~= "table" then return nil, "HTTP response headers must be an object" end
+    return value :: HttpResponse, nil
+end
+
 M.ObjectId = ObjectId
+M.HttpResponse = HttpResponse
 M.Result = Result
 M.Conn = Conn
 M.AssociationInput = AssociationInput
