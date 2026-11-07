@@ -280,6 +280,11 @@ entries:
                     "type": "object",
                     "description": "Fields normalized by the source instance's declared field map.",
                     "additionalProperties": true
+                  },
+                  "merged_ids": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Ids of the HubSpot objects merged into this one (hs_merged_object_ids). Present on a merged contact, company or deal only."
                   }
                 },
                 "required": ["id", "source", "fields"]

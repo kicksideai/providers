@@ -92,6 +92,11 @@ local SYSTEM_PROPERTIES = {
     "hs_lastmodifieddate",
 }
 
+-- HubSpot merges contacts, companies and deals: the surviving object lists the
+-- ids of the objects merged into it, semicolon-separated, in this property.
+M.MERGED_IDS_PROPERTY = "hs_merged_object_ids"
+M.MERGEABLE_OBJECT_SET = { contacts = true, companies = true, deals = true }
+
 local function copy_array(values: unknown): { string }
     local out: { string } = {}
     if type(values) ~= "table" then return out end
@@ -281,6 +286,7 @@ function M.properties_for(config: unknown, object_type: string): ({ string }?, C
         for key, _ in pairs(field_map) do append_unique(out, seen, key) end
     end
     for _, key in ipairs(SYSTEM_PROPERTIES) do append_unique(out, seen, key) end
+    if M.MERGEABLE_OBJECT_SET[object_type] then append_unique(out, seen, M.MERGED_IDS_PROPERTY) end
     append_unique(out, seen, M.watermark_property_for(config, object_type))
     return out
 end
