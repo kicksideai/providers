@@ -593,6 +593,73 @@ local function define_tests()
             test.is_true(tostring(err):find("requires a positive output limit", 1, true) ~= nil, tostring(err))
         end)
 
+        test.it("admits a 4096-token extraction model on creation and update", function()
+            local user = fixture.user()
+            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = "test-4k" })
+            test.is_nil(capacity_err, tostring(capacity_err))
+            test.eq(capacity, 1)
+            local id, create_err = fixture.try_memory(user, { extraction_model = "test-4k" })
+            test.is_nil(create_err, tostring(create_err))
+            test.not_nil(id)
+            local other = fixture.memory(user)
+            local updated, update_err = fixture.op(user, "update_config", { component_id = other,
+                config = { extraction_model = "test-4k" } })
+            test.is_nil(update_err, tostring(update_err))
+            test.not_nil(updated)
+            local stored = fixture.op(user, "store", { component_id = other })
+            test.eq(stored.config.extraction_model, "test-4k")
+        end)
+
+        test.it("sizes items and lessons per statement to the largest allowance within the output limit", function()
+            local user = fixture.user()
+            local allowances = {}
+            for _, spec in ipairs({ { model = "test-4k", limit = 4096 }, { model = "test-bounded", limit = 8192 },
+                { model = "test-fast", limit = 32768 } }) do
+                fixture.script.respond(user, "structured_output", {}, "length")
+                local _, err = fixture.op(user, "model_step", { model = spec.model, step = "extract",
+                    span = { { id = string.rep("e", 36), role = "user", author = {kind = "user", id = user}, text = "An attribute." } } })
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_truncated")
+                local schemas = fixture.script.requests(user, "structured_output")
+                local schema = schemas[#schemas]
+                local allowance = schema.properties.items.maxItems
+                test.eq(schema.properties.lessons.maxItems, allowance)
+                test.eq(schema.properties.plans.maxItems, 1)
+                test.is_true(allowance >= 1 and allowance <= 4)
+                local options = fixture.script.requests(user, "structured_options")
+                local budget = options[#options].max_tokens
+                test.is_true(budget <= spec.limit)
+                test.is_true(budget >= math.min(spec.limit, #json.encode(maximal(schema, "𐍈"))))
+                test.is_true(#json.encode(maximal(schema, "a")) <= spec.limit, spec.model .. " allowance exceeds the output limit")
+                if allowance < 4 then
+                    schema.properties.items.maxItems = allowance + 1
+                    schema.properties.lessons.maxItems = allowance + 1
+                    test.is_true(#json.encode(maximal(schema, "a")) > spec.limit, spec.model .. " allowance is below the output limit")
+                end
+                allowances[spec.model] = allowance
+            end
+            test.eq(allowances["test-4k"], 2)
+            test.eq(allowances["test-bounded"], 4)
+            test.eq(allowances["test-fast"], 4)
+        end)
+
+        test.it("refuses a model below one minimal statement in capacity and extraction alike", function()
+            local user = fixture.user()
+            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = "test-small" })
+            test.is_nil(capacity)
+            test.not_nil(capacity_err)
+            test.eq(capacity_err:kind(), errors.INVALID)
+            test.is_true(tostring(capacity_err):find("output limit cannot hold one statement", 1, true) ~= nil, tostring(capacity_err))
+            local result, err = fixture.op(user, "model_step", { model = "test-small", step = "extract", span = {
+                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." },
+            } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.INVALID)
+            test.is_true(tostring(err):find("output limit cannot hold one statement", 1, true) ~= nil, tostring(err))
+            test.eq(#fixture.script.requests(user, "structured_output"), 0)
+        end)
+
         test.it("admits an 8192-token extraction model on creation and update", function()
             local user = fixture.user()
             local id, create_err = fixture.try_memory(user, { extraction_model = "test-bounded" })

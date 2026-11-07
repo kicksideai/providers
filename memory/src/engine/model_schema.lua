@@ -94,7 +94,8 @@ function M.item_schema(allowed: { string }, value: any, cardinalities: { string 
     return { type = "object", additionalProperties = false, required = required, properties = properties }
 end
 
-function M.extraction_schema(event_ids: { string }, count: integer, evidence: string, keys: { any }?): any
+-- Each of count statements may yield per_statement items, per_statement lessons and one plan.
+function M.extraction_schema(event_ids: { string }, count: integer, per_statement: integer, evidence: string, keys: { any }?): any
     local event_id = M.enum_string(event_ids)
     local effective_time = M.bounded_string(M.LIMITS.valid_at)
     effective_time.pattern = [[^(|[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9]))$]]
@@ -115,8 +116,8 @@ function M.extraction_schema(event_ids: { string }, count: integer, evidence: st
     local lesson = M.item_schema({ types.KIND.LESSON }, M.bounded_string(M.LIMITS.value, 1), { "multi" }, event_id, effective_time)
     lesson.properties.key = M.compatible_topic(types.KIND.LESSON, keys or {})
     return { type = "object", additionalProperties = false, required = { "items", "lessons", "plans" }, properties = {
-        items = { type = "array", maxItems = count * M.LIMITS.per_statement, items = scalar },
-        lessons = { type = "array", maxItems = evidence == "document" and 0 or count * M.LIMITS.per_statement,
+        items = { type = "array", maxItems = count * per_statement, items = scalar },
+        lessons = { type = "array", maxItems = evidence == "document" and 0 or count * per_statement,
             items = lesson,
         },
         plans = { type = "array", maxItems = evidence == "document" and 0 or count, items = goal },

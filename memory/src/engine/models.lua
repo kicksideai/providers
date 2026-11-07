@@ -34,25 +34,41 @@ local function extraction_evidence(span: { any }, agent_id: string?): ({ string 
     return ids, evidence or "conversation", nil
 end
 
-function M.extraction_capacity(model: string, span: { any }?, agent_id: string?): (integer?, error?)
+-- Capacity measures typical compact ASCII output so ordinary output limits remain usable;
+-- call budgets cover the four-byte bound up to the model card limit.
+local function holds(limit: integer, ids: { string }, count: integer, per_statement: integer, evidence: string): (boolean?, error?)
+    local size, size_err = schema_util.schema_bytes(schema_util.extraction_schema(ids, count, per_statement, evidence), 1)
+    if size_err then return nil, size_err end
+    return (size :: integer) <= limit, nil
+end
+
+-- The allowance is the most items and lessons per statement, up to LIMITS.per_statement,
+-- that one statement yields within the output limit. One item, one lesson and one plan
+-- form the minimal statement.
+local function statement_allowance(model: string, ids: { string }, evidence: string): (integer?, integer?, error?)
     local limit, limit_err = schema_util.output_limit(model)
-    if limit_err then return nil, limit_err end
+    if limit_err then return nil, nil, limit_err end
+    for per_statement = schema_util.LIMITS.per_statement, 1, -1 do
+        local fits, fit_err = holds(limit :: integer, ids, 1, per_statement, evidence)
+        if fit_err then return nil, nil, fit_err end
+        if fits then return per_statement, limit, nil end
+    end
+    return nil, nil, types.invalid("memory extraction model " .. model .. " output limit cannot hold one statement")
+end
+
+function M.extraction_capacity(model: string, span: { any }?, agent_id: string?): (integer?, error?)
     local ids, evidence, evidence_err = extraction_evidence(span or {}, agent_id)
     if evidence_err then return nil, evidence_err end
     if #ids == 0 then ids[1] = uuid.v7() end
-    local count = 0
-    -- Capacity uses typical compact ASCII output so 8,192-token models remain usable;
-    -- call budgets cover the four-byte bound up to the model card limit.
+    local per_statement, limit, allowance_err = statement_allowance(model, ids :: { string }, evidence :: string)
+    if allowance_err then return nil, allowance_err end
+    local count = 1
     while true do
-        local size, size_err = schema_util.schema_bytes(schema_util.extraction_schema(ids, count + 1, evidence), 1)
-        if size_err then return nil, size_err end
-        if (size :: integer) > (limit :: integer) then break end
+        local fits, fit_err = holds(limit :: integer, ids :: { string }, count + 1, per_statement :: integer, evidence :: string)
+        if fit_err then return nil, fit_err end
+        if not fits then return count, nil end
         count = count + 1
     end
-    if count == 0 then
-        return nil, types.invalid("memory extraction model " .. model .. " output limit cannot hold one statement")
-    end
-    return count, nil
 end
 
 local function candidate_reason(item: any, typed: boolean?): string?
@@ -164,6 +180,8 @@ function M.extract(request: any): (any?, error?, { [string]: integer }?)
     local ids, evidence, evidence_err = extraction_evidence(span, agent_id)
     if evidence_err then return nil, evidence_err end
     if #ids == 0 then return {}, nil end
+    local per_statement, _, allowance_err = statement_allowance(model, ids :: { string }, evidence :: string)
+    if allowance_err then return nil, allowance_err end
     local allowed = {}
     for _, id in ipairs(ids) do allowed[id] = true end
     local system = evidence == "document" and prompts.DOCUMENT_EXTRACTION_PROMPT
@@ -176,7 +194,7 @@ function M.extract(request: any): (any?, error?, { [string]: integer }?)
         conversation = "<existing_memory_data>\n" .. (listing :: string) .. "\n</existing_memory_data>\n\n" .. conversation
     end
     system = prompts.with_policy(system, instructions)
-    local schema = schema_util.extraction_schema(ids, #ids, evidence, keys)
+    local schema = schema_util.extraction_schema(ids, #ids, per_statement :: integer, evidence, keys)
     local data, call_err = model_calls.structured("extraction", schema, system .. prompts.JSON_FORMAT, conversation, model)
     if call_err then return nil, call_err end
     canonicalize_keys(data.items)
