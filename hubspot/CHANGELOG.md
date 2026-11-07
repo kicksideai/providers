@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.48](https://github.com/kicksideai/providers/compare/hubspot-v0.1.47...hubspot-v0.1.48) (2026-11-07)
+
+
+### Bug Fixes
+
+* **hubspot:** narrow files function inputs and responses from unknown ([#69](https://github.com/kicksideai/providers/issues/69)) ([5c1925d](https://github.com/kicksideai/providers/commit/5c1925de6a363f2c7eed139ce3f7049df920cff2))
+
 ## [0.1.47](https://github.com/kicksideai/providers/compare/hubspot-v0.1.46...hubspot-v0.1.47) (2026-11-07)
 
 
