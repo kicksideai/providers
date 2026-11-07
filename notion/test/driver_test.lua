@@ -65,7 +65,7 @@ local function cases()
                     local operation = service.config.operations[name]
                     test.not_nil(operation)
                     test.eq(operation.write, direction == "write")
-                    test.eq(json.encode(variant.properties.params), json.encode(operation.schema))
+                    test.eq(json.encode(variant.properties.params), (json.encode(operation.schema)))
                     count = count + 1
                 end
             end
