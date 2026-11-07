@@ -1,12 +1,21 @@
-import { WippyVueElement, define } from "@wippy-fe/webcomponent-vue";
+import { WippyVueElement, define, useEvents } from "@wippy-fe/webcomponent-vue";
 import type {
   WippyElementConfig,
   WippyPropsSchema,
 } from "@wippy-fe/webcomponent-vue";
 import { PrimeVuePlugin } from "@wippy-fe/theme/primevue-plugin";
-import Root from "./app/HubSpotPicker.vue";
+import { lazyControl } from "./lazy";
 import stylesText from "./styles.css?inline";
 import pkg from "../package.json";
+
+const Root = lazyControl(
+  () => import("./app/HubSpotPicker.vue"),
+  {
+    loading: "Loading HubSpot picker…",
+    failed: "Could not load the HubSpot picker. Reload the page to try again.",
+  },
+  useEvents,
+);
 
 interface Config {
   connection_id?: string;

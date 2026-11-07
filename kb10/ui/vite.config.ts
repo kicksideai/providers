@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
+import { hostExternals, wcRuntimeChunk } from '../../wc-build'
 
 export default defineConfig({
   plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }), wippyComponentPlugin()],
@@ -28,14 +29,15 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      preserveEntrySignatures: false,
+      preserveEntrySignatures: 'strict',
       input: {
         document: resolve(__dirname, 'src/document.ts'),
         wiki: resolve(__dirname, 'src/wiki.ts'),
         create: resolve(__dirname, 'src/create.ts'),
       },
-      external: ['vue', '@iconify/vue', '@wippy-fe/proxy'],
+      external: hostExternals,
       output: {
+        manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',
         chunkFileNames: '[name]-[hash].js',
         assetFileNames: '[name]-[hash][extname]',

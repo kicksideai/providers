@@ -1,6 +1,6 @@
-import { WippyVueElement, define } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import Root from './app/KbWiki.vue'
+import { lazyPage } from './lazy'
 import base from './styles.css?inline'
 import extra from './wiki.css?inline'
 import graphExtra from './graph.css?inline'
@@ -21,7 +21,15 @@ class KbWikiElement extends WippyVueElement<P, E> {
       inlineCss: base + extra + graphExtra,
     }
   }
-  static get vueConfig() { return { rootComponent: Root } }
+  static get vueConfig() {
+    return {
+      lazyConfig: lazyPage(
+        () => import('./wiki-mount').then((module) => module.mountConfig),
+        'Could not load the wiki knowledge base. Reload the page to try again.',
+        useEvents,
+      ),
+    }
+  }
 }
 
 export async function webComponent() { return KbWikiElement }

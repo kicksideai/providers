@@ -1,6 +1,6 @@
-import { WippyVueElement, define } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import Root from './app/KbDocument.vue'
+import { lazyPage } from './lazy'
 import base from './styles.css?inline'
 import extra from './document.css?inline'
 import pkg from '../package.json'
@@ -21,7 +21,15 @@ class KbDocumentElement extends WippyVueElement<P, E> {
       inlineCss,
     }
   }
-  static get vueConfig() { return { rootComponent: Root } }
+  static get vueConfig() {
+    return {
+      lazyConfig: lazyPage(
+        () => import('./document-mount').then((module) => module.mountConfig),
+        'Could not load the document knowledge base. Reload the page to try again.',
+        useEvents,
+      ),
+    }
+  }
 }
 
 export async function webComponent() { return KbDocumentElement }
