@@ -12,6 +12,9 @@ M.MAX_VALUE_BYTES = 64 * 1024
 type Ref = { ref: string }
 type Parsed = { refs: { Ref }, skipped: integer }
 
+M.Ref = Ref
+M.Parsed = Parsed
+
 local function trim(value: string): string
     return (value:gsub("^%s*(.-)%s*$", "%1"))
 end

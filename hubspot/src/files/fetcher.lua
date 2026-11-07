@@ -6,6 +6,7 @@
 -- secret and never leaves this module, not even inside an error.
 local http_client = require("http_client")
 local transport = require("transport")
+local types = require("types")
 
 local M = { _transport = transport, _http = http_client }
 
@@ -29,21 +30,23 @@ local CONTENT_TYPES: { [string]: string } = {
     webp = "image/webp",
 }
 
+type FetchArgs = { ref: unknown?, component_id: unknown? }
 type FileMeta = { name: unknown?, extension: unknown?, size: unknown?, archived: unknown? }
+type SignedUrl = { url: unknown? }
 type Fetched = { bytes: string, filename: string, content_type: string?, size: integer }
+type Failure = { error: string }
 
 local function trim(value: unknown): string
     if type(value) ~= "string" then return "" end
     return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
-local function fail(code: string, detail: string): { error: string }
+local function fail(code: string, detail: string): Failure
     return { error = code .. ": " .. detail }
 end
 
--- HubSpot answers map onto the shared attachment error codes.
-local function api_failure(what: string, res: any): { error: string }
-    local status = tonumber(res.status_code) or 0
+-- HubSpot HTTP statuses map onto the shared attachment error codes.
+local function api_failure(what: string, status: integer): Failure
     if status == 401 or status == 403 then return fail("no_access", what .. " HTTP " .. status) end
     if status == 404 then return fail("not_found", what .. " HTTP 404") end
     return fail("download_failed", what .. " HTTP " .. status)
@@ -82,17 +85,17 @@ end
 -- fetch_attachment({ref, component_id}) -> {bytes, filename, content_type, size}
 -- or {error = "<code>: <detail>"} with codes no_access, not_found, too_large,
 -- download_failed.
-function M.fetch_attachment(args: any): any
-    args = type(args) == "table" and args or {}
-    local ref = trim(args.ref)
+function M.fetch_attachment(args: unknown): Fetched | Failure
+    local input: FetchArgs = type(args) == "table" and (args :: FetchArgs) or {}
+    local ref = trim(input.ref)
     if not ref:match("^%d+$") or #ref > 32 then return fail("not_found", "invalid HubSpot file id") end
 
-    local conn, conn_err = M._transport.connect(trim(args.component_id))
+    local conn, conn_err = M._transport.connect(trim(input.component_id))
     if conn_err or not conn then return fail("no_access", "no HubSpot connection") end
 
     local meta_res, meta_err = M._transport.get_file(conn, ref)
     if meta_err or not meta_res then return fail("download_failed", "file metadata request failed") end
-    if not meta_res.success then return api_failure("file metadata", meta_res) end
+    if not meta_res.success then return api_failure("file metadata", meta_res.status_code or 0) end
     local meta = (type(meta_res.data) == "table" and meta_res.data or {}) :: FileMeta
     if meta.archived == true then return fail("not_found", "file is archived") end
     local declared = tonumber(meta.size)
@@ -102,28 +105,29 @@ function M.fetch_attachment(args: any): any
 
     local url_res, url_err = M._transport.get_file_signed_url(conn, ref)
     if url_err or not url_res then return fail("download_failed", "signed URL request failed") end
-    if not url_res.success then return api_failure("signed URL", url_res) end
-    local url = trim(type(url_res.data) == "table" and (url_res.data :: any).url or nil)
+    if not url_res.success then return api_failure("signed URL", url_res.status_code or 0) end
+    local signed = (type(url_res.data) == "table" and url_res.data or {}) :: SignedUrl
+    local url = trim(signed.url)
     if url == "" then return fail("download_failed", "HubSpot returned no signed URL") end
 
-    local response, http_err = M._http.request("GET", url, {
+    local raw_response, http_err = M._http.request("GET", url, {
         timeout = M.DOWNLOAD_TIMEOUT_S,
         max_response_body = M.MAX_BYTES,
     })
     if http_err and tostring(http_err):find("response body too large", 1, true) then
         return fail("too_large", string.format("download exceeds %d bytes", M.MAX_BYTES))
     end
-    if http_err or type(response) ~= "table" then return fail("download_failed", "download request failed") end
-    local status = tonumber((response :: any).status_code) or 0
-    if status ~= 200 then return api_failure("download", response) end
-    local body = (response :: any).body
+    local response = types.http_response(raw_response)
+    if http_err or not response then return fail("download_failed", "download request failed") end
+    if response.status_code ~= 200 then return api_failure("download", response.status_code) end
+    local body = response.body
     if type(body) ~= "string" or body == "" then return fail("download_failed", "empty download") end
 
     local ext = trim(meta.extension)
     return ({
         bytes = body,
         filename = filename_of(meta, ref),
-        content_type = content_type_of((response :: any).headers, ext),
+        content_type = content_type_of(response.headers, ext),
         size = #body,
     } :: Fetched)
 end

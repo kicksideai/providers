@@ -17,6 +17,7 @@ entries:
     modules: [http_client]
     imports:
       transport: kickside.hubspot.client:transport
+      types: kickside.hubspot.client:types
 
   - name: fetch_attachment
     kind: function.lua

@@ -15,11 +15,7 @@ type JsonValue = nil | boolean | number | string | { JsonValue } | { [string]: J
 type JsonObject = { [string]: JsonValue }
 type Query = { [string]: string | number | boolean }
 type StatusSet = { [number]: boolean }
-type Response = {
-    status_code: integer,
-    body: unknown?,
-    headers: unknown?,
-}
+type Response = types.HttpResponse
 type RequestOptions = { headers: { [string]: string }, body: string?, timeout: number? }
 type HttpClient = {
     request: (string, string, RequestOptions) -> (unknown?, unknown?),
@@ -62,12 +58,9 @@ local function malformed(message: string): error
 end
 
 local function normalize_response(value: unknown): (Response?, error?)
-    if type(value) ~= "table" then return nil, malformed("HTTP client returned no response") end
-    local raw = value :: { [string]: unknown }
-    if type(raw.status_code) ~= "number" then return nil, malformed("HTTP response is missing status_code") end
-    if raw.body ~= nil and type(raw.body) ~= "string" then return nil, malformed("HTTP response body must be a string") end
-    if raw.headers ~= nil and type(raw.headers) ~= "table" then return nil, malformed("HTTP response headers must be an object") end
-    return value :: Response, nil
+    local response, reason = types.http_response(value)
+    if not response then return nil, malformed(reason or "HTTP response is malformed") end
+    return response, nil
 end
 
 function M._set_http_client_for_test(client: unknown)
