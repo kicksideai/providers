@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.47](https://github.com/kicksideai/providers/compare/hubspot-v0.1.46...hubspot-v0.1.47) (2026-11-07)
+
+
+### Bug Fixes
+
+* **hubspot:** expose the ids a merged object absorbed ([#67](https://github.com/kicksideai/providers/issues/67)) ([cb6c3c1](https://github.com/kicksideai/providers/commit/cb6c3c140446f56b3730faefdd7b05e5109ea0a2))
+
 ## [0.1.46](https://github.com/kicksideai/providers/compare/hubspot-v0.1.45...hubspot-v0.1.46) (2026-11-06)
 
 
