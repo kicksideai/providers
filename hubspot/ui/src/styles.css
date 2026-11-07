@@ -74,3 +74,6 @@
   background: var(--hs-primary);
   flex: 0 0 auto;
 }
+
+/* Reserved only while the implementation loads, so a loaded tag keeps its own size (estimate from the form CSS). */
+:host > div:empty, :host > div:has(> [role=status]) { min-height: 227px; }

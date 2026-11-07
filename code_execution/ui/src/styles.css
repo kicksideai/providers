@@ -118,3 +118,6 @@
 
 .spin { animation: kx-spin 1s linear infinite; }
 @keyframes kx-spin { to { transform: rotate(360deg); } }
+
+/* Reserved only while the implementation loads, so a loaded tag keeps its own size. */
+:host > div:empty, :host > div:has(> [role=status]) { min-height: 240px; }

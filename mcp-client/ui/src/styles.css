@@ -13,3 +13,6 @@
 .connect .footnote{margin:-2px 0 0;color:var(--mc-muted);font-size:11.5px;line-height:1.4}
 .connect .primary{width:100%;min-height:38px;border-radius:8px;font-weight:600;box-shadow:none}
 @media(max-width:520px){.connect .footnote{display:block}}
+/* Reserved only while the implementation loads, so a loaded tag keeps its own size. */
+:host(kickside-mcp-connect) > div:empty,:host(kickside-mcp-connect) > div:has(> [role=status]){min-height:240px}
+:host(kickside-mcp-trait-picker) > div:empty,:host(kickside-mcp-trait-picker) > div:has(> [role=status]){min-height:338px}

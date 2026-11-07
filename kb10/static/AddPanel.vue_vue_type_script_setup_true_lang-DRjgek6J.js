@@ -5,7 +5,7 @@ function Le(e, s = "") {
   const t = e || {};
   return t.label || t.title || t.source_ref?.title || t.filename || t.original_filename || t.source_url || s;
 }
-function oo(e) {
+function no(e) {
   return Le(e.metadata, e.id);
 }
 function de(e) {
@@ -40,7 +40,7 @@ function qe(e) {
     source_ref: m ? b : void 0
   };
 }
-function so(e) {
+function oo(e) {
   const s = qe(e), t = s ? R(s.external_id) : "";
   if (!t) return null;
   const a = J(e.metadata), n = J(a.source_ref);
@@ -50,10 +50,10 @@ function we(e, s) {
   return e ? e.length > s ? e.slice(0, s).trimEnd() + "…" : e : "";
 }
 const je = /engine .*not installed|no .*engine|unavailable/i;
-function ao(e) {
+function so(e) {
   return je.test(e || "");
 }
-const lo = "This knowledge base's engine is not installed; its contents are unavailable.", se = {
+const ao = "This knowledge base's engine is not installed; its contents are unavailable.", se = {
   root: { fill: "#6366f1", stroke: "#4f46e5" },
   topic: { fill: "#8b5cf6", stroke: "#7c3aed" },
   technology: { fill: "#06b6d4", stroke: "#0891b2" },
@@ -65,7 +65,7 @@ const lo = "This knowledge base's engine is not installed; its contents are unav
   product: { fill: "#f97316", stroke: "#ea580c" },
   document: { fill: "#94a3b8", stroke: "#64748b" }
 };
-function io(e) {
+function lo(e) {
   if (e.node_type === "document") return se.document;
   if (e.is_root) return se.root;
   const s = (e.concept_type || "").toLowerCase();
@@ -82,7 +82,7 @@ function fe(e, s, t) {
   return `hsl(${e} ${s}% ${t}%)`;
 }
 const Ce = 34, Ee = 88, We = 78, He = 38;
-function ro(e, s) {
+function io(e, s) {
   const t = new Map(e.map((c) => [c.id, c])), a = /* @__PURE__ */ new Map();
   for (const c of s)
     c.edge_type !== "subtopic_of" && c.edge_type !== "categorized_as" || t.has(c.from_node_id) && t.has(c.to_node_id) && a.set(c.from_node_id, c.to_node_id);
@@ -129,7 +129,7 @@ function ro(e, s) {
   return I;
 }
 const Xe = /* @__PURE__ */ new Set(["subtopic_of", "categorized_as"]);
-function co(e, s) {
+function ro(e, s) {
   const t = /* @__PURE__ */ new Map();
   for (const m of e) t.set(m.id, m);
   const a = /* @__PURE__ */ new Map(), n = /* @__PURE__ */ new Set();
@@ -162,7 +162,7 @@ function co(e, s) {
     }
   return b;
 }
-function uo(e) {
+function co(e) {
   const s = /* @__PURE__ */ new Map(), t = /* @__PURE__ */ new Map(), a = (n, o) => {
     s.set(n.concept.id, n), o && t.set(n.concept.id, o);
     for (const p of n.children) a(p, n.concept.id);
@@ -170,7 +170,7 @@ function uo(e) {
   for (const n of e) a(n, null);
   return { byId: s, parentOf: t };
 }
-function po(e) {
+function uo(e) {
   return e ? e.children.map((t) => ({
     concept: t.concept,
     isFolder: t.children.length > 0,
@@ -188,7 +188,7 @@ function Je(e, s, t) {
   }
   return a;
 }
-function fo(e, s, t) {
+function po(e, s, t) {
   const a = e.trim().toLowerCase();
   if (!a) return [];
   const n = [];
@@ -199,7 +199,7 @@ function fo(e, s, t) {
   }
   return n.sort((o, p) => o.isFolder !== p.isFolder ? o.isFolder ? -1 : 1 : (o.concept.label || o.concept.id).localeCompare(p.concept.label || p.concept.id)).slice(0, 200);
 }
-function mo(e) {
+function fo(e) {
   return e.node_type === "document" ? "tabler:file-text" : e.is_root ? "tabler:hierarchy-2" : "tabler:point-filled";
 }
 const Qe = {
@@ -212,7 +212,7 @@ const Qe = {
   product: "tabler:package",
   topic: "tabler:bookmark"
 };
-function vo(e) {
+function mo(e) {
   return e.node_type === "document" ? "tabler:file-text" : e.is_root ? "tabler:hierarchy-2" : Qe[(e.concept_type || "").toLowerCase()] || "tabler:folder";
 }
 function Ye(e, s) {
@@ -223,13 +223,13 @@ function Ye(e, s) {
     n.edge_type === "categorized_as" && n.to_node_id === e.id && !a.has(n.from_node_id) && (a.add(n.from_node_id), t.push(n.from_node_id));
   return t;
 }
-function ho(e, s) {
+function vo(e, s) {
   const t = [], a = /* @__PURE__ */ new Set();
   for (const n of s)
     n.edge_type === "categorized_as" && n.from_node_id === e && !a.has(n.to_node_id) && (a.add(n.to_node_id), t.push({ id: n.to_node_id, label: n.to_label || "" }));
   return t;
 }
-function _o(e, s, t) {
+function ho(e, s, t) {
   if (!e) return [];
   const a = [], n = /* @__PURE__ */ new Set();
   for (const o of s) {
@@ -239,7 +239,7 @@ function _o(e, s, t) {
   }
   return a.sort((o, p) => (o.label || "").localeCompare(p.label || ""));
 }
-function bo(e, s, t) {
+function _o(e, s, t) {
   if (!e) return [];
   const a = [], n = /* @__PURE__ */ new Set(), o = new Set(Ye(e, s));
   for (const p of s) {
@@ -254,7 +254,7 @@ function bo(e, s, t) {
   }
   return a;
 }
-function ko(e, s) {
+function bo(e, s) {
   let t = 0;
   for (const a of s)
     a.edge_type === "subtopic_of" && a.to_node_id === e && t++;
@@ -276,11 +276,11 @@ const Ze = ["image/", "audio/", "video/"], et = /* @__PURE__ */ new Set([
   "application/vnd.ms-powerpoint",
   "application/vnd.oasis.opendocument.presentation"
 ]);
-function yo(e) {
+function ko(e) {
   const s = (e || "").toLowerCase();
   return Ze.some((t) => s.startsWith(t)) || et.has(s);
 }
-function go(e) {
+function yo(e) {
   const s = e || {}, t = s.source_ref && typeof s.source_ref == "object" ? s.source_ref : {}, a = t.upload_id || s.upload_id;
   if (typeof a == "string" && a.trim()) return a.trim();
   const n = typeof t.external_id == "string" && t.external_id || typeof s.external_id == "string" && s.external_id || "";
@@ -318,7 +318,7 @@ function nt(e, s) {
   });
   return typeof t == "function" ? t : null;
 }
-const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-main" }, xo = /* @__PURE__ */ G({
+const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-main" }, go = /* @__PURE__ */ G({
   __name: "KbShell",
   setup(e) {
     return (s, t) => (u(), d("div", ot, [
@@ -408,7 +408,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
 }, ut = ["aria-selected", "onClick"], dt = {
   key: 1,
   class: "kx-count"
-}, wo = /* @__PURE__ */ G({
+}, xo = /* @__PURE__ */ G({
   __name: "KbTabs",
   props: {
     tabs: {},
@@ -435,7 +435,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
       ], 10, ut))), 128))
     ]));
   }
-}), $o = /* @__PURE__ */ G({
+}), wo = /* @__PURE__ */ G({
   __name: "KbNotice",
   props: {
     tone: { default: "info" },
@@ -460,7 +460,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
       ])
     ], 2));
   }
-}), pt = ["aria-label"], ft = { class: "kx-drawer-h" }, mt = { class: "kx-drawer-title" }, vt = { class: "kx-drawer-b" }, So = /* @__PURE__ */ G({
+}), pt = ["aria-label"], ft = { class: "kx-drawer-h" }, mt = { class: "kx-drawer-title" }, vt = { class: "kx-drawer-b" }, $o = /* @__PURE__ */ G({
   __name: "KbDrawer",
   props: {
     open: { type: Boolean },
@@ -626,7 +626,7 @@ const _t = {
 }, Jt = {
   key: 5,
   class: "kc-search-zero"
-}, Qt = { class: "kc-search-zero-t" }, Co = /* @__PURE__ */ G({
+}, Qt = { class: "kc-search-zero-t" }, So = /* @__PURE__ */ G({
   __name: "KbSearch",
   props: {
     kbId: {},
@@ -834,7 +834,7 @@ const _t = {
       ]))
     ]));
   }
-}), Yt = ["aria-label"], Zt = { class: "kc-orig-h" }, en = { class: "kc-orig-title" }, tn = { class: "kc-orig-title-t" }, nn = { class: "kc-orig-b" }, on = ["content-type", "source-url", "filename"], Eo = /* @__PURE__ */ G({
+}), Yt = ["aria-label"], Zt = { class: "kc-orig-h" }, en = { class: "kc-orig-title" }, tn = { class: "kc-orig-title-t" }, nn = { class: "kc-orig-b" }, on = ["content-type", "source-url", "filename"], Co = /* @__PURE__ */ G({
   __name: "OriginalOverlay",
   props: {
     open: { type: Boolean },
@@ -922,7 +922,7 @@ const _t = {
       _: 1
     }));
   }
-}), To = /* @__PURE__ */ G({
+}), Eo = /* @__PURE__ */ G({
   __name: "ViewOriginalButton",
   props: {
     label: {}
@@ -942,7 +942,7 @@ const _t = {
       r("span", null, S(e.label || "View original"), 1)
     ]));
   }
-}), sn = { class: "kc-docsum" }, an = { class: "kc-docsum-h" }, Mo = /* @__PURE__ */ G({
+}), sn = { class: "kc-docsum" }, an = { class: "kc-docsum-h" }, To = /* @__PURE__ */ G({
   __name: "KbSummary",
   props: {
     text: {},
@@ -974,7 +974,7 @@ const _t = {
 }), ln = { class: "kx-empty kx-empty-spacious" }, rn = { class: "kx-empty-title" }, cn = {
   key: 0,
   class: "kx-empty-sub"
-}, Ao = /* @__PURE__ */ G({
+}, Mo = /* @__PURE__ */ G({
   __name: "EmptyState",
   props: {
     icon: {},
@@ -1335,7 +1335,7 @@ const hn = { class: "ap" }, _n = {
 }, jn = ["placeholder"], Kn = { class: "ap-actions" }, Gn = { class: "ap-hint" }, Wn = ["disabled"], Hn = {
   key: 4,
   class: "ap-items"
-}, Xn = { class: "ap-items-h" }, Jn = { class: "ap-items-list" }, Qn = { class: "ap-item-name" }, Yn = { class: "ap-item-status" }, Io = /* @__PURE__ */ G({
+}, Xn = { class: "ap-items-h" }, Jn = { class: "ap-items-list" }, Qn = { class: "ap-item-name" }, Yn = { class: "ap-item-status" }, Ao = /* @__PURE__ */ G({
   __name: "AddPanel",
   props: {
     kbId: {},
@@ -1633,47 +1633,44 @@ const hn = { class: "ap" }, _n = {
       ])) : A("", !0)
     ]));
   }
-}), Zn = { props: { type: "object", properties: { config: { type: "object", description: "KB detail context: { kb_id: string }", default: {} } } } }, Oo = {
-  wippy: Zn
-};
+});
 export {
   co as A,
-  uo as B,
-  Je as C,
+  Je as B,
+  uo as C,
   po as D,
-  lo as E,
-  fo as F,
-  we as G,
-  Ke as H,
-  ho as I,
-  ro as J,
+  ao as E,
+  we as F,
+  Ke as G,
+  vo as H,
+  io as I,
   se as N,
   ve as _,
   qe as a,
-  yo as b,
-  so as c,
-  To as d,
-  wo as e,
-  Mo as f,
-  Eo as g,
-  $o as h,
-  ao as i,
-  xo as j,
-  Co as k,
-  Ao as l,
+  ko as b,
+  oo as c,
+  Eo as d,
+  xo as e,
+  To as f,
+  Co as g,
+  wo as h,
+  so as i,
+  go as j,
+  So as k,
+  Mo as l,
   Te as m,
-  oo as n,
-  So as o,
-  Io as p,
-  Oo as q,
-  Ye as r,
+  no as n,
+  $o as o,
+  Ao as p,
+  Ye as q,
+  ho as r,
   nt as s,
   _o as t,
-  go as u,
-  bo as v,
-  io as w,
-  vo as x,
-  ko as y,
-  mo as z
+  yo as u,
+  lo as v,
+  mo as w,
+  bo as x,
+  fo as y,
+  ro as z
 };
-//# sourceMappingURL=package-DvVPJ2qE.js.map
+//# sourceMappingURL=AddPanel.vue_vue_type_script_setup_true_lang-DRjgek6J.js.map

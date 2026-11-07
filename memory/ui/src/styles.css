@@ -14,6 +14,13 @@
 
 :host { display: block; height: 100%; min-height: 0; color: var(--p-text-color); font: 13px/1.45 var(--kx-font-body); }
 :host > div { height: 100%; min-height: 0; }
+/* The wrapper's loader takes the viewport height as an only child, so it is held to this
+   surface. A reconnect during a pending import can leave a second loader until the mount. */
+wippy-loading, wippy-error { height: 100%; }
+wippy-loading ~ wippy-loading { display: none; }
+/* Reserved only while the implementation loads, so a loaded tag keeps its own size. */
+:host(kickside-memory-create) > div:empty, :host(kickside-memory-create) > div:has(> [role=status]) { min-height: 96px; }
+:host(kickside-memory-settings) > div:empty, :host(kickside-memory-settings) > div:has(> [role=status]) { min-height: 240px; }
 *, *::before, *::after { box-sizing: border-box; }
 
 .mm-trait, .mm-form { display: grid; gap: 16px; align-content: start; }
