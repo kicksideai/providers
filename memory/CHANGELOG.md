@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/kicksideai/providers/compare/memory-v0.1.16...memory-v0.1.17) (2026-11-07)
+
+
+### Bug Fixes
+
+* **memory:** size extraction per-statement allowance to the model output limit ([#71](https://github.com/kicksideai/providers/issues/71)) ([947d878](https://github.com/kicksideai/providers/commit/947d878642d1fcba34766dbeb8af8b72b0f0a35d))
+
 ## [0.1.16](https://github.com/kicksideai/providers/compare/memory-v0.1.15...memory-v0.1.16) (2026-11-06)
 
 
