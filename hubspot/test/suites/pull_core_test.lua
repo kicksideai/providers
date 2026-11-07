@@ -543,6 +543,36 @@ local function define_tests()
             test.is_true(#props < 10, "explicit property selection should remain bounded")
         end)
 
+        test.it("exposes the ids a merged record absorbed and leaves an unmerged record unchanged", function()
+            local fake = new_fake()
+            function fake.search_objects(_conn: any, object_type: string, body: any): any
+                fake.searches[#fake.searches + 1] = { object_type = object_type, body = body }
+                return { success = true, data = { results = {
+                    { id = "30", properties = { firstname = "Survivor", hs_merged_object_ids = "10;20; 30 ;;10", lastmodifieddate = "2026-06-01T10:00:00Z" }, updatedAt = "2026-06-01T10:00:00Z" },
+                    { id = "40", properties = { firstname = "Plain", lastmodifieddate = "2026-06-01T11:00:00Z" }, updatedAt = "2026-06-01T11:00:00Z" },
+                } } }
+            end
+            local out = core.pull({
+                config = { connection_id = "conn1", property_selection = { contacts = { "email" } } }, limit = 50,
+            }, { object_type = "contacts" }, { transport = fake })
+            test.eq(out.success, true)
+            local requested: { [string]: boolean } = {}
+            for _, name in ipairs(fake.searches[1].body.properties) do requested[name] = true end
+            test.is_true(requested.hs_merged_object_ids == true, "a contact pull requests the merge fact")
+            local merged = out.items[1].payload.record.merged_ids
+            test.eq(#merged, 2)
+            test.eq(merged[1], "10")
+            test.eq(merged[2], "20")
+            test.is_nil(out.items[2].payload.record.merged_ids)
+
+            for _, object_type in ipairs({ "companies", "deals" }) do
+                local props = assert(config.properties_for({}, object_type))
+                test.is_true(table.concat(props, ","):find("hs_merged_object_ids", 1, true) ~= nil, object_type .. " request the merge fact")
+            end
+            local task_props = assert(config.properties_for({}, "tasks"))
+            test.is_true(table.concat(task_props, ","):find("hs_merged_object_ids", 1, true) == nil, "tasks never merge")
+        end)
+
         test.it("resolves account owner and deal pipeline labels without hardcoded identifiers", function()
             local fake = new_fake()
             function fake.search_objects(_conn: any, _object_type: string, _body: any): any

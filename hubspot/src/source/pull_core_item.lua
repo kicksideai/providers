@@ -21,7 +21,7 @@ type Candidate = {
     external_source: string, external_id: string, external_version: string, record_type: string,
 }
 type RecordSource = { type: string, id: string, version: string? }
-type SourceRecord = { id: string, source: RecordSource, fields: config.JsonObject }
+type SourceRecord = { id: string, source: RecordSource, fields: config.JsonObject, merged_ids: { string }? }
 type Payload = {
     id: string, object_type: string, entity: string,
     title: string, content: string, content_type: string, source_url: string,
@@ -124,6 +124,23 @@ local function content_of(row: Row, object_type: string): string
     return table.concat(lines, "\n")
 end
 
+-- The ids of the objects HubSpot merged into this one, in listed order, or nil
+-- when it absorbed none.
+local function merged_ids_of(properties: Properties, id: string): { string }?
+    local raw = properties[config.MERGED_IDS_PROPERTY]
+    if type(raw) ~= "string" then return nil end
+    local ids: { string } = {}
+    local seen: { [string]: boolean } = { [id] = true }
+    for part in raw:gmatch("[^;]+") do
+        local merged = trim(part)
+        if merged ~= "" and not seen[merged] then
+            seen[merged] = true
+            ids[#ids + 1] = merged
+        end
+    end
+    return #ids > 0 and ids or nil
+end
+
 function M.from_row(
     row: Row,
     object_type: string,
@@ -153,6 +170,7 @@ function M.from_row(
             id=id,
             source={ type="hubspot.crm", id=tostring(source_config.connection_id or ""), version=version ~= "" and version or nil },
             fields=fields :: config.JsonObject,
+            merged_ids=merged_ids_of(properties, id),
         },
         created_at=created_of(row), updated_at=version, archived=row.archived == true,
         -- Absent for the object types that carry no engagement associations, so
