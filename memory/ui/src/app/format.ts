@@ -26,6 +26,27 @@ export function topicLabel(key: string): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : key
 }
 
+export function detailFields(value: unknown, key: string): { label: string; text: string }[] {
+  if (value === undefined) return []
+  const fields: { label: string; text: string }[] = []
+  function read(value: unknown, labels: string[]) {
+    if (value !== null && typeof value === 'object') {
+      const entries = Array.isArray(value)
+        ? value.map((entry, index) => [String(index + 1), entry] as const)
+        : Object.entries(value)
+      if (entries.length) {
+        for (const [name, entry] of entries) read(entry, [...labels, topicLabel(name)])
+        return
+      }
+    }
+    const text = value === null ? 'Not set' : typeof value === 'object' ? 'None'
+      : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)
+    fields.push({ label: labels.length ? labels.join(' · ') : topicLabel(key), text })
+  }
+  read(value, [])
+  return fields
+}
+
 const SOURCE_LABEL: Record<MemoryItem['source'], string> = {
   capture: 'learned in conversation',
   reflection: 'from consolidation',
