@@ -328,7 +328,7 @@ async function saveTreatment() {
       treatment_model: treatmentModel.value,
       treatment_prompt: treatmentPrompt.value,
     } })
-    try { host?.toast?.('Treatment settings saved') } catch (_) {}
+    try { host?.toast?.('Merge settings saved') } catch (_) {}
   } catch (e) { try { reportHostError(e) } catch (_) {} } finally { treatmentBusy.value = false }
 }
 async function runTreatment() {
@@ -336,7 +336,7 @@ async function runTreatment() {
   treatmentBusy.value = true
   try {
     await api.post(`/api/v1/knowledge/${props.kbId}/treatment`, {})
-    try { host?.toast?.('Treatment started — duplicate concepts will be merged.') } catch (_) {}
+    try { host?.toast?.('Merge started — duplicate concepts will be merged.') } catch (_) {}
   } catch (e) { try { reportHostError(e) } catch (_) {} } finally { treatmentBusy.value = false }
 }
 function onTreatModel(e: any) {
@@ -365,7 +365,7 @@ watch(() => props.kbId, () => { hidden.value = new Set(); focusId.value = null; 
           <div class="kb-railtop-acts">
             <IconButton icon="tabler:search" label="Search" :active="searchOpen" @click="searchOpen = !searchOpen" />
             <IconButton icon="tabler:plus" label="Add content" :active="panel === 'add'" @click="panel = 'add'" />
-            <IconButton icon="tabler:wand" label="Treatment" :active="panel === 'treatment'" @click="panel = 'treatment'" />
+            <IconButton icon="tabler:wand" label="Merge duplicate concepts" :active="panel === 'treatment'" @click="panel = 'treatment'" />
             <IconButton icon="tabler:refresh" label="Refresh" :disabled="loading" :spin="loading" @click="emit('reload')" />
           </div>
         </div>
@@ -488,11 +488,11 @@ watch(() => props.kbId, () => { hidden.value = new Set(); focusId.value = null; 
       <AddPanel :kb-id="kbId" noun="document" @changed="onChanged" />
     </KbDrawer>
 
-    <KbDrawer :open="panel === 'treatment'" title="Concept treatment" icon="tabler:wand" @close="panel = null">
+    <KbDrawer :open="panel === 'treatment'" title="Merge duplicate concepts" icon="tabler:wand" @close="panel = null">
       <div class="gx-treat">
         <label class="gx-treat-check">
           <input type="checkbox" v-model="treatmentEnabled">
-          <span>Auto-merge duplicate concepts after each ingest</span>
+          <span>Automatically merge duplicate concepts after adding content</span>
         </label>
         <div class="ap-field">
           <span class="ap-label">Model</span>
@@ -501,13 +501,13 @@ watch(() => props.kbId, () => { hidden.value = new Set(); focusId.value = null; 
         <div class="ap-field">
           <span class="ap-label">Prompt <span class="ap-opt">optional</span></span>
           <textarea v-model="treatmentPrompt" rows="3" class="ap-textarea"
-            placeholder="Extra rules for the treatment agent…"></textarea>
+            placeholder="Extra rules for merging duplicate concepts…"></textarea>
         </div>
         <div class="gx-treat-actions">
           <KbButton variant="soft" :disabled="treatmentBusy" @click="saveTreatment">Save</KbButton>
           <KbButton variant="primary" :disabled="treatmentBusy" @click="runTreatment">Run now</KbButton>
         </div>
-        <p class="gx-treat-hint">Merges duplicate / near-duplicate concept nodes. Runs automatically after ingest when enabled, or on demand here.</p>
+        <p class="gx-treat-hint">Merges concepts with the same or very similar meanings. Run it here, or enable automatic merging after adding content.</p>
       </div>
     </KbDrawer>
 

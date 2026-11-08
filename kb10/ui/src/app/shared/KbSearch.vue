@@ -128,7 +128,7 @@ function pick(hit: SearchHit) {
           <div class="kc-search-r-h">
             <span v-if="hitDocTitle(r)" class="kc-search-r-doc"><Icon icon="tabler:file-text" aria-hidden="true" />{{ hitDocTitle(r) }}</span>
             <span class="kc-search-hit-kind">{{ r.node_type || 'passage' }}</span>
-            <span v-if="r.llm_score != null" class="kc-search-r-llm">LLM {{ Math.round(r.llm_score) }}</span>
+            <span v-if="r.llm_score != null" class="kc-search-r-llm">Relevance {{ Math.round(r.llm_score) }}</span>
             <span v-if="r.similarity != null" class="kc-search-hit-score">{{ pct(r.similarity) }}</span>
           </div>
           <p class="kc-search-r-body">{{ truncate(r.content, 360) }}</p>
@@ -146,7 +146,6 @@ function pick(hit: SearchHit) {
     <div v-else class="kc-search-zero">
       <Icon :icon="isAsk ? 'tabler:message-question' : 'tabler:search'" aria-hidden="true" />
       <div class="kc-search-zero-t">{{ isAsk ? 'Ask your knowledge base' : 'Search your knowledge base' }}</div>
-      <div class="kc-search-zero-s">Two-stage vector + LLM retrieval across every indexed passage.</div>
     </div>
   </div>
 </template>

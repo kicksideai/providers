@@ -1,7 +1,7 @@
 import { _ as Ke, u as Ft, a as Nt, d as At, W as Bt, c as Ut } from "./styles-CH5LsqRe.js";
 import { defineComponent as Ce, openBlock as t, createElementBlock as i, toDisplayString as N, createElementVNode as r, createVNode as $, unref as v, createCommentVNode as R, ref as O, computed as S, watch as ue, onMounted as lt, createBlock as le, normalizeClass as ke, Fragment as te, renderList as ge, createTextVNode as se, normalizeStyle as $e, withModifiers as Se, withDirectives as Le, vModelText as Ge, vModelSelect as ct, withCtx as be, onBeforeUnmount as Ze, onUnmounted as Pt, nextTick as rt, createStaticVNode as Wt, Transition as Xe, vModelCheckbox as Vt } from "vue";
 import { loadByTagName as at, api as Ie, host as Be, define as jt } from "@wippy-fe/proxy";
-import { r as Ht, t as Xt, v as Yt, d as bt, e as Kt, f as wt, w as Te, x as it, y as ot, g as kt, u as yt, b as _t, _ as Oe, z as dt, A as $t, B as Gt, C as Zt, D as Qt, F as Jt, j as Ct, k as It, l as Mt, o as Ye, p as zt, G as qt, H as ut, I as en, N as pt, J as tn, h as gt, E as xt, i as vt, s as nn, q as on } from "./package-DvVPJ2qE.js";
+import { r as Ht, t as Xt, v as Yt, d as bt, e as Kt, f as wt, w as Te, x as it, y as ot, g as kt, u as yt, b as _t, _ as Oe, z as dt, A as $t, B as Gt, C as Zt, D as Qt, F as Jt, j as Ct, k as It, l as Mt, o as Ye, p as zt, G as qt, H as ut, I as en, N as pt, J as tn, h as gt, E as xt, i as vt, s as nn, q as on } from "./package-DX_6s8x-.js";
 import { Icon as P } from "@iconify/vue";
 const rn = { class: "kx-count" }, an = /* @__PURE__ */ Ce({
   __name: "CountPill",
@@ -2467,7 +2467,7 @@ const Jr = { class: "kb-railtop" }, qr = { class: "kb-railtop-acts" }, ea = {
             treatment_prompt: ie.value
           } });
           try {
-            Be?.toast?.("Treatment settings saved");
+            Be?.toast?.("Merge settings saved");
           } catch {
           }
         } catch (l) {
@@ -2486,7 +2486,7 @@ const Jr = { class: "kb-railtop" }, qr = { class: "kb-railtop-acts" }, ea = {
         try {
           await Ie.post(`/api/v1/knowledge/${e.kbId}/treatment`, {});
           try {
-            Be?.toast?.("Treatment started — duplicate concepts will be merged.");
+            Be?.toast?.("Merge started — duplicate concepts will be merged.");
           } catch {
           }
         } catch (l) {
@@ -2533,7 +2533,7 @@ const Jr = { class: "kb-railtop" }, qr = { class: "kb-railtop-acts" }, ea = {
               }, null, 8, ["active"]),
               $(v(Oe), {
                 icon: "tabler:wand",
-                label: "Treatment",
+                label: "Merge duplicate concepts",
                 active: Y.value === "treatment",
                 onClick: n[2] || (n[2] = (g) => Y.value = "treatment")
               }, null, 8, ["active"]),
@@ -2709,7 +2709,7 @@ const Jr = { class: "kb-railtop" }, qr = { class: "kb-railtop-acts" }, ea = {
       }, 8, ["open"]),
       $(v(Ye), {
         open: Y.value === "treatment",
-        title: "Concept treatment",
+        title: "Merge duplicate concepts",
         icon: "tabler:wand",
         onClose: n[21] || (n[21] = (g) => Y.value = null)
       }, {
@@ -2722,7 +2722,7 @@ const Jr = { class: "kb-railtop" }, qr = { class: "kb-railtop-acts" }, ea = {
               }, null, 512), [
                 [Vt, pe.value]
               ]),
-              n[29] || (n[29] = r("span", null, "Auto-merge duplicate concepts after each ingest", -1))
+              n[29] || (n[29] = r("span", null, "Automatically merge duplicate concepts after adding content", -1))
             ]),
             r("div", ca, [
               n[30] || (n[30] = r("span", { class: "ap-label" }, "Model", -1)),
@@ -2741,7 +2741,7 @@ const Jr = { class: "kb-railtop" }, qr = { class: "kb-railtop-acts" }, ea = {
                 "onUpdate:modelValue": n[20] || (n[20] = (g) => ie.value = g),
                 rows: "3",
                 class: "ap-textarea",
-                placeholder: "Extra rules for the treatment agent…"
+                placeholder: "Extra rules for merging duplicate concepts…"
               }, null, 512), [
                 [Ge, ie.value]
               ])
@@ -2768,7 +2768,7 @@ const Jr = { class: "kb-railtop" }, qr = { class: "kb-railtop-acts" }, ea = {
                 _: 1
               }, 8, ["disabled"])
             ]),
-            n[34] || (n[34] = r("p", { class: "gx-treat-hint" }, "Merges duplicate / near-duplicate concept nodes. Runs automatically after ingest when enabled, or on demand here.", -1))
+            n[34] || (n[34] = r("p", { class: "gx-treat-hint" }, "Merges concepts with the same or very similar meanings. Run it here, or enable automatic merging after adding content.", -1))
           ])
         ]),
         _: 1
