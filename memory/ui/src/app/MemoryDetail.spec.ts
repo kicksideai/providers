@@ -47,10 +47,15 @@ it('renders and changes a plan claim value separately from its display text', as
     global: { stubs: { Tag: true, ConfirmDialog: true } },
   })
   await flushPromises()
+  expect(wrapper.find('#mm-details').text()).toBe('Details')
+  expect(wrapper.text()).not.toContain('Claim value')
+  expect(wrapper.find('pre').exists()).toBe(false)
   expect(wrapper.text()).toContain('Book travel.')
   expect(wrapper.text()).toContain('Compare routes.')
   expect(wrapper.text()).toContain('open')
   await wrapper.findAll('button').find((button) => button.text().includes('Edit'))!.trigger('click')
+  expect(wrapper.find('label[for=memory_value]').text()).toBe('Details')
+  expect(wrapper.find('#memory_value').attributes('aria-label')).toBe('Details')
   const fields = wrapper.findAll('textarea')
   await fields[0]!.setValue('Updated trip plan.')
   await fields[1]!.setValue('{"details":"Reserve a room.","next_step":"Confirm dates.","status":"done"}')
@@ -59,5 +64,32 @@ it('renders and changes a plan claim value separately from its display text', as
     content: 'Updated trip plan.', value: { details: 'Reserve a room.', next_step: 'Confirm dates.', status: 'done' },
   })
   expect(onReplaced).toHaveBeenCalledWith('plan-2')
+  wrapper.unmount()
+})
+
+it.each([
+  ['green tea', ['Topic', 'green tea']],
+  [false, ['Topic', 'No']],
+  [0, ['Topic', '0']],
+  [null, ['Topic', 'Not set']],
+  [{ preferred_drink: 'green tea', delivery: { window_days: 17, enabled: true }, notes: ['Ring the bell', 'Leave by the door'] },
+    ['Preferred drink', 'green tea', 'Delivery · Window days', '17', 'Delivery · Enabled', 'Yes', 'Notes · 1', 'Ring the bell', 'Notes · 2', 'Leave by the door']],
+  [[], ['Topic', 'None']],
+  [{}, ['Topic', 'None']],
+])('renders %j as readable details without a JSON fallback', async (value, expected) => {
+  const fact = { ...item('fact-1', 200), content: 'Delivery preferences.', value }
+  vi.mocked((await import('@wippy-fe/proxy')).api.get).mockResolvedValueOnce({ data: { item: fact, provenance: [], versions: [fact] } })
+  const wrapper = mount(MemoryDetail, {
+    props: { itemId: fact.id, memory: { memoryId: ref('memory'), base: computed(() => '/api/v1/memory/memory'), status: ref(null), error: ref(''), revision: ref(0), busy: ref(false), act: vi.fn() } },
+    global: { stubs: { Tag: true, ConfirmDialog: true } },
+  })
+  await flushPromises()
+  const details = wrapper.find('section[aria-labelledby=mm-details]')
+  expect(details.exists()).toBe(true)
+  expect(details.findAll('dt, dd').map((field) => field.text())).toEqual(expected)
+  expect(details.find('pre').exists()).toBe(false)
+  expect(details.text()).not.toContain('[object Object]')
+  expect(details.text()).not.toContain('preferred_drink')
+  expect(wrapper.find('.mm-title').text()).toBe('Delivery preferences.')
   wrapper.unmount()
 })
