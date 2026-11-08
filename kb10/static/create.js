@@ -1,8 +1,8 @@
-import { u as Te, a as He, _ as _e, b as Qe, W as Ke, c as je } from "./styles-DHjGpAOW.js";
-import { defineComponent as qe, openBlock as l, createElementBlock as r, normalizeClass as j, createElementVNode as s, ref as d, computed as u, watch as re, onUnmounted as Xe, onMounted as Je, createVNode as k, unref as w, toDisplayString as f, Fragment as H, renderList as ke, createCommentVNode as c, createTextVNode as x, createBlock as We, withDirectives as Ye, vModelText as Ge, withCtx as we } from "vue";
+import { u as Te, a as He, _ as _e, b as Qe, W as Ke, c as je } from "./styles-CH5LsqRe.js";
+import { defineComponent as Ne, openBlock as l, createElementBlock as r, normalizeClass as j, createElementVNode as s, ref as d, computed as u, watch as re, onUnmounted as Xe, onMounted as Je, createVNode as k, unref as w, toDisplayString as f, Fragment as H, renderList as ke, createCommentVNode as c, createTextVNode as x, createBlock as We, withDirectives as Ge, vModelText as Ye, withCtx as we } from "vue";
 import { Icon as Q } from "@iconify/vue";
-import { api as Se, host as Ze, loadByTagName as Ce, define as et } from "@wippy-fe/proxy";
-const tt = ["disabled", "aria-checked"], K = /* @__PURE__ */ qe({
+import { api as Ce, host as Ze, loadByTagName as Se, define as et } from "@wippy-fe/proxy";
+const tt = ["disabled", "aria-checked"], K = /* @__PURE__ */ Ne({
   __name: "ToggleSwitch",
   props: {
     modelValue: { type: Boolean },
@@ -10,14 +10,14 @@ const tt = ["disabled", "aria-checked"], K = /* @__PURE__ */ qe({
   },
   emits: ["update:modelValue"],
   setup(m, { emit: v }) {
-    const S = v;
+    const C = v;
     return (g, y) => (l(), r("button", {
       type: "button",
       class: j(["cx-switch", { on: m.modelValue }]),
       disabled: m.disabled,
       role: "switch",
       "aria-checked": m.modelValue,
-      onClick: y[0] || (y[0] = (R) => S("update:modelValue", !m.modelValue))
+      onClick: y[0] || (y[0] = (R) => C("update:modelValue", !m.modelValue))
     }, [...y[1] || (y[1] = [
       s("span", { class: "cx-switch-knob" }, null, -1)
     ])], 10, tt));
@@ -27,21 +27,21 @@ function Ee(m, v) {
   return m.trim().length <= st && (v || "").trim().length <= nt;
 }
 const Ve = 3e3, at = 3e4, lt = { resummarize: "documents", reembed: "nodes" };
-function Me(m, v) {
+function Ae(m, v) {
   return m?.response?.data?.error || m?.message || v;
 }
-function Ae(m) {
+function Me(m) {
   Ze.handleError(m?.response?.status === 401 ? "auth-expired" : "other", m);
 }
 function rt(m) {
-  const v = d({ resummarize: null, reembed: null }), S = d({ resummarize: !1, reembed: !1 }), g = d({ resummarize: "", reembed: "" }), y = d("");
+  const v = d({ resummarize: null, reembed: null }), C = d({ resummarize: !1, reembed: !1 }), g = d({ resummarize: "", reembed: "" }), y = d("");
   function R(a) {
-    return S.value[a] || v.value[a]?.in_flight === !0;
+    return C.value[a] || v.value[a]?.in_flight === !0;
   }
   const F = u(() => R("resummarize") || R("reembed"));
-  let B = !1, C = 0, h = null;
+  let B = !1, S = 0, h = null;
   function b(a) {
-    return !B && a === C;
+    return !B && a === S;
   }
   function E() {
     h !== null && (clearTimeout(h), h = null);
@@ -56,7 +56,7 @@ function rt(m) {
     const o = m();
     if (!(!o || !b(a))) {
       try {
-        const { data: i } = await Se.get(`/api/v1/kb10/${o}/maintenance`);
+        const { data: i } = await Ce.get(`/api/v1/kb10/${o}/maintenance`);
         if (!b(a)) return;
         if (!i?.success) throw new Error(i?.error || "could not read maintenance status");
         v.value = {
@@ -65,39 +65,39 @@ function rt(m) {
         }, y.value = "";
       } catch (i) {
         if (!b(a)) return;
-        y.value = Me(i, "could not read maintenance status"), Ae(i), $(a, Math.min(p * 2, at));
+        y.value = Ae(i, "could not read maintenance status"), Me(i), $(a, Math.min(p * 2, at));
         return;
       }
       F.value && $(a, Ve);
     }
   }
   function L() {
-    const a = ++C;
+    const a = ++S;
     E(), v.value = { resummarize: null, reembed: null }, g.value = { resummarize: "", reembed: "" }, y.value = "", m() && V(a);
   }
   async function I(a) {
     const p = m();
     if (!p || F.value) return;
-    const o = C;
-    S.value = { ...S.value, [a]: !0 }, g.value = { ...g.value, [a]: "" };
+    const o = S;
+    C.value = { ...C.value, [a]: !0 }, g.value = { ...g.value, [a]: "" };
     try {
-      const { data: i } = await Se.post(`/api/v1/kb10/${p}/${a}`);
+      const { data: i } = await Ce.post(`/api/v1/kb10/${p}/${a}`);
       if (!b(o)) return;
       if (!i?.success) throw new Error(i?.error || "could not start the run");
       i.run && (v.value = { ...v.value, [a]: i.run });
     } catch (i) {
       if (!b(o)) return;
-      g.value = { ...g.value, [a]: Me(i, "could not start the run") }, Ae(i);
+      g.value = { ...g.value, [a]: Ae(i, "could not start the run") }, Me(i);
       return;
     } finally {
-      b(o) && (S.value = { ...S.value, [a]: !1 });
+      b(o) && (C.value = { ...C.value, [a]: !1 });
     }
     V(o);
   }
-  function q(a) {
+  function N(a) {
     const p = g.value[a];
     if (p) return { text: p, tone: "err" };
-    if (S.value[a]) return { text: "Starting…", tone: "" };
+    if (C.value[a]) return { text: "Starting…", tone: "" };
     const o = v.value[a];
     return o ? o.in_flight ? o.status === "scheduled" ? { text: "Scheduled — the run starts shortly", tone: "" } : o.total > 0 ? { text: `${o.scanned} of ${o.total} ${lt[a]}…`, tone: "" } : { text: "Running…", tone: "" } : o.stale ? { text: "This run stopped reporting — start it again.", tone: "err" } : o.status === "failed" ? { text: o.last_error || "The run failed.", tone: "err" } : o.status === "succeeded" ? a === "reembed" ? { text: `${o.embedded} vectors re-embedded, ${o.scanned} scanned`, tone: "ok" } : {
       text: `${o.resummarized} summaries regenerated, ${o.chunks_reenriched} chunks re-situated, ${o.documents_skipped} documents skipped, ${o.chunks_failed} chunks failed`,
@@ -106,7 +106,7 @@ function rt(m) {
   }
   return re(m, L, { immediate: !0 }), Xe(() => {
     B = !0, E();
-  }), { runs: v, statusError: y, running: R, anyBusy: F, start: I, statusLine: q };
+  }), { runs: v, statusError: y, running: R, anyBusy: F, start: I, statusLine: N };
 }
 const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-h" }, dt = { class: "cx-field" }, ct = {
   key: 0,
@@ -120,10 +120,10 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
 }, bt = { class: "cx-label" }, xt = ["value", "onInput"], ht = {
   key: 0,
   class: "st-hint"
-}, _t = { class: "cx-sub" }, kt = { class: "cx-sub-h" }, wt = { class: "cx-sub-t" }, St = { class: "st-hint" }, Ct = {
+}, _t = { class: "cx-sub" }, kt = { class: "cx-sub-h" }, wt = { class: "cx-sub-t" }, Ct = { class: "st-hint" }, St = {
   key: 1,
   class: "cx-req"
-}, Et = { class: "cx-row" }, Vt = { class: "cx-field" }, Mt = ["value"], At = { class: "cx-field" }, qt = ["value"], Nt = {
+}, Et = { class: "cx-row" }, Vt = { class: "cx-field" }, At = ["value"], Mt = { class: "cx-field" }, Nt = ["value"], qt = {
   key: 0,
   class: "cx-field"
 }, $t = { class: "cx-label" }, Lt = ["value"], Rt = {
@@ -138,16 +138,16 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
 }, Ft = {
   key: 1,
   class: "st-hint"
-}, Ut = {
+}, Dt = {
   key: 1,
   class: "cx-hint"
-}, Dt = { class: "cx-sub" }, Ot = { class: "cx-sub-h" }, Tt = {
+}, Ot = { class: "cx-sub" }, Ut = { class: "cx-sub-h" }, Tt = {
   key: 0,
   class: "cx-field"
-}, Ht = ["value"], Qt = { class: "cx-group" }, Kt = { class: "cx-group-h" }, jt = { class: "cx-field" }, Xt = ["value"], Jt = { class: "cx-toggle" }, Wt = { class: "cx-toggle" }, Yt = {
+}, Ht = ["value"], Qt = { class: "cx-group" }, Kt = { class: "cx-group-h" }, jt = { class: "cx-field" }, Xt = ["value"], Jt = { class: "cx-toggle" }, Wt = { class: "cx-toggle" }, Gt = {
   key: 0,
   class: "st-hint"
-}, Gt = {
+}, Yt = {
   key: 1,
   class: "cx-err"
 }, Zt = {
@@ -168,62 +168,71 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
 }, cs = { class: "cx-group-h" }, ms = { class: "cx-lead" }, vs = {
   key: 0,
   class: "cx-err"
-}, ps = { class: "cx-maint-row" }, gs = "class:embed", N = "class:fast", fs = /* @__PURE__ */ qe({
+}, ps = { class: "cx-maint-row" }, gs = "class:embed", q = "class:fast", fs = /* @__PURE__ */ Ne({
   __name: "KbCreateConfig",
   setup(m) {
-    const v = Te(), S = He(), g = u(() => v.value.config || {}), y = u(() => !!g.value.edit), R = u(() => y.value && g.value.id || ""), F = u(() => g.value.kb_type || ""), B = u(() => F.value !== "document"), C = d(""), h = d(!0), b = d(N), E = d(N), $ = d(""), V = d(""), L = d(!1), I = d(N), q = d({}), a = d(""), p = d(!1), o = d(!1), i = d(!1), U = d(25), J = u(() => g.value.config?.tuning), D = d(""), P = d(null), _ = d("built-in"), z = d("");
-    function Ne(t) {
+    const v = Te(), C = He(), g = u(() => v.value.config || {}), y = u(() => !!g.value.edit), R = u(() => y.value && g.value.id || ""), F = u(() => g.value.kb_type || ""), B = u(() => F.value !== "document"), S = d(""), h = d(!0), b = d(q), E = d(q), $ = d(""), V = d(""), L = d(!1), I = d(q), N = d({}), a = d(""), p = d(!1), o = d(!1), i = d(!1), D = d(25), J = u(() => g.value.config?.tuning), O = d(""), P = d(null), _ = d("built-in"), z = d("");
+    function qe(t) {
       const e = t.detail, n = e && Array.isArray(e.selected) ? e.selected.map(String) : [];
       z.value = n[0] || "";
     }
     const W = u(() => {
       const e = g.value.config?.config_schema?.properties;
-      return e ? Object.entries(e).map(([n, A]) => ({ key: n, ...A })).sort((n, A) => (n.order ?? 100) - (A.order ?? 100) || n.key.localeCompare(A.key)) : [];
-    }), $e = ["summary_prompt", "summary_max_chars", "query_strategy", "self_tuning", "self_tuning_query_interval"], Y = u(() => W.value.filter((t) => !$e.includes(t.key))), Le = u(() => Y.value.filter((t) => t.format === "textarea")), oe = u(() => Y.value.filter((t) => t.format !== "textarea")), O = u(() => W.value.find((t) => t.key === "summary_prompt")), M = u(() => W.value.find((t) => t.key === "summary_max_chars")), Re = u(() => {
-      const t = M.value;
+      return e ? Object.entries(e).map(([n, M]) => ({ key: n, ...M })).sort((n, M) => (n.order ?? 100) - (M.order ?? 100) || n.key.localeCompare(M.key)) : [];
+    }), $e = [
+      "summary_prompt",
+      "summary_max_chars",
+      "analysis_model",
+      "query_strategy",
+      "self_tuning",
+      "self_tuning_query_interval",
+      "enable_reranking",
+      "extra_prompt"
+    ], G = u(() => W.value.filter((t) => !$e.includes(t.key))), Le = u(() => G.value.filter((t) => t.format === "textarea")), oe = u(() => G.value.filter((t) => t.format !== "textarea")), U = u(() => W.value.find((t) => t.key === "summary_prompt")), A = u(() => W.value.find((t) => t.key === "summary_max_chars")), Re = u(() => {
+      const t = A.value;
       return t ? `${t.label || t.key} characters` : "";
-    }), X = u(() => M.value?.minimum ?? 0), G = u(() => M.value?.maximum), Ie = u(() => {
-      const t = M.value?.default;
+    }), X = u(() => A.value?.minimum ?? 0), Y = u(() => A.value?.maximum), Ie = u(() => {
+      const t = A.value?.default;
       return typeof t == "number" ? String(t) : "";
     }), Z = u(() => {
       const t = V.value.trim();
       if (t === "") return null;
       const e = Number(t);
       if (!Number.isInteger(e)) return null;
-      const n = G.value;
+      const n = Y.value;
       return e < X.value || n !== void 0 && e > n ? null : e;
     }), ie = u(() => {
       if (V.value.trim() === "" || Z.value !== null) return "";
-      const e = G.value;
+      const e = Y.value;
       return e === void 0 ? `Summary length must be a whole number of ${X.value} characters or more.` : `Summary length must be a whole number between ${X.value} and ${e} characters.`;
     });
     function ze() {
       const t = g.value.config || {};
-      C.value = g.value.embedding_model || gs;
-      const e = typeof t.summary_model == "string" ? t.summary_model : "", n = typeof t.chunk_enrichment_model == "string" ? t.chunk_enrichment_model : "", A = t.summary_model !== void 0 || t.chunk_enrichment_model !== void 0;
-      h.value = B.value ? !0 : A ? !!n : !0, b.value = e || N, E.value = n || N, $.value = typeof t.summary_prompt == "string" ? t.summary_prompt : "", V.value = y.value && typeof t.summary_max_chars == "number" ? String(t.summary_max_chars) : "", L.value = t.embed_images === !0, I.value = typeof t.image_caption_model == "string" && t.image_caption_model ? t.image_caption_model : N;
+      S.value = g.value.embedding_model || gs;
+      const e = typeof t.summary_model == "string" ? t.summary_model : "", n = typeof t.chunk_enrichment_model == "string" ? t.chunk_enrichment_model : "", M = t.summary_model !== void 0 || t.chunk_enrichment_model !== void 0;
+      h.value = B.value ? !0 : M ? !!n : !0, b.value = e || q, E.value = n || q, $.value = typeof t.summary_prompt == "string" ? t.summary_prompt : "", V.value = y.value && typeof t.summary_max_chars == "number" ? String(t.summary_max_chars) : "", L.value = t.embed_images === !0, I.value = typeof t.image_caption_model == "string" && t.image_caption_model ? t.image_caption_model : q;
       const xe = {};
-      for (const le of Y.value) {
+      for (const le of G.value) {
         const he = t[le.key];
         xe[le.key] = he !== void 0 ? he : le.default;
       }
-      q.value = xe, a.value = (typeof t.retrieval_model == "string" ? t.retrieval_model : "") || (typeof t.analysis_model == "string" ? t.analysis_model : ""), p.value = t.enable_reranking === !0, o.value = t.query_strategy === "hyde", i.value = t.self_tuning === !0, U.value = typeof t.self_tuning_query_interval == "number" ? t.self_tuning_query_interval : 25, D.value = typeof t.extra_prompt == "string" ? t.extra_prompt : "";
+      N.value = xe, a.value = (typeof t.retrieval_model == "string" ? t.retrieval_model : "") || (typeof t.analysis_model == "string" ? t.analysis_model : ""), p.value = t.enable_reranking === !0, o.value = t.query_strategy === "hyde", i.value = t.self_tuning === !0, D.value = typeof t.self_tuning_query_interval == "number" ? t.self_tuning_query_interval : 25, O.value = typeof t.extra_prompt == "string" ? t.extra_prompt : "";
       const ae = Number(t.max_retrieval_iterations);
       P.value = Number.isFinite(ae) && ae > 0 ? ae : null, _.value = t.query_driver === "agentic" ? "agentic" : "built-in", z.value = typeof t.query_agent == "string" ? t.query_agent : "";
     }
     function ee() {
-      const t = { ...q.value };
-      return h.value ? (t.summary_model = b.value || N, t.chunk_enrichment_model = E.value || N, t.summary_prompt = $.value.trim(), Z.value !== null ? t.summary_max_chars = Z.value : delete t.summary_max_chars) : (delete t.summary_model, delete t.chunk_enrichment_model, delete t.summary_prompt, delete t.summary_max_chars), L.value ? (t.embed_images = !0, t.image_caption_model = I.value || N) : (t.embed_images = !1, delete t.image_caption_model), Qe(t, a.value), t.query_strategy = o.value ? "hyde" : "plain", t.self_tuning = i.value, i.value && (t.self_tuning_query_interval = U.value), p.value && _.value !== "agentic" && (t.enable_reranking = !0), t.extra_prompt = D.value.trim(), _.value === "agentic" && P.value && (t.max_retrieval_iterations = P.value), t.query_driver = _.value, _.value === "agentic" && z.value ? t.query_agent = z.value : delete t.query_agent, t;
+      const t = { ...N.value };
+      return h.value ? (t.summary_model = b.value || q, t.chunk_enrichment_model = E.value || q, t.summary_prompt = $.value.trim(), Z.value !== null ? t.summary_max_chars = Z.value : delete t.summary_max_chars) : (delete t.summary_model, delete t.chunk_enrichment_model, delete t.summary_prompt, delete t.summary_max_chars), L.value ? (t.embed_images = !0, t.image_caption_model = I.value || q) : (t.embed_images = !1, delete t.image_caption_model), Qe(t, a.value), t.query_strategy = o.value ? "hyde" : "plain", t.self_tuning = i.value, i.value && (t.self_tuning_query_interval = D.value), t.enable_reranking = p.value && _.value !== "agentic", t.extra_prompt = O.value.trim(), _.value === "agentic" && P.value && (t.max_retrieval_iterations = P.value), t.query_driver = _.value, _.value === "agentic" && z.value ? t.query_agent = z.value : delete t.query_agent, t;
     }
     function ue() {
-      S("config-changed", { embedding_model: C.value, config: ee() });
+      C("config-changed", { embedding_model: S.value, config: ee() });
     }
     function T(t) {
       const e = t.detail;
       return typeof e == "string" ? e : e && typeof e == "object" && "value" in e ? String(e.value) : "";
     }
     function Be(t) {
-      C.value = T(t);
+      S.value = T(t);
     }
     function Pe(t) {
       b.value = T(t);
@@ -234,33 +243,33 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
     function de(t, e) {
       if (t.type === "integer") {
         const n = Number.parseInt(e, 10);
-        q.value[t.key] = Number.isNaN(n) ? void 0 : n;
+        N.value[t.key] = Number.isNaN(n) ? void 0 : n;
       } else if (t.type === "number") {
         const n = Number.parseFloat(e);
-        q.value[t.key] = Number.isNaN(n) ? void 0 : n;
+        N.value[t.key] = Number.isNaN(n) ? void 0 : n;
       } else
-        q.value[t.key] = e;
+        N.value[t.key] = e;
     }
     function ce(t) {
-      const e = q.value[t];
+      const e = N.value[t];
       return e == null ? "" : String(e);
     }
     const me = d(""), ve = u(() => JSON.stringify(ee()) !== me.value), {
       statusError: pe,
       running: ge,
-      anyBusy: Ue,
-      start: De,
+      anyBusy: De,
+      start: Oe,
       statusLine: fe
-    } = rt(() => R.value), Oe = u(() => !!R.value), te = u(() => Ue.value || ve.value), se = u(() => fe("resummarize")), ne = u(() => fe("reembed"));
+    } = rt(() => R.value), Ue = u(() => !!R.value), te = u(() => De.value || ve.value), se = u(() => fe("resummarize")), ne = u(() => fe("reembed"));
     function ye(t) {
-      te.value || De(t);
+      te.value || Oe(t);
     }
     function be() {
       ze(), me.value = JSON.stringify(ee()), ue();
     }
-    return re(() => v.value.config, be), re([C, h, b, E, $, V, L, I, q, a, p, o, i, U, D, P, _, z], ue, { deep: !0 }), Je(() => {
-      Ce("wc-model-picker", { timeoutMs: 8e3 }).catch(() => {
-      }), Ce("wc-agent-picker", { timeoutMs: 8e3 }).catch(() => {
+    return re(() => v.value.config, be), re([S, h, b, E, $, V, L, I, N, a, p, o, i, D, O, P, _, z], ue, { deep: !0 }), Je(() => {
+      Se("wc-model-picker", { timeoutMs: 8e3 }).catch(() => {
+      }), Se("wc-agent-picker", { timeoutMs: 8e3 }).catch(() => {
       }), be();
     }), (t, e) => (l(), r("div", ot, [
       s("div", it, [
@@ -279,11 +288,11 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
               icon: "tabler:lock",
               "aria-hidden": "true"
             }),
-            s("span", mt, f(C.value || "—"), 1),
+            s("span", mt, f(S.value || "—"), 1),
             e[16] || (e[16] = s("span", { class: "st-hint" }, "fixed after creation", -1))
           ])) : (l(), r("wc-model-picker", {
             key: 1,
-            value: C.value,
+            value: S.value,
             capability: "embed",
             onSelect: Be
           }, null, 40, vt)),
@@ -302,7 +311,7 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
               max: n.maximum,
               step: n.type === "integer" ? 1 : void 0,
               value: ce(n.key),
-              onInput: (A) => de(n, A.target.value)
+              onInput: (M) => de(n, M.target.value)
             }, null, 40, ft),
             n.description ? (l(), r("p", yt, f(n.description), 1)) : c("", !0)
           ], 2))), 128))
@@ -316,7 +325,7 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
             class: "cx-input cx-textarea",
             rows: "3",
             value: String(ce(n.key) ?? ""),
-            onInput: (A) => de(n, A.target.value)
+            onInput: (M) => de(n, M.target.value)
           }, null, 40, xt),
           n.description ? (l(), r("p", ht, f(n.description), 1)) : c("", !0)
         ]))), 128)),
@@ -324,14 +333,14 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
           s("div", kt, [
             s("span", wt, [
               e[20] || (e[20] = s("span", { class: "cx-label" }, "Contextual embedding", -1)),
-              s("span", St, [
+              s("span", Ct, [
                 e[19] || (e[19] = x(" Adds a short document summary and per-chunk context before embedding, so retrieval understands each chunk in the context of its whole document. ", -1)),
                 B.value ? (l(), r(H, { key: 0 }, [
                   x(" Required — the concept graph is built from these models.")
                 ], 64)) : c("", !0)
               ])
             ]),
-            B.value ? (l(), r("span", Ct, "Required")) : (l(), We(K, {
+            B.value ? (l(), r("span", St, "Required")) : (l(), We(K, {
               key: 0,
               modelValue: h.value,
               "onUpdate:modelValue": e[0] || (e[0] = (n) => h.value = n),
@@ -346,22 +355,22 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
                   value: b.value,
                   capability: "generate",
                   onSelect: Pe
-                }, null, 40, Mt),
+                }, null, 40, At),
                 e[22] || (e[22] = s("p", { class: "st-hint" }, "Summarises each document before chunking.", -1))
               ]),
-              s("div", At, [
+              s("div", Mt, [
                 e[23] || (e[23] = s("span", { class: "cx-label" }, "Chunk enrichment model", -1)),
                 s("wc-model-picker", {
                   value: E.value,
                   capability: "generate",
                   onSelect: Fe
-                }, null, 40, qt),
+                }, null, 40, Nt),
                 e[24] || (e[24] = s("p", { class: "st-hint" }, "Adds context to each chunk.", -1))
               ])
             ]),
-            O.value ? (l(), r("label", Nt, [
+            U.value ? (l(), r("label", qt, [
               s("span", $t, [
-                x(f(O.value.label || O.value.key) + " ", 1),
+                x(f(U.value.label || U.value.key) + " ", 1),
                 e[25] || (e[25] = s("span", { class: "cx-opt" }, "optional", -1))
               ]),
               s("textarea", {
@@ -371,29 +380,29 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
                 placeholder: "e.g. Lead with the customer's stated goal, then the decisions and dates.",
                 onInput: e[1] || (e[1] = (n) => $.value = n.target.value)
               }, null, 40, Lt),
-              O.value.description ? (l(), r("p", Rt, f(O.value.description), 1)) : c("", !0)
+              U.value.description ? (l(), r("p", Rt, f(U.value.description), 1)) : c("", !0)
             ])) : c("", !0),
-            M.value ? (l(), r("div", It, [
+            A.value ? (l(), r("div", It, [
               s("label", {
-                class: j(["cx-field", { "cx-span": !w(Ee)(Re.value, M.value.description) }])
+                class: j(["cx-field", { "cx-span": !w(Ee)(Re.value, A.value.description) }])
               }, [
                 s("span", zt, [
-                  x(f(M.value.label || M.value.key) + " ", 1),
+                  x(f(A.value.label || A.value.key) + " ", 1),
                   e[26] || (e[26] = s("span", { class: "cx-opt" }, "characters", -1))
                 ]),
                 s("input", {
                   class: "cx-input",
                   type: "number",
                   min: X.value,
-                  max: G.value,
+                  max: Y.value,
                   placeholder: Ie.value,
                   value: V.value,
                   onInput: e[2] || (e[2] = (n) => V.value = n.target.value)
                 }, null, 40, Bt),
-                ie.value ? (l(), r("p", Pt, f(ie.value), 1)) : M.value.description ? (l(), r("p", Ft, f(M.value.description), 1)) : c("", !0)
+                ie.value ? (l(), r("p", Pt, f(ie.value), 1)) : A.value.description ? (l(), r("p", Ft, f(A.value.description), 1)) : c("", !0)
               ], 2)
             ])) : c("", !0)
-          ], 64)) : (l(), r("p", Ut, [
+          ], 64)) : (l(), r("p", Dt, [
             k(w(Q), {
               icon: "tabler:circle-dot",
               "aria-hidden": "true"
@@ -401,8 +410,8 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
             e[27] || (e[27] = x("Plain embedding — chunks are embedded as-is.", -1))
           ]))
         ]),
-        s("div", Dt, [
-          s("div", Ot, [
+        s("div", Ot, [
+          s("div", Ut, [
             e[28] || (e[28] = s("span", { class: "cx-sub-t" }, [
               s("span", { class: "cx-label" }, "Embed images"),
               s("span", { class: "st-hint" }, " Captions diagrams and figures from your documents and embeds them alongside the text, so a search returns the relevant image as well as the prose around it. ")
@@ -464,21 +473,21 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
             s("span", { class: "st-hint" }, "Learns standing instructions from document summaries and retrieval outcomes. Applies changes when a caller has write access.")
           ], -1))
         ]),
-        J.value?.applied_at ? (l(), r("p", Yt, "Last tuning: " + f(J.value.applied_at) + ". " + f(J.value.rationale), 1)) : c("", !0),
-        (o.value || i.value) && !a.value ? (l(), r("p", Gt, "Select an answer model for retrieval optimization.")) : c("", !0),
+        J.value?.applied_at ? (l(), r("p", Gt, "Last tuning: " + f(J.value.applied_at) + ". " + f(J.value.rationale), 1)) : c("", !0),
+        (o.value || i.value) && !a.value ? (l(), r("p", Yt, "Select an answer model for retrieval optimization.")) : c("", !0),
         i.value ? (l(), r("label", Zt, [
           e[37] || (e[37] = s("span", { class: "cx-label" }, "Tuning interval", -1)),
-          Ye(s("input", {
+          Ge(s("input", {
             class: "cx-input",
             type: "number",
             min: "5",
             max: "500",
             step: "1",
-            "onUpdate:modelValue": e[8] || (e[8] = (n) => U.value = n)
+            "onUpdate:modelValue": e[8] || (e[8] = (n) => D.value = n)
           }, null, 512), [
             [
-              Ge,
-              U.value,
+              Ye,
+              D.value,
               void 0,
               { number: !0 }
             ]
@@ -521,7 +530,7 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
             multi: "false",
             placeholder: "Built-in Q&A agent",
             selected: z.value ? JSON.stringify([z.value]) : "[]",
-            onChange: Ne
+            onChange: qe
           }, null, 40, rs),
           e[45] || (e[45] = s("p", { class: "st-hint" }, "Answer with a specific agent — it gets a retrieval tool over this KB — instead of the built-in Q&A agent.", -1))
         ])) : c("", !0),
@@ -544,14 +553,14 @@ const ot = { class: "cx" }, it = { class: "cx-group" }, ut = { class: "cx-group-
           s("textarea", {
             class: "cx-input cx-textarea",
             rows: "3",
-            value: D.value,
+            value: O.value,
             placeholder: "e.g. Always check the Architecture Overview doc before answering.",
-            onInput: e[12] || (e[12] = (n) => D.value = n.target.value)
+            onInput: e[12] || (e[12] = (n) => O.value = n.target.value)
           }, null, 40, us),
           e[48] || (e[48] = s("p", { class: "st-hint" }, "Standing guidance applied to retrieval and answering on every question.", -1))
         ])
       ]),
-      Oe.value ? (l(), r("div", ds, [
+      Ue.value ? (l(), r("div", ds, [
         s("div", cs, [
           k(w(Q), {
             icon: "tabler:refresh",

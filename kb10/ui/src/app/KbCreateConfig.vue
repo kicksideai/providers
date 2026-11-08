@@ -118,11 +118,15 @@ const schemaFields = computed<EngineConfigField[]>(() => {
   return []
 })
 
-// The summary settings are declared in the same config_schema — label, bounds
-// and default included — but only apply where a summary is produced, so the
-// contextual section renders them and the generic options list leaves them out.
-const SUMMARY_KEYS = ['summary_prompt', 'summary_max_chars', 'query_strategy', 'self_tuning', 'self_tuning_query_interval']
-const engineFields = computed(() => schemaFields.value.filter(f => !SUMMARY_KEYS.includes(f.key)))
+// Keys declared in config_schema that a dedicated control below renders and
+// writes: the summary settings in the contextual section, and the answer model,
+// its strategy, tuning, reranking and instructions in the Ask section. The
+// generic options list renders only the remaining engine keys.
+const OWNED_KEYS = [
+  'summary_prompt', 'summary_max_chars',
+  'analysis_model', 'query_strategy', 'self_tuning', 'self_tuning_query_interval', 'enable_reranking', 'extra_prompt',
+]
+const engineFields = computed(() => schemaFields.value.filter(f => !OWNED_KEYS.includes(f.key)))
 // Prose fields need the full row to be readable; the rest are placed by what
 // they render — see fitsHalfColumn.
 const engineProseFields = computed(() => engineFields.value.filter(f => f.format === 'textarea'))
@@ -250,8 +254,9 @@ function buildConfig(): Record<string, unknown> {
   cfg.self_tuning = selfTuning.value
   if (selfTuning.value) cfg.self_tuning_query_interval = tuningInterval.value
   // Rerank is a built-in-driver pass; the agentic driver reasons over rounds
-  // instead, so it does not apply there.
-  if (enableReranking.value && queryDriver.value !== 'agentic') cfg.enable_reranking = true
+  // instead, so it does not apply there. Always sent so switching it off unsets it
+  // (update_kb merges config keys).
+  cfg.enable_reranking = enableReranking.value && queryDriver.value !== 'agentic'
   // Always send so clearing the field unsets it (update_kb merges config keys).
   cfg.extra_prompt = queryPrompt.value.trim()
   // Iterations apply to the graph concept retrieval and to the agentic driver.
