@@ -86,7 +86,7 @@ loadConnections().then(() => { if (connectionId.value) loadResources() })
     </label>
 
     <label v-if="connectionId" class="atl-field">
-      <span>{{ resourceLabel }} <em>(optional — pin to scope this trait)</em></span>
+      <span>{{ resourceLabel }} <em>(optional — limit this capability to one {{ resourceLabel.toLowerCase() }})</em></span>
       <select v-model="pinned" @change="publish">
         <option value="">{{ loadingRes ? 'Loading…' : 'Any (account-wide)' }}</option>
         <option v-for="r in resources" :key="r.id || r.key" :value="r.key">{{ r.name || r.key }} ({{ r.key }})</option>
