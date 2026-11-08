@@ -151,15 +151,17 @@ local function define_tests()
             test.is_nil((string.find(out.prompt, 'sdk.tools["kickside.code_execution.traits:recommend_tools_tool"]', 1, true)))
         end)
 
-        test.it("an empty whitelist is allow-all: injects the full tool catalog", function()
+        test.it("an empty whitelist discovers tools without injecting the reachable catalog", function()
             local out, err = call_build({})
             test.is_nil(err, tostring(err))
             test.not_nil(out.prompt)
             local p = out.prompt
             test.is_true(string.find(p, "Code execution SDK", 1, true) ~= nil, "header present")
-            -- allow-all lists EVERY registered tool, including ones absent from a specific whitelist
-            test.is_true(string.find(p, "app:stub_echo_tool", 1, true) ~= nil, "echo tool listed")
-            test.is_true(string.find(p, "stub_secret_tool", 1, true) ~= nil, "allow-all also lists the secret tool")
+            test.contains(p, "RecommendTools")
+            test.contains(p, "sdk.list()")
+            test.contains(p, "sdk.schema(")
+            test.is_nil((string.find(p, ECHO, 1, true)), "tool catalog stays out of the initial prompt")
+            test.is_nil((string.find(p, SECRET, 1, true)), "unrestricted discovery does not enumerate tools eagerly")
         end)
     end)
 end
