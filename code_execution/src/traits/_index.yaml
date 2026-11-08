@@ -122,8 +122,8 @@ entries:
           one step than many separate tool calls.
 
       Inside the sandbox the `sdk` import is the only way to reach anything beyond pure
-      Lua. The tools it exposes are listed in your context (the "Code execution SDK"
-      section) — consult that catalog and use the right tool:
+      Lua. Discover available tools with RecommendTools or `sdk.list()`, and inspect
+      their schemas before calling them:
         - `sdk.tools["<entry.id>"](args)` calls a tool, returning `result, err`.
         - `sdk.list()` returns every id available to you; `sdk.schema("<entry.id>")` returns
           a tool's `{ input_schema, output_schema }` (BOTH), and `sdk.schemas({"<id>", ...})`
