@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.11](https://github.com/kicksideai/providers/compare/kb10-v0.2.10...kb10-v0.2.11) (2026-11-08)
+
+
+### Bug Fixes
+
+* **kb10:** render each knowledge base setting once in the create dialog ([#75](https://github.com/kicksideai/providers/issues/75)) ([ff0848e](https://github.com/kicksideai/providers/commit/ff0848ee38ab66bc0b3cadf3dfeab64bc9727940))
+
 ## [0.2.10](https://github.com/kicksideai/providers/compare/kb10-v0.2.9...kb10-v0.2.10) (2026-11-06)
 
 
