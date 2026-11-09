@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/kicksideai/providers/compare/atlassian-v0.1.30...atlassian-v0.1.31) (2026-11-09)
+
+
+### Bug Fixes
+
+* **providers:** clarify knowledge search and Atlassian picker controls ([#80](https://github.com/kicksideai/providers/issues/80)) ([e610bea](https://github.com/kicksideai/providers/commit/e610bea71e9ee30baf719d7797ccfa4d7001e037))
+
 ## [0.1.30](https://github.com/kicksideai/providers/compare/atlassian-v0.1.29...atlassian-v0.1.30) (2026-11-06)
 
 
