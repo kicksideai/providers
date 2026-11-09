@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/kicksideai/providers/compare/kb10-v0.2.11...kb10-v0.2.12) (2026-11-09)
+
+
+### Bug Fixes
+
+* **providers:** clarify knowledge search and Atlassian picker controls ([#80](https://github.com/kicksideai/providers/issues/80)) ([e610bea](https://github.com/kicksideai/providers/commit/e610bea71e9ee30baf719d7797ccfa4d7001e037))
+
 ## [0.2.11](https://github.com/kicksideai/providers/compare/kb10-v0.2.10...kb10-v0.2.11) (2026-11-08)
 
 
