@@ -248,6 +248,14 @@ local function define_tests()
                     metadata = { title = "Source Cleanup Chunk" },
                 })
                 test.is_nil(chunk_err)
+                local summary_id, summary_err = insert_materialized_node(test_store_id, {
+                    parent_id = doc_id,
+                    node_type = "summary",
+                    content = "Source cleanup summary",
+                    content_type = "text/plain",
+                    metadata = { title = "Source Cleanup Summary" },
+                })
+                test.is_nil(summary_err)
                 local _, doc_emb_err = materializer_store():insert_embedding({
                     store_id = test_store_id,
                     node_id = doc_id,
@@ -263,6 +271,11 @@ local function define_tests()
                     embedding = test_vector(),
                 })
                 test.is_nil(chunk_emb_err)
+                local _, summary_emb_err = materializer_store():insert_embedding({
+                    store_id = test_store_id, node_id = summary_id, node_type = "summary",
+                    parent_id = doc_id, embedding = test_vector(),
+                })
+                test.is_nil(summary_emb_err)
                 local edge_id, edge_err = store():insert_edge({ store_id = test_store_id, edge = {
                     from_node_id = doc_id,
                     to_node_id = concept_id,
@@ -273,16 +286,16 @@ local function define_tests()
                 test.not_nil(edge_id)
 
                 local before_embeddings = db:query(
-                    "SELECT node_id FROM kb10_embeddings WHERE node_id IN ($1, $2)",
-                    { doc_id, chunk_id }
+                    "SELECT node_id FROM kb10_embeddings WHERE node_id IN ($1, $2, $3)",
+                    { doc_id, chunk_id, summary_id }
                 )
-                test.eq(2, #before_embeddings)
+                test.eq(3, #before_embeddings)
                 local search_rows = db:type() == sql.type.POSTGRES
-                    and "SELECT id AS node_id FROM kb10_nodes WHERE id IN ($1, $2)"
+                    and "SELECT id AS node_id FROM kb10_nodes WHERE id IN ($1, $2, $3)"
                         .. " AND search_vector @@ plainto_tsquery('english', 'cleanup')"
-                    or "SELECT node_id FROM kb10_nodes_fts WHERE node_id IN ($1, $2)"
-                local before_fts = db:query(search_rows, { doc_id, chunk_id })
-                test.eq(2, #before_fts)
+                    or "SELECT node_id FROM kb10_nodes_fts WHERE node_id IN ($1, $2, $3)"
+                local before_fts = db:query(search_rows, { doc_id, chunk_id, summary_id })
+                test.eq(db:type() == sql.type.POSTGRES and 2 or 3, #before_fts)
 
                 local ok, del_err = materializer_store():delete_node({
                     store_id = test_store_id,
@@ -292,20 +305,20 @@ local function define_tests()
                 test.is_nil(del_err)
 
                 local nodes = db:query(
-                    "SELECT id FROM kb10_nodes WHERE store_id = $1 AND id IN ($2, $3)",
-                    { test_store_id, doc_id, chunk_id }
+                    "SELECT id FROM kb10_nodes WHERE store_id = $1 AND id IN ($2, $3, $4)",
+                    { test_store_id, doc_id, chunk_id, summary_id }
                 )
                 test.eq(0, #nodes)
                 local embeddings = db:query(
-                    "SELECT node_id FROM kb10_embeddings WHERE node_id IN ($1, $2)",
-                    { doc_id, chunk_id }
+                    "SELECT node_id FROM kb10_embeddings WHERE node_id IN ($1, $2, $3)",
+                    { doc_id, chunk_id, summary_id }
                 )
                 test.eq(0, #embeddings)
-                local fts = db:query(search_rows, { doc_id, chunk_id })
+                local fts = db:query(search_rows, { doc_id, chunk_id, summary_id })
                 test.eq(0, #fts)
                 local edges = db:query(
-                    "SELECT id FROM kb10_edges WHERE store_id = $1 AND (from_node_id IN ($2, $3) OR to_node_id IN ($4, $5))",
-                    { test_store_id, doc_id, chunk_id, doc_id, chunk_id }
+                    "SELECT id FROM kb10_edges WHERE store_id = $1 AND (from_node_id IN ($2, $3, $4) OR to_node_id IN ($5, $6, $7))",
+                    { test_store_id, doc_id, chunk_id, summary_id, doc_id, chunk_id, summary_id }
                 )
                 test.eq(0, #edges)
             end)
