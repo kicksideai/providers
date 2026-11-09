@@ -1,11 +1,11 @@
 import { u as t } from "./wc-runtime-KO3cNuNo.js";
-import { m as r, a as n } from "./lazy-DWJV_ELG.js";
+import { m as r, a as n } from "./lazy-l_o3DZGp.js";
 import "@iconify/vue";
 import { define as m } from "@wippy-fe/proxy";
 const e = r(
   {
     lazyConfig: n(
-      () => import("./lazy-mount-B00vUwY3.js").then((o) => o.mountConfig),
+      () => import("./lazy-mount-Bblvswhc.js").then((o) => o.mountConfig),
       "Could not load the memory knowledge base. Reload the page to try again.",
       t
     )

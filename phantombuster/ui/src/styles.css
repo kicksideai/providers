@@ -20,6 +20,7 @@
 .pbpick wc-connection-picker {
   display: block;
   width: 100%;
+  min-height: 36px;
 }
 
 .pbpick-meta,

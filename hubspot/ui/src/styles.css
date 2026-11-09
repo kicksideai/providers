@@ -33,6 +33,8 @@
 .hs-field .p-select {
   width: 100%;
 }
+/* The nested picker keeps its height before it registers. */
+.hs-field wc-connection-picker { display: block; min-height: 36px; }
 
 .hs-field .p-select {
   padding: 8px 10px;
@@ -76,4 +78,4 @@
 }
 
 /* Reserved only while the implementation loads, so a loaded tag keeps its own size (estimate from the form CSS). */
-:host > div:empty, :host > div:has(> [role=status]) { min-height: 227px; }
+:host > div:empty, :host > div:has(> [data-lazy-state]) { min-height: 190px; }

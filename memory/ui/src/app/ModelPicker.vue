@@ -15,4 +15,5 @@ function onSelect(event: Event) {
 <template>
   <wc-model-picker v-if="picker.ready.value" :aria-labelledby="labelledBy" :value="value" :capability="capability" @select="onSelect"></wc-model-picker>
   <div v-else-if="picker.failed.value" class="kx-notice error">The model picker could not load: {{ picker.failed.value }}</div>
+  <div v-else class="mm-picker-pending" aria-hidden="true"></div>
 </template>

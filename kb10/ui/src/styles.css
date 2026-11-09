@@ -26,7 +26,7 @@
 wippy-loading, wippy-error { height: 100%; }
 wippy-loading ~ wippy-loading { display: none; }
 /* Reserved only while the settings load, so a loaded tag keeps its own size. */
-:host(kx-kb-create) > div:empty, :host(kx-kb-create) > div:has(> [role=status]) { min-height: 240px; }
+:host(kx-kb-create) > div:empty, :host(kx-kb-create) > div:has(> [data-lazy-state]) { min-height: 1049px; }
 
 .kb-page { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; }
 .kb-tabpanel { min-width: 0; }

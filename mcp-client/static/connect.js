@@ -1,5 +1,5 @@
 import { W as t, u as e } from "./wc-runtime-CNDpK4lj.js";
-import { l as n, c as i, p as r } from "./package-COEhTfSU.js";
+import { l as n, c as i, p as r } from "./package-BTvKRTGb.js";
 import "@iconify/vue";
 import { define as s } from "@wippy-fe/proxy";
 const p = n(

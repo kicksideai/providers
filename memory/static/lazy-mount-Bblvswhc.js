@@ -1,5 +1,5 @@
 import { P as he } from "./primevue-plugin-CaP7wV_M.js";
-import { defineComponent as K, computed as M, openBlock as n, createElementBlock as o, Fragment as R, createElementVNode as e, createVNode as b, unref as t, createTextVNode as N, renderList as z, normalizeClass as D, toDisplayString as c, createCommentVNode as h, createBlock as F, ref as T, watch as O, onUnmounted as _e, withModifiers as ie, onBeforeUnmount as ge, Transition as xe, withCtx as Z, renderSlot as le, nextTick as ae, withDirectives as $e, vShow as we } from "vue";
+import { defineComponent as K, computed as M, openBlock as n, createElementBlock as o, Fragment as R, createElementVNode as e, createVNode as b, unref as t, createTextVNode as N, renderList as z, normalizeClass as D, toDisplayString as c, createCommentVNode as h, createBlock as F, ref as T, watch as O, onUnmounted as _e, withModifiers as ie, onBeforeUnmount as ge, Transition as xe, withCtx as Z, renderSlot as le, nextTick as se, withDirectives as $e, vShow as we } from "vue";
 import { Icon as w } from "@iconify/vue";
 import { b as Ce, a as Se, u as Te } from "./wc-runtime-KO3cNuNo.js";
 import re from "primevue/tag";
@@ -8,7 +8,7 @@ import ue from "primevue/selectbutton";
 import ee from "primevue/textarea";
 import { e as Y, b as Ie, i as Ve, p as Ne } from "./types-DQ01_s6c.js";
 import { on as Ee } from "@wippy-fe/proxy";
-import { m as P, a as ne, h as se, u as Re, _ as Me } from "./usePaged-DWrKufE-.js";
+import { m as P, a as ne, h as ae, u as Re, _ as Me } from "./usePaged-DWrKufE-.js";
 import { u as Be } from "./useWidget-OxU0xAVl.js";
 const q = {
   identity: { label: "Identity", icon: "tabler:id-badge-2", group: "instructions" },
@@ -25,17 +25,17 @@ const q = {
   { id: "plans", title: "Ongoing plans", icon: "tabler:route", tone: "kx-tone-amber" },
   { id: "people", title: "About people", icon: "tabler:users", tone: "kx-tone-blue" }
 ];
-function W(a) {
-  const x = a.replace(/[_\-.]+/g, " ").trim();
-  return x ? x.charAt(0).toUpperCase() + x.slice(1) : a;
+function W(s) {
+  const x = s.replace(/[_\-.]+/g, " ").trim();
+  return x ? x.charAt(0).toUpperCase() + x.slice(1) : s;
 }
 const Ue = {
   capture: "learned in conversation",
   reflection: "from consolidation",
   owner: "added by a person"
 };
-function De(a) {
-  return Ue[a];
+function De(s) {
+  return Ue[s];
 }
 const te = {
   current: "Current",
@@ -50,14 +50,14 @@ const te = {
   rejected: "Rejected",
   cancelled: "Cancelled"
 }, Fe = { current: "success", conflict: "warn", failed: "danger", archived: "secondary" };
-function de(a) {
-  return Fe[a] ?? "secondary";
+function de(s) {
+  return Fe[s] ?? "secondary";
 }
-function ce(a) {
-  return a ? Date.parse(a.includes("T") ? a : a.replace(" ", "T") + "Z") : NaN;
+function ce(s) {
+  return s ? Date.parse(s.includes("T") ? s : s.replace(" ", "T") + "Z") : NaN;
 }
-function Q(a) {
-  const x = ce(a);
+function Q(s) {
+  const x = ce(s);
   return Number.isFinite(x) ? new Date(x).toLocaleString() : "";
 }
 const Oe = [
@@ -68,12 +68,12 @@ const Oe = [
   ["hour", 3600],
   ["minute", 60]
 ];
-function H(a, x = Date.now()) {
-  const d = ce(a);
+function H(s, x = Date.now()) {
+  const d = ce(s);
   if (!Number.isFinite(d)) return "";
   const f = Math.round((d - x) / 1e3), l = new Intl.RelativeTimeFormat(void 0, { numeric: "auto" });
-  for (const [s, r] of Oe)
-    if (Math.abs(f) >= r) return l.format(Math.round(f / r), s);
+  for (const [a, r] of Oe)
+    if (Math.abs(f) >= r) return l.format(Math.round(f / r), a);
   return "just now";
 }
 const Pe = { class: "mm-view-head" }, ze = { class: "mm-view-title" }, Ke = {
@@ -93,21 +93,21 @@ const Pe = { class: "mm-view-head" }, ze = { class: "mm-view-title" }, Ke = {
   props: {
     memory: {}
   },
-  setup(a) {
-    const x = a, d = M(() => x.memory.status.value?.runs || []);
-    function f(s) {
-      return s.run_type === "consolidate" ? "Consolidation" : s.run_type === "reembed" ? "Re-embedding" : s.host_kind === "content" ? "Learned from a document" : "Learned from a conversation";
+  setup(s) {
+    const x = s, d = M(() => x.memory.status.value?.runs || []);
+    function f(a) {
+      return a.run_type === "consolidate" ? "Consolidation" : a.run_type === "reembed" ? "Re-embedding" : a.host_kind === "content" ? "Learned from a document" : "Learned from a conversation";
     }
-    function l(s) {
-      const r = s.stats || {}, i = [
+    function l(a) {
+      const r = a.stats || {}, i = [
         r.added ? `${r.added} new` : "",
         r.superseded ? `${r.superseded} updated` : "",
         r.conflicted ? `${r.conflicted} contested` : "",
         r.rejected ? `${r.rejected} rejected` : ""
       ].filter(Boolean);
-      return i.length ? i.join(" · ") : s.status === "succeeded" ? "No changes" : "";
+      return i.length ? i.join(" · ") : a.status === "succeeded" ? "No changes" : "";
     }
-    return (s, r) => (n(), o(R, null, [
+    return (a, r) => (n(), o(R, null, [
       e("header", Pe, [
         e("h2", ze, [
           b(t(w), {
@@ -163,21 +163,21 @@ const Pe = { class: "mm-view-head" }, ze = { class: "mm-view-title" }, Ke = {
     ], 64));
   }
 });
-function et(a) {
-  return a.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+function et(s) {
+  return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
-function oe(a) {
-  return /^[a-z][a-z0-9_]{0,63}$/.test(a);
+function oe(s) {
+  return /^[a-z][a-z0-9_]{0,63}$/.test(s);
 }
-function tt(a) {
-  const x = M(() => `/api/v1/memory/${encodeURIComponent(a.value)}`), d = T(null), f = T(""), l = T(!1), s = T(0);
+function tt(s) {
+  const x = M(() => `/api/v1/memory/${encodeURIComponent(s.value)}`), d = T(null), f = T(""), l = T(!1), a = T(0);
   let r = 0;
   async function i() {
     const S = ++r;
-    if (!a.value) return !1;
+    if (!s.value) return !1;
     try {
-      const C = await P(a.value).status();
-      return S !== r ? !1 : (d.value = C, f.value = "", s.value++, !0);
+      const C = await P(s.value).status();
+      return S !== r ? !1 : (d.value = C, f.value = "", a.value++, !0);
     } catch (C) {
       return S === r && (f.value = Y(C)), !1;
     }
@@ -193,7 +193,7 @@ function tt(a) {
     }
   }
   let $ = null;
-  return O(a, (S) => {
+  return O(s, (S) => {
     if ($ && $(), $ = null, r++, d.value = null, f.value = "", !S) return;
     const C = Ee(`component.${S}`, () => {
       i();
@@ -203,42 +203,46 @@ function tt(a) {
     $ && $();
   }), Ce(async () => {
     await i();
-  }), { memoryId: a, base: x, status: d, error: f, busy: l, revision: s, act: _ };
+  }), { memoryId: s, base: x, status: d, error: f, busy: l, revision: a, act: _ };
 }
-const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-field" }, st = ["selected"], ot = {
+const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, st = { class: "mm-field" }, at = ["selected"], ot = {
   key: 1,
   class: "kx-notice error"
-}, it = { class: "mm-field" }, rt = {
+}, it = {
+  key: 2,
+  class: "mm-picker-pending mm-picker-pending--list",
+  "aria-hidden": "true"
+}, rt = { class: "mm-field" }, ut = {
   key: 0,
   class: "mm-hint mm-hint-err"
-}, ut = {
+}, dt = {
   key: 1,
   class: "mm-hint"
-}, dt = {
+}, ct = {
   key: 2,
   class: "kx-notice error"
-}, ct = {
+}, mt = {
   key: 3,
   class: "mm-suggest",
   "aria-label": "Topics in use"
-}, mt = ["onClick"], vt = { class: "mm-field" }, yt = { class: "mm-form-foot" }, bt = ["disabled"], ft = /* @__PURE__ */ K({
+}, vt = ["onClick"], yt = { class: "mm-field" }, bt = { class: "mm-form-foot" }, ft = ["disabled"], pt = /* @__PURE__ */ K({
   __name: "AddMemory",
   props: {
     memory: {}
   },
   emits: ["added"],
-  setup(a, { emit: x }) {
-    const d = a, f = x, l = [
+  setup(s, { emit: x }) {
+    const d = s, f = x, l = [
       { value: "identity", label: "Identity", hint: "Who the agent is: its name, role and voice. Part of every conversation." },
       { value: "rule", label: "Rule", hint: "How the agent must behave. Part of every conversation." },
       { value: "skill", label: "Skill", hint: "Something the agent knows how to do. Recalled when relevant." },
       { value: "lesson", label: "Lesson", hint: "Experience worth reusing. Recalled when relevant." }
-    ], s = T("rule"), r = T(""), i = T(""), _ = T(""), $ = Be("wc-agent-picker"), S = M(() => l.find((I) => I.value === s.value)?.hint || ""), C = M(() => et(i.value)), V = M(() => i.value && !oe(C.value) ? "Use a short topic of letters, digits and spaces." : ""), p = M(() => !!r.value && oe(C.value) && !!_.value.trim()), v = ne(
-      () => d.memory.memoryId.value ? [d.memory.memoryId.value, s.value] : null,
-      (I) => P(d.memory.memoryId.value).topics({ kind: s.value, offset: I }),
+    ], a = T("rule"), r = T(""), i = T(""), _ = T(""), $ = Be("wc-agent-picker"), S = M(() => l.find((I) => I.value === a.value)?.hint || ""), C = M(() => et(i.value)), V = M(() => i.value && !oe(C.value) ? "Use a short topic of letters, digits and spaces." : ""), p = M(() => !!r.value && oe(C.value) && !!_.value.trim()), v = ne(
+      () => d.memory.memoryId.value ? [d.memory.memoryId.value, a.value] : null,
+      (I) => P(d.memory.memoryId.value).topics({ kind: a.value, offset: I }),
       d.memory.revision
     ), g = M(() => v.rows.value.map((I) => I.key).filter((I) => I !== C.value).slice(0, 8));
-    O(s, () => {
+    O(a, () => {
       i.value = "";
     });
     function E(I) {
@@ -250,7 +254,7 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
       let I = null;
       await d.memory.act(async () => {
         I = await P(d.memory.memoryId.value).create({
-          kind: s.value,
+          kind: a.value,
           scope_family: "agent",
           scope_id: r.value,
           key: C.value,
@@ -269,8 +273,8 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           class: "mm-label"
         }, "What to add", -1)),
         b(t(ue), {
-          modelValue: s.value,
-          "onUpdate:modelValue": y[0] || (y[0] = (k) => s.value = k),
+          modelValue: a.value,
+          "onUpdate:modelValue": y[0] || (y[0] = (k) => a.value = k),
           options: l,
           "option-label": "label",
           "option-value": "value",
@@ -279,13 +283,13 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
         }, null, 8, ["modelValue"]),
         e("span", nt, [
           b(t(w), {
-            icon: t(q)[s.value].icon,
+            icon: t(q)[a.value].icon,
             "aria-hidden": "true"
           }, null, 8, ["icon"]),
           N(c(S.value), 1)
         ])
       ]),
-      e("div", at, [
+      e("div", st, [
         y[4] || (y[4] = e("span", {
           id: "add_agent",
           class: "mm-label"
@@ -297,9 +301,9 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           placeholder: "Pick the agent",
           selected: r.value ? JSON.stringify([r.value]) : "[]",
           onChange: E
-        }, null, 40, st)) : t($).failed.value ? (n(), o("div", ot, "The agent picker could not load: " + c(t($).failed.value), 1)) : h("", !0)
+        }, null, 40, at)) : t($).failed.value ? (n(), o("div", ot, "The agent picker could not load: " + c(t($).failed.value), 1)) : (n(), o("div", it))
       ]),
-      e("div", it, [
+      e("div", rt, [
         y[5] || (y[5] = e("label", {
           class: "mm-label",
           for: "add_topic"
@@ -312,18 +316,18 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           invalid: !!V.value,
           autocomplete: "off"
         }, null, 8, ["modelValue", "invalid"]),
-        V.value ? (n(), o("span", rt, c(V.value), 1)) : (n(), o("span", ut, "What this is about, not what it says. A topic that already exists gets a new version.")),
-        t(v).error.value ? (n(), o("div", dt, c(t(v).error.value), 1)) : h("", !0),
-        g.value.length ? (n(), o("div", ct, [
+        V.value ? (n(), o("span", ut, c(V.value), 1)) : (n(), o("span", dt, "What this is about, not what it says. A topic that already exists gets a new version.")),
+        t(v).error.value ? (n(), o("div", ct, c(t(v).error.value), 1)) : h("", !0),
+        g.value.length ? (n(), o("div", mt, [
           (n(!0), o(R, null, z(g.value, (k) => (n(), o("button", {
             key: k,
             type: "button",
             class: "mm-suggest-chip",
             onClick: (L) => i.value = t(W)(k)
-          }, c(t(W)(k)), 9, mt))), 128))
+          }, c(t(W)(k)), 9, vt))), 128))
         ])) : h("", !0)
       ]),
-      e("div", vt, [
+      e("div", yt, [
         y[6] || (y[6] = e("label", {
           class: "mm-label",
           for: "add_text"
@@ -337,107 +341,107 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           placeholder: "e.g. Answer in short bullet points."
         }, null, 8, ["modelValue"])
       ]),
-      e("div", yt, [
+      e("div", bt, [
         e("button", {
           type: "submit",
           class: "kx-btn kx-btn-primary",
-          disabled: a.memory.busy.value || !p.value
+          disabled: s.memory.busy.value || !p.value
         }, [
           b(t(w), {
-            icon: a.memory.busy.value ? "tabler:loader-2" : "tabler:plus",
-            class: D({ spin: a.memory.busy.value }),
+            icon: s.memory.busy.value ? "tabler:loader-2" : "tabler:plus",
+            class: D({ spin: s.memory.busy.value }),
             "aria-hidden": "true"
           }, null, 8, ["icon", "class"]),
           y[7] || (y[7] = N("Add to memory ", -1))
-        ], 8, bt)
+        ], 8, ft)
       ])
     ], 32));
   }
-}), pt = { class: "mm-view-head" }, kt = { class: "mm-view-title" }, ht = {
+}), kt = { class: "mm-view-head" }, ht = { class: "mm-view-title" }, _t = {
   key: 0,
   class: "kx-notice error"
-}, _t = {
+}, gt = {
   key: 1,
   class: "kx-empty kx-empty-spacious"
-}, gt = { class: "kx-empty-ico" }, xt = ["aria-label"], $t = { class: "mm-card-h" }, wt = { class: "kx-chip" }, Ct = { class: "mm-option-main" }, St = { class: "mm-option-t" }, Tt = { class: "mm-muted" }, At = ["disabled", "onClick"], It = ["disabled"], Vt = /* @__PURE__ */ K({
+}, xt = { class: "kx-empty-ico" }, $t = ["aria-label"], wt = { class: "mm-card-h" }, Ct = { class: "kx-chip" }, St = { class: "mm-option-main" }, Tt = { class: "mm-option-t" }, At = { class: "mm-muted" }, It = ["disabled", "onClick"], Vt = ["disabled"], Nt = /* @__PURE__ */ K({
   __name: "ConflictView",
   props: {
     memory: {}
   },
-  setup(a) {
-    const x = a, d = ne(() => x.memory.memoryId.value || null, (l) => P(x.memory.memoryId.value).conflicts(l), x.memory.revision);
-    function f(l, s) {
-      x.memory.act(() => P(x.memory.memoryId.value).resolve(l.group_id, s.id));
+  setup(s) {
+    const x = s, d = ne(() => x.memory.memoryId.value || null, (l) => P(x.memory.memoryId.value).conflicts(l), x.memory.revision);
+    function f(l, a) {
+      x.memory.act(() => P(x.memory.memoryId.value).resolve(l.group_id, a.id));
     }
-    return (l, s) => (n(), o(R, null, [
-      e("header", pt, [
-        e("h2", kt, [
+    return (l, a) => (n(), o(R, null, [
+      e("header", kt, [
+        e("h2", ht, [
           b(t(w), {
             icon: "tabler:arrows-split-2",
             "aria-hidden": "true"
           }),
-          s[1] || (s[1] = N("Conflicts", -1))
+          a[1] || (a[1] = N("Conflicts", -1))
         ]),
-        s[2] || (s[2] = e("p", { class: "mm-muted" }, "These memories contradict each other. Keep the one that is right; the others move to earlier versions. Until then, agents treat them as unresolved.", -1))
+        a[2] || (a[2] = e("p", { class: "mm-muted" }, "These memories contradict each other. Keep the one that is right; the others move to earlier versions. Until then, agents treat them as unresolved.", -1))
       ]),
-      t(d).error.value ? (n(), o("div", ht, [
+      t(d).error.value ? (n(), o("div", _t, [
         b(t(w), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
         e("span", null, c(t(d).error.value), 1)
-      ])) : !t(d).loading.value && !t(d).rows.value.length ? (n(), o("div", _t, [
-        e("span", gt, [
+      ])) : !t(d).loading.value && !t(d).rows.value.length ? (n(), o("div", gt, [
+        e("span", xt, [
           b(t(w), {
             icon: "tabler:circle-check",
             "aria-hidden": "true"
           })
         ]),
-        s[3] || (s[3] = e("p", { class: "kx-empty-title" }, "No conflicts", -1)),
-        s[4] || (s[4] = e("p", { class: "kx-empty-sub" }, "When two memories contradict each other they wait here for you to keep the right one.", -1))
+        a[3] || (a[3] = e("p", { class: "kx-empty-title" }, "No conflicts", -1)),
+        a[4] || (a[4] = e("p", { class: "kx-empty-sub" }, "When two memories contradict each other they wait here for you to keep the right one.", -1))
       ])) : h("", !0),
       (n(!0), o(R, null, z(t(d).rows.value, (r) => (n(), o("section", {
         key: r.group_id,
         class: "mm-card",
         "aria-label": `Conflict about ${t(W)(r.items[0].key)}`
       }, [
-        e("div", $t, [
-          e("span", wt, c(t(q)[r.items[0].kind].label), 1),
+        e("div", wt, [
+          e("span", Ct, c(t(q)[r.items[0].kind].label), 1),
           N(c(t(W)(r.items[0].key)), 1)
         ]),
         (n(!0), o(R, null, z(r.items, (i) => (n(), o("div", {
           key: i.id,
           class: "mm-option"
         }, [
-          e("div", Ct, [
-            e("span", St, c(i.content), 1),
-            e("span", Tt, c(t(H)(i.valid_at)) + " · " + c(t(De)(i.source)), 1)
+          e("div", St, [
+            e("span", Tt, c(i.content), 1),
+            e("span", At, c(t(H)(i.valid_at)) + " · " + c(t(De)(i.source)), 1)
           ]),
           e("button", {
             type: "button",
             class: "kx-btn kx-btn-soft sm",
-            disabled: a.memory.busy.value,
+            disabled: s.memory.busy.value,
             onClick: (_) => f(r, i)
           }, [
             b(t(w), {
               icon: "tabler:check",
               "aria-hidden": "true"
             }),
-            s[5] || (s[5] = N("Keep this ", -1))
-          ], 8, At)
+            a[5] || (a[5] = N("Keep this ", -1))
+          ], 8, It)
         ]))), 128))
-      ], 8, xt))), 128)),
+      ], 8, $t))), 128)),
       t(d).next.value !== null ? (n(), o("button", {
         key: 2,
         type: "button",
         class: "kx-btn kx-btn-ghost sm mm-more",
         disabled: t(d).loading.value,
-        onClick: s[0] || (s[0] = //@ts-ignore
+        onClick: a[0] || (a[0] = //@ts-ignore
         (...r) => t(d).more && t(d).more(...r))
-      }, "Show more conflicts", 8, It)) : h("", !0)
+      }, "Show more conflicts", 8, Vt)) : h("", !0)
     ], 64));
   }
-}), Nt = ["aria-label", "title", "aria-pressed", "disabled"], X = /* @__PURE__ */ K({
+}), Et = ["aria-label", "title", "aria-pressed", "disabled"], X = /* @__PURE__ */ K({
   __name: "IconButton",
   props: {
     icon: {},
@@ -446,22 +450,22 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
     disabled: { type: Boolean }
   },
   emits: ["click"],
-  setup(a, { emit: x }) {
+  setup(s, { emit: x }) {
     const d = x;
     return (f, l) => (n(), o("button", {
       type: "button",
-      class: D(["kx-iconbtn", { on: a.active }]),
-      "aria-label": a.label,
-      title: a.label,
-      "aria-pressed": a.active === void 0 ? void 0 : a.active,
-      disabled: a.disabled,
-      onClick: l[0] || (l[0] = (s) => d("click"))
+      class: D(["kx-iconbtn", { on: s.active }]),
+      "aria-label": s.label,
+      title: s.label,
+      "aria-pressed": s.active === void 0 ? void 0 : s.active,
+      disabled: s.disabled,
+      onClick: l[0] || (l[0] = (a) => d("click"))
     }, [
       b(t(w), {
-        icon: a.icon,
+        icon: s.icon,
         "aria-hidden": "true"
       }, null, 8, ["icon"])
-    ], 10, Nt));
+    ], 10, Et));
   }
 }), me = /* @__PURE__ */ K({
   __name: "AccessibleOverlay",
@@ -471,9 +475,9 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
     dismissible: { type: Boolean, default: !0 }
   },
   emits: ["close"],
-  setup(a, { emit: x }) {
-    const d = a, f = x, l = T(null);
-    let s = null;
+  setup(s, { emit: x }) {
+    const d = s, f = x, l = T(null);
+    let a = null;
     const r = /* @__PURE__ */ new Map();
     function i(p) {
       const v = p.getRootNode(), g = v instanceof ShadowRoot ? v.activeElement : document.activeElement;
@@ -512,29 +516,29 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
     }
     async function V(p) {
       if (p) {
-        if (await ae(), !l.value) return;
-        s = i(l.value), _(l.value), (l.value.querySelector("[data-overlay-initial]") || S()[0])?.focus();
+        if (await se(), !l.value) return;
+        a = i(l.value), _(l.value), (l.value.querySelector("[data-overlay-initial]") || S()[0])?.focus();
         return;
       }
       $();
-      const v = s;
-      s = null, await ae(), v?.focus();
+      const v = a;
+      a = null, await se(), v?.focus();
     }
     return O(() => d.open, (p) => {
       V(p);
     }, { immediate: !0 }), ge(() => {
-      $(), s?.focus(), s = null;
+      $(), a?.focus(), a = null;
     }), (p, v) => (n(), F(xe, {
-      name: a.kind === "drawer" ? "kx-drawer" : "kx-modal"
+      name: s.kind === "drawer" ? "kx-drawer" : "kx-modal"
     }, {
       default: Z(() => [
-        a.open ? (n(), o("div", {
+        s.open ? (n(), o("div", {
           key: 0,
           ref_key: "overlay",
           ref: l,
-          class: D(a.kind === "drawer" ? "kx-drawer-mask" : "kx-modal-mask"),
+          class: D(s.kind === "drawer" ? "kx-drawer-mask" : "kx-modal-mask"),
           onKeydown: C,
-          onClick: v[0] || (v[0] = ie((g) => a.dismissible && f("close"), ["self"]))
+          onClick: v[0] || (v[0] = ie((g) => s.dismissible && f("close"), ["self"]))
         }, [
           le(p.$slots, "default")
         ], 34)) : h("", !0)
@@ -542,7 +546,7 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
       _: 3
     }, 8, ["name"]));
   }
-}), Et = ["aria-label"], Rt = { class: "kx-drawer-h" }, Mt = { class: "kx-drawer-title" }, Bt = { class: "kx-drawer-b" }, Lt = /* @__PURE__ */ K({
+}), Rt = ["aria-label"], Mt = { class: "kx-drawer-h" }, Bt = { class: "kx-drawer-title" }, Lt = { class: "kx-drawer-b" }, Ut = /* @__PURE__ */ K({
   __name: "SideDrawer",
   props: {
     open: { type: Boolean },
@@ -550,47 +554,47 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
     icon: {}
   },
   emits: ["close"],
-  setup(a, { emit: x }) {
+  setup(s, { emit: x }) {
     const d = x;
     return (f, l) => (n(), F(me, {
-      open: a.open,
+      open: s.open,
       kind: "drawer",
-      onClose: l[1] || (l[1] = (s) => d("close"))
+      onClose: l[1] || (l[1] = (a) => d("close"))
     }, {
       default: Z(() => [
         e("aside", {
           class: "kx-drawer",
           role: "dialog",
           "aria-modal": "true",
-          "aria-label": a.title
+          "aria-label": s.title
         }, [
-          e("div", Rt, [
-            e("span", Mt, [
+          e("div", Mt, [
+            e("span", Bt, [
               b(t(w), {
-                icon: a.icon,
+                icon: s.icon,
                 "aria-hidden": "true"
               }, null, 8, ["icon"]),
-              N(c(a.title), 1)
+              N(c(s.title), 1)
             ]),
             b(X, {
               "data-overlay-initial": "",
               icon: "tabler:x",
               label: "Close",
-              onClick: l[0] || (l[0] = (s) => d("close"))
+              onClick: l[0] || (l[0] = (a) => d("close"))
             })
           ]),
-          e("div", Bt, [
+          e("div", Lt, [
             le(f.$slots, "default")
           ])
-        ], 8, Et)
+        ], 8, Rt)
       ]),
       _: 3
     }, 8, ["open"]));
   }
-}), Ut = ["aria-label"], Dt = { class: "kx-modal-h" }, Ft = { class: "kx-modal-h-ico" }, Ot = { class: "kx-modal-h-text" }, Pt = { class: "kx-modal-h-title" }, zt = {
+}), Dt = ["aria-label"], Ft = { class: "kx-modal-h" }, Ot = { class: "kx-modal-h-ico" }, Pt = { class: "kx-modal-h-text" }, zt = { class: "kx-modal-h-title" }, Kt = {
   key: 0,
   class: "kx-modal-h-sub"
-}, Kt = { class: "kx-modal-body" }, jt = { class: "kx-modal-foot" }, Wt = ["disabled"], Ht = ["disabled"], qt = /* @__PURE__ */ K({
+}, jt = { class: "kx-modal-body" }, Wt = { class: "kx-modal-foot" }, Ht = ["disabled"], qt = ["disabled"], Jt = /* @__PURE__ */ K({
   __name: "ConfirmDialog",
   props: {
     open: { type: Boolean },
@@ -602,126 +606,126 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
     confirmLabel: { default: "Confirm" }
   },
   emits: ["confirm", "cancel"],
-  setup(a, { emit: x }) {
+  setup(s, { emit: x }) {
     const d = x;
     return (f, l) => (n(), F(me, {
-      open: a.open,
+      open: s.open,
       kind: "dialog",
-      dismissible: !a.busy,
-      onClose: l[3] || (l[3] = (s) => d("cancel"))
+      dismissible: !s.busy,
+      onClose: l[3] || (l[3] = (a) => d("cancel"))
     }, {
       default: Z(() => [
         e("div", {
-          class: D(["kx-modal", { danger: a.danger }]),
+          class: D(["kx-modal", { danger: s.danger }]),
           role: "alertdialog",
           "aria-modal": "true",
-          "aria-label": a.title
+          "aria-label": s.title
         }, [
-          e("div", Dt, [
-            e("span", Ft, [
+          e("div", Ft, [
+            e("span", Ot, [
               b(t(w), {
-                icon: a.icon,
+                icon: s.icon,
                 "aria-hidden": "true"
               }, null, 8, ["icon"])
             ]),
-            e("span", Ot, [
-              e("span", Pt, c(a.title), 1),
-              a.subtitle ? (n(), o("span", zt, c(a.subtitle), 1)) : h("", !0)
+            e("span", Pt, [
+              e("span", zt, c(s.title), 1),
+              s.subtitle ? (n(), o("span", Kt, c(s.subtitle), 1)) : h("", !0)
             ]),
             b(X, {
               "data-overlay-initial": "",
               icon: "tabler:x",
               label: "Close",
-              disabled: a.busy,
-              onClick: l[0] || (l[0] = (s) => d("cancel"))
+              disabled: s.busy,
+              onClick: l[0] || (l[0] = (a) => d("cancel"))
             }, null, 8, ["disabled"])
           ]),
-          e("div", Kt, [
+          e("div", jt, [
             le(f.$slots, "default")
           ]),
-          e("div", jt, [
+          e("div", Wt, [
             e("button", {
               type: "button",
               class: "kx-btn kx-btn-ghost",
-              disabled: a.busy,
-              onClick: l[1] || (l[1] = (s) => d("cancel"))
-            }, "Cancel", 8, Wt),
+              disabled: s.busy,
+              onClick: l[1] || (l[1] = (a) => d("cancel"))
+            }, "Cancel", 8, Ht),
             e("button", {
               type: "button",
-              class: D(["kx-btn", a.danger ? "kx-btn-danger" : "kx-btn-primary"]),
-              disabled: a.busy,
-              onClick: l[2] || (l[2] = (s) => d("confirm"))
+              class: D(["kx-btn", s.danger ? "kx-btn-danger" : "kx-btn-primary"]),
+              disabled: s.busy,
+              onClick: l[2] || (l[2] = (a) => d("confirm"))
             }, [
-              a.busy ? (n(), F(t(w), {
+              s.busy ? (n(), F(t(w), {
                 key: 0,
                 icon: "tabler:loader-2",
                 class: "spin",
                 "aria-hidden": "true"
               })) : h("", !0),
-              N(c(a.confirmLabel), 1)
-            ], 10, Ht)
+              N(c(s.confirmLabel), 1)
+            ], 10, qt)
           ])
-        ], 10, Ut)
+        ], 10, Dt)
       ]),
       _: 3
     }, 8, ["open", "dismissible"]));
   }
-}), Jt = {
+}), Gt = {
   key: 0,
   class: "kx-notice error"
-}, Gt = {
+}, Yt = {
   key: 1,
   class: "mm-skel-reader"
-}, Yt = {
+}, Zt = {
   key: 2,
   class: "mm-reader"
-}, Zt = { class: "mm-head" }, Qt = { class: "mm-head-body" }, Xt = { class: "mm-head-top" }, el = { class: "kx-chip" }, tl = { class: "mm-topic" }, ll = { class: "mm-head-acts" }, nl = ["disabled"], al = ["disabled"], sl = ["disabled"], ol = {
+}, Qt = { class: "mm-head" }, Xt = { class: "mm-head-body" }, el = { class: "mm-head-top" }, tl = { class: "kx-chip" }, ll = { class: "mm-topic" }, nl = { class: "mm-head-acts" }, sl = ["disabled"], al = ["disabled"], ol = ["disabled"], il = {
   key: 0,
   class: "mm-edit"
-}, il = {
+}, rl = {
   key: 0,
   class: "mm-hint mm-hint-err"
-}, rl = { class: "mm-edit-acts" }, ul = ["disabled"], dl = {
+}, ul = { class: "mm-edit-acts" }, dl = ["disabled"], cl = {
   key: 1,
   class: "mm-title"
-}, cl = { class: "mm-facts" }, ml = {
+}, ml = { class: "mm-facts" }, vl = {
   key: 0,
   class: "mm-fact"
-}, vl = ["title"], yl = ["title"], bl = {
+}, yl = ["title"], bl = ["title"], fl = {
   key: 0,
   class: "mm-sec",
   "aria-labelledby": "mm-claim-value"
-}, fl = {
+}, pl = {
   key: 0,
   class: "mm-value-fields"
-}, pl = {
+}, kl = {
   key: 1,
   class: "mm-value"
-}, kl = {
+}, hl = {
   key: 1,
   class: "mm-sec",
   "aria-labelledby": "mm-history"
-}, hl = { class: "mm-timeline" }, _l = { class: "mm-tl-body" }, gl = { class: "mm-tl-t" }, xl = { class: "mm-tl-s" }, $l = {
+}, _l = { class: "mm-timeline" }, gl = { class: "mm-tl-body" }, xl = { class: "mm-tl-t" }, $l = { class: "mm-tl-s" }, wl = {
   class: "mm-sec",
   "aria-labelledby": "mm-sources"
-}, wl = {
+}, Cl = {
   key: 0,
   class: "mm-muted"
-}, Cl = {
+}, Sl = {
   key: 1,
   class: "mm-sources"
-}, Sl = { class: "mm-source-body" }, Tl = { class: "mm-source-head" }, Al = ["title"], Il = {
+}, Tl = { class: "mm-source-body" }, Al = { class: "mm-source-head" }, Il = ["title"], Vl = {
   key: 0,
   class: "mm-quote"
-}, Vl = ["onClick"], Nl = { class: "mm-source-topic" }, El = ["onClick"], Rl = /* @__PURE__ */ K({
+}, Nl = ["onClick"], El = { class: "mm-source-topic" }, Rl = ["onClick"], Ml = /* @__PURE__ */ K({
   __name: "MemoryDetail",
   props: {
     memory: {},
     itemId: {}
   },
   emits: ["replaced", "gone", "open", "conversation"],
-  setup(a, { emit: x }) {
-    const d = a, f = x, l = T(null), s = T([]), r = T(null), i = T([]), _ = T(""), $ = T(null), S = T(null), C = T(""), V = T(!1), p = M(() => l.value ? q[l.value.kind] : null), v = M(() => l.value ? q[l.value.kind].icon : "tabler:brain"), g = M(() => l.value?.status === "current" || l.value?.status === "conflict"), E = M(() => l.value?.kind === "plan" && Ve(l.value.value) ? l.value.value : null), j = M(() => l.value?.value === void 0 ? "" : JSON.stringify(l.value.value, null, 2));
+  setup(s, { emit: x }) {
+    const d = s, f = x, l = T(null), a = T([]), r = T(null), i = T([]), _ = T(""), $ = T(null), S = T(null), C = T(""), V = T(!1), p = M(() => l.value ? q[l.value.kind] : null), v = M(() => l.value ? q[l.value.kind].icon : "tabler:brain"), g = M(() => l.value?.status === "current" || l.value?.status === "conflict"), E = M(() => l.value?.kind === "plan" && Ve(l.value.value) ? l.value.value : null), j = M(() => l.value?.value === void 0 ? "" : JSON.stringify(l.value.value, null, 2));
     let I = 0;
     async function y(A = 0, u) {
       const m = ++I;
@@ -737,17 +741,17 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           l.value = J, i.value = B.provenance;
         }
         const U = B.versions;
-        s.value = A ? [...s.value, ...U.rows] : U.rows, r.value = U.next, _.value = "";
+        a.value = A ? [...a.value, ...U.rows] : U.rows, r.value = U.next, _.value = "";
       } catch (B) {
         if (m !== I) return;
-        se(B) === 404 ? f("gone") : _.value = Y(B);
+        ae(B) === 404 ? f("gone") : _.value = Y(B);
       }
     }
     O(() => d.itemId, () => {
-      l.value = null, s.value = [], $.value = null, S.value = null, C.value = "", V.value = !1, y();
+      l.value = null, a.value = [], $.value = null, S.value = null, C.value = "", V.value = !1, y();
     }, { immediate: !0 });
     async function k() {
-      const A = ++I, u = s.value.length;
+      const A = ++I, u = a.value.length;
       try {
         let m = 0, B = null;
         const U = [];
@@ -764,9 +768,9 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           }
           U.push(...G.versions.rows), B = G.versions.next, m = B ?? 0;
         } while (U.length < u && B !== null);
-        s.value = U, r.value = B, _.value = "";
+        a.value = U, r.value = B, _.value = "";
       } catch (m) {
-        A === I && (se(m) === 404 ? f("gone") : _.value = Y(m));
+        A === I && (ae(m) === 404 ? f("gone") : _.value = Y(m));
       }
     }
     O(d.memory.revision, () => {
@@ -810,14 +814,14 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
       return A.host_kind === "item" ? A.memory ? "From the memory" : "From a memory that is no longer kept" : A.host_kind === "content" ? "A document" : A.host_kind === "dataflow" ? "A workflow run" : "A conversation whose text is no longer kept";
     }
     return (A, u) => (n(), o(R, null, [
-      _.value ? (n(), o("div", Jt, [
+      _.value ? (n(), o("div", Gt, [
         b(t(w), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
         e("span", null, c(_.value), 1)
-      ])) : l.value ? (n(), o("article", Yt, [
-        e("header", Zt, [
+      ])) : l.value ? (n(), o("article", Zt, [
+        e("header", Qt, [
           e("span", {
             class: D(["mm-head-ic", p.value?.tone])
           }, [
@@ -826,17 +830,17 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
               "aria-hidden": "true"
             }, null, 8, ["icon"])
           ], 2),
-          e("div", Qt, [
-            e("div", Xt, [
-              e("span", el, c(p.value?.label), 1),
-              e("span", tl, c(t(W)(l.value.key)), 1),
+          e("div", Xt, [
+            e("div", el, [
+              e("span", tl, c(p.value?.label), 1),
+              e("span", ll, c(t(W)(l.value.key)), 1),
               l.value.status !== "current" ? (n(), F(t(re), {
                 key: 0,
                 class: "kx-tag-sm",
                 severity: t(de)(l.value.status),
                 value: t(te)[l.value.status]
               }, null, 8, ["severity", "value"])) : h("", !0),
-              e("span", ll, [
+              e("span", nl, [
                 g.value && $.value === null ? (n(), o("button", {
                   key: 0,
                   type: "button",
@@ -853,7 +857,7 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                   key: 1,
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
-                  disabled: a.memory.busy.value,
+                  disabled: s.memory.busy.value,
                   onClick: u[0] || (u[0] = (m) => L("archive"))
                 }, [
                   b(t(w), {
@@ -861,12 +865,12 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                     "aria-hidden": "true"
                   }),
                   u[9] || (u[9] = N("Archive ", -1))
-                ], 8, nl)) : h("", !0),
+                ], 8, sl)) : h("", !0),
                 l.value.status === "archived" ? (n(), o("button", {
                   key: 2,
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
-                  disabled: a.memory.busy.value,
+                  disabled: s.memory.busy.value,
                   onClick: u[1] || (u[1] = (m) => L("restore"))
                 }, [
                   b(t(w), {
@@ -878,7 +882,7 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                 e("button", {
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm mm-danger",
-                  disabled: a.memory.busy.value,
+                  disabled: s.memory.busy.value,
                   onClick: u[2] || (u[2] = (m) => V.value = !0)
                 }, [
                   b(t(w), {
@@ -886,10 +890,10 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                     "aria-hidden": "true"
                   }),
                   u[11] || (u[11] = N("Forget ", -1))
-                ], 8, sl)
+                ], 8, ol)
               ])
             ]),
-            $.value !== null ? (n(), o("div", ol, [
+            $.value !== null ? (n(), o("div", il, [
               u[14] || (u[14] = e("label", {
                 class: "mm-label",
                 for: "memory_content"
@@ -915,13 +919,13 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                   rows: "5",
                   "aria-label": "Claim value"
                 }, null, 8, ["modelValue"]),
-                C.value ? (n(), o("span", il, c(C.value), 1)) : h("", !0)
+                C.value ? (n(), o("span", rl, c(C.value), 1)) : h("", !0)
               ], 64)) : h("", !0),
-              e("div", rl, [
+              e("div", ul, [
                 e("button", {
                   type: "button",
                   class: "kx-btn kx-btn-primary sm",
-                  disabled: a.memory.busy.value || !$.value.trim(),
+                  disabled: s.memory.busy.value || !$.value.trim(),
                   onClick: ve
                 }, [
                   b(t(w), {
@@ -929,7 +933,7 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                     "aria-hidden": "true"
                   }),
                   u[13] || (u[13] = N("Save ", -1))
-                ], 8, ul),
+                ], 8, dl),
                 e("button", {
                   type: "button",
                   class: "kx-btn kx-btn-ghost sm",
@@ -938,9 +942,9 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                   })
                 }, "Cancel")
               ])
-            ])) : (n(), o("h2", dl, c(l.value.content), 1)),
-            e("div", cl, [
-              l.value.scope_family === "agent" ? (n(), o("span", ml, [
+            ])) : (n(), o("h2", cl, c(l.value.content), 1)),
+            e("div", ml, [
+              l.value.scope_family === "agent" ? (n(), o("span", vl, [
                 b(t(w), {
                   icon: "tabler:robot",
                   "aria-hidden": "true"
@@ -956,7 +960,7 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                   "aria-hidden": "true"
                 }),
                 N("True since " + c(t(H)(l.value.valid_at)), 1)
-              ], 8, vl),
+              ], 8, yl),
               l.value.invalid_at ? (n(), o("span", {
                 key: 1,
                 class: "mm-fact",
@@ -967,16 +971,16 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                   "aria-hidden": "true"
                 }),
                 N("Until " + c(t(H)(l.value.invalid_at)), 1)
-              ], 8, yl)) : h("", !0)
+              ], 8, bl)) : h("", !0)
             ])
           ])
         ]),
-        $.value === null && l.value.value !== void 0 ? (n(), o("section", bl, [
+        $.value === null && l.value.value !== void 0 ? (n(), o("section", fl, [
           u[19] || (u[19] = e("h3", {
             id: "mm-claim-value",
             class: "mm-sec-h"
           }, "Claim value", -1)),
-          E.value ? (n(), o("dl", fl, [
+          E.value ? (n(), o("dl", pl, [
             e("div", null, [
               u[16] || (u[16] = e("dt", null, "Details", -1)),
               e("dd", null, c(E.value.details), 1)
@@ -989,15 +993,15 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
               u[18] || (u[18] = e("dt", null, "Status", -1)),
               e("dd", null, c(E.value.status === "done" ? "Done" : E.value.status), 1)
             ])
-          ])) : (n(), o("pre", pl, c(j.value), 1))
+          ])) : (n(), o("pre", kl, c(j.value), 1))
         ])) : h("", !0),
-        s.value.length > 1 || r.value !== null ? (n(), o("section", kl, [
+        a.value.length > 1 || r.value !== null ? (n(), o("section", hl, [
           u[21] || (u[21] = e("h3", {
             id: "mm-history",
             class: "mm-sec-h"
           }, "History", -1)),
-          e("ol", hl, [
-            (n(!0), o(R, null, z(s.value, (m) => (n(), o("li", {
+          e("ol", _l, [
+            (n(!0), o(R, null, z(a.value, (m) => (n(), o("li", {
               key: m.id,
               class: D({ now: m.id === l.value.id, past: m.status !== "current" })
             }, [
@@ -1005,9 +1009,9 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                 class: "mm-dot",
                 "aria-hidden": "true"
               }, null, -1)),
-              e("span", _l, [
-                e("span", gl, c(m.content), 1),
-                e("span", xl, [
+              e("span", gl, [
+                e("span", xl, c(m.content), 1),
+                e("span", $l, [
                   N("v" + c(m.version) + " · " + c(t(H)(m.valid_at)), 1),
                   m.status !== "current" ? (n(), o(R, { key: 0 }, [
                     N(" · " + c(t(te)[m.status]), 1)
@@ -1023,12 +1027,12 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
             onClick: u[6] || (u[6] = (m) => y(r.value))
           }, "Show older versions")) : h("", !0)
         ])) : h("", !0),
-        e("section", $l, [
+        e("section", wl, [
           u[23] || (u[23] = e("h3", {
             id: "mm-sources",
             class: "mm-sec-h"
           }, "Learned from", -1)),
-          i.value.length ? (n(), o("ul", Cl, [
+          i.value.length ? (n(), o("ul", Sl, [
             (n(!0), o(R, null, z(i.value, (m) => (n(), o("li", {
               key: m.host_kind + m.host_id + m.event_id,
               class: "mm-source"
@@ -1038,25 +1042,25 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                 icon: fe(m),
                 "aria-hidden": "true"
               }, null, 8, ["icon"]),
-              e("div", Sl, [
-                e("div", Tl, [
+              e("div", Tl, [
+                e("div", Al, [
                   e("span", null, c(pe(m)), 1),
                   m.line?.created_at || m.recorded_at ? (n(), o("span", {
                     key: 0,
                     class: "mm-muted",
                     title: t(Q)(m.line?.created_at || m.recorded_at || "")
-                  }, c(t(H)(m.line?.created_at || m.recorded_at || "")), 9, Al)) : h("", !0)
+                  }, c(t(H)(m.line?.created_at || m.recorded_at || "")), 9, Il)) : h("", !0)
                 ]),
-                m.line ? (n(), o("blockquote", Il, c(m.line.text), 1)) : h("", !0),
+                m.line ? (n(), o("blockquote", Vl, c(m.line.text), 1)) : h("", !0),
                 m.memory ? (n(), o("button", {
                   key: 1,
                   type: "button",
                   class: "mm-source-link",
                   onClick: (B) => f("open", m.memory.id)
                 }, [
-                  e("span", Nl, c(t(W)(m.memory.key)), 1),
+                  e("span", El, c(t(W)(m.memory.key)), 1),
                   e("span", null, c(m.memory.content), 1)
-                ], 8, Vl)) : h("", !0),
+                ], 8, Nl)) : h("", !0),
                 m.host_kind === "session" ? (n(), o("button", {
                   key: 2,
                   type: "button",
@@ -1068,25 +1072,25 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                     "aria-hidden": "true"
                   }),
                   u[22] || (u[22] = N("Open conversation ", -1))
-                ], 8, El)) : h("", !0)
+                ], 8, Rl)) : h("", !0)
               ])
             ]))), 128))
-          ])) : (n(), o("p", wl, c(l.value.source === "owner" ? "Added by a person on this page." : "No conversation recorded for this memory."), 1))
+          ])) : (n(), o("p", Cl, c(l.value.source === "owner" ? "Added by a person on this page." : "No conversation recorded for this memory."), 1))
         ])
-      ])) : (n(), o("div", Gt, [
+      ])) : (n(), o("div", Yt, [
         (n(), o(R, null, z(4, (m) => e("div", {
           key: m,
           class: "mm-skel-line"
         })), 64))
       ])),
-      b(qt, {
+      b(Jt, {
         open: V.value,
         danger: "",
         icon: "tabler:trash",
         title: "Forget this memory",
         subtitle: l.value ? t(W)(l.value.key) : "",
         "confirm-label": "Forget for good",
-        busy: a.memory.busy.value,
+        busy: s.memory.busy.value,
         onCancel: u[7] || (u[7] = (m) => V.value = !1),
         onConfirm: be
       }, {
@@ -1097,37 +1101,37 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
       }, 8, ["open", "subtitle", "busy"])
     ], 64));
   }
-}), Ml = { class: "mm-rail-tools" }, Bl = {
+}), Bl = { class: "mm-rail-tools" }, Ll = {
   class: "kx-rail-body",
   "aria-label": "Memories"
-}, Ll = {
+}, Ul = {
   key: 0,
   class: "mm-skel"
-}, Ul = {
+}, Dl = {
   key: 1,
   class: "kx-notice error mm-rail-note"
-}, Dl = {
+}, Fl = {
   key: 2,
   class: "mm-rail-empty"
-}, Fl = ["aria-expanded", "onClick"], Ol = { class: "kx-railsec-t" }, Pl = { class: "kx-railsec-b" }, zl = ["aria-current", "onClick"], Kl = { class: "mm-row-main" }, jl = { class: "mm-row-t" }, Wl = { class: "mm-row-s" }, Hl = ["disabled"], ql = /* @__PURE__ */ K({
+}, Ol = ["aria-expanded", "onClick"], Pl = { class: "kx-railsec-t" }, zl = { class: "kx-railsec-b" }, Kl = ["aria-current", "onClick"], jl = { class: "mm-row-main" }, Wl = { class: "mm-row-t" }, Hl = { class: "mm-row-s" }, ql = ["disabled"], Jl = /* @__PURE__ */ K({
   __name: "MemoryRail",
   props: {
     memory: {},
     selectedId: {}
   },
   emits: ["select", "filtered", "status-change"],
-  setup(a, { emit: x }) {
-    const d = a, f = x, l = [
+  setup(s, { emit: x }) {
+    const d = s, f = x, l = [
       { value: "current", label: "Current" },
       { value: "superseded", label: "Earlier" },
       { value: "archived", label: "Archived" }
-    ], s = T("current"), r = T(""), i = Re(r, 250, (V) => V.trim()), _ = ne(() => d.memory.memoryId.value ? [d.memory.memoryId.value, s.value, i.value] : null, (V) => P(d.memory.memoryId.value).items({ status: s.value, query: i.value, offset: V }), d.memory.revision);
-    O([s, i], () => {
-      f("filtered"), f("status-change", s.value);
+    ], a = T("current"), r = T(""), i = Re(r, 250, (V) => V.trim()), _ = ne(() => d.memory.memoryId.value ? [d.memory.memoryId.value, a.value, i.value] : null, (V) => P(d.memory.memoryId.value).items({ status: a.value, query: i.value, offset: V }), d.memory.revision);
+    O([a, i], () => {
+      f("filtered"), f("status-change", a.value);
     });
-    const $ = T({ instructions: !1, knowhow: !1, plans: !1, people: !1 }), S = M(() => Le.map((V) => ({ ...V, items: _.rows.value.filter((p) => q[p.kind].group === V.id) })).filter((V) => V.items.length)), C = M(() => i.value ? "No memories match this search." : s.value === "superseded" ? "No earlier versions yet." : s.value === "archived" ? "Nothing archived." : "Nothing remembered yet. Memories appear as agents talk with people.");
+    const $ = T({ instructions: !1, knowhow: !1, plans: !1, people: !1 }), S = M(() => Le.map((V) => ({ ...V, items: _.rows.value.filter((p) => q[p.kind].group === V.id) })).filter((V) => V.items.length)), C = M(() => i.value ? "No memories match this search." : a.value === "superseded" ? "No earlier versions yet." : a.value === "archived" ? "Nothing archived." : "Nothing remembered yet. Memories appear as agents talk with people.");
     return (V, p) => (n(), o(R, null, [
-      e("div", Ml, [
+      e("div", Bl, [
         b(Me, {
           modelValue: r.value,
           "onUpdate:modelValue": p[0] || (p[0] = (v) => r.value = v),
@@ -1135,8 +1139,8 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           label: "Search memories"
         }, null, 8, ["modelValue"]),
         b(t(ue), {
-          modelValue: s.value,
-          "onUpdate:modelValue": p[1] || (p[1] = (v) => s.value = v),
+          modelValue: a.value,
+          "onUpdate:modelValue": p[1] || (p[1] = (v) => a.value = v),
           class: "mm-views",
           options: l,
           "option-label": "label",
@@ -1146,19 +1150,19 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           "aria-label": "Which memories"
         }, null, 8, ["modelValue"])
       ]),
-      e("nav", Bl, [
-        t(_).loading.value && !t(_).rows.value.length ? (n(), o("div", Ll, [
+      e("nav", Ll, [
+        t(_).loading.value && !t(_).rows.value.length ? (n(), o("div", Ul, [
           (n(), o(R, null, z(6, (v) => e("div", {
             key: v,
             class: "mm-skel-row"
           })), 64))
-        ])) : t(_).error.value ? (n(), o("div", Ul, [
+        ])) : t(_).error.value ? (n(), o("div", Dl, [
           b(t(w), {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
           e("span", null, c(t(_).error.value), 1)
-        ])) : t(_).rows.value.length ? h("", !0) : (n(), o("div", Dl, c(C.value), 1)),
+        ])) : t(_).rows.value.length ? h("", !0) : (n(), o("div", Fl, c(C.value), 1)),
         (n(!0), o(R, null, z(S.value, (v) => (n(), o("div", {
           key: v.id,
           class: D(["kx-railsec", { closed: $.value[v.id] }])
@@ -1179,14 +1183,14 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
               icon: v.icon,
               "aria-hidden": "true"
             }, null, 8, ["icon"]),
-            e("span", Ol, c(v.title), 1)
-          ], 8, Fl),
-          $e(e("div", Pl, [
+            e("span", Pl, c(v.title), 1)
+          ], 8, Ol),
+          $e(e("div", zl, [
             (n(!0), o(R, null, z(v.items, (g) => (n(), o("button", {
               key: g.id,
               type: "button",
-              class: D(["mm-row", { on: a.selectedId === g.id }]),
-              "aria-current": a.selectedId === g.id ? "true" : void 0,
+              class: D(["mm-row", { on: s.selectedId === g.id }]),
+              "aria-current": s.selectedId === g.id ? "true" : void 0,
               onClick: (E) => f("select", g)
             }, [
               e("span", {
@@ -1197,11 +1201,11 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
                   "aria-hidden": "true"
                 }, null, 8, ["icon"])
               ], 2),
-              e("span", Kl, [
-                e("span", jl, c(g.content), 1),
-                e("span", Wl, c(t(W)(g.key)) + " · " + c(t(H)(g.valid_at)), 1)
+              e("span", jl, [
+                e("span", Wl, c(g.content), 1),
+                e("span", Hl, c(t(W)(g.key)) + " · " + c(t(H)(g.valid_at)), 1)
               ])
-            ], 10, zl))), 128))
+            ], 10, Kl))), 128))
           ], 512), [
             [we, !$.value[v.id]]
           ])
@@ -1221,25 +1225,25 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
             "aria-hidden": "true"
           })) : h("", !0),
           p[3] || (p[3] = N("Show more ", -1))
-        ], 8, Hl)) : h("", !0)
+        ], 8, ql)) : h("", !0)
       ])
     ], 64));
   }
-}), Jl = {
+}), Gl = {
   key: 0,
   class: "kx-notice error"
-}, Gl = {
+}, Yl = {
   key: 1,
   class: "mm-page"
-}, Yl = {
+}, Zl = {
   key: 0,
   class: "kx-notice error mm-page-note"
-}, Zl = { class: "kx-shell" }, Ql = { class: "kx-rail" }, Xl = { class: "kx-railhead" }, en = { class: "kx-railhead-title" }, tn = { key: 0 }, ln = { class: "kx-railhead-acts" }, nn = { class: "kx-main" }, an = { class: "kx-main-scroll mm-main" }, sn = {
+}, Ql = { class: "kx-shell" }, Xl = { class: "kx-rail" }, en = { class: "kx-railhead" }, tn = { class: "kx-railhead-title" }, ln = { key: 0 }, nn = { class: "kx-railhead-acts" }, sn = { class: "kx-main" }, an = { class: "kx-main-scroll mm-main" }, on = {
   key: 3,
   class: "kx-empty kx-empty-spacious mm-empty"
-}, on = { class: "kx-empty-ico" }, rn = /* @__PURE__ */ K({
+}, rn = { class: "kx-empty-ico" }, un = /* @__PURE__ */ K({
   __name: "MemoryManage",
-  setup(a) {
+  setup(s) {
     const x = Se(), d = Te(), f = T(""), l = T({});
     O(() => x.value.config, (y) => {
       try {
@@ -1248,11 +1252,11 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
         f.value = Y(k);
       }
     }, { immediate: !0 });
-    const s = tt(M(() => String(l.value.kb_id || ""))), r = T("item"), i = T(String(l.value.route || "")), _ = T(!1), $ = T("current"), S = M(() => s.status.value?.counts[$.value]), C = M(() => s.status.value?.counts.conflict_groups || 0), V = M(() => (s.status.value?.runs || []).filter((y) => y.status === "failed").length);
+    const a = tt(M(() => String(l.value.kb_id || ""))), r = T("item"), i = T(String(l.value.route || "")), _ = T(!1), $ = T("current"), S = M(() => a.status.value?.counts[$.value]), C = M(() => a.status.value?.counts.conflict_groups || 0), V = M(() => (a.status.value?.runs || []).filter((y) => y.status === "failed").length);
     O(() => l.value.route, (y) => {
       const k = typeof y == "string" ? y : "";
       k !== i.value && (p = !0, i.value = k, k && (r.value = "item"));
-    }), O(s.memoryId, () => {
+    }), O(a.memoryId, () => {
       i.value = "", r.value = "item";
     });
     let p = !1;
@@ -1278,22 +1282,22 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
     function I(y) {
       _.value = !1, y && g(y);
     }
-    return (y, k) => f.value ? (n(), o("div", Jl, c(f.value), 1)) : (n(), o("div", Gl, [
-      t(s).error.value ? (n(), o("div", Yl, [
+    return (y, k) => f.value ? (n(), o("div", Gl, c(f.value), 1)) : (n(), o("div", Yl, [
+      t(a).error.value ? (n(), o("div", Zl, [
         b(t(w), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
-        e("span", null, c(t(s).error.value), 1)
+        e("span", null, c(t(a).error.value), 1)
       ])) : h("", !0),
-      e("div", Zl, [
-        e("aside", Ql, [
-          e("div", Xl, [
-            e("span", en, [
+      e("div", Ql, [
+        e("aside", Xl, [
+          e("div", en, [
+            e("span", tn, [
               k[7] || (k[7] = N("Memories", -1)),
-              S.value !== void 0 ? (n(), o("b", tn, c(S.value), 1)) : h("", !0)
+              S.value !== void 0 ? (n(), o("b", ln, c(S.value), 1)) : h("", !0)
             ]),
-            e("div", ln, [
+            e("div", nn, [
               b(X, {
                 icon: "tabler:activity",
                 label: V.value ? `Activity, ${V.value} failed` : "Activity",
@@ -1323,32 +1327,32 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
               "aria-hidden": "true"
             })
           ], 2)) : h("", !0),
-          b(ql, {
-            memory: t(s),
+          b(Jl, {
+            memory: t(a),
             "selected-id": r.value === "item" ? i.value : "",
             onSelect: E,
             onFiltered: k[3] || (k[3] = (L) => i.value = ""),
             onStatusChange: k[4] || (k[4] = (L) => $.value = L)
           }, null, 8, ["memory", "selected-id"])
         ]),
-        e("main", nn, [
+        e("main", sn, [
           e("div", an, [
-            r.value === "conflicts" ? (n(), F(Vt, {
+            r.value === "conflicts" ? (n(), F(Nt, {
               key: 0,
-              memory: t(s)
+              memory: t(a)
             }, null, 8, ["memory"])) : r.value === "activity" ? (n(), F(Xe, {
               key: 1,
-              memory: t(s)
-            }, null, 8, ["memory"])) : i.value ? (n(), F(Rl, {
+              memory: t(a)
+            }, null, 8, ["memory"])) : i.value ? (n(), F(Ml, {
               key: i.value,
-              memory: t(s),
+              memory: t(a),
               "item-id": i.value,
               onReplaced: g,
               onOpen: g,
               onConversation: v,
               onGone: k[5] || (k[5] = (L) => i.value = "")
-            }, null, 8, ["memory", "item-id"])) : (n(), o("div", sn, [
-              e("span", on, [
+            }, null, 8, ["memory", "item-id"])) : (n(), o("div", on, [
+              e("span", rn, [
                 b(t(w), {
                   icon: "tabler:brain",
                   "aria-hidden": "true"
@@ -1360,16 +1364,16 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
           ])
         ])
       ]),
-      b(Lt, {
+      b(Ut, {
         open: _.value,
         title: "Add agent memory",
         icon: "tabler:plus",
         onClose: k[6] || (k[6] = (L) => _.value = !1)
       }, {
         default: Z(() => [
-          _.value ? (n(), F(ft, {
+          _.value ? (n(), F(pt, {
             key: 0,
-            memory: t(s),
+            memory: t(a),
             onAdded: I
           }, null, 8, ["memory"])) : h("", !0)
         ]),
@@ -1377,11 +1381,11 @@ const lt = { class: "mm-field" }, nt = { class: "mm-hint" }, at = { class: "mm-f
       }, 8, ["open"])
     ]));
   }
-}), gn = {
-  rootComponent: rn,
+}), xn = {
+  rootComponent: un,
   plugins: [he]
 };
 export {
-  gn as mountConfig
+  xn as mountConfig
 };
-//# sourceMappingURL=lazy-mount-B00vUwY3.js.map
+//# sourceMappingURL=lazy-mount-Bblvswhc.js.map

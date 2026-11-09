@@ -2,8 +2,8 @@ import { W as A, u as E } from "./wc-runtime-CNDpK4lj.js";
 import M from "primevue/config";
 import R from "primevue/contextmenu";
 import N from "primevue/menu";
-import $ from "primevue/portal";
-import { renderSlot as m, createCommentVNode as z, h as i, Teleport as H, defineAsyncComponent as V, defineComponent as _, onMounted as j } from "vue";
+import z from "primevue/portal";
+import { renderSlot as m, createCommentVNode as $, h as i, Teleport as H, defineAsyncComponent as V, defineComponent as _, onMounted as j } from "vue";
 import { Icon as y } from "@iconify/vue";
 import { define as W } from "@wippy-fe/proxy";
 const F = "data-wippy-overlay-layer";
@@ -141,7 +141,7 @@ function J() {
   if (L)
     return;
   L = !0;
-  const t = $;
+  const t = z;
   t.computed = t.computed || {}, t.computed.inline = function() {
     return !!this.disabled || this.appendTo === "self";
   }, t.computed.resolvedTarget = function() {
@@ -155,7 +155,7 @@ function J() {
   }, t.render = function() {
     return this.inline ? m(this.$slots, "default", { key: 0 }) : this.mounted ? i(H, { key: 1, to: this.resolvedTarget || document.body }, [
       m(this.$slots, "default")
-    ]) : z("", !0);
+    ]) : $("", !0);
   }, t.unmounted = function() {
     w(this);
   };
@@ -178,6 +178,7 @@ function rt(t, e, o) {
     loadingComponent: {
       render: () => i("span", {
         role: "status",
+        "data-lazy-state": "loading",
         "aria-label": e.loading,
         style: `${P}color:var(--p-text-muted-color);`
       }, i("span", { style: "display:inline-flex;", onVnodeMounted: et }, i(y, { icon: "tabler:loader-2", "aria-hidden": "true" })))
@@ -187,17 +188,18 @@ function rt(t, e, o) {
       setup(n) {
         return ot(e.failed, n.error, o), () => i("span", {
           role: "alert",
+          "data-lazy-state": "failed",
           title: e.iconOnly ? e.failed : void 0,
           style: `${P}color:var(--p-danger-500);`
         }, e.iconOnly ? [i(y, { icon: "tabler:alert-circle", "aria-hidden": "true" }), i("span", { style: tt }, e.failed)] : e.failed);
       }
     }),
-    delay: 200,
+    delay: e.immediate ? 0 : 200,
     timeout: Z,
     suspensible: !1
   });
 }
-const nt = ":host,.hs{--hs-bg: var(--p-content-background);--hs-surface: color-mix(in srgb, var(--p-text-color) 5%, var(--p-content-background));--hs-border: var(--p-content-border-color);--hs-text: var(--p-text-color);--hs-muted: var(--p-text-muted-color);--hs-primary: var(--p-primary-color);--hs-danger: var(--p-danger-500);font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--hs-text)}.hs{display:flex;flex-direction:column;gap:12px}.hs-field{display:flex;flex-direction:column;gap:4px;font-size:13px}.hs-field>span{color:var(--hs-muted)}.hs-field wc-connection-picker,.hs-field .p-select{width:100%}.hs-field .p-select{padding:8px 10px;border:1px solid var(--hs-border);border-radius:8px;background:var(--hs-bg);color:var(--hs-text);font-size:14px}.hs-hint{margin:0;font-size:13px;color:var(--hs-muted)}.hs-error{margin:0;font-size:13px;color:var(--hs-danger)}.hs-summary{display:flex;gap:8px;align-items:center;min-height:24px;padding:8px 10px;border:1px solid var(--hs-border);border-radius:8px;background:var(--hs-surface);font-size:13px}.hs-dot{width:8px;height:8px;border-radius:999px;background:var(--hs-primary);flex:0 0 auto}:host>div:empty,:host>div:has(>[role=status]){min-height:227px}", it = { props: { type: "object", properties: { config: { type: "object", default: {}, description: "Current source/sink config containing connection_id and object_type." } } } }, st = {
+const nt = ":host,.hs{--hs-bg: var(--p-content-background);--hs-surface: color-mix(in srgb, var(--p-text-color) 5%, var(--p-content-background));--hs-border: var(--p-content-border-color);--hs-text: var(--p-text-color);--hs-muted: var(--p-text-muted-color);--hs-primary: var(--p-primary-color);--hs-danger: var(--p-danger-500);font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--hs-text)}.hs{display:flex;flex-direction:column;gap:12px}.hs-field{display:flex;flex-direction:column;gap:4px;font-size:13px}.hs-field>span{color:var(--hs-muted)}.hs-field wc-connection-picker,.hs-field .p-select{width:100%}.hs-field wc-connection-picker{display:block;min-height:36px}.hs-field .p-select{padding:8px 10px;border:1px solid var(--hs-border);border-radius:8px;background:var(--hs-bg);color:var(--hs-text);font-size:14px}.hs-hint{margin:0;font-size:13px;color:var(--hs-muted)}.hs-error{margin:0;font-size:13px;color:var(--hs-danger)}.hs-summary{display:flex;gap:8px;align-items:center;min-height:24px;padding:8px 10px;border:1px solid var(--hs-border);border-radius:8px;background:var(--hs-surface);font-size:13px}.hs-dot{width:8px;height:8px;border-radius:999px;background:var(--hs-primary);flex:0 0 auto}:host>div:empty,:host>div:has(>[data-lazy-state]){min-height:190px}", it = { props: { type: "object", properties: { config: { type: "object", default: {}, description: "Current source/sink config containing connection_id and object_type." } } } }, st = {
   wippy: it
 }, at = rt(
   () => import("./HubSpotPicker-BcIlDVKp.js"),

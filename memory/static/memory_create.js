@@ -1,10 +1,10 @@
 import { u as o } from "./wc-runtime-KO3cNuNo.js";
 import { P as t } from "./primevue-plugin-CaP7wV_M.js";
-import { l as n, m as i } from "./lazy-DWJV_ELG.js";
+import { l as n, m as i } from "./lazy-l_o3DZGp.js";
 import "@iconify/vue";
 import { define as m } from "@wippy-fe/proxy";
 const r = n(
-  () => import("./MemoryCreate-BVutFoSt.js"),
+  () => import("./MemoryCreate-BXSQo9P9.js"),
   { loading: "Loading the memory settings…", failed: "Could not load the memory settings. Reload the page to try again." },
   o
 ), e = i(

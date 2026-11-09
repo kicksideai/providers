@@ -175,4 +175,4 @@
 }
 
 /* Reserved only while the implementation loads, so a loaded tag keeps its own size (estimate from the form CSS). */
-:host > div:empty, :host > div:has(> [role=status]) { min-height: 240px; }
+:host > div:empty, :host > div:has(> [data-lazy-state]) { min-height: 373px; }
