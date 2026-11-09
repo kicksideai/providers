@@ -3,13 +3,15 @@ local engines = require("engines")
 
 return test.run_cases(function()
     test.describe("engine query configuration", function()
-        test.it("declares query controls with unchanged defaults and preserves stored overrides", function()
+        test.it("enables answers for new bases and preserves explicit query settings", function()
             for _, kind in ipairs({ "document", "wiki" }) do
                 local engine, err = engines.resolve(kind)
                 test.is_nil(err)
                 local defaults = engine.default_config
                 local properties = engine.config_schema.properties
-                test.eq(defaults.analysis_model, "")
+                test.eq(defaults.analysis_model, "class:fast")
+                test.eq(properties.analysis_model.default, "class:fast")
+                test.eq(engines.apply_default_config({ analysis_model = "" }, engine).analysis_model, "")
                 test.eq(defaults.extra_prompt, "")
                 test.eq(defaults.enable_reranking, false)
                 test.not_nil(properties.analysis_model)

@@ -765,7 +765,7 @@ entries:
       suite: kb10_query_migration
     source: file://query_log_migration_test.lua
     method: run
-    modules: [uuid, sql, funcs]
+    modules: [uuid, sql, funcs, json]
     imports:
       test: wippy.test:test
       query_log: kickside.kb10.persist:query_log
