@@ -114,26 +114,31 @@ local function image_page(upload_id: string): { any }
 end
 
 -- Rendered screenshots and extracted images share explicit page identity.
-local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): ({ any }, string)
+local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): ({ any }, string, boolean)
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     local content = not primary_err and type(primary) == "table" and type(primary.content) == "string" and primary.content or ""
-    if mime ~= "" and mime ~= "application/pdf" and content:match("%S") then return {}, content end
+    if mime ~= "" and mime ~= "application/pdf" and content:match("%S") then return {}, content, false end
 
     local candidates = page_images.page_set(upload_id, min_bytes)
     local text_pages = page_images.text_pages(content, primary and primary.metadata and primary.metadata.ocr_page_outcomes)
-    if #text_pages > 0 then
+    local identified = true
+    for _, image in ipairs(candidates) do
+        local number = type(image.metadata) == "table" and tonumber(image.metadata.page) or nil
+        if not number or number < 1 or number % 1 ~= 0 then identified = false; break end
+    end
+    if #text_pages > 0 and identified then
         local by_page = {}
-        for index, image in ipairs(candidates) do by_page[page_number(image, index)] = image end
+        for _, image in ipairs(candidates) do by_page[image.metadata.page] = image end
         local selected = {}
         for _, page in ipairs(text_pages) do
             if page_images.needs_ocr_text(page.text, 1, max_text, page.status) then
                 selected[#selected + 1] = by_page[page.page] or {metadata = {page = page.page}}
             end
         end
-        return selected, content
+        return selected, content, true
     end
-    if not page_images.needs_ocr_text(content, #candidates, max_text) then return {}, content end
-    return candidates, content
+    if not page_images.needs_ocr_text(content, #candidates, max_text) then return {}, content, false end
+    return candidates, content, false
 end
 
 -- Commit page text and outcomes together on the primary artifact.
@@ -172,7 +177,7 @@ end
 local function persist_primary(upload_id: string, storage_id: any, markdown: string, params: any, page: any, outcomes: any): (boolean, string?)
     local primary, primary_err = artifact_parts_repo.get_primary_content_artifact(upload_id)
     if not primary_err and primary then
-        local _, upd_err = artifact_content_repo.update_content(upload_id, primary.artifact_id, markdown, { mime_type = "text/markdown", metadata = {ocr_page_outcomes = outcomes} })
+        local _, upd_err = artifact_content_repo.update_content(upload_id, primary.artifact_id, markdown, { mime_type = "text/markdown", metadata = {ocr_page_outcomes = outcomes}, cancel_ref = params.cancel_ref })
         if upd_err then return false, tostring(upd_err) end
         return true, nil
     end
@@ -181,6 +186,7 @@ local function persist_primary(upload_id: string, storage_id: any, markdown: str
     metadata.ocr_page_outcomes = outcomes
     local _, create_err = artifact_content_repo.create_artifact({
         upload_id = upload_id,
+        cancel_ref = params.cancel_ref,
         kind = "markdown",
         role = "primary",
         mime_type = "text/markdown",
@@ -235,6 +241,7 @@ local function run(params: any, deps: any): any
     local mime = ((declared:match("^[^;]*") or ""):match("^%s*(.-)%s*$")) :: string
     local pages: { any } = {}
     local original: string = ""
+    local per_page = true
     if mime:sub(1, 6) == "image/" then
         -- SVG is markup, not a raster image. Trim the declared base type first so
         -- valid `image/svg+xml ; charset=utf-8` forms cannot bypass this guard.
@@ -242,7 +249,7 @@ local function run(params: any, deps: any): any
         if not setting_bool("ocr_images", true) then return { success = true } end
         pages = image_page(upload_id)
     else
-        pages, original = resolve_pages(upload_id, max_text, min_bytes, mime)
+        pages, original, per_page = resolve_pages(upload_id, max_text, min_bytes, mime)
     end
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
@@ -252,7 +259,7 @@ local function run(params: any, deps: any): any
     local previous = primary and primary.metadata and primary.metadata.ocr_page_outcomes or {}
     local outcomes, by_page = {}, {}
     for _, outcome in ipairs(previous) do by_page[outcome.page] = outcome end
-    local document_pages = page_images.text_pages(original)
+    local document_pages = per_page and page_images.text_pages(original) or {}
     local targets = {}
     for index, page in ipairs(pages) do
         local number = page_number(page, index)
@@ -294,7 +301,7 @@ local function run(params: any, deps: any): any
     end
     local function checkpoint(): (boolean, string?)
         local markdown
-        if #page_images.text_pages(original) > 0 then markdown = page_images.replace_pages(original, sections)
+        if per_page and #page_images.text_pages(original) > 0 then markdown = page_images.replace_pages(original, sections)
         else
             local replacements = {}
             for _, section in ipairs(sections) do replacements[section.page] = section.text end
@@ -306,7 +313,7 @@ local function run(params: any, deps: any): any
     end
     local start, persist_error, cancelled = 1, nil, false
     while start <= #targets do
-        if start > 1 and not should_continue() then cancelled = true; break end
+        if not should_continue() then cancelled = true; break end
         local last = math.min(start + batch_size - 1, #targets)
         local batch = {}
         for index = start, last do batch[#batch + 1] = targets[index] end
@@ -317,7 +324,6 @@ local function run(params: any, deps: any): any
             if result.error ~= nil then
                 outcome.status, outcome.error = "failed", "transcription_failed"
                 page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(result.error)
-                sections[#sections + 1] = {page = item.index, text = ""}
             else
                 local text = result.value.text
                 outcome.status, outcome.error = text:match("%S") and "readable" or "blank", nil

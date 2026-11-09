@@ -76,7 +76,7 @@ local function seed(markdown: string?, pages: { any }): string
     return upload_id
 end
 
-local function seed_extracted(markdown: string?, count: integer): string
+local function seed_extracted(markdown: string?, count: integer, legacy: boolean?): string
     local upload_id = uuid_v4()
     local _, upload_err = upload_record_repo.create(
         upload_id, "user-ocr", 5000, "application/pdf",
@@ -109,7 +109,7 @@ local function seed_extracted(markdown: string?, count: integer): string
             kind = "image", role = "extracted-image", mime_type = "image/jpeg",
             label = "page" .. tostring(i) .. ".jpg", ordinal = 1000 + i,
             content = string.rep("J", 60000), storage_id = STORAGE_ID,
-            metadata = { name = "page" .. tostring(i) .. ".jpg", page = i },
+            metadata = { name = "page" .. tostring(i) .. ".jpg", page = not legacy and i or nil },
         })
         test.is_nil(img_err)
     end
@@ -188,8 +188,79 @@ local function define_tests()
                 local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
                     cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = sequence}}, {
                     batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
-                test.eq(calls, sequence == 1 and 3 or 1)
+                test.eq(calls, sequence == 1 and 3 or 0)
                 test.eq(result.success, sequence == 1)
+                local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
+                db:release()
+                test.is_nil(delete_err)
+            end
+        end)
+
+        test.it("uses the document-wide decision for marked legacy images", function()
+            local pages = {}
+            for page = 1, 12 do
+                pages[#pages + 1] = "<!-- page " .. page .. " -->\n\n" .. (page == 1 and string.rep("Original text. ", 100) or "")
+            end
+            local upload_id = seed_extracted(table.concat(pages, "\n\n"), 12, true)
+            local calls = 0
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = function()
+                calls = calls + 1
+                return "Legacy scan", nil
+            end})
+            test.is_true(result.success)
+            test.eq(calls, 12, "legacy images keep the document-wide threshold decision")
+        end)
+
+        test.it("retains sparse text when its image is missing or transcription fails", function()
+            for _, images in ipairs({{}, {1}}) do
+                local original = "<!-- page 1 -->\n\nA short caption already extracted."
+                local upload_id = seed(original, images)
+                local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = function()
+                    return nil, "vision request failed"
+                end})
+                test.is_false(result.success)
+                test.eq(primary_text(upload_id), original)
+                test.eq(assert(artifact_parts_repo.read_primary_content(upload_id)).metadata.ocr_page_outcomes[1].status, "failed")
+            end
+        end)
+
+        test.it("fences checkpoints when a newer attempt commits during transcription", function()
+            for _, original in ipairs({"absent", "<!-- page 1 -->\n\nOriginal caption"}) do
+                if original == "absent" then original = nil end
+                local upload_id = seed(original, {1})
+                local job_id = uuid_v4()
+                local db = assert(sql.get("app:db"))
+                local _, err = sql.builder.insert("kickside_job"):set_map({id = job_id,
+                    job_type = "ocr.fixture", job_identity = job_id, owner_kind = "installation", owner_id = "ocr-fixture",
+                    status = "running", lease_token = "old-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00"})
+                    :run_with(db):exec()
+                test.is_nil(err)
+                local params = {upload_id = upload_id, storage_id = STORAGE_ID,
+                    cancel_ref = {job_id = job_id, lease_token = "old-lease", execution_seq = 1}}
+                local result = stage.run(params, {transcribe = function()
+                    local _, update_err = sql.builder.update("kickside_job"):set_map({lease_token = "new-lease", execution_seq = 2})
+                        :where("id = ?", job_id):run_with(db):exec()
+                    test.is_nil(update_err)
+                    local newer = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                        cancel_ref = {job_id = job_id, lease_token = "new-lease", execution_seq = 2}}, {
+                        transcribe = function() return "New attempt text", nil end})
+                    test.is_true(newer.success)
+                    return "Stale attempt text", nil
+                end})
+                test.is_false(result.success)
+                test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nNew attempt text")
+                local primary = assert(artifact_parts_repo.get_primary_content_artifact(upload_id))
+                local updated, stale_err = artifact_content_repo.update_content(upload_id, primary.artifact_id, "Stale direct write", {
+                    cancel_ref = params.cancel_ref, metadata = {ocr_page_outcomes = {{page = 1, status = "failed"}}}})
+                test.is_nil(updated)
+                test.not_nil(stale_err)
+                local created, create_err = artifact_content_repo.create_artifact({upload_id = upload_id,
+                    kind = "markdown", role = "primary", mime_type = "text/markdown", content = "Stale create",
+                    storage_id = STORAGE_ID, cancel_ref = params.cancel_ref})
+                test.is_nil(created)
+                test.not_nil(create_err)
+                test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nNew attempt text")
+                test.eq(assert(artifact_parts_repo.read_primary_content(upload_id)).metadata.ocr_page_outcomes[1].status, "readable")
                 local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
                 db:release()
                 test.is_nil(delete_err)

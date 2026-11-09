@@ -15,14 +15,43 @@ local doc2md = require("doc2md")
 
 return { run = test.run_cases(function()
     test.describe("PDF page fidelity through extraction, rendering and OCR", function()
-        for _, mode in ipairs({"mixed", "text", "scan", "extracted", "uneven", "large"}) do
+        test.it("records an unavailable page after a composite render fails", function()
+            local bytes = fixtures.pdf({"double"})
+            local id, storage = uuid.v4(), fs.get("app:temp_fs")
+            local path = id .. ".pdf"
+            assert(storage:writefile(path, bytes))
+            local params = {upload_id = id, storage_id = "app:temp_fs", storage_path = path,
+                mime_type = "application/pdf", size = #bytes, metadata = {filename = "composite.pdf"}}
+            test.is_nil(select(2, uploads.create(id, "page-reader", #bytes, "application/pdf", "app:temp_fs", path, "documents", {}, "processing")))
+            local settings = assert(assert(contract.get("kickside.settings:settings")):open())
+            for key, value in pairs({rasterize_min_source_bytes = 0, rasterize_min_page_bytes = 0, rasterize_format = "invalid"}) do
+                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = key, value = value}).success)
+            end
+            test.is_true(processor.process(params).success)
+            local original = assert(parts.read_primary_content(id)).content
+            local rendered, err = funcs.call("kickside.uploads.rasterize:stage", params)
+            test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_format", value = "jpeg"}).success)
+            test.is_nil(err)
+            test.is_true(rendered.success)
+            local calls = 0
+            local result = stage.run(params, {transcribe = function() calls = calls + 1; return "Partial page", nil end})
+            test.is_false(result.success)
+            test.eq(calls, 0)
+            local primary = assert(parts.read_primary_content(id))
+            test.eq(primary.content, original)
+            test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+            test.eq(#doc2md.markers(primary.content), 1)
+            assert(storage:remove(path))
+        end)
+        for _, mode in ipairs({"mixed", "text", "scan", "extracted", "uneven", "form", "large"}) do
             test.it("keeps ordered pages and calls the model only for sparse pages: " .. mode, function()
                 local kinds, expected = {}, 0
-                local count = mode == "large" and 1025 or (mode == "extracted" and 12 or (mode == "uneven" and 4 or 6))
+                local count = mode == "large" and 1025 or (mode == "extracted" and 12 or (mode == "form" and 1 or (mode == "uneven" and 4 or 6)))
                 for page = 1, count do
                     kinds[page] = (mode == "text" or (mode == "mixed" and page % 2 == 1)
                         or (mode == "large" and page < count)) and "text" or "scan"
                     if mode == "uneven" then kinds[page] = page == 1 and "double" or (page == 2 and "blank" or "scan") end
+                    if mode == "form" then kinds[page] = "form" end
                     if kinds[page] ~= "text" then expected = expected + 1 end
                 end
                 local bytes = fixtures.pdf(kinds)
@@ -35,7 +64,7 @@ return { run = test.run_cases(function()
                 test.is_nil(upload_err)
                 local settings = assert(assert(contract.get("kickside.settings:settings")):open())
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_source_bytes", value = 0}).success)
-                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_page_bytes", value = (mode == "extracted" or mode == "uneven") and 0 or 51200}).success)
+                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_page_bytes", value = (mode == "extracted" or mode == "uneven" or mode == "form") and 0 or 51200}).success)
                 test.is_true(processor.process(params).success)
                 local original = assert(parts.read_primary_content(id)).content
                 local originals = doc2md.markers(original)
@@ -83,7 +112,7 @@ return { run = test.run_cases(function()
                         local old = original:sub(originals[page].finish + 1, originals[page + 1] and originals[page + 1].start - 1 or #original)
                         test.eq(body, old, "the text layer stays byte-for-byte intact")
                     elseif kinds[page] == "blank" then test.is_nil(body:match("%S"))
-                    else test.contains(body, "SCANNED " .. page) end
+                    else test.eq(body:match("^%s*(.-)%s*$"), "SCANNED " .. page) end
                 end
                 if mode == "text" then test.eq(markdown, original) end
                 if mode == "mixed" then
