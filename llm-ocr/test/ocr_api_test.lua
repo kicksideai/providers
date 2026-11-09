@@ -1,4 +1,5 @@
 local test = require("test")
+local sql = require("sql")
 local uuid_v4 = require("uuid").v4
 local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
@@ -161,18 +162,93 @@ local function define_tests()
     end)
 
     test.describe("kickside.llm_ocr:stage build_markdown", function()
-        test.it("emits a bare body for a single page", function()
-            test.eq(stage.build_markdown({ { page = 1, text = "only page" } }), "only page")
+        test.it("emits a page marker for a single page", function()
+            test.eq(stage.build_markdown({ { page = 1, text = "only page" } }), "<!-- page 1 -->\n\nonly page")
         end)
-        test.it("emits page headers for multiple pages and drops blanks", function()
+        test.it("emits page markers for multiple pages including blanks", function()
             local markdown = stage.build_markdown({
                 { page = 1, text = "alpha" }, { page = 2, text = "  " }, { page = 3, text = "gamma" },
             })
-            test.eq(markdown, "## Page 1\n\nalpha\n\n## Page 3\n\ngamma")
+            test.eq(markdown, "<!-- page 1 -->\n\nalpha\n\n<!-- page 2 -->\n\n<!-- page 3 -->\n\ngamma")
         end)
     end)
 
     test.describe("kickside.llm_ocr:stage document pages", function()
+        test.it("checks the existing job lease between page batches", function()
+            for _, sequence in ipairs({1, 2}) do
+                local upload_id = seed("", {1,2,3})
+                local job_id = uuid_v4()
+                local db = assert(sql.get("app:db"))
+                local _, err = sql.builder.insert("kickside_job"):set_map({id = job_id,
+                    job_type = "ocr.fixture", job_identity = job_id, owner_kind = "installation", owner_id = "ocr-fixture",
+                    status = "running", lease_token = "ocr-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00"})
+                    :run_with(db):exec()
+                test.is_nil(err)
+                local calls = 0
+                local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                    cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = sequence}}, {
+                    batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
+                test.eq(calls, sequence == 1 and 3 or 1)
+                test.eq(result.success, sequence == 1)
+                local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
+                db:release()
+                test.is_nil(delete_err)
+            end
+        end)
+
+        test.it("resumes pages that have no outcome in an interrupted checkpoint", function()
+            local markdown = "<!-- page 1 -->\n\nAlready read\n\n<!-- page 2 -->\n\n<!-- page 3 -->"
+            local upload_id = seed(markdown, {1,2,3})
+            local primary = assert(artifact_parts_repo.get_primary_content_artifact(upload_id))
+            local _, err = artifact_content_repo.update_content(upload_id, primary.artifact_id, markdown, {metadata = {
+                ocr_page_outcomes = {{page = 1, status = "readable", source = "ocr"}, {page = 2, source = "ocr"}, {page = 3, source = "ocr"}}
+            }})
+            test.is_nil(err)
+            local calls = 0
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = function(bytes)
+                calls = calls + 1
+                return "Read page " .. bytes:match("page%-(%d+)"), nil
+            end})
+            test.is_true(result.success)
+            test.eq(calls, 2)
+            test.contains(primary_text(upload_id), "Already read")
+            test.contains(primary_text(upload_id), "Read page 2")
+            test.contains(primary_text(upload_id), "Read page 3")
+        end)
+
+        test.it("keeps failed and blank page markers, records outcomes and retries only failed pages", function()
+            local text = string.rep("The original text page keeps its wording. ", 60)
+            local markdown = "<!-- page 1 -->\n\n<!-- page 2 -->\n\n<!-- page 3 -->\n\n<!-- page 4 -->\n\n" .. text
+            local upload_id = seed(markdown, {1,2,3})
+            local calls = {}
+            local function transcribe(bytes)
+                local page = tonumber(bytes:match("page%-(%d+)"))
+                calls[#calls + 1] = page
+                if page == 3 then return nil, "vision request failed" end
+                return page == 1 and "A scanned fact" or "", nil
+            end
+            local first = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {batch_size = 1, transcribe = transcribe})
+            test.is_false(first.success)
+            test.eq(#calls, 3)
+            for page = 1, 4 do test.contains(primary_text(upload_id), "<!-- page " .. page .. " -->") end
+            test.contains(primary_text(upload_id), text)
+            local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+            local outcomes = primary.artifact.metadata.ocr_page_outcomes
+            test.eq(outcomes[1].status, "readable")
+            test.eq(outcomes[2].status, "blank")
+            test.eq(outcomes[3].status, "failed")
+            test.eq(outcomes[4].status, "readable")
+            local retried = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = function(bytes)
+                calls[#calls + 1] = tonumber(bytes:match("page%-(%d+)"))
+                return "The previously failed scanned fact", nil
+            end})
+            test.is_true(retried.success)
+            test.eq(#calls, 4)
+            test.eq(calls[4], 3)
+            test.contains(primary_text(upload_id), "A scanned fact")
+            test.contains(primary_text(upload_id), "The previously failed scanned fact")
+        end)
+
         local function transcriber(text: string): any
             return function(_bytes: any, _options: any): (any, any) return text, nil end
         end
@@ -184,7 +260,7 @@ local function define_tests()
             test.is_true(result.success)
             test.eq(result.metadata.ocr_pages, 1)
             test.eq(result.metadata.ocr_total_pages, 1)
-            test.eq(primary_text(upload_id), "Transcribed page text")
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nTranscribed page text")
         end)
 
         test.it("keeps the page screenshots after transcription", function()
@@ -198,14 +274,14 @@ local function define_tests()
             test.eq(images, 2)
         end)
 
-        test.it("joins multiple pages with headers", function()
+        test.it("joins multiple pages with markers", function()
             local upload_id = seed("", { 1, 2 })
             local result = stage.run({ upload_id = upload_id, storage_id = STORAGE_ID }, { transcribe = transcriber("body") })
             test.eq(result.metadata.ocr_pages, 2)
             test.eq(result.metadata.ocr_total_pages, 2)
             local content = primary_text(upload_id) :: string
-            test.is_true(content:find("## Page 1", 1, true) ~= nil)
-            test.is_true(content:find("## Page 2", 1, true) ~= nil)
+            test.is_true(content:find("<!-- page 1 -->", 1, true) ~= nil)
+            test.is_true(content:find("<!-- page 2 -->", 1, true) ~= nil)
         end)
 
         test.it("no-ops when there are no page images at all", function()
@@ -223,7 +299,7 @@ local function define_tests()
             test.eq(result.metadata.ocr_pages, 2)
             test.eq(result.metadata.ocr_total_pages, 2)
             local content = primary_text(upload_id) :: string
-            test.is_true(content:find("## Page 1", 1, true) ~= nil)
+            test.is_true(content:find("<!-- page 1 -->", 1, true) ~= nil)
         end)
 
         test.it("transcribes extracted page images when extracted text is sparse", function()
@@ -234,7 +310,7 @@ local function define_tests()
             test.is_true(result.success)
             test.eq(result.metadata.ocr_pages, 1)
             test.eq(result.metadata.ocr_total_pages, 1)
-            test.eq(primary_text(upload_id), "corrected OCR text")
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\ncorrected OCR text")
         end)
 
         test.it("transcribes extracted page images when text cannot cover every page", function()

@@ -247,7 +247,7 @@ entries:
     kind: function.lua
     meta: { type: test, suite: llm_ocr, timeout: 120s }
     source: file://ocr_api_test.lua
-    modules: [uuid]
+    modules: [uuid, sql]
     imports:
       test: wippy.test:test
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
@@ -285,3 +285,29 @@ entries:
       test: wippy.test:test
       llm: wippy.llm:llm
       ocr: kickside.llm_ocr:ocr
+
+  - name: dep.kickside.pdf2image
+    kind: ns.dependency
+    component: kickside/pdf2image
+    version: '*'
+
+  - name: page_fixtures
+    kind: library.lua
+    source: file://page_fixtures.lua
+
+  - name: page_fidelity_test
+    kind: function.lua
+    meta: {type: test, suite: llm_ocr_pages, timeout: 120s}
+    source: file://page_fidelity_test.lua
+    modules: [fs, funcs, contract, uuid]
+    method: run
+    imports:
+      test: wippy.test:test
+      uploads: kickside.uploads.persist:upload_record_repo
+      content: kickside.uploads.persist:artifact_content_repo
+      fixtures: app:page_fixtures
+      processor: kickside.uploads.documents:processor
+      parts: kickside.uploads.persist:artifact_parts_repo
+      stage: kickside.llm_ocr:stage_implementation
+      ocr: kickside.llm_ocr:ocr
+      doc2md: kickside.convert.doc2md:doc2md
