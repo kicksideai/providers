@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
+
 # Source text indexing
 
 PostgreSQL rejects source documents whose generated full-text vector exceeds its size limit. The same constraint rejects the failure document, so an upload can complete without leaving a visible knowledge-base document.
