@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/kicksideai/providers/compare/memory-v0.1.17...memory-v0.1.18) (2026-11-08)
+
+
+### Bug Fixes
+
+* **memory:** show readable details and concise failures ([#78](https://github.com/kicksideai/providers/issues/78)) ([d66ef42](https://github.com/kicksideai/providers/commit/d66ef42c0e092aedc78b8d30a5dbd92a216711be))
+
 ## [0.1.17](https://github.com/kicksideai/providers/compare/memory-v0.1.16...memory-v0.1.17) (2026-11-07)
 
 
