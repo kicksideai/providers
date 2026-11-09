@@ -169,6 +169,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:05_retrieval_observations
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:06_source_text_index
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 

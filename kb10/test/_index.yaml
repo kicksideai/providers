@@ -799,3 +799,15 @@ entries:
       claim: kickside.core.jobs.persist:claim
       lifecycle: kickside.core.jobs.persist:lifecycle
       completion: kickside.core.jobs.service:worker_completion
+
+  - name: source_text_index_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_source_text_index
+    source: file://source_text_index_test.lua
+    method: run
+    modules: [uuid, funcs, sql]
+    imports:
+      test: wippy.test:test
+      store: kickside.kb10.persist:store
