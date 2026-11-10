@@ -65,3 +65,15 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 07_preserve_answer_settings
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-10T00:00:00Z"
+    source: file://07_preserve_answer_settings.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

@@ -70,7 +70,7 @@ Tuning updates guidance for future retrieval and ingestion. Existing documents, 
 
 ## Use
 
-Install with Knowledge, configure embedding and analysis models, then create a document or wiki knowledge base. Wiki offers Wiki and Graph views. Ingest through Knowledge’s content interfaces and inspect processing before query. KB10 owns materialization, retrieval, graph views, and maintenance; Knowledge owns base lifecycle.
+Install with Knowledge and configure the standard model classes, then create a document or wiki knowledge base. New bases use `class:fast` for analysis and grounded answers. An explicitly empty or false `analysis_model` keeps analysis and answering disabled. Wiki offers Wiki and Graph views. Ingest through Knowledge’s content interfaces and inspect processing before query. KB10 owns materialization, retrieval, graph views, and maintenance; Knowledge owns base lifecycle.
 
 ## Reference
 
