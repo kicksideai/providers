@@ -52,7 +52,8 @@ end
 function M.structured(step: string, result_schema: any, system: string, user: string, model: string): (any?, error?)
     local budget, budget_err = schema.output_budget(result_schema, model)
     if budget_err then return nil, budget_err end
-    local response, call_err = llm.structured_output(result_schema, messages(system, user), { model = model, max_tokens = budget })
+    local shape, instructions = schema.output_shape(result_schema)
+    local response, call_err = llm.structured_output(shape, messages(system .. "\n\nOutput constraints:\n" .. instructions, user), { model = model, max_tokens = budget })
     if call_err then return nil, M.error(step, call_err) end
     if response and response.finish_reason == "length" then
         return nil, types.unavailable("memory " .. step .. " output is truncated", { code = "model_output_truncated", step = step, model_output = response.result })

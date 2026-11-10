@@ -241,14 +241,14 @@ local SQLITE = {
 }
 
 local DROP = {
-    "DROP TABLE kickside_memory_kb_runs",
-    "DROP TABLE kickside_memory_kb_cursors",
-    "DROP TABLE kickside_memory_kb_embeddings",
-    "DROP TABLE kickside_memory_kb_provenance",
-    "DROP TABLE kickside_memory_kb_payloads",
-    "DROP TABLE kickside_memory_kb_keys",
-    "DROP TABLE kickside_memory_kb_items",
-    "DROP TABLE kickside_memory_kb_stores",
+    "DROP TABLE IF EXISTS kickside_memory_kb_runs",
+    "DROP TABLE IF EXISTS kickside_memory_kb_cursors",
+    "DROP TABLE IF EXISTS kickside_memory_kb_embeddings",
+    "DROP TABLE IF EXISTS kickside_memory_kb_provenance",
+    "DROP TABLE IF EXISTS kickside_memory_kb_payloads",
+    "DROP TABLE IF EXISTS kickside_memory_kb_keys",
+    "DROP TABLE IF EXISTS kickside_memory_kb_items",
+    "DROP TABLE IF EXISTS kickside_memory_kb_stores",
 }
 
 return require("migration").define(function()
@@ -260,7 +260,7 @@ return require("migration").define(function()
         database("sqlite", function()
             up(function(db) run(db, SQLITE) end)
             down(function(db)
-                run(db, { "DROP TABLE kickside_memory_kb_fts" })
+                run(db, { "DROP TABLE IF EXISTS kickside_memory_kb_fts" })
                 run(db, DROP)
             end)
         end)

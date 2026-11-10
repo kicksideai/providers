@@ -78,7 +78,9 @@ entries:
 
   - name: ui_server
     kind: ns.requirement
+    default: app:gateway
     meta:
+      value_kind: http.service
       comment: HTTP server the memory web components are served from.
       description: HTTP server the memory web components are served from.
     targets:
@@ -87,6 +89,7 @@ entries:
 
   - name: api_router
     kind: ns.requirement
+    default: app:api
     meta:
       value_kind: http.router
       comment: Authenticated HTTP router for the memory API.
@@ -107,6 +110,7 @@ entries:
 
   - name: target_db
     kind: ns.requirement
+    default: app:db
     meta:
       value_kind: db.sql
       comment: SQL database resource backing the kickside_memory_* tables; the component database.
