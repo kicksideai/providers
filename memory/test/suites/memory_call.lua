@@ -104,11 +104,20 @@ local OPS: { [string]: (any) -> (any, any) } = {
     prompt = function(_a: any) return prompt.prompt() end,
     tool_search = function(a: any) return funcs.call("kickside.memory.agent:search_tool", a.input) end,
     migrate = function(a: any) return funcs.call((a.entry or ("kickside.memory.migrations:" .. a.name)),
-        { database_id = a.database_id or "app:migration_db", id = a.id, direction = "up" }) end,
+        { database_id = a.database_id or "app:migration_db", id = a.id, direction = a.direction or "up" }) end,
     migration_exec = function(a: any): (any?, any?)
         local db, db_err = sql.get(a.database_id or "app:migration_db")
         if db_err then return nil, db_err end
         local result, err = db:execute(a.statement, a.params or {})
+        db:release()
+        return result, err
+    end,
+    migration_tables = function(a: any): (any?, any?)
+        local db, db_err = sql.get(a.database_id or "app:migration_db")
+        if db_err then return nil, db_err end
+        local statement = db:type() == "postgres" and "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'kickside_memory_%'"
+            or "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'kickside_memory_%'"
+        local result, err = db:query(statement)
         db:release()
         return result, err
     end,

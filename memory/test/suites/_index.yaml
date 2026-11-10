@@ -3,6 +3,14 @@ version: "1.0"
 namespace: app.suites
 
 entries:
+  - name: schema_observer
+    kind: library.lua
+    source: file://schema_observer.lua
+    modules: [ctx]
+    imports:
+      implementation: kickside.memory.engine:model_schema
+      script: app.llm:script
+
   - name: ledger_json
     kind: library.lua
     source: file://ledger_json.lua

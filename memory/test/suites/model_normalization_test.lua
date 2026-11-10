@@ -19,7 +19,7 @@ local function define_tests()
                 test.eq(result.items[1].key, existing and "home_city" or "residence")
                 test.eq(result.items[1].cardinality, existing and "single" or "multi")
             end
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             for _, collection in ipairs({ "items", "plans", "lessons" }) do
                 local shape = schema.properties[collection].items
                 for _, key in ipairs({"new_topic", "home_city_details"}) do
@@ -95,7 +95,7 @@ local function define_tests()
             test.eq(result.items[1].value, "Paris")
             test.eq(result.items[2].kind, "plan")
             test.eq(result.items[2].value.details, "Travel tickets")
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             test.eq(schema.properties.items.items.properties.value.type, "string")
             test.eq(schema.properties.plans.items.properties.value.type, "object")
         end)
@@ -129,7 +129,7 @@ local function define_tests()
             test.is_true(err:retryable())
             test.eq(err:details().code, "model_output_malformed")
             test.is_nil((tostring(err):find("private", 1, true)))
-            test.eq(#fixture.script.requests(user, "structured_output"), 1)
+            test.eq(#fixture.script.requests(user, "bounded_schema"), 1)
         end)
 
         test.it("offers existing goal state when interpreting a contextual answer", function()
@@ -155,7 +155,7 @@ local function define_tests()
             fixture.wait_runs(user, id, "derive", 2)
             local prompt = fixture.script.prompts(id, "structured_output")[2].user
             test.is_true(prompt:find("Choose a destination", 1, true) ~= nil, prompt)
-            local schema = fixture.script.requests(id, "structured_output")[2]
+            local schema = fixture.script.requests(id, "bounded_schema")[2]
             test.eq(schema.properties.plans.items.properties.value.properties.details.minLength, 1)
         end)
 
@@ -219,7 +219,7 @@ local function define_tests()
             test.is_nil(result)
             test.not_nil(err)
             test.eq(err:details().code, "model_output_malformed")
-            local schema = fixture.script.requests(user, "structured_output")[1].properties.mappings.properties["1"]
+            local schema = fixture.script.requests(user, "bounded_schema")[1].properties.mappings.properties["1"]
             test.eq(schema.maxItems, 1)
             test.eq(json.encode(schema.items.properties.cardinality.enum), '["multi"]')
             fixture.script.respond(user, "structured_output", { mappings = { ["1"] = {
@@ -244,7 +244,7 @@ local function define_tests()
             test.is_nil(err, tostring(err))
             test.eq(result.items[1].value, false)
             test.eq(json.encode(result.items[2].value), (json.encode(state)))
-            local schema = fixture.script.requests(user, "structured_output")[1].properties.mappings.properties
+            local schema = fixture.script.requests(user, "bounded_schema")[1].properties.mappings.properties
             test.is_nil(schema["1"].items.properties.value)
             test.is_nil(schema["2"].items.properties.value)
         end)
@@ -266,7 +266,7 @@ local function define_tests()
             test.eq(normalized.items[1].value, "Sam")
             test.eq(normalized.items[2].value, "Paris")
             test.eq(normalized.items[3].value, "vegetarian")
-            test.eq(#fixture.script.requests(user, "structured_output")[1].properties.mappings.required, 3)
+            test.eq(#fixture.script.requests(user, "bounded_schema")[1].properties.mappings.required, 3)
         end)
 
         test.it("rejects normalization that maps a goal onto a profile attribute", function()

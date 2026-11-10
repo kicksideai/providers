@@ -61,6 +61,40 @@ function M.compatible_topic(kind: string, keys: { any }): any
     return topic
 end
 
+-- Generation expresses the common provider grammar; the complete schema remains
+-- authoritative for output budgets and local validation.
+function M.output_shape(schema: any): (any, string)
+    local instructions = {}
+    local function build(node: any, path: string): any
+        local shape = { type = node.type, enum = node.enum, required = node.required,
+            additionalProperties = node.additionalProperties }
+        if node.properties then
+            shape.properties = {}
+            for key, child in pairs(node.properties) do shape.properties[key] = build(child, path .. "." .. key) end
+        end
+        if node.items then shape.items = build(node.items, path .. "[]") end
+        local rules = {}
+        if node.maxLength then
+            rules[#rules + 1] = "Use at most " .. tostring(node.maxLength) .. " characters; keep the text concise."
+        end
+        if node.minLength then rules[#rules + 1] = "The minimum character count is " .. tostring(node.minLength) .. "." end
+        if node.type == "string" then rules[#rules + 1] = "Do not include line breaks, tabs or other control characters." end
+        if node.maxItems then rules[#rules + 1] = "Return at most " .. tostring(node.maxItems) .. " items." end
+        if node.minItems then rules[#rules + 1] = "Return at least " .. tostring(node.minItems) .. " items." end
+        if node.minimum then rules[#rules + 1] = "The value must be at least " .. tostring(node.minimum) .. "." end
+        if node.maximum then rules[#rules + 1] = "The value must be at most " .. tostring(node.maximum) .. "." end
+        if node.pattern and node.pattern ~= CONTROL_FREE then rules[#rules + 1] = "Match this pattern: " .. node.pattern end
+        if #rules > 0 then
+            shape.description = table.concat(rules, " ")
+            instructions[#instructions + 1] = path .. ": " .. shape.description
+        end
+        return shape
+    end
+    local shape = build(schema, "$")
+    table.sort(instructions)
+    return shape, table.concat(instructions, "\n")
+end
+
 function M.validate(schema: any, value: any): boolean
     local encoded, encode_err = json.encode(value)
     if encode_err then return false end
