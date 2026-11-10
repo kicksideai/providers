@@ -116,8 +116,15 @@ return { run = test.run_cases(function()
                 end
                 if mode == "text" then test.eq(markdown, original) end
                 if mode == "mixed" then
-                    test.is_true(processor.process(params).success)
+                    local retried = stage.run(params, {transcribe = function()
+                        error("completed OCR pages do not call the model again")
+                    end})
+                    test.is_true(retried.success)
                     test.eq(assert(parts.read_primary_content(id)).content, markdown, "retry keeps completed page work")
+                    test.is_true(processor.process(params).success)
+                    local regenerated = assert(parts.read_primary_content(id))
+                    test.eq(regenerated.content, original, "explicit conversion replaces earlier OCR content")
+                    test.is_nil(regenerated.metadata.ocr_page_outcomes)
                 end
                 assert(storage:remove(path))
             end)
