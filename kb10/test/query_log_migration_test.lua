@@ -4,9 +4,49 @@ local funcs = require("funcs")
 local uuid = require("uuid")
 local store = require("store")
 local query_log = require("query_log")
+local json = require("json")
 
 local function define_tests()
     test.describe("retrieval observations schema preservation", function()
+        test.it("preserves existing answer settings when creation defaults change", function()
+            local rows = {}
+            for _, config in ipairs({ { extra_prompt = "Existing instructions", custom = { keep = true } },
+                { analysis_model = false }, { analysis_model = "" }, { analysis_model = "custom-model" } }) do
+                local id = uuid.v7()
+                local _, create_err = store.create_store(id, "class:embed", config, nil)
+                test.is_nil(create_err)
+                rows[#rows + 1] = { id = id, config = config }
+            end
+            local db = assert(sql.get("app:db"))
+            for pass = 1, 2 do
+                local migration_id = "answer-settings-" .. uuid.v7()
+                local result, err = funcs.call("kickside.kb10.migrations:07_preserve_answer_settings", {
+                    database_id = "app:db", id = migration_id, direction = "up",
+                })
+                test.is_nil(err, tostring(err))
+                test.eq(result.failed, 0, tostring(result.error))
+                for _, row in ipairs(rows) do
+                    local saved, read_err = db:query("SELECT config FROM kb10_stores WHERE id = $1", { row.id })
+                    test.is_nil(read_err)
+                    local config = type(saved[1].config) == "string" and assert(json.decode(saved[1].config)) or saved[1].config
+                    local expected = row.config.analysis_model
+                    if expected == nil then expected = "" end
+                    test.eq(config.analysis_model, expected)
+                    if row.config.custom then
+                        test.is_true(config.custom.keep)
+                        test.eq(config.extra_prompt, row.config.extra_prompt)
+                    end
+                end
+                local _, ledger_err = db:execute("DELETE FROM _migrations WHERE id = $1", { migration_id })
+                test.is_nil(ledger_err)
+            end
+            db:release()
+            for _, row in ipairs(rows) do
+                local _, delete_err = store.delete_store(row.id)
+                test.is_nil(delete_err)
+            end
+        end)
+
         test.it("adds retrieval schema to an installed query log without replacing observations", function()
             local id = uuid.v7()
             local _, create_err = store.create_store(id, "class:embed", {}, nil)
