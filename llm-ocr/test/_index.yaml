@@ -311,3 +311,27 @@ entries:
       stage: kickside.llm_ocr:stage_implementation
       ocr: kickside.llm_ocr:ocr
       doc2md: kickside.convert.doc2md:doc2md
+
+  - name: provider_timeout_test
+    kind: function.lua
+    meta: {type: test, suite: llm_ocr}
+    source: file://provider_timeout_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      ocr: kickside.llm_ocr:ocr
+      llm: wippy.llm:llm
+      providers: wippy.llm.discovery:providers
+      openai_generate: wippy.llm.openai:generate
+      openai_client: wippy.llm.openai:client
+      compat_generate: wippy.llm.openai_compat:generate
+      compat_client: wippy.llm.openai_compat:client
+      claude_generate: wippy.llm.claude:generate
+      claude_client: wippy.llm.claude:client
+      bedrock_generate: wippy.llm.bedrock:generate
+      bedrock_client: wippy.llm.bedrock:client
+      google_generate: wippy.llm.google:generate
+      google_config: wippy.llm.google:config
+      google_client: wippy.llm.google:client
+      generative_ai_client: wippy.llm.google.generative_ai:client
+      vertex_client: wippy.llm.google.vertex:client

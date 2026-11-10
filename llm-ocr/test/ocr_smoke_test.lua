@@ -46,6 +46,12 @@ local function run(options)
                 test.eq(setting.data.control.props.capability, "vision")
             end)
 
+            test.it("describes the finite provider timeout default", function()
+                local setting = assert(registry.get("kickside.llm_ocr:setting.ocr_call_timeout_ms"))
+                test.eq(setting.data.default, 0)
+                test.contains(setting.data.description, "600 seconds when the provider has no configured timeout")
+            end)
+
             test.it("registers the universal stage and image OCR default", function()
                 local stage = registry.get("kickside.llm_ocr:stage.universal")
                 test.not_nil(stage)
