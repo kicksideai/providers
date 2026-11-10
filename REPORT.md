@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 # Memory structured output and uninstall
 
 Memory sends the common structured-output grammar to supported model providers. The complete bounded schema still determines each output budget and validates every decoded result. Length, range, pattern and collection constraints remain unchanged locally and appear as direct system-prompt instructions as well as schema descriptions.
