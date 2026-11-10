@@ -106,7 +106,7 @@ local function define_tests()
             end
         end)
 
-        test.it("reports job progress for every transcribed page of a batch", function()
+        test.it("preserves successful page text across batches when a page fails", function()
             set_setting("ocr_enabled", true)
             local upload_id = uuid_v4()
             local path = upload_id .. ".pdf"
@@ -121,20 +121,20 @@ local function define_tests()
                     metadata = { page = page } })
                 test.is_nil(err)
             end
-            local reports = 0
             local result = stage.run({ upload_id = upload_id, mime_type = "application/pdf", storage_id = STORAGE_ID }, {
                 batch_size = 2,
-                transcribe = function(bytes: string): (string, any?)
+                transcribe = function(bytes: string): (string?, any?)
                     if bytes:sub(-1) == "4" then return nil, "provider timeout" end
                     return "Text from page " .. bytes:sub(-1), nil
                 end,
-                report_progress = function(): (boolean, any?)
-                    reports = reports + 1
-                    return true, nil
-                end,
             })
             test.eq(result.metadata.ocr_pages, 4)
-            test.eq(reports, 5)
+            test.is_false(result.success)
+            local primary, err = artifact_parts_repo.read_primary_content(upload_id)
+            test.is_nil(err)
+            for _, page in ipairs({1, 2, 3, 5}) do
+                test.contains(primary.content, "Text from page " .. page)
+            end
         end)
 
         test.it("leaves the call timeout to the model provider unless one is configured", function()

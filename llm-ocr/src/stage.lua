@@ -219,28 +219,6 @@ local function build_should_continue(deps: any, params: any): () -> boolean
     return function(): boolean return true end
 end
 
--- Report each completed page to the processing job so a document whose pages
--- keep completing continues past one execution ceiling. An injected
--- deps.report_progress wins (tests); otherwise the job lease in params.cancel_ref
--- receives the report. With neither, progress has no receiver.
-local function build_report_progress(deps: any, params: any): () -> (boolean, string?)
-    if type(deps.report_progress) == "function" then
-        return function(): (boolean, string?)
-            local ok, err = deps.report_progress()
-            return ok ~= false, err and tostring(err) or nil
-        end
-    end
-    local ref = type(params.cancel_ref) == "table" and params.cancel_ref or nil
-    if ref and type(ref.job_id) == "string" and ref.job_id ~= "" and type(ref.lease_token) == "string" and ref.lease_token ~= "" then
-        return function(): (boolean, string?)
-            local _, err = jobs.report_progress(ref.job_id, {token = ref.lease_token, execution_seq = ref.execution_seq})
-            if err ~= nil then return false, tostring(err) end
-            return true, nil
-        end
-    end
-    return function(): (boolean, string?) return true, nil end
-end
-
 local function run(params: any, deps: any): any
     deps = type(deps) == "table" and deps or {}
     local transcribe = deps.transcribe
@@ -311,7 +289,6 @@ local function run(params: any, deps: any): any
     local configured_timeout = setting_int(SETTINGS_NS, "ocr_call_timeout_ms", DEFAULT_CALL_TIMEOUT_MS)
     local call_timeout: integer? = configured_timeout > 0 and configured_timeout or nil
     local should_continue = build_should_continue(deps, params)
-    local report_progress = build_report_progress(deps, params)
     local sections, page_errors = {}, {}
     local function transcribe_page(item: any): any
         local page = item.page
@@ -319,8 +296,6 @@ local function run(params: any, deps: any): any
         local bytes, read_err = artifact_content_repo.read_artifact_content(upload_id, page.artifact_id)
         if read_err or type(bytes) ~= "string" then return nil, tostring(read_err or "page image content is unavailable") end
         local text, ocr_err = transcribe(bytes, {mime = page.mime_type, model = model, prompt = user_prompt, timeout = call_timeout})
-        local reported, progress_err = report_progress()
-        if not reported then error("OCR progress report failed: " .. tostring(progress_err)) end
         if ocr_err then return nil, tostring(ocr_err) end
         if type(text) ~= "string" then return nil, "OCR returned invalid text" end
         return {page = item.index, text = text}
