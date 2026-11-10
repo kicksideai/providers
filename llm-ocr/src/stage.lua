@@ -54,9 +54,10 @@ local MAX_ERROR_DETAIL_BYTES = 2000
 -- batches and each batch's text is checkpointed as it completes -- a later failure
 -- or termination keeps the pages already transcribed.
 local DEFAULT_BATCH_SIZE = 4
--- Per-page OCR call budget. Larger than a chat call (a dense page is slow) but
--- still bounded, so a hung inference returns an error instead of pinning the job.
-local DEFAULT_CALL_TIMEOUT_MS = 120000
+-- Per-page OCR call timeout override; 0 leaves the call to the model provider's
+-- request timeout. A hung provider is bounded by that timeout and by the job's
+-- execution ceiling, which each completed page renews.
+local DEFAULT_CALL_TIMEOUT_MS = 0
 
 local log = logger:named("llm_ocr")
 
@@ -285,7 +286,8 @@ local function run(params: any, deps: any): any
     local model = setting_str("ocr_model", DEFAULT_MODEL)
     local user_prompt = setting_str("ocr_prompt", "")
     local batch_size = math.max(1, math.floor(tonumber(deps.batch_size) or setting_int(SETTINGS_NS, "ocr_batch_size", DEFAULT_BATCH_SIZE))) :: integer
-    local call_timeout = setting_int(SETTINGS_NS, "ocr_call_timeout_ms", DEFAULT_CALL_TIMEOUT_MS)
+    local configured_timeout = setting_int(SETTINGS_NS, "ocr_call_timeout_ms", DEFAULT_CALL_TIMEOUT_MS)
+    local call_timeout: integer? = configured_timeout > 0 and configured_timeout or nil
     local should_continue = build_should_continue(deps, params)
     local sections, page_errors = {}, {}
     local function transcribe_page(item: any): any

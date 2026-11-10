@@ -190,6 +190,10 @@ local function define_tests()
                     batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
                 test.eq(calls, sequence == 1 and 3 or 0)
                 test.eq(result.success, sequence == 1)
+                if sequence == 1 then
+                    test.eq(result.metadata.ocr_pages, 3)
+                    test.contains(primary_text(upload_id), "Scanned words")
+                end
                 local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
                 db:release()
                 test.is_nil(delete_err)
