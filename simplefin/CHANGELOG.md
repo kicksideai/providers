@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/kicksideai/providers/compare/simplefin-v0.1.17...simplefin-v0.1.18) (2026-11-10)
+
+
+### Bug Fixes
+
+* rebuild packages without baked default bindings ([#86](https://github.com/kicksideai/providers/issues/86)) ([9aa1692](https://github.com/kicksideai/providers/commit/9aa1692de34f52ccbeedc6e8630907867e831b70))
+
 ## [0.1.17](https://github.com/kicksideai/providers/compare/simplefin-v0.1.16...simplefin-v0.1.17) (2026-11-06)
 
 
