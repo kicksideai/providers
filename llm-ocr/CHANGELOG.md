@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.16...llm-ocr-v0.1.17) (2026-11-10)
+
+
+### Bug Fixes
+
+* **llm-ocr:** preserve page markers and mixed text layers ([#84](https://github.com/kicksideai/providers/issues/84)) ([8095439](https://github.com/kicksideai/providers/commit/8095439b8b80643200490dbee3029d695fb6fd7e))
+
 ## [0.1.16](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.15...llm-ocr-v0.1.16) (2026-11-06)
 
 
