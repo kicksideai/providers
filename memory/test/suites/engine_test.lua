@@ -7,6 +7,12 @@ local registry = require("registry")
 
 local function define_tests()
     test.describe("memory knowledge base engine", function()
+        test.it("supplies working host defaults for automatic installation", function()
+            for name, expected in pairs({ui_server="app:gateway", api_router="app:api", target_db="app:db"}) do
+                local entry, err=registry.get("kickside.memory:"..name)
+                test.is_nil(err); test.eq(entry.data.default, expected, name)
+            end
+        end)
 
         test.it("preserves a principal lookup failure while selecting recall scopes", function()
             local result, err = fixture.op("system:memory-recall", "recall_scope_failure", { agent_id = "agent:reader" })

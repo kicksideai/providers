@@ -13,7 +13,7 @@ class MemoryPackageTest(unittest.TestCase):
         migrations = ROOT / "memory/src/migrations"
         self.assertEqual(
             hashlib.sha256((migrations / "01_memory_schema.lua").read_bytes()).hexdigest(),
-            "7ae6d810cd10bc72121770b25192795adbbcc6cafeb342915326eb2a9be3a702",
+            "a3d49b0fc9bcf37f58a5fc3d538e5f5972de57897fa2584b85db4293715b3fd6",
         )
         self.assertEqual(
             hashlib.sha256((migrations / "_fn_01_memory_schema.lua").read_bytes()).hexdigest(),
@@ -22,6 +22,13 @@ class MemoryPackageTest(unittest.TestCase):
         self.assertEqual(
             hashlib.sha256((migrations / "_index.yaml").read_bytes()[:845]).hexdigest(),
             "5307cfe19c9d3c2f823b1da7de125e050fe35899c7806d2ecdac1cf3b1b1928d",
+        )
+
+    def test_published_forward_schema_is_immutable(self):
+        source = (ROOT / "memory/src/migrations/01_memory_schema.lua").read_bytes()
+        self.assertEqual(
+            hashlib.sha256(source.split(b"local DROP = {", 1)[0]).hexdigest(),
+            "26daa355c65233ba08720f9795f48eb0bd7947f215dfd7792ec3fb8444b4434e",
         )
 
     def test_one_published_memory_package(self):

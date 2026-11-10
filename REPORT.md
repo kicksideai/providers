@@ -5,12 +5,14 @@ Memory sends the common structured-output grammar to supported model providers. 
 
 Migration 05 removes the current memory tables during uninstall. Migration 01 removes any baseline tables still present. Neither down path recreates an older schema, and the forward migrations remain unchanged.
 
+Memory supplies default host bindings for its database, authenticated router and UI server so installing it as a dependency requires no memory-specific parameters. Explicit host bindings continue to take precedence.
+
 ## Validation
 
-The focused schema and migration tests fail before the fixes. The memory suites pass 347 tests on SQLite and PostgreSQL with the official runtime v0.3.59a. Lint and the package dry run pass. Real-model browser scenarios exercise capture, independent recall, deletion and uninstall on both engines.
+The focused schema and migration tests fail before the fixes. The package checksum records the corrected uninstall source and separately freezes the original forward schema bytes. The memory suites pass 348 tests on SQLite and PostgreSQL with the official runtime v0.3.59a. Lint and the package dry run pass. Real-model browser scenarios exercise capture, independent recall, deletion and uninstall on both engines.
 
 ## Compatibility
 
-Existing registry identities, methods, requirements, endpoints, event shapes and stored data remain unchanged. All original output-validation constraints and errors remain enforced. The new grammar helper is additive. Uninstall intentionally removes module-owned data and indexes; the shared vector extension remains installed. No forward migration changes or data-shape retirement occurs.
+Existing registry identities, methods, requirement identities, endpoints, event shapes and stored data remain unchanged. All original output-validation constraints and errors remain enforced. The new grammar helper is additive. Uninstall intentionally removes module-owned data and indexes; the shared vector extension remains installed. No forward migration changes or data-shape retirement occurs.
 
 No table write path or retention schedule changes. This change introduces no additional steady-state rows at either 10x or 100x load.
