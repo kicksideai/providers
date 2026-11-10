@@ -107,12 +107,12 @@ entries:
     kind: registry.entry
     meta:
       type: kickside.settings:definition
-      comment: Per-page OCR call timeout in milliseconds, bounded under the provider ceiling.
+      comment: Optional per-page OCR call timeout in milliseconds, bounded under the provider ceiling; 0 uses the model provider's request timeout.
     namespace: kickside.llm_ocr
     key: ocr_call_timeout_ms
     value_type: int
-    default: 120000
-    description: Maximum milliseconds a single page transcription call may run before it returns a timeout error instead of hanging.
+    default: 0
+    description: Maximum milliseconds a single page transcription call may run, including time queued at the model provider. 0 uses the model provider's configured request timeout.
     scope: global
     editable: true
     visible: true

@@ -9,10 +9,10 @@ local OCR_SYSTEM = "You are an OCR engine. Transcribe ALL text visible in the im
 
 local DEFAULT_USER = "Transcribe the text in this page."
 local DEFAULT_MAX_TOKENS = 4000
--- A dense page is slow, so OCR's per-call budget is larger than a chat call, but
--- always bounded: a hung inference returns a timeout error instead of pinning the
--- job. Values are milliseconds; the cap is the hard provider ceiling.
-local DEFAULT_TIMEOUT_MS = 120000
+-- A call's latency on a shared provider is admission wait plus generation, and
+-- a non-streamed request cannot tell them apart. Without an explicit timeout the
+-- model provider's configured request timeout governs the call; an explicit
+-- value (milliseconds) is bounded under the hard provider ceiling.
 local PROVIDER_TIMEOUT_CAP_MS = 600000
 
 -- Coerce a timeout into milliseconds. Accepts a number of milliseconds or a
@@ -33,9 +33,11 @@ local function to_ms(value: any): integer?
     return nil
 end
 
--- Bound the requested per-call timeout to a positive value under the provider cap.
-local function clamp_timeout_ms(requested_ms: any, cap_ms: integer): integer
-    local ms = to_ms(requested_ms) or DEFAULT_TIMEOUT_MS
+-- Bound an explicitly requested per-call timeout under the provider cap. Returns
+-- nil when no positive timeout is requested, leaving the provider's timeout.
+local function clamp_timeout_ms(requested_ms: any, cap_ms: integer): integer?
+    local ms = to_ms(requested_ms)
+    if ms == nil or ms <= 0 then return nil end
     if ms < 1000 then ms = 1000 end
     if ms > cap_ms then ms = cap_ms end
     return ms
@@ -72,14 +74,12 @@ local function new(runtime: any): any
             prompt.image_base64(mime, encoded),
         })
 
-        -- The call carries a bounded timeout (seconds) clamped under the provider
-        -- cap, so a hung inference fails fast rather than holding the job open.
         local timeout_ms = clamp_timeout_ms(opts.timeout, PROVIDER_TIMEOUT_CAP_MS)
         local response, gen_err = llm.generate(p, {
             model = model,
             temperature = 0,
             max_tokens = tonumber(opts.max_tokens) or DEFAULT_MAX_TOKENS,
-            timeout = math.ceil(timeout_ms / 1000),
+            timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil,
         })
         if gen_err or not response then
             return nil, "ocr: generate failed: " .. tostring(gen_err)

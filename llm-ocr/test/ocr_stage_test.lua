@@ -106,6 +106,58 @@ local function define_tests()
             end
         end)
 
+        test.it("reports job progress for every transcribed page of a batch", function()
+            set_setting("ocr_enabled", true)
+            local upload_id = uuid_v4()
+            local path = upload_id .. ".pdf"
+            write_file(path, "document fixture")
+            local _, upload_err = upload_record_repo.create(upload_id, "ocr-test-user", 16,
+                "application/pdf", STORAGE_ID, path, "documents", {}, "processing")
+            test.is_nil(upload_err)
+            for page = 1, 5 do
+                local _, err = artifact_content_repo.create_artifact({ upload_id = upload_id,
+                    kind = "image", role = "rendered-page", mime_type = "image/png",
+                    content = PNG .. tostring(page), storage_id = STORAGE_ID, ordinal = page,
+                    metadata = { page = page } })
+                test.is_nil(err)
+            end
+            local reports = 0
+            local result = stage.run({ upload_id = upload_id, mime_type = "application/pdf", storage_id = STORAGE_ID }, {
+                batch_size = 2,
+                transcribe = function(bytes: string): (string, any?)
+                    if bytes:sub(-1) == "4" then return nil, "provider timeout" end
+                    return "Text from page " .. bytes:sub(-1), nil
+                end,
+                report_progress = function(): (boolean, any?)
+                    reports = reports + 1
+                    return true, nil
+                end,
+            })
+            test.eq(result.metadata.ocr_pages, 4)
+            test.eq(reports, 5)
+        end)
+
+        test.it("leaves the call timeout to the model provider unless one is configured", function()
+            set_setting("ocr_enabled", true)
+            set_setting("ocr_images", true)
+            local calls, seen = 0, {}
+            stage.run(seed_image(uuid_v4(), "provider-timeout.png"), { transcribe = function(_, options)
+                calls = calls + 1
+                seen[calls] = options.timeout
+                return "text", nil
+            end })
+            set_setting("ocr_call_timeout_ms", 90000)
+            stage.run(seed_image(uuid_v4(), "configured-timeout.png"), { transcribe = function(_, options)
+                calls = calls + 1
+                seen[calls] = options.timeout
+                return "text", nil
+            end })
+            set_setting("ocr_call_timeout_ms", 0)
+            test.eq(calls, 2)
+            test.is_nil(seen[1])
+            test.eq(seen[2], 90000)
+        end)
+
         test.it("transcribes images with the installed default configuration", function()
             local params = seed_image(uuid_v4(), "default.png")
             local result = stage.run(params, { transcribe = function() return "NW-SMOKE-731", nil end })
@@ -123,7 +175,6 @@ local function define_tests()
             local empty = stage.run(params, { transcribe = function(bytes, options)
                 test.eq(bytes, PNG)
                 test.eq(options.mime, "image/png")
-                test.is_true(options.timeout > 0)
                 return "  ", nil
             end })
             test.is_false(empty.metadata.ocr_error)
