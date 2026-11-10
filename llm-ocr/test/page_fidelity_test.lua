@@ -43,15 +43,15 @@ return { run = test.run_cases(function()
             test.eq(#doc2md.markers(primary.content), 1)
             assert(storage:remove(path))
         end)
-        for _, mode in ipairs({"mixed", "text", "scan", "extracted", "uneven", "form", "large"}) do
+        for _, mode in ipairs({"mixed", "text", "scan", "extracted", "uneven", "form", "inline", "large"}) do
             test.it("keeps ordered pages and calls the model only for sparse pages: " .. mode, function()
                 local kinds, expected = {}, 0
-                local count = mode == "large" and 1025 or (mode == "extracted" and 12 or (mode == "form" and 1 or (mode == "uneven" and 4 or 6)))
+                local count = mode == "large" and 1025 or (mode == "extracted" and 12 or ((mode == "form" or mode == "inline") and 1 or (mode == "uneven" and 4 or 6)))
                 for page = 1, count do
                     kinds[page] = (mode == "text" or (mode == "mixed" and page % 2 == 1)
                         or (mode == "large" and page < count)) and "text" or "scan"
                     if mode == "uneven" then kinds[page] = page == 1 and "double" or (page == 2 and "blank" or "scan") end
-                    if mode == "form" then kinds[page] = "form" end
+                    if mode == "form" or mode == "inline" then kinds[page] = mode end
                     if kinds[page] ~= "text" then expected = expected + 1 end
                 end
                 local bytes = fixtures.pdf(kinds)
@@ -64,7 +64,7 @@ return { run = test.run_cases(function()
                 test.is_nil(upload_err)
                 local settings = assert(assert(contract.get("kickside.settings:settings")):open())
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_source_bytes", value = 0}).success)
-                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_page_bytes", value = (mode == "extracted" or mode == "uneven" or mode == "form") and 0 or 51200}).success)
+                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_page_bytes", value = (mode == "extracted" or mode == "uneven" or mode == "form" or mode == "inline") and 0 or 51200}).success)
                 test.is_true(processor.process(params).success)
                 local original = assert(parts.read_primary_content(id)).content
                 local originals = doc2md.markers(original)

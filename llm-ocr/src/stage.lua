@@ -114,10 +114,10 @@ local function image_page(upload_id: string): { any }
 end
 
 -- Rendered screenshots and extracted images share explicit page identity.
-local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): ({ any }, string, boolean)
+local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): ({ any }, string)
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     local content = not primary_err and type(primary) == "table" and type(primary.content) == "string" and primary.content or ""
-    if mime ~= "" and mime ~= "application/pdf" and content:match("%S") then return {}, content, false end
+    if mime ~= "" and mime ~= "application/pdf" and content:match("%S") then return {}, content end
 
     local candidates = page_images.page_set(upload_id, min_bytes)
     local text_pages = page_images.text_pages(content, primary and primary.metadata and primary.metadata.ocr_page_outcomes)
@@ -135,10 +135,10 @@ local function resolve_pages(upload_id: string, max_text: integer, min_bytes: in
                 selected[#selected + 1] = by_page[page.page] or {metadata = {page = page.page}}
             end
         end
-        return selected, content, true
+        return selected, content
     end
-    if not page_images.needs_ocr_text(content, #candidates, max_text) then return {}, content, false end
-    return candidates, content, false
+    if not page_images.needs_ocr_text(content, #candidates, max_text) then return {}, content end
+    return candidates, content
 end
 
 -- Commit page text and outcomes together on the primary artifact.
@@ -241,7 +241,6 @@ local function run(params: any, deps: any): any
     local mime = ((declared:match("^[^;]*") or ""):match("^%s*(.-)%s*$")) :: string
     local pages: { any } = {}
     local original: string = ""
-    local per_page = true
     if mime:sub(1, 6) == "image/" then
         -- SVG is markup, not a raster image. Trim the declared base type first so
         -- valid `image/svg+xml ; charset=utf-8` forms cannot bypass this guard.
@@ -249,7 +248,7 @@ local function run(params: any, deps: any): any
         if not setting_bool("ocr_images", true) then return { success = true } end
         pages = image_page(upload_id)
     else
-        pages, original, per_page = resolve_pages(upload_id, max_text, min_bytes, mime)
+        pages, original = resolve_pages(upload_id, max_text, min_bytes, mime)
     end
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
@@ -259,7 +258,7 @@ local function run(params: any, deps: any): any
     local previous = primary and primary.metadata and primary.metadata.ocr_page_outcomes or {}
     local outcomes, by_page = {}, {}
     for _, outcome in ipairs(previous) do by_page[outcome.page] = outcome end
-    local document_pages = per_page and page_images.text_pages(original) or {}
+    local document_pages = page_images.text_pages(original)
     local targets = {}
     for index, page in ipairs(pages) do
         local number = page_number(page, index)
@@ -301,7 +300,7 @@ local function run(params: any, deps: any): any
     end
     local function checkpoint(): (boolean, string?)
         local markdown
-        if per_page and #page_images.text_pages(original) > 0 then markdown = page_images.replace_pages(original, sections)
+        if #page_images.text_pages(original) > 0 then markdown = page_images.replace_pages(original, sections)
         else
             local replacements = {}
             for _, section in ipairs(sections) do replacements[section.page] = section.text end

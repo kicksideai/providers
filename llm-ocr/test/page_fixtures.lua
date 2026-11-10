@@ -56,6 +56,9 @@ local function pdf(kinds: { string }, first_page: integer?): string
                 extra = "/F " .. nested .. " 0 R "
                 content = stream("q 432 0 0 56 40 680 cm /I Do Q /F Do", "")
             end
+            if kind == "inline" then
+                content = stream("q 432 0 0 56 40 680 cm /I Do Q\nq 100 0 0 100 40 540 cm BI /W 1 /H 1 /CS /G /BPC 8 ID \127 EI Q", "")
+            end
             resource = "/XObject << /I " .. img .. " 0 R " .. extra .. ">>"
         end
         local id = add("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << " .. resource .. " >> /Contents " .. content .. " 0 R >>")

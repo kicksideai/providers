@@ -211,6 +211,41 @@ local function define_tests()
             test.eq(calls, 12, "legacy images keep the document-wide threshold decision")
         end)
 
+        test.it("preserves legacy page bodies on failures and partial retries", function()
+            local original = "<!-- page 1 -->\n\nOriginal first caption\n\n<!-- page 2 -->\n\nOriginal second caption"
+            local upload_id = seed_extracted(original, 2, true)
+            local params = {upload_id = upload_id, storage_id = STORAGE_ID}
+            local calls = 0
+            local first = stage.run(params, {batch_size = 1, transcribe = function()
+                calls = calls + 1
+                if calls == 2 then return nil, "vision request failed" end
+                return "First transcription", nil
+            end})
+            test.is_false(first.success)
+            test.eq(calls, 2)
+            local expected = "<!-- page 1 -->\n\nFirst transcription\n\n<!-- page 2 -->\n\nOriginal second caption"
+            test.eq(primary_text(upload_id), expected)
+            local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+            test.eq(primary.metadata.ocr_page_outcomes[1].status, "readable")
+            test.eq(primary.metadata.ocr_page_outcomes[2].status, "failed")
+            calls = 0
+            local failed_retry = stage.run(params, {transcribe = function()
+                calls = calls + 1
+                return nil, "vision request still fails"
+            end})
+            test.is_false(failed_retry.success)
+            test.eq(calls, 1)
+            test.eq(primary_text(upload_id), expected)
+            calls = 0
+            local retry = stage.run(params, {transcribe = function()
+                calls = calls + 1
+                return "Second transcription", nil
+            end})
+            test.is_true(retry.success)
+            test.eq(calls, 1)
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nFirst transcription\n\n<!-- page 2 -->\n\nSecond transcription")
+        end)
+
         test.it("retains sparse text when its image is missing or transcription fails", function()
             for _, images in ipairs({{}, {1}}) do
                 local original = "<!-- page 1 -->\n\nA short caption already extracted."
