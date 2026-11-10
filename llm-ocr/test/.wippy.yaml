@@ -21,6 +21,7 @@ workspace:
     kickside/component: ../../../kickside/core/component
     kickside/contract: ../../../kickside/core/contract
     kickside/core: ../../../kickside/core/core
+    kickside/pdf2image: ../../../converters/pdf2image
     kickside/doc2md: ../../../converters/doc2md
     kickside/execution: ../../../kickside/core/execution
     kickside/jobs: ../../../kickside/core/jobs
