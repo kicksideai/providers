@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.17...llm-ocr-v0.1.18) (2026-11-10)
+
+
+### Bug Fixes
+
+* **llm-ocr:** leave the page call timeout to the model provider ([#89](https://github.com/kicksideai/providers/issues/89)) ([dfa596c](https://github.com/kicksideai/providers/commit/dfa596ceaa01b4a3234a082c4f752c56e7085e5e))
+
 ## [0.1.17](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.16...llm-ocr-v0.1.17) (2026-11-10)
 
 
