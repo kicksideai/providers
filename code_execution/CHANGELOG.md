@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/kicksideai/providers/compare/code-execution-v0.1.26...code-execution-v0.1.27) (2026-11-10)
+
+
+### Bug Fixes
+
+* rebuild packages without baked default bindings ([#86](https://github.com/kicksideai/providers/issues/86)) ([9aa1692](https://github.com/kicksideai/providers/commit/9aa1692de34f52ccbeedc6e8630907867e831b70))
+
 ## [0.1.26](https://github.com/kicksideai/providers/compare/code-execution-v0.1.25...code-execution-v0.1.26) (2026-11-08)
 
 

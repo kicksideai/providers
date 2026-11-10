@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13](https://github.com/kicksideai/providers/compare/kb10-v0.2.12...kb10-v0.2.13) (2026-11-10)
+
+
+### Bug Fixes
+
+* **kb10:** index retrieval nodes without indexing source bodies ([#83](https://github.com/kicksideai/providers/issues/83)) ([5fa877c](https://github.com/kicksideai/providers/commit/5fa877c4d8f87e7cfd871f333c8a0b1845987fe9))
+
 ## [0.2.12](https://github.com/kicksideai/providers/compare/kb10-v0.2.11...kb10-v0.2.12) (2026-11-09)
 
 
