@@ -4,6 +4,7 @@ local uuid_v4 = require("uuid").v4
 local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
 local upload_record_repo = require("upload_record_repo")
+local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
 
@@ -21,16 +22,16 @@ local function fake_prompt(): any
     }
 end
 
-local function fake_llm(reply: any, err: any): any
-    return { generate = function(_prompt: any, options: any): (any, any)
+local function fake_llm(reply: any, err: any, finish_reason: string?): any
+    return { FINISH_REASON = llm.FINISH_REASON, generate = function(_prompt: any, options: any): (any, any)
         if err ~= nil then return nil, err end
-        return { result = type(reply) == "function" and reply(options) or reply }, nil
+        return { result = type(reply) == "function" and reply(options) or reply, finish_reason = finish_reason or llm.FINISH_REASON.STOP }, nil
     end }
 end
 
-local function ocr_with(reply: any, err: any): any
+local function ocr_with(reply: any, err: any, finish_reason: string?): any
     return ocr.new({
-        llm = fake_llm(reply, err),
+        llm = fake_llm(reply, err, finish_reason),
         prompt = fake_prompt(),
         base64 = { encode = function(value: any): (any, any) return value, nil end },
     })
@@ -153,6 +154,14 @@ local function define_tests()
             test.not_nil(model_err)
         end)
 
+        test.it("fails a generation that stops at the token limit", function()
+            local text, err = ocr_with("PAGE HEADER\n" .. string.rep(".", 200), nil, "length").transcribe(
+                "img", { model = "class:fast" })
+            test.is_nil(text)
+            test.not_nil(err)
+            test.is_true(tostring(err):find("token limit", 1, true) ~= nil, tostring(err))
+        end)
+
         test.it("surfaces a generation error", function()
             local text, err = ocr_with(nil, "model exploded").transcribe("img", { model = "class:fast" })
             test.is_nil(text)
@@ -248,6 +257,23 @@ local function define_tests()
             test.is_true(retry.success)
             test.eq(calls, 1)
             test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nFirst transcription\n\n<!-- page 2 -->\n\nSecond transcription")
+        end)
+
+        test.it("records a length-cut transcription as a failed page and retries it", function()
+            local upload_id = seed("", {1})
+            local params = {upload_id = upload_id, storage_id = STORAGE_ID}
+            local cut = stage.run(params, {transcribe = ocr_with("PAGE HEADER", nil, "length").transcribe})
+            test.is_false(cut.success)
+            test.eq(cut.metadata.ocr_error, "transcription_failed")
+            test.eq(cut.metadata.ocr_pages, 0)
+            local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+            test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+            test.eq(primary.metadata.ocr_page_outcomes[1].error, "transcription_failed")
+            test.is_nil(primary.content:find("PAGE HEADER", 1, true))
+            local retry = stage.run(params, {transcribe = ocr_with("PAGE HEADER\n\nFull page body.").transcribe})
+            test.is_true(retry.success)
+            test.eq(retry.metadata.ocr_page_outcomes[1].status, "readable")
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nPAGE HEADER\n\nFull page body.")
         end)
 
         test.it("retains sparse text when its image is missing or transcription fails", function()

@@ -11,6 +11,7 @@ local parts = require("parts")
 local content = require("content")
 local stage = require("stage")
 local ocr = require("ocr")
+local llm = require("llm")
 local doc2md = require("doc2md")
 
 return { run = test.run_cases(function()
@@ -95,7 +96,7 @@ return { run = test.run_cases(function()
                     end
                 end
                 local calls, current_bytes = 0, ""
-                local model = ocr.new({llm = {generate = function()
+                local model = ocr.new({llm = {FINISH_REASON = llm.FINISH_REASON, generate = function()
                     calls = calls + 1
                     return {result = (mode == "extracted" or mode == "uneven") and assert(words_by_image[current_bytes]) or "SCANNED " .. images[calls].metadata.page}, nil
                 end}})
