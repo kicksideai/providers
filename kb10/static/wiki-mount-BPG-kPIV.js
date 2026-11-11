@@ -1,7 +1,7 @@
 import { defineComponent as Ce, openBlock as t, createElementBlock as a, toDisplayString as A, createElementVNode as l, createVNode as $, unref as g, createCommentVNode as O, ref as T, computed as R, watch as de, onMounted as it, createBlock as ie, normalizeClass as xe, Fragment as te, renderList as fe, createTextVNode as ce, normalizeStyle as $e, withModifiers as Re, withDirectives as Fe, vModelText as Ke, vModelSelect as rt, withCtx as be, onBeforeUnmount as Ze, onUnmounted as Nt, nextTick as lt, createStaticVNode as At, Transition as Ye, vModelCheckbox as Bt } from "vue";
 import { loadByTagName as st, api as Ie, host as Ue } from "@wippy-fe/proxy";
 import { a as Ut, u as zt } from "./wc-runtime-CNDpK4lj.js";
-import { q as Pt, r as Vt, t as Wt, d as bt, e as Ht, f as kt, v as Ee, w as at, x as ot, g as xt, u as wt, b as _t, _ as Te, y as ut, z as $t, A as Xt, B as Yt, C as Gt, D as Kt, j as Ct, k as It, l as Mt, o as Ge, p as St, F as jt, G as dt, H as Zt, N as vt, I as Qt, h as ft, E as pt, i as gt, s as Jt } from "./AddPanel.vue_vue_type_script_setup_true_lang-DRjgek6J.js";
+import { q as Pt, r as Vt, t as Wt, d as bt, e as Ht, f as kt, v as Ee, w as at, x as ot, g as xt, u as wt, b as _t, _ as Te, y as ut, z as $t, A as Xt, B as Yt, C as Gt, D as Kt, j as Ct, k as It, l as Mt, o as Ge, p as St, F as jt, G as dt, H as Zt, N as vt, I as Qt, h as ft, E as pt, i as gt, s as Jt } from "./AddPanel.vue_vue_type_script_setup_true_lang-Dq6kbAZP.js";
 import { Icon as P } from "@iconify/vue";
 import { _ as je, c as qt } from "./queryMode-B1MoVAIk.js";
 const en = { class: "kx-count" }, tn = /* @__PURE__ */ Ce({
@@ -2468,7 +2468,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
             treatment_prompt: ae.value
           } });
           try {
-            Ue?.toast?.("Treatment settings saved");
+            Ue?.toast?.("Merge settings saved");
           } catch {
           }
         } catch (i) {
@@ -2487,7 +2487,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
         try {
           await Ie.post(`/api/v1/knowledge/${e.kbId}/treatment`, {});
           try {
-            Ue?.toast?.("Treatment started — duplicate concepts will be merged.");
+            Ue?.toast?.("Merge started — duplicate concepts will be merged.");
           } catch {
           }
         } catch (i) {
@@ -2534,7 +2534,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
               }, null, 8, ["active"]),
               $(g(Te), {
                 icon: "tabler:wand",
-                label: "Treatment",
+                label: "Merge duplicate concepts",
                 active: G.value === "treatment",
                 onClick: n[2] || (n[2] = (f) => G.value = "treatment")
               }, null, 8, ["active"]),
@@ -2710,7 +2710,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
       }, 8, ["open"]),
       $(g(Ge), {
         open: G.value === "treatment",
-        title: "Concept treatment",
+        title: "Merge duplicate concepts",
         icon: "tabler:wand",
         onClose: n[21] || (n[21] = (f) => G.value = null)
       }, {
@@ -2723,7 +2723,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
               }, null, 512), [
                 [Bt, ve.value]
               ]),
-              n[29] || (n[29] = l("span", null, "Auto-merge duplicate concepts after each ingest", -1))
+              n[29] || (n[29] = l("span", null, "Automatically merge duplicate concepts after adding content", -1))
             ]),
             l("div", ss, [
               n[30] || (n[30] = l("span", { class: "ap-label" }, "Model", -1)),
@@ -2742,7 +2742,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
                 "onUpdate:modelValue": n[20] || (n[20] = (f) => ae.value = f),
                 rows: "3",
                 class: "ap-textarea",
-                placeholder: "Extra rules for the treatment agent…"
+                placeholder: "Extra rules for merging duplicate concepts…"
               }, null, 512), [
                 [Ke, ae.value]
               ])
@@ -2769,7 +2769,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
                 _: 1
               }, 8, ["disabled"])
             ]),
-            n[34] || (n[34] = l("p", { class: "gx-treat-hint" }, "Merges duplicate / near-duplicate concept nodes. Runs automatically after ingest when enabled, or on demand here.", -1))
+            n[34] || (n[34] = l("p", { class: "gx-treat-hint" }, "Merges concepts with the same or very similar meanings. Run it here, or enable automatic merging after adding content.", -1))
           ])
         ]),
         _: 1
@@ -2997,4 +2997,4 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
 export {
   ks as mountConfig
 };
-//# sourceMappingURL=wiki-mount--uxD0T_I.js.map
+//# sourceMappingURL=wiki-mount-BPG-kPIV.js.map

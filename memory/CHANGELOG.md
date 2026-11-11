@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.20](https://github.com/kicksideai/providers/compare/memory-v0.1.19...memory-v0.1.20) (2026-11-10)
+
+
+### Bug Fixes
+
+* **memory:** use portable model schemas and remove owned storage on uninstall ([#88](https://github.com/kicksideai/providers/issues/88)) ([cd7aab5](https://github.com/kicksideai/providers/commit/cd7aab5ef8887970ac528260d9c55c62ca392353))
+
+## [0.1.19](https://github.com/kicksideai/providers/compare/memory-v0.1.18...memory-v0.1.19) (2026-11-10)
+
+
+### Bug Fixes
+
+* rebuild packages without baked default bindings ([#86](https://github.com/kicksideai/providers/issues/86)) ([9aa1692](https://github.com/kicksideai/providers/commit/9aa1692de34f52ccbeedc6e8630907867e831b70))
+
+## [0.1.18](https://github.com/kicksideai/providers/compare/memory-v0.1.17...memory-v0.1.18) (2026-11-08)
+
+
+### Bug Fixes
+
+* **memory:** show readable details and concise failures ([#78](https://github.com/kicksideai/providers/issues/78)) ([d66ef42](https://github.com/kicksideai/providers/commit/d66ef42c0e092aedc78b8d30a5dbd92a216711be))
+
+## [0.1.17](https://github.com/kicksideai/providers/compare/memory-v0.1.16...memory-v0.1.17) (2026-11-07)
+
+
+### Bug Fixes
+
+* **memory:** size extraction per-statement allowance to the model output limit ([#71](https://github.com/kicksideai/providers/issues/71)) ([947d878](https://github.com/kicksideai/providers/commit/947d878642d1fcba34766dbeb8af8b72b0f0a35d))
+
 ## [0.1.16](https://github.com/kicksideai/providers/compare/memory-v0.1.15...memory-v0.1.16) (2026-11-06)
 
 

@@ -1,6 +1,6 @@
 import { u as t } from "./wc-runtime-KO3cNuNo.js";
 import { P as e } from "./primevue-plugin-CaP7wV_M.js";
-import { l as r, m as i } from "./lazy-l_o3DZGp.js";
+import { l as r, m as i } from "./lazy-Dyi12j7w.js";
 import "@iconify/vue";
 import { define as n } from "@wippy-fe/proxy";
 const m = { props: { type: "object", properties: { config: { type: "object", description: "Memory trait context { memory_id }.", default: {} } } } }, p = {

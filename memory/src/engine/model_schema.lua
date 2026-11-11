@@ -61,6 +61,40 @@ function M.compatible_topic(kind: string, keys: { any }): any
     return topic
 end
 
+-- Generation expresses the common provider grammar; the complete schema remains
+-- authoritative for output budgets and local validation.
+function M.output_shape(schema: any): (any, string)
+    local instructions = {}
+    local function build(node: any, path: string): any
+        local shape = { type = node.type, enum = node.enum, required = node.required,
+            additionalProperties = node.additionalProperties }
+        if node.properties then
+            shape.properties = {}
+            for key, child in pairs(node.properties) do shape.properties[key] = build(child, path .. "." .. key) end
+        end
+        if node.items then shape.items = build(node.items, path .. "[]") end
+        local rules = {}
+        if node.maxLength then
+            rules[#rules + 1] = "Use at most " .. tostring(node.maxLength) .. " characters; keep the text concise."
+        end
+        if node.minLength then rules[#rules + 1] = "The minimum character count is " .. tostring(node.minLength) .. "." end
+        if node.type == "string" then rules[#rules + 1] = "Do not include line breaks, tabs or other control characters." end
+        if node.maxItems then rules[#rules + 1] = "Return at most " .. tostring(node.maxItems) .. " items." end
+        if node.minItems then rules[#rules + 1] = "Return at least " .. tostring(node.minItems) .. " items." end
+        if node.minimum then rules[#rules + 1] = "The value must be at least " .. tostring(node.minimum) .. "." end
+        if node.maximum then rules[#rules + 1] = "The value must be at most " .. tostring(node.maximum) .. "." end
+        if node.pattern and node.pattern ~= CONTROL_FREE then rules[#rules + 1] = "Match this pattern: " .. node.pattern end
+        if #rules > 0 then
+            shape.description = table.concat(rules, " ")
+            instructions[#instructions + 1] = path .. ": " .. shape.description
+        end
+        return shape
+    end
+    local shape = build(schema, "$")
+    table.sort(instructions)
+    return shape, table.concat(instructions, "\n")
+end
+
 function M.validate(schema: any, value: any): boolean
     local encoded, encode_err = json.encode(value)
     if encode_err then return false end
@@ -94,7 +128,8 @@ function M.item_schema(allowed: { string }, value: any, cardinalities: { string 
     return { type = "object", additionalProperties = false, required = required, properties = properties }
 end
 
-function M.extraction_schema(event_ids: { string }, count: integer, evidence: string, keys: { any }?): any
+-- Each of count statements may yield per_statement items, per_statement lessons and one plan.
+function M.extraction_schema(event_ids: { string }, count: integer, per_statement: integer, evidence: string, keys: { any }?): any
     local event_id = M.enum_string(event_ids)
     local effective_time = M.bounded_string(M.LIMITS.valid_at)
     effective_time.pattern = [[^(|[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9]))$]]
@@ -115,8 +150,8 @@ function M.extraction_schema(event_ids: { string }, count: integer, evidence: st
     local lesson = M.item_schema({ types.KIND.LESSON }, M.bounded_string(M.LIMITS.value, 1), { "multi" }, event_id, effective_time)
     lesson.properties.key = M.compatible_topic(types.KIND.LESSON, keys or {})
     return { type = "object", additionalProperties = false, required = { "items", "lessons", "plans" }, properties = {
-        items = { type = "array", maxItems = count * M.LIMITS.per_statement, items = scalar },
-        lessons = { type = "array", maxItems = evidence == "document" and 0 or count * M.LIMITS.per_statement,
+        items = { type = "array", maxItems = count * per_statement, items = scalar },
+        lessons = { type = "array", maxItems = evidence == "document" and 0 or count * per_statement,
             items = lesson,
         },
         plans = { type = "array", maxItems = evidence == "document" and 0 or count, items = goal },

@@ -52,7 +52,7 @@ local function define_tests()
                 local _, err = fixture.op(user, "model_step", { step = "judge", candidate = { kind = kind },
                     items = neighbors, actions = { "ADD", "NOOP", "SUPERSEDE", "MERGE", "CONFLICT" } })
                 test.is_nil(err, tostring(err))
-                local schemas = fixture.script.requests(user, "structured_output")
+                local schemas = fixture.script.requests(user, "bounded_schema")
                 for i, other in ipairs(kinds) do
                     local compatible = kind == other or (kind ~= "plan" and kind ~= "lesson" and other ~= "plan" and other ~= "lesson")
                     test.eq(table.concat(schemas[#schemas].properties.relations.properties[tostring(i)].enum, ","),
@@ -131,7 +131,7 @@ local function define_tests()
             }, owner_id = user })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 0)
-            test.eq(#fixture.script.requests(user, "structured_output"), 0)
+            test.eq(#fixture.script.requests(user, "bounded_schema"), 0)
         end)
 
         test.it("constrains existing topic kind families during extraction and normalization", function()
@@ -146,7 +146,7 @@ local function define_tests()
                 {id = "event", role = "user", author = {kind = "user", id = user}, text = "I prefer tea."},
             }, owner_id = user})
             test.is_nil(err, tostring(err))
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             for _, case in ipairs({{"items", "result_format", "home_city"}, {"lessons", "project_goal", "result_format"},
                 {"plans", "home_city", "project_goal"}}) do
                 local key = schema.properties[case[1]].items.properties.key
@@ -161,7 +161,7 @@ local function define_tests()
                 candidates = {fixture.candidate("fact", "format", "summary", "Read the summary.", "event")}})
             test.is_nil(result)
             test.not_nil(mapping_err)
-            local requests = fixture.script.requests(user, "structured_output")
+            local requests = fixture.script.requests(user, "bounded_schema")
             local key = requests[2].properties.mappings.properties["1"].items.properties.key
             test.is_false(json.validate_string(key, assert(json.encode("result_format"))) == true)
             test.is_true(json.validate_string(key, assert(json.encode("home_city"))) == true)
@@ -216,7 +216,7 @@ local function define_tests()
             }, owner_id = user })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 0)
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             for _, collection in ipairs({ "items", "lessons", "plans" }) do
                 local clock = schema.properties[collection].items.properties.valid_at
                 for _, value in ipairs({ "confidence_0.99", "2026-10-29", "2026-13-01T00:00:00Z", "2026-10-29T99:00:00Z" }) do
@@ -247,7 +247,7 @@ local function define_tests()
                 test.is_true(prompt:find("Retain source specifications only.", 1, true) ~= nil)
                 test.is_nil(prompt:find("personal attributes and actionable goals", 1, true))
                 test.is_nil(prompt:find("from this agent's experience", 1, true))
-                local schema = fixture.script.requests(user, "structured_output")[1]
+                local schema = fixture.script.requests(user, "bounded_schema")[1]
                 test.eq(table.concat(schema.properties.items.items.properties.kind.enum, ","), "fact")
                 test.eq(table.concat(schema.properties.items.items.properties.event_id.enum, ","), "document")
                 test.eq(schema.properties.lessons.maxItems, 0)
@@ -262,7 +262,7 @@ local function define_tests()
                 { id = "document", role = "document", author = { kind = "document" }, text = "The scanner is rated IP67." },
             } })
             test.is_nil(err, tostring(err))
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             test.eq(table.concat(schema.properties.items.items.properties.kind.enum, ","), "fact")
             test.eq(schema.properties.lessons.maxItems, 0)
             test.eq(schema.properties.plans.maxItems, 0)
@@ -283,7 +283,7 @@ local function define_tests()
                 test.not_nil(capacity_err)
                 test.eq(capacity_err:kind(), errors.INVALID)
             end
-            test.eq(#fixture.script.requests(user, "structured_output"), 0)
+            test.eq(#fixture.script.requests(user, "bounded_schema"), 0)
         end)
 
         test.it("admits document facts without treating imported text as an owner profile", function()
@@ -321,8 +321,8 @@ local function define_tests()
             test.eq(result.items[1].value, "Oslo")
             test.eq(result.items[2].key, "occupation")
             test.eq(result.items[2].event_id, "event")
-            test.eq(#fixture.script.requests(user, "structured_output"), 1)
-            local request = fixture.script.requests(user, "structured_output")[1]
+            test.eq(#fixture.script.requests(user, "bounded_schema"), 1)
+            local request = fixture.script.requests(user, "bounded_schema")[1]
             test.eq(request.properties.items.items.properties.key.pattern, "^[a-z][a-z0-9_]{0,63}$")
             local prompt = fixture.script.prompts(user, "structured_output")[1]
             test.is_true(prompt.user:find("residence (single)", 1, true) ~= nil)
@@ -375,12 +375,12 @@ local function define_tests()
                 test.is_nil(err, tostring(err))
                 test.eq(#result.items, 0)
             end
-            test.eq(#fixture.script.requests(user, "structured_output"), 0)
+            test.eq(#fixture.script.requests(user, "bounded_schema"), 0)
         end)
 
         test.it("sends result schemas built only from keywords constrained decoding supports", function()
             local supported = { type = true, properties = true, required = true, additionalProperties = true, items = true,
-                maxItems = true, minItems = true, enum = true, maxLength = true, minLength = true, pattern = true, minimum = true, maximum = true }
+                enum = true, description = true }
             local function check(node: any, path: string)
                 for keyword, child in pairs(node) do
                     test.is_true(supported[keyword] == true, "unsupported schema keyword " .. keyword .. " at " .. path)
@@ -403,6 +403,26 @@ local function define_tests()
             local schemas = fixture.script.requests(user, "structured_output")
             test.eq(#schemas, 1)
             check(schemas[1], "$")
+            local content = schemas[1].properties.items.items.properties.content
+            test.contains(content.description, "Use at most 240 characters")
+            test.contains(content.description, "The minimum character count is 1")
+            test.contains(content.description, "Do not include line breaks, tabs or other control characters")
+            for _, step in ipairs({"normalize", "reflect", "judge"}) do
+                fixture.script.respond(user, "structured_output", {}, "length")
+                local result, call_err = fixture.op(user, "model_step", {step = step,
+                    candidates = {candidate("home_city", "Oslo")}, candidate = candidate("home_city", "Oslo"),
+                    items = {{id = "one", kind = "fact", key = "home_city", content = "Lives in Oslo."},
+                        {id = "two", kind = "fact", key = "transport", content = "Uses trains."}}})
+                test.is_nil(result)
+                test.eq(call_err:details().code, "model_output_truncated")
+                local requests = fixture.script.requests(user, "structured_output")
+                check(requests[#requests], step)
+                if step == "judge" then
+                    test.contains(requests[#requests].properties.reason.description, "Use at most 192 characters")
+                    local prompts = fixture.script.prompts(user, "structured_output")
+                    test.contains(prompts[#prompts].system, "$.reason: Use at most 192 characters")
+                end
+            end
         end)
 
         test.it("sizes output budgets by the bounded result schema and mapping count", function()
@@ -417,7 +437,7 @@ local function define_tests()
             test.is_nil(second_err, tostring(second_err))
             local options = fixture.script.requests(user, "structured_options")
             test.is_true(options[2].max_tokens > options[1].max_tokens, json.encode(options))
-            local schemas = fixture.script.requests(user, "structured_output")
+            local schemas = fixture.script.requests(user, "bounded_schema")
             test.eq(schemas[1].properties.mappings.properties["1"].maxItems, 4)
             test.eq(schemas[1].properties.mappings.properties["1"].items.properties.value.maxLength, 160)
             test.eq(#first.items, 1)
@@ -441,7 +461,7 @@ local function define_tests()
                     candidate = candidates[1], items = sources })
                 test.not_nil(err)
                 test.eq(err:details().code, "model_output_truncated")
-                local schemas = fixture.script.requests(user, "structured_output")
+                local schemas = fixture.script.requests(user, "bounded_schema")
                 local options = fixture.script.requests(user, "structured_options")
                 local schema = schemas[#schemas]
                 local budget = options[#options].max_tokens
@@ -478,7 +498,7 @@ local function define_tests()
                     items = { { id = "a", kind = "fact", key = "attribute", content = "An attribute." },
                         { id = "b", kind = "fact", key = "other", content = "Another attribute." } } })
                 test.not_nil(err)
-                local schemas = fixture.script.requests(user, "structured_output")
+                local schemas = fixture.script.requests(user, "bounded_schema")
                 local options = fixture.script.requests(user, "structured_options")
                 local budget = options[#options].max_tokens
                 for _, text in ipairs({ "𐍈", "界", '"', "\\" }) do
@@ -557,7 +577,7 @@ local function define_tests()
                     test.is_nil(result, step .. " accepts U+" .. tostring(control))
                     test.not_nil(err)
                     test.eq(err:details().code, "model_output_malformed")
-                    local schemas = fixture.script.requests(user, "structured_output")
+                    local schemas = fixture.script.requests(user, "bounded_schema")
                     check(schemas[#schemas])
                 end
             end
@@ -593,6 +613,73 @@ local function define_tests()
             test.is_true(tostring(err):find("requires a positive output limit", 1, true) ~= nil, tostring(err))
         end)
 
+        test.it("admits a 4096-token extraction model on creation and update", function()
+            local user = fixture.user()
+            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = "test-4k" })
+            test.is_nil(capacity_err, tostring(capacity_err))
+            test.eq(capacity, 1)
+            local id, create_err = fixture.try_memory(user, { extraction_model = "test-4k" })
+            test.is_nil(create_err, tostring(create_err))
+            test.not_nil(id)
+            local other = fixture.memory(user)
+            local updated, update_err = fixture.op(user, "update_config", { component_id = other,
+                config = { extraction_model = "test-4k" } })
+            test.is_nil(update_err, tostring(update_err))
+            test.not_nil(updated)
+            local stored = fixture.op(user, "store", { component_id = other })
+            test.eq(stored.config.extraction_model, "test-4k")
+        end)
+
+        test.it("sizes items and lessons per statement to the largest allowance within the output limit", function()
+            local user = fixture.user()
+            local allowances = {}
+            for _, spec in ipairs({ { model = "test-4k", limit = 4096 }, { model = "test-bounded", limit = 8192 },
+                { model = "test-fast", limit = 32768 } }) do
+                fixture.script.respond(user, "structured_output", {}, "length")
+                local _, err = fixture.op(user, "model_step", { model = spec.model, step = "extract",
+                    span = { { id = string.rep("e", 36), role = "user", author = {kind = "user", id = user}, text = "An attribute." } } })
+                test.not_nil(err)
+                test.eq(err:details().code, "model_output_truncated")
+                local schemas = fixture.script.requests(user, "bounded_schema")
+                local schema = schemas[#schemas]
+                local allowance = schema.properties.items.maxItems
+                test.eq(schema.properties.lessons.maxItems, allowance)
+                test.eq(schema.properties.plans.maxItems, 1)
+                test.is_true(allowance >= 1 and allowance <= 4)
+                local options = fixture.script.requests(user, "structured_options")
+                local budget = options[#options].max_tokens
+                test.is_true(budget <= spec.limit)
+                test.is_true(budget >= math.min(spec.limit, #json.encode(maximal(schema, "𐍈"))))
+                test.is_true(#json.encode(maximal(schema, "a")) <= spec.limit, spec.model .. " allowance exceeds the output limit")
+                if allowance < 4 then
+                    schema.properties.items.maxItems = allowance + 1
+                    schema.properties.lessons.maxItems = allowance + 1
+                    test.is_true(#json.encode(maximal(schema, "a")) > spec.limit, spec.model .. " allowance is below the output limit")
+                end
+                allowances[spec.model] = allowance
+            end
+            test.eq(allowances["test-4k"], 2)
+            test.eq(allowances["test-bounded"], 4)
+            test.eq(allowances["test-fast"], 4)
+        end)
+
+        test.it("refuses a model below one minimal statement in capacity and extraction alike", function()
+            local user = fixture.user()
+            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = "test-small" })
+            test.is_nil(capacity)
+            test.not_nil(capacity_err)
+            test.eq(capacity_err:kind(), errors.INVALID)
+            test.is_true(tostring(capacity_err):find("output limit cannot hold one statement", 1, true) ~= nil, tostring(capacity_err))
+            local result, err = fixture.op(user, "model_step", { model = "test-small", step = "extract", span = {
+                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." },
+            } })
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.INVALID)
+            test.is_true(tostring(err):find("output limit cannot hold one statement", 1, true) ~= nil, tostring(err))
+            test.eq(#fixture.script.requests(user, "bounded_schema"), 0)
+        end)
+
         test.it("admits an 8192-token extraction model on creation and update", function()
             local user = fixture.user()
             local id, create_err = fixture.try_memory(user, { extraction_model = "test-bounded" })
@@ -622,7 +709,7 @@ local function define_tests()
                     local _, output_err = fixture.op(user, "model_step", { model = spec.model, step = "extract", span = batch })
                     test.not_nil(output_err)
                     test.eq(output_err:details().code, "model_output_truncated")
-                    local schemas = fixture.script.requests(user, "structured_output")
+                    local schemas = fixture.script.requests(user, "bounded_schema")
                     local ascii_bytes = #json.encode(maximal(schemas[#schemas], "a"))
                     test.is_true(count == capacity and ascii_bytes <= spec.limit or count > capacity and ascii_bytes > spec.limit,
                         "Typical ASCII byte measurement disagrees with statement capacity")
@@ -646,7 +733,7 @@ local function define_tests()
                     test.not_nil(err)
                     test.eq(err:details().code, "model_output_truncated")
                     test.is_true(err:retryable())
-                    local schemas = fixture.script.requests(user, "structured_output")
+                    local schemas = fixture.script.requests(user, "bounded_schema")
                     local options = fixture.script.requests(user, "structured_options")
                     local budget = options[#options].max_tokens
                     test.is_true(budget <= spec.limit)
@@ -682,7 +769,7 @@ local function define_tests()
                 test.eq(err:details().code, example.code or "model_output_malformed")
                 test.is_true(err:retryable())
             end
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             test.eq(schema.properties.items.items.properties.value.minLength, 1)
             test.eq(schema.properties.items.items.properties.content.minLength, 1)
         end)
@@ -715,7 +802,7 @@ local function define_tests()
                 test.eq(result.items.action, actions[first])
                 test.eq(table.concat(result.items.target_ids, ","), relation == "unrelated" and "" or "n1")
             end
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             test.eq(table.concat(schema.properties.relations.required, ","), "1,2,3,4,5")
             test.eq(table.concat(schema.properties.relations.properties["1"].enum, ","), table.concat(relations, ","))
             local prompt = fixture.script.prompts(user, "structured_output")[1]
@@ -770,7 +857,7 @@ local function define_tests()
                     candidate = candidate("home_city", "Oslo"), items = { { id = "a", kind = "profile_slot", key = "home_city", cardinality = "single" } } })
                 test.is_nil(err, tostring(err))
                 test.eq(result.items.action, "NOOP")
-                local schemas = fixture.script.requests(user, "structured_output")
+                local schemas = fixture.script.requests(user, "bounded_schema")
                 test.eq(table.concat(schemas[#schemas].properties.relations.properties["1"].enum, ","), example.values)
             end
         end)
@@ -803,7 +890,7 @@ local function define_tests()
                 test.eq(err:details().code, sources[2] == 1 and "model_output_invalid_reflection_grounding" or "model_output_malformed")
                 test.is_true(err:retryable())
             end
-            test.eq(#fixture.script.requests(user, "structured_output"), 3)
+            test.eq(#fixture.script.requests(user, "bounded_schema"), 3)
         end)
 
         test.it("builds a reflection cardinality schema without a stale single-value bound", function()
@@ -815,7 +902,7 @@ local function define_tests()
             } })
             test.is_nil(err, tostring(err))
             test.eq(#result.items, 0)
-            local schema = fixture.script.requests(user, "structured_output")[1]
+            local schema = fixture.script.requests(user, "bounded_schema")[1]
             local cardinality = schema.properties.items.items.properties.cardinality
             test.eq(table.concat(cardinality.enum, ","), "multi")
             test.eq(cardinality.maxLength, #"multi")

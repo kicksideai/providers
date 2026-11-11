@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.27](https://github.com/kicksideai/providers/compare/code-execution-v0.1.26...code-execution-v0.1.27) (2026-11-10)
+
+
+### Bug Fixes
+
+* rebuild packages without baked default bindings ([#86](https://github.com/kicksideai/providers/issues/86)) ([9aa1692](https://github.com/kicksideai/providers/commit/9aa1692de34f52ccbeedc6e8630907867e831b70))
+
+## [0.1.26](https://github.com/kicksideai/providers/compare/code-execution-v0.1.25...code-execution-v0.1.26) (2026-11-08)
+
+
+### Bug Fixes
+
+* **code_execution:** discover unrestricted tools without eager prompt catalogs ([#76](https://github.com/kicksideai/providers/issues/76)) ([76d8779](https://github.com/kicksideai/providers/commit/76d877959d6fa90fb82c1cd1c63f21b16b39c7e4))
+
 ## [0.1.25](https://github.com/kicksideai/providers/compare/code-execution-v0.1.24...code-execution-v0.1.25) (2026-11-06)
 
 

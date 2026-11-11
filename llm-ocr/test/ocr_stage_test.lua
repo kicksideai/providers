@@ -106,16 +106,68 @@ local function define_tests()
             end
         end)
 
+        test.it("preserves successful page text across batches when a page fails", function()
+            set_setting("ocr_enabled", true)
+            local upload_id = uuid_v4()
+            local path = upload_id .. ".pdf"
+            write_file(path, "document fixture")
+            local _, upload_err = upload_record_repo.create(upload_id, "ocr-test-user", 16,
+                "application/pdf", STORAGE_ID, path, "documents", {}, "processing")
+            test.is_nil(upload_err)
+            for page = 1, 5 do
+                local _, err = artifact_content_repo.create_artifact({ upload_id = upload_id,
+                    kind = "image", role = "rendered-page", mime_type = "image/png",
+                    content = PNG .. tostring(page), storage_id = STORAGE_ID, ordinal = page,
+                    metadata = { page = page } })
+                test.is_nil(err)
+            end
+            local result = stage.run({ upload_id = upload_id, mime_type = "application/pdf", storage_id = STORAGE_ID }, {
+                batch_size = 2,
+                transcribe = function(bytes: string): (string?, any?)
+                    if bytes:sub(-1) == "4" then return nil, "provider timeout" end
+                    return "Text from page " .. bytes:sub(-1), nil
+                end,
+            })
+            test.eq(result.metadata.ocr_pages, 4)
+            test.is_false(result.success)
+            local primary, err = artifact_parts_repo.read_primary_content(upload_id)
+            test.is_nil(err)
+            for _, page in ipairs({1, 2, 3, 5}) do
+                test.contains(primary.content, "Text from page " .. page)
+            end
+        end)
+
+        test.it("leaves the call timeout to the model provider unless one is configured", function()
+            set_setting("ocr_enabled", true)
+            set_setting("ocr_images", true)
+            local calls, seen = 0, {}
+            stage.run(seed_image(uuid_v4(), "provider-timeout.png"), { transcribe = function(_, options)
+                calls = calls + 1
+                seen[calls] = options.timeout
+                return "text", nil
+            end })
+            set_setting("ocr_call_timeout_ms", 90000)
+            stage.run(seed_image(uuid_v4(), "configured-timeout.png"), { transcribe = function(_, options)
+                calls = calls + 1
+                seen[calls] = options.timeout
+                return "text", nil
+            end })
+            set_setting("ocr_call_timeout_ms", 0)
+            test.eq(calls, 2)
+            test.is_nil(seen[1])
+            test.eq(seen[2], 90000)
+        end)
+
         test.it("transcribes images with the installed default configuration", function()
             local params = seed_image(uuid_v4(), "default.png")
             local result = stage.run(params, { transcribe = function() return "NW-SMOKE-731", nil end })
             test.eq(result.metadata.ocr_pages, 1)
             local primary, err = artifact_parts_repo.read_primary_content(params.upload_id)
             test.is_nil(err)
-            test.eq(primary.content, "NW-SMOKE-731")
+            test.eq(primary.content, "<!-- page 1 -->\n\nNW-SMOKE-731")
         end)
 
-        test.it("transcribes parameterized raster MIME and reports blank recognition before retry", function()
+        test.it("transcribes parameterized raster MIME and retains a blank outcome on retry", function()
             set_setting("ocr_enabled", true)
             set_setting("ocr_images", true)
             local params = seed_image(uuid_v4(), "parameterized.png")
@@ -123,17 +175,19 @@ local function define_tests()
             local empty = stage.run(params, { transcribe = function(bytes, options)
                 test.eq(bytes, PNG)
                 test.eq(options.mime, "image/png")
-                test.is_true(options.timeout > 0)
                 return "  ", nil
             end })
-            test.eq(empty.metadata.ocr_error, "no_text_detected")
+            test.is_false(empty.metadata.ocr_error)
+            test.eq(empty.metadata.ocr_page_outcomes[1].status, "blank")
             test.eq(image_count(params.upload_id), 1)
-            local result = stage.run(params, { transcribe = function() return "Receipt 42", nil end })
+            local calls = 0
+            local result = stage.run(params, { transcribe = function() calls = calls + 1; return "Receipt 42", nil end })
             test.is_false(result.metadata.ocr_error)
-            test.eq(result.metadata.ocr_pages, 1)
+            test.eq(result.metadata.ocr_pages, 0)
+            test.eq(calls, 0)
             local primary, err = artifact_parts_repo.read_primary_content(params.upload_id)
             test.is_nil(err)
-            test.eq(primary.content, "Receipt 42")
+            test.eq(primary.content, "<!-- page 1 -->")
             test.eq(primary.artifact.metadata.filename, "parameterized.png")
             test.eq(image_count(params.upload_id), 1)
         end)
@@ -159,7 +213,7 @@ local function define_tests()
             test.eq(result.metadata.ocr_pages, 1)
             local primary, err = artifact_parts_repo.read_primary_content(params.upload_id)
             test.is_nil(err)
-            test.eq(primary.content, "TOTAL 1250")
+            test.eq(primary.content, "<!-- page 1 -->\n\nTOTAL 1250")
             test.eq(primary.artifact.metadata.filename, "receipt.png")
             test.eq(primary.artifact.metadata.original_filename, "receipt.png")
             test.eq(primary.artifact.metadata.original_mime_type, "image/png")
@@ -173,7 +227,7 @@ local function define_tests()
             test.eq(image_count(params.upload_id), 1)
         end)
 
-        test.it("retries against the original image and updates the text primary", function()
+        test.it("keeps a readable image transcript without another model call", function()
             set_setting("ocr_enabled", true)
             set_setting("ocr_images", true)
             local params = seed_image(uuid_v4(), "retry.png")
@@ -185,10 +239,10 @@ local function define_tests()
             stage.run(params, { transcribe = transcribe })
             local result = stage.run(params, { transcribe = transcribe })
             test.eq(result.metadata.ocr_pages, 1)
-            test.eq(calls, 2)
+            test.eq(calls, 1)
             local primary, err = artifact_parts_repo.read_primary_content(params.upload_id)
             test.is_nil(err)
-            test.eq(primary.content, "second pass")
+            test.eq(primary.content, "<!-- page 1 -->\n\nfirst pass")
             test.eq(image_count(params.upload_id), 1)
         end)
 
@@ -199,7 +253,7 @@ local function define_tests()
             local result = stage.run(params, {
                 transcribe = function() return nil, "provider rejected vision request: unsupported image" end,
             })
-            test.eq(result.success, true)
+            test.eq(result.success, false)
             test.eq(result.metadata.ocr_error, "transcription_failed")
             test.contains(result.metadata._ocr_error_detail, "provider rejected vision request: unsupported image")
         end)
@@ -209,14 +263,14 @@ local function define_tests()
             set_setting("ocr_images", true)
             local params = seed_image(uuid_v4(), "throw.png")
             local thrown = stage.run(params, { transcribe = function() error("vision connection reset") end })
-            test.eq(thrown.success, true)
+            test.eq(thrown.success, false)
             test.eq(thrown.metadata.ocr_error, "transcription_failed")
             test.contains(thrown.metadata._ocr_error_detail, "vision connection reset")
             local checkpoint = stage.run(params, {
                 transcribe = function() return "recognized", nil end,
                 persist = function() return false, "transcript storage unavailable" end,
             })
-            test.eq(checkpoint.success, true)
+            test.eq(checkpoint.success, false)
             test.eq(checkpoint.metadata.ocr_error, "persist_failed")
             test.contains(checkpoint.metadata._ocr_error_detail, "transcript storage unavailable")
             test.eq(image_count(params.upload_id), 1)

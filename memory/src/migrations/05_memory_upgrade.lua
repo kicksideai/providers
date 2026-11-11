@@ -264,15 +264,30 @@ local SOURCES = {
     "CREATE INDEX idx_kickside_memory_cursors_owner_scope ON kickside_memory_cursors (component_id, owner_scope_key)",
 }
 
+local DROP = {
+    "DROP TABLE kickside_memory_run_sources",
+    "DROP TABLE kickside_memory_runs",
+    "DROP TABLE kickside_memory_cursors",
+    "DROP TABLE kickside_memory_embeddings",
+    "DROP TABLE kickside_memory_provenance",
+    "DROP TABLE kickside_memory_payloads",
+    "DROP TABLE kickside_memory_keys",
+    "DROP TABLE kickside_memory_items",
+    "DROP TABLE kickside_memory_stores",
+}
+
 return require("migration").define(function()
     migration("05 memory upgrade", function()
         database("postgres", function()
             up(function(db) run(db, POSTGRES); run(db, SOURCES) end)
-            down(function() error("memory schema migration is forward-only") end)
+            down(function(db) run(db, DROP) end)
         end)
         database("sqlite", function()
             up(function(db) run(db, SQLITE); run(db, SOURCES) end)
-            down(function() error("memory schema migration is forward-only") end)
+            down(function(db)
+                run(db, { "DROP TABLE kickside_memory_fts" })
+                run(db, DROP)
+            end)
         end)
     end)
 end)

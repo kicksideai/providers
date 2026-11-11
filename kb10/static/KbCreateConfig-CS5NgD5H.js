@@ -1,9 +1,9 @@
-import { defineComponent as qe, openBlock as l, createElementBlock as r, normalizeClass as J, createElementVNode as s, ref as d, computed as u, watch as re, onUnmounted as Te, onMounted as He, createVNode as k, unref as w, toDisplayString as f, Fragment as H, renderList as _e, createCommentVNode as c, createTextVNode as x, createBlock as Qe, withDirectives as Xe, vModelText as Je, withCtx as ke } from "vue";
+import { defineComponent as Ne, openBlock as l, createElementBlock as r, normalizeClass as J, createElementVNode as s, ref as d, computed as u, watch as re, onUnmounted as Ue, onMounted as He, createVNode as k, unref as w, toDisplayString as f, Fragment as H, renderList as _e, createCommentVNode as c, createTextVNode as x, createBlock as Qe, withDirectives as Xe, vModelText as Je, withCtx as ke } from "vue";
 import { Icon as Q } from "@iconify/vue";
 import { api as we, host as Ke, loadByTagName as Se } from "@wippy-fe/proxy";
-import { a as je, u as Ye } from "./wc-runtime-CNDpK4lj.js";
-import { _ as Me, a as Ge } from "./queryMode-B1MoVAIk.js";
-const We = ["disabled", "aria-checked"], X = /* @__PURE__ */ qe({
+import { a as je, u as Ge } from "./wc-runtime-CNDpK4lj.js";
+import { _ as Ee, a as We } from "./queryMode-B1MoVAIk.js";
+const Ye = ["disabled", "aria-checked"], X = /* @__PURE__ */ Ne({
   __name: "ToggleSwitch",
   props: {
     modelValue: { type: Boolean },
@@ -21,17 +21,17 @@ const We = ["disabled", "aria-checked"], X = /* @__PURE__ */ qe({
       onClick: y[0] || (y[0] = (R) => S("update:modelValue", !m.modelValue))
     }, [...y[1] || (y[1] = [
       s("span", { class: "cx-switch-knob" }, null, -1)
-    ])], 10, We));
+    ])], 10, Ye));
   }
 }), Ze = 24, et = 60;
 function Ve(m, v) {
   return m.trim().length <= Ze && (v || "").trim().length <= et;
 }
-const Ae = 3e3, tt = 3e4, st = { resummarize: "documents", reembed: "nodes" };
-function Ce(m, v) {
+const Ce = 3e3, tt = 3e4, st = { resummarize: "documents", reembed: "nodes" };
+function Ae(m, v) {
   return m?.response?.data?.error || m?.message || v;
 }
-function Ee(m) {
+function Me(m) {
   Ke.handleError(m?.response?.status === 401 ? "auth-expired" : "other", m);
 }
 function nt(m) {
@@ -40,19 +40,19 @@ function nt(m) {
     return S.value[a] || v.value[a]?.in_flight === !0;
   }
   const F = u(() => R("resummarize") || R("reembed"));
-  let B = !1, M = 0, h = null;
+  let B = !1, E = 0, h = null;
   function b(a) {
-    return !B && a === M;
+    return !B && a === E;
   }
   function V() {
     h !== null && (clearTimeout(h), h = null);
   }
   function $(a, p) {
     V(), b(a) && (h = setTimeout(() => {
-      A(a, p);
+      C(a, p);
     }, p));
   }
-  async function A(a, p = Ae) {
+  async function C(a, p = Ce) {
     V();
     const o = m();
     if (!(!o || !b(a))) {
@@ -66,20 +66,20 @@ function nt(m) {
         }, y.value = "";
       } catch (i) {
         if (!b(a)) return;
-        y.value = Ce(i, "could not read maintenance status"), Ee(i), $(a, Math.min(p * 2, tt));
+        y.value = Ae(i, "could not read maintenance status"), Me(i), $(a, Math.min(p * 2, tt));
         return;
       }
-      F.value && $(a, Ae);
+      F.value && $(a, Ce);
     }
   }
   function L() {
-    const a = ++M;
-    V(), v.value = { resummarize: null, reembed: null }, g.value = { resummarize: "", reembed: "" }, y.value = "", m() && A(a);
+    const a = ++E;
+    V(), v.value = { resummarize: null, reembed: null }, g.value = { resummarize: "", reembed: "" }, y.value = "", m() && C(a);
   }
   async function I(a) {
     const p = m();
     if (!p || F.value) return;
-    const o = M;
+    const o = E;
     S.value = { ...S.value, [a]: !0 }, g.value = { ...g.value, [a]: "" };
     try {
       const { data: i } = await we.post(`/api/v1/kb10/${p}/${a}`);
@@ -88,14 +88,14 @@ function nt(m) {
       i.run && (v.value = { ...v.value, [a]: i.run });
     } catch (i) {
       if (!b(o)) return;
-      g.value = { ...g.value, [a]: Ce(i, "could not start the run") }, Ee(i);
+      g.value = { ...g.value, [a]: Ae(i, "could not start the run") }, Me(i);
       return;
     } finally {
       b(o) && (S.value = { ...S.value, [a]: !1 });
     }
-    A(o);
+    C(o);
   }
-  function q(a) {
+  function N(a) {
     const p = g.value[a];
     if (p) return { text: p, tone: "err" };
     if (S.value[a]) return { text: "Starting…", tone: "" };
@@ -105,9 +105,9 @@ function nt(m) {
       tone: "ok"
     } : { text: "", tone: "" } : { text: "", tone: "" };
   }
-  return re(m, L, { immediate: !0 }), Te(() => {
+  return re(m, L, { immediate: !0 }), Ue(() => {
     B = !0, V();
-  }), { runs: v, statusError: y, running: R, anyBusy: F, start: I, statusLine: q };
+  }), { runs: v, statusError: y, running: R, anyBusy: F, start: I, statusLine: N };
 }
 const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-h" }, ot = { class: "cx-field" }, it = {
   key: 0,
@@ -124,10 +124,10 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
 }, bt = { class: "cx-sub" }, xt = { class: "cx-sub-h" }, ht = { class: "cx-sub-t" }, _t = { class: "st-hint" }, kt = {
   key: 1,
   class: "cx-req"
-}, wt = { class: "cx-row" }, St = { class: "cx-field" }, Mt = ["value"], Vt = { class: "cx-field" }, At = ["value"], Ct = {
+}, wt = { class: "cx-row" }, St = { class: "cx-field" }, Et = ["value"], Vt = { class: "cx-field" }, Ct = ["value"], At = {
   key: 0,
   class: "cx-field"
-}, Et = { class: "cx-label" }, qt = ["value"], Nt = {
+}, Mt = { class: "cx-label" }, Nt = ["value"], qt = {
   key: 0,
   class: "st-hint"
 }, $t = {
@@ -145,16 +145,16 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
 }, Pt = { class: "cx-sub" }, Ft = { class: "cx-sub-h" }, Dt = {
   key: 0,
   class: "cx-field"
-}, Ot = ["value"], Ut = { class: "cx-group" }, Tt = { class: "cx-group-h" }, Ht = { class: "cx-field" }, Qt = ["value"], Xt = { class: "cx-toggle" }, Jt = { class: "cx-toggle" }, Kt = {
+}, Ot = ["value"], Tt = { class: "cx-group" }, Ut = { class: "cx-group-h" }, Ht = { class: "cx-field" }, Qt = ["value"], Xt = { class: "cx-toggle" }, Jt = { class: "cx-toggle" }, Kt = {
   key: 0,
   class: "st-hint"
 }, jt = {
   key: 1,
   class: "cx-err"
-}, Yt = {
+}, Gt = {
   key: 2,
   class: "cx-field"
-}, Gt = { class: "cx-row" }, Wt = { class: "cx-field" }, Zt = ["value"], es = {
+}, Wt = { class: "cx-row" }, Yt = { class: "cx-field" }, Zt = ["value"], es = {
   key: 0,
   class: "cx-field"
 }, ts = ["value"], ss = {
@@ -169,81 +169,90 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
 }, is = { class: "cx-group-h" }, us = { class: "cx-lead" }, ds = {
   key: 0,
   class: "cx-err"
-}, cs = { class: "cx-maint-row" }, ms = "class:embed", N = "class:fast", bs = /* @__PURE__ */ qe({
+}, cs = { class: "cx-maint-row" }, ms = "class:embed", q = "class:fast", bs = /* @__PURE__ */ Ne({
   __name: "KbCreateConfig",
   setup(m) {
-    const v = je(), S = Ye(), g = u(() => v.value.config || {}), y = u(() => !!g.value.edit), R = u(() => y.value && g.value.id || ""), F = u(() => g.value.kb_type || ""), B = u(() => F.value !== "document"), M = d(""), h = d(!0), b = d(N), V = d(N), $ = d(""), A = d(""), L = d(!1), I = d(N), q = d({}), a = d(""), p = d(!1), o = d(!1), i = d(!1), D = d(25), j = u(() => g.value.config?.tuning), O = d(""), P = d(null), _ = d("built-in"), z = d("");
-    function Ne(t) {
+    const v = je(), S = Ge(), g = u(() => v.value.config || {}), y = u(() => !!g.value.edit), R = u(() => y.value && g.value.id || ""), F = u(() => g.value.kb_type || ""), B = u(() => F.value !== "document"), E = d(""), h = d(!0), b = d(q), V = d(q), $ = d(""), C = d(""), L = d(!1), I = d(q), N = d({}), a = d(""), p = d(!1), o = d(!1), i = d(!1), D = d(25), j = u(() => g.value.config?.tuning), O = d(""), P = d(null), _ = d("built-in"), z = d("");
+    function qe(t) {
       const e = t.detail, n = e && Array.isArray(e.selected) ? e.selected.map(String) : [];
       z.value = n[0] || "";
     }
-    const Y = u(() => {
+    const G = u(() => {
       const e = g.value.config?.config_schema?.properties;
-      return e ? Object.entries(e).map(([n, E]) => ({ key: n, ...E })).sort((n, E) => (n.order ?? 100) - (E.order ?? 100) || n.key.localeCompare(E.key)) : [];
-    }), $e = ["summary_prompt", "summary_max_chars", "query_strategy", "self_tuning", "self_tuning_query_interval"], G = u(() => Y.value.filter((t) => !$e.includes(t.key))), Le = u(() => G.value.filter((t) => t.format === "textarea")), oe = u(() => G.value.filter((t) => t.format !== "textarea")), U = u(() => Y.value.find((t) => t.key === "summary_prompt")), C = u(() => Y.value.find((t) => t.key === "summary_max_chars")), Re = u(() => {
-      const t = C.value;
+      return e ? Object.entries(e).map(([n, M]) => ({ key: n, ...M })).sort((n, M) => (n.order ?? 100) - (M.order ?? 100) || n.key.localeCompare(M.key)) : [];
+    }), $e = [
+      "summary_prompt",
+      "summary_max_chars",
+      "analysis_model",
+      "query_strategy",
+      "self_tuning",
+      "self_tuning_query_interval",
+      "enable_reranking",
+      "extra_prompt"
+    ], W = u(() => G.value.filter((t) => !$e.includes(t.key))), Le = u(() => W.value.filter((t) => t.format === "textarea")), oe = u(() => W.value.filter((t) => t.format !== "textarea")), T = u(() => G.value.find((t) => t.key === "summary_prompt")), A = u(() => G.value.find((t) => t.key === "summary_max_chars")), Re = u(() => {
+      const t = A.value;
       return t ? `${t.label || t.key} characters` : "";
-    }), K = u(() => C.value?.minimum ?? 0), W = u(() => C.value?.maximum), Ie = u(() => {
-      const t = C.value?.default;
+    }), K = u(() => A.value?.minimum ?? 0), Y = u(() => A.value?.maximum), Ie = u(() => {
+      const t = A.value?.default;
       return typeof t == "number" ? String(t) : "";
     }), Z = u(() => {
-      const t = A.value.trim();
+      const t = C.value.trim();
       if (t === "") return null;
       const e = Number(t);
       if (!Number.isInteger(e)) return null;
-      const n = W.value;
+      const n = Y.value;
       return e < K.value || n !== void 0 && e > n ? null : e;
     }), ie = u(() => {
-      if (A.value.trim() === "" || Z.value !== null) return "";
-      const e = W.value;
+      if (C.value.trim() === "" || Z.value !== null) return "";
+      const e = Y.value;
       return e === void 0 ? `Summary length must be a whole number of ${K.value} characters or more.` : `Summary length must be a whole number between ${K.value} and ${e} characters.`;
     });
     function ze() {
       const t = g.value.config || {};
-      M.value = g.value.embedding_model || ms;
-      const e = typeof t.summary_model == "string" ? t.summary_model : "", n = typeof t.chunk_enrichment_model == "string" ? t.chunk_enrichment_model : "", E = t.summary_model !== void 0 || t.chunk_enrichment_model !== void 0;
-      h.value = B.value ? !0 : E ? !!n : !0, b.value = e || N, V.value = n || N, $.value = typeof t.summary_prompt == "string" ? t.summary_prompt : "", A.value = y.value && typeof t.summary_max_chars == "number" ? String(t.summary_max_chars) : "", L.value = t.embed_images === !0, I.value = typeof t.image_caption_model == "string" && t.image_caption_model ? t.image_caption_model : N;
+      E.value = g.value.embedding_model || ms;
+      const e = typeof t.summary_model == "string" ? t.summary_model : "", n = typeof t.chunk_enrichment_model == "string" ? t.chunk_enrichment_model : "", M = t.summary_model !== void 0 || t.chunk_enrichment_model !== void 0;
+      h.value = B.value ? !0 : M ? !!n : !0, b.value = e || q, V.value = n || q, $.value = typeof t.summary_prompt == "string" ? t.summary_prompt : "", C.value = y.value && typeof t.summary_max_chars == "number" ? String(t.summary_max_chars) : "", L.value = t.embed_images === !0, I.value = typeof t.image_caption_model == "string" && t.image_caption_model ? t.image_caption_model : q;
       const xe = {};
-      for (const le of G.value) {
+      for (const le of W.value) {
         const he = t[le.key];
         xe[le.key] = he !== void 0 ? he : le.default;
       }
-      q.value = xe, a.value = (typeof t.retrieval_model == "string" ? t.retrieval_model : "") || (typeof t.analysis_model == "string" ? t.analysis_model : ""), p.value = t.enable_reranking === !0, o.value = t.query_strategy === "hyde", i.value = t.self_tuning === !0, D.value = typeof t.self_tuning_query_interval == "number" ? t.self_tuning_query_interval : 25, O.value = typeof t.extra_prompt == "string" ? t.extra_prompt : "";
+      N.value = xe, a.value = (typeof t.retrieval_model == "string" ? t.retrieval_model : "") || (typeof t.analysis_model == "string" ? t.analysis_model : ""), p.value = t.enable_reranking === !0, o.value = t.query_strategy === "hyde", i.value = t.self_tuning === !0, D.value = typeof t.self_tuning_query_interval == "number" ? t.self_tuning_query_interval : 25, O.value = typeof t.extra_prompt == "string" ? t.extra_prompt : "";
       const ae = Number(t.max_retrieval_iterations);
       P.value = Number.isFinite(ae) && ae > 0 ? ae : null, _.value = t.query_driver === "agentic" ? "agentic" : "built-in", z.value = typeof t.query_agent == "string" ? t.query_agent : "";
     }
     function ee() {
-      const t = { ...q.value };
-      return h.value ? (t.summary_model = b.value || N, t.chunk_enrichment_model = V.value || N, t.summary_prompt = $.value.trim(), Z.value !== null ? t.summary_max_chars = Z.value : delete t.summary_max_chars) : (delete t.summary_model, delete t.chunk_enrichment_model, delete t.summary_prompt, delete t.summary_max_chars), L.value ? (t.embed_images = !0, t.image_caption_model = I.value || N) : (t.embed_images = !1, delete t.image_caption_model), Ge(t, a.value), t.query_strategy = o.value ? "hyde" : "plain", t.self_tuning = i.value, i.value && (t.self_tuning_query_interval = D.value), p.value && _.value !== "agentic" && (t.enable_reranking = !0), t.extra_prompt = O.value.trim(), _.value === "agentic" && P.value && (t.max_retrieval_iterations = P.value), t.query_driver = _.value, _.value === "agentic" && z.value ? t.query_agent = z.value : delete t.query_agent, t;
+      const t = { ...N.value };
+      return h.value ? (t.summary_model = b.value || q, t.chunk_enrichment_model = V.value || q, t.summary_prompt = $.value.trim(), Z.value !== null ? t.summary_max_chars = Z.value : delete t.summary_max_chars) : (delete t.summary_model, delete t.chunk_enrichment_model, delete t.summary_prompt, delete t.summary_max_chars), L.value ? (t.embed_images = !0, t.image_caption_model = I.value || q) : (t.embed_images = !1, delete t.image_caption_model), We(t, a.value), t.query_strategy = o.value ? "hyde" : "plain", t.self_tuning = i.value, i.value && (t.self_tuning_query_interval = D.value), t.enable_reranking = p.value && _.value !== "agentic", t.extra_prompt = O.value.trim(), _.value === "agentic" && P.value && (t.max_retrieval_iterations = P.value), t.query_driver = _.value, _.value === "agentic" && z.value ? t.query_agent = z.value : delete t.query_agent, t;
     }
     function ue() {
-      S("config-changed", { embedding_model: M.value, config: ee() });
+      S("config-changed", { embedding_model: E.value, config: ee() });
     }
-    function T(t) {
+    function U(t) {
       const e = t.detail;
       return typeof e == "string" ? e : e && typeof e == "object" && "value" in e ? String(e.value) : "";
     }
     function Be(t) {
-      M.value = T(t);
+      E.value = U(t);
     }
     function Pe(t) {
-      b.value = T(t);
+      b.value = U(t);
     }
     function Fe(t) {
-      V.value = T(t);
+      V.value = U(t);
     }
     function de(t, e) {
       if (t.type === "integer") {
         const n = Number.parseInt(e, 10);
-        q.value[t.key] = Number.isNaN(n) ? void 0 : n;
+        N.value[t.key] = Number.isNaN(n) ? void 0 : n;
       } else if (t.type === "number") {
         const n = Number.parseFloat(e);
-        q.value[t.key] = Number.isNaN(n) ? void 0 : n;
+        N.value[t.key] = Number.isNaN(n) ? void 0 : n;
       } else
-        q.value[t.key] = e;
+        N.value[t.key] = e;
     }
     function ce(t) {
-      const e = q.value[t];
+      const e = N.value[t];
       return e == null ? "" : String(e);
     }
     const me = d(""), ve = u(() => JSON.stringify(ee()) !== me.value), {
@@ -252,14 +261,14 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
       anyBusy: De,
       start: Oe,
       statusLine: fe
-    } = nt(() => R.value), Ue = u(() => !!R.value), te = u(() => De.value || ve.value), se = u(() => fe("resummarize")), ne = u(() => fe("reembed"));
+    } = nt(() => R.value), Te = u(() => !!R.value), te = u(() => De.value || ve.value), se = u(() => fe("resummarize")), ne = u(() => fe("reembed"));
     function ye(t) {
       te.value || Oe(t);
     }
     function be() {
       ze(), me.value = JSON.stringify(ee()), ue();
     }
-    return re(() => v.value.config, be), re([M, h, b, V, $, A, L, I, q, a, p, o, i, D, O, P, _, z], ue, { deep: !0 }), He(() => {
+    return re(() => v.value.config, be), re([E, h, b, V, $, C, L, I, N, a, p, o, i, D, O, P, _, z], ue, { deep: !0 }), He(() => {
       Se("wc-model-picker", { timeoutMs: 8e3 }).catch(() => {
       }), Se("wc-agent-picker", { timeoutMs: 8e3 }).catch(() => {
       }), be();
@@ -280,11 +289,11 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
               icon: "tabler:lock",
               "aria-hidden": "true"
             }),
-            s("span", ut, f(M.value || "—"), 1),
+            s("span", ut, f(E.value || "—"), 1),
             e[16] || (e[16] = s("span", { class: "st-hint" }, "fixed after creation", -1))
           ])) : (l(), r("wc-model-picker", {
             key: 1,
-            value: M.value,
+            value: E.value,
             capability: "embed",
             onSelect: Be
           }, null, 40, dt)),
@@ -303,7 +312,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
               max: n.maximum,
               step: n.type === "integer" ? 1 : void 0,
               value: ce(n.key),
-              onInput: (E) => de(n, E.target.value)
+              onInput: (M) => de(n, M.target.value)
             }, null, 40, vt),
             n.description ? (l(), r("p", pt, f(n.description), 1)) : c("", !0)
           ], 2))), 128))
@@ -317,7 +326,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
             class: "cx-input cx-textarea",
             rows: "3",
             value: String(ce(n.key) ?? ""),
-            onInput: (E) => de(n, E.target.value)
+            onInput: (M) => de(n, M.target.value)
           }, null, 40, ft),
           n.description ? (l(), r("p", yt, f(n.description), 1)) : c("", !0)
         ]))), 128)),
@@ -347,7 +356,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
                   value: b.value,
                   capability: "generate",
                   onSelect: Pe
-                }, null, 40, Mt),
+                }, null, 40, Et),
                 e[22] || (e[22] = s("p", { class: "st-hint" }, "Summarises each document before chunking.", -1))
               ]),
               s("div", Vt, [
@@ -356,13 +365,13 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
                   value: V.value,
                   capability: "generate",
                   onSelect: Fe
-                }, null, 40, At),
+                }, null, 40, Ct),
                 e[24] || (e[24] = s("p", { class: "st-hint" }, "Adds context to each chunk.", -1))
               ])
             ]),
-            U.value ? (l(), r("label", Ct, [
-              s("span", Et, [
-                x(f(U.value.label || U.value.key) + " ", 1),
+            T.value ? (l(), r("label", At, [
+              s("span", Mt, [
+                x(f(T.value.label || T.value.key) + " ", 1),
                 e[25] || (e[25] = s("span", { class: "cx-opt" }, "optional", -1))
               ]),
               s("textarea", {
@@ -371,27 +380,27 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
                 value: $.value,
                 placeholder: "e.g. Lead with the customer's stated goal, then the decisions and dates.",
                 onInput: e[1] || (e[1] = (n) => $.value = n.target.value)
-              }, null, 40, qt),
-              U.value.description ? (l(), r("p", Nt, f(U.value.description), 1)) : c("", !0)
+              }, null, 40, Nt),
+              T.value.description ? (l(), r("p", qt, f(T.value.description), 1)) : c("", !0)
             ])) : c("", !0),
-            C.value ? (l(), r("div", $t, [
+            A.value ? (l(), r("div", $t, [
               s("label", {
-                class: J(["cx-field", { "cx-span": !w(Ve)(Re.value, C.value.description) }])
+                class: J(["cx-field", { "cx-span": !w(Ve)(Re.value, A.value.description) }])
               }, [
                 s("span", Lt, [
-                  x(f(C.value.label || C.value.key) + " ", 1),
+                  x(f(A.value.label || A.value.key) + " ", 1),
                   e[26] || (e[26] = s("span", { class: "cx-opt" }, "characters", -1))
                 ]),
                 s("input", {
                   class: "cx-input",
                   type: "number",
                   min: K.value,
-                  max: W.value,
+                  max: Y.value,
                   placeholder: Ie.value,
-                  value: A.value,
-                  onInput: e[2] || (e[2] = (n) => A.value = n.target.value)
+                  value: C.value,
+                  onInput: e[2] || (e[2] = (n) => C.value = n.target.value)
                 }, null, 40, Rt),
-                ie.value ? (l(), r("p", It, f(ie.value), 1)) : C.value.description ? (l(), r("p", zt, f(C.value.description), 1)) : c("", !0)
+                ie.value ? (l(), r("p", It, f(ie.value), 1)) : A.value.description ? (l(), r("p", zt, f(A.value.description), 1)) : c("", !0)
               ], 2)
             ])) : c("", !0)
           ], 64)) : (l(), r("p", Bt, [
@@ -419,14 +428,14 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
             s("wc-model-picker", {
               value: I.value,
               capability: "vision",
-              onSelect: e[4] || (e[4] = (n) => I.value = T(n))
+              onSelect: e[4] || (e[4] = (n) => I.value = U(n))
             }, null, 40, Ot),
             e[30] || (e[30] = s("p", { class: "st-hint" }, "Describes each image in the context of its section.", -1))
           ])) : c("", !0)
         ])
       ]),
-      s("div", Ut, [
-        s("div", Tt, [
+      s("div", Tt, [
+        s("div", Ut, [
           k(w(Q), {
             icon: "tabler:message-2",
             "aria-hidden": "true"
@@ -439,7 +448,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
           s("wc-model-picker", {
             value: a.value,
             capability: "generate",
-            onSelect: e[5] || (e[5] = (n) => a.value = T(n))
+            onSelect: e[5] || (e[5] = (n) => a.value = U(n))
           }, null, 40, Qt),
           e[34] || (e[34] = s("p", { class: "st-hint" }, "Reads the retrieved passages and writes the answer. Leave empty to return passages only — plain vector search, no generated answer.", -1))
         ]),
@@ -467,7 +476,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
         ]),
         j.value?.applied_at ? (l(), r("p", Kt, "Last tuning: " + f(j.value.applied_at) + ". " + f(j.value.rationale), 1)) : c("", !0),
         (o.value || i.value) && !a.value ? (l(), r("p", jt, "Select an answer model for retrieval optimization.")) : c("", !0),
-        i.value ? (l(), r("label", Yt, [
+        i.value ? (l(), r("label", Gt, [
           e[37] || (e[37] = s("span", { class: "cx-label" }, "Tuning interval", -1)),
           Xe(s("input", {
             class: "cx-input",
@@ -486,8 +495,8 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
           ]),
           e[38] || (e[38] = s("p", { class: "st-hint" }, "Queries between tuning attempts, from 5 to 500. Each attempt uses one bounded model call.", -1))
         ])) : c("", !0),
-        s("div", Gt, [
-          s("label", Wt, [
+        s("div", Wt, [
+          s("label", Yt, [
             e[40] || (e[40] = s("span", { class: "cx-label" }, "Mode", -1)),
             s("select", {
               class: "cx-input",
@@ -522,7 +531,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
             multi: "false",
             placeholder: "Built-in Q&A agent",
             selected: z.value ? JSON.stringify([z.value]) : "[]",
-            onChange: Ne
+            onChange: qe
           }, null, 40, ns),
           e[45] || (e[45] = s("p", { class: "st-hint" }, "Answer with a specific agent — it gets a retrieval tool over this KB — instead of the built-in Q&A agent.", -1))
         ])) : c("", !0),
@@ -552,7 +561,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
           e[48] || (e[48] = s("p", { class: "st-hint" }, "Standing guidance applied to retrieval and answering on every question.", -1))
         ])
       ]),
-      Ue.value ? (l(), r("div", os, [
+      Te.value ? (l(), r("div", os, [
         s("div", is, [
           k(w(Q), {
             icon: "tabler:refresh",
@@ -568,7 +577,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
         ]),
         w(pe) ? (l(), r("p", ds, f(w(pe)), 1)) : c("", !0),
         s("div", cs, [
-          k(Me, {
+          k(Ee, {
             variant: "soft",
             small: "",
             disabled: te.value,
@@ -580,7 +589,7 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
             ])]),
             _: 1
           }, 8, ["disabled", "loading"]),
-          k(Me, {
+          k(Ee, {
             variant: "soft",
             small: "",
             disabled: te.value,
@@ -614,4 +623,4 @@ const at = { class: "cx" }, lt = { class: "cx-group" }, rt = { class: "cx-group-
 export {
   bs as default
 };
-//# sourceMappingURL=KbCreateConfig-bhsV4Lkd.js.map
+//# sourceMappingURL=KbCreateConfig-CS5NgD5H.js.map

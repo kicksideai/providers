@@ -36,7 +36,7 @@ it('shows a rejected source with its content-free reason and byte limits', () =>
   wrapper.unmount()
 })
 
-it('shows the failed capture range and rejected output without admitting it', () => {
+it('shows the failure reason without event identifiers or rejected output', () => {
   const output = { items: [{ valid_at: 'confidence_0.99' }] }
   const wrapper = mount(ActivityView, {
     props: { memory: { status: ref({ runs: [{ id: 'run', run_type: 'derive', status: 'failed',
@@ -44,9 +44,11 @@ it('shows the failed capture range and rejected output without admitting it', ()
       from_event_id: 'start-event', to_event_id: 'end-event', model_output: output }] }) } as unknown as Memory },
     global: { stubs: { Tag: true } },
   })
-  expect(wrapper.text()).toContain('start-event')
-  expect(wrapper.text()).toContain('end-event')
-  expect(wrapper.find('details summary').text()).toBe('Rejected model output')
-  expect(wrapper.find('details pre').text()).toBe(JSON.stringify(output, null, 2))
+  expect(wrapper.text()).toContain('Invalid model output')
+  expect(wrapper.text()).not.toContain('start-event')
+  expect(wrapper.text()).not.toContain('end-event')
+  expect(wrapper.text()).not.toContain('confidence_0.99')
+  expect(wrapper.text()).not.toContain('Rejected model output')
+  expect(wrapper.find('details').exists()).toBe(false)
   wrapper.unmount()
 })

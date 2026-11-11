@@ -23,7 +23,8 @@ return { run = test.run_cases(function()
                 test.eq(requests[1].options.model, model)
                 test.eq(requests[1].options.temperature, 0)
                 test.eq(requests[1].options.max_tokens, 4000)
-                test.eq(requests[1].options.timeout, 120)
+                -- The model provider's configured request timeout governs the call.
+                test.is_nil(requests[1].options.timeout)
                 local messages = requests[1].messages
                 test.eq(#messages, 2)
                 test.eq(messages[1].role, "system")
@@ -36,5 +37,20 @@ return { run = test.run_cases(function()
                 test.eq(messages[2].content[2].source.data, "aW1hZ2UgYnl0ZXM=")
             end)
         end
+        test.it("bounds the call by an explicitly configured timeout", function()
+            local original_generate = llm.generate
+            local requests = {}
+            llm.generate = function(_, options)
+                requests[#requests + 1] = options
+                return { result = "text", tokens = {} }, nil
+            end
+            local ok, text, err = pcall(function()
+                return ocr.new({llm = llm}).transcribe("image bytes", {model = "review-vision-only", timeout = "90s"})
+            end)
+            llm.generate = original_generate
+            test.is_true(ok, tostring(text))
+            test.is_nil(err, tostring(err))
+            test.eq(requests[1].timeout, 90)
+        end)
     end)
 end) }

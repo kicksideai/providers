@@ -1,40 +1,40 @@
-import { u as p, a as c, W as a } from "./wc-runtime-h8e5VJvv.js";
-import { defineComponent as m, computed as f, openBlock as u, createBlock as l } from "vue";
-import { _ as g } from "./PickerBody.vue_vue_type_script_setup_true_lang-D_r5wwEz.js";
-import { s as _, p as C } from "./package-BOalANyK.js";
+import { u as c, a as p, W as m } from "./wc-runtime-h8e5VJvv.js";
+import { defineComponent as a, computed as f, openBlock as u, createBlock as l } from "vue";
+import { _ as g } from "./PickerBody.vue_vue_type_script_setup_true_lang-DhxSgt-1.js";
+import { s as _ } from "./styles-CV5852_Q.js";
 import "@iconify/vue";
-import { define as d } from "@wippy-fe/proxy";
-const h = /* @__PURE__ */ m({
+import { define as C } from "@wippy-fe/proxy";
+const y = /* @__PURE__ */ a({
   __name: "JiraPicker",
-  setup(o) {
-    const t = p(), r = c(), s = f(() => t.value.config || null);
-    function i(e) {
+  setup(t) {
+    const n = c(), r = p(), i = f(() => n.value.config || null);
+    function s(e) {
       r("config-changed", e);
     }
-    return (e, k) => (u(), l(g, {
+    return (e, d) => (u(), l(g, {
       kind: "jira",
-      config: s.value,
-      onChange: i
+      config: i.value,
+      onChange: s
     }, null, 8, ["config"]));
   }
 });
-class n extends a {
+class o extends m {
   static get wippyConfig() {
     return {
-      propsSchema: C.wippy.props,
+      propsSchema: { type: "object", properties: { config: { type: "object" } } },
       hostCssKeys: ["themeConfigUrl"],
       inlineCss: _
     };
   }
   static get vueConfig() {
-    return { rootComponent: h };
+    return { rootComponent: y };
   }
 }
-async function B() {
-  return n;
+async function E() {
+  return o;
 }
-d(import.meta.url, n);
+C(import.meta.url, o);
 export {
-  B as webComponent
+  E as webComponent
 };
 //# sourceMappingURL=jira_picker.js.map

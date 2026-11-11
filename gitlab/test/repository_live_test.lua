@@ -13,6 +13,7 @@ local function define_tests()
             test.is_true(base_url == "http://127.0.0.1:19130", "Live tests target the isolated localhost demo only")
             local service, service_err = component.get_service()
             test.is_nil(service_err)
+            if not service then error("component service is unavailable") end
             local id = uuid.v4()
             local registered, register_err = service:register({component_id = id, impl_id = "kickside.gitlab.connection:gitlab_connection",
                 meta = {class = "connection", provider = "gitlab", title = "Disposable repository verification"}, private_context = {token = token, base_url = base_url}})

@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.2.14](https://github.com/kicksideai/providers/compare/kb10-v0.2.13...kb10-v0.2.14) (2026-11-10)
+
+
+### Bug Fixes
+
+* **kb10:** enable grounded answers for new knowledge bases ([#82](https://github.com/kicksideai/providers/issues/82)) ([aa443b3](https://github.com/kicksideai/providers/commit/aa443b34a78e2bc5c8749e8c7ba4f4ca7d64f8db))
+* **kb10:** remove test files added outside the module's suite ([#92](https://github.com/kicksideai/providers/issues/92)) ([e4149e1](https://github.com/kicksideai/providers/commit/e4149e1637a1f139eae2e2bbef84980958548b8f))
+
+## [0.2.13](https://github.com/kicksideai/providers/compare/kb10-v0.2.12...kb10-v0.2.13) (2026-11-10)
+
+
+### Bug Fixes
+
+* **kb10:** index retrieval nodes without indexing source bodies ([#83](https://github.com/kicksideai/providers/issues/83)) ([5fa877c](https://github.com/kicksideai/providers/commit/5fa877c4d8f87e7cfd871f333c8a0b1845987fe9))
+
+## [0.2.12](https://github.com/kicksideai/providers/compare/kb10-v0.2.11...kb10-v0.2.12) (2026-11-09)
+
+
+### Bug Fixes
+
+* **providers:** clarify knowledge search and Atlassian picker controls ([#80](https://github.com/kicksideai/providers/issues/80)) ([e610bea](https://github.com/kicksideai/providers/commit/e610bea71e9ee30baf719d7797ccfa4d7001e037))
+
+## [0.2.11](https://github.com/kicksideai/providers/compare/kb10-v0.2.10...kb10-v0.2.11) (2026-11-08)
+
+
+### Bug Fixes
+
+* **kb10:** render each knowledge base setting once in the create dialog ([#75](https://github.com/kicksideai/providers/issues/75)) ([ff0848e](https://github.com/kicksideai/providers/commit/ff0848ee38ab66bc0b3cadf3dfeab64bc9727940))
+
 ## [0.2.10](https://github.com/kicksideai/providers/compare/kb10-v0.2.9...kb10-v0.2.10) (2026-11-06)
 
 

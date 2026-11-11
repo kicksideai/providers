@@ -3,8 +3,7 @@ directories:
     src: .
 modules:
     - name: kickside/component
-      version: 0.3.3
-      hash: c6020bc8858ffa80644f882cf38e8007a0a9cfbb96e0b5b1955adc7cb541225e
+      version: 0.3.12
     - name: kickside/contract
       version: 0.3.2
       hash: df463a8e8e9ce71c9e1b87bb4bdbfb389b28fa7a6dff73f47d3de58ee546c715
@@ -23,15 +22,17 @@ modules:
     - name: kickside/llm-ocr
       version: 0.1.9
       hash: afe0034be25e951f74517bf460e9a070e9556c7b038349011d36300771a6e3ba
+    - name: kickside/pdf2image
+      version: 0.0.0
     - name: kickside/realtime-dispatch
       version: 0.1.1
       hash: 6f0fa3625683510a1565afff3b40b6726ea5604b940b1627b787f6615683264d
     - name: kickside/security
-      version: 0.2.16
-      hash: 56ef59123ef74902eedc311f03ab2bdfa824acb31fd9f8aabb03ef1130863000
+      version: 0.2.26
+      hash: 22a0f9d176e9812f5d409f67c170a0bb7553d8f9d7ed9948a8a128a638e7c018
     - name: kickside/settings
-      version: 0.3.2
-      hash: c4eb432f61a73b98d9d6bcf338c6e301d773e16d2c7e367b5e14422c5dfe463a
+      version: 0.3.7
+      hash: 8a625775e9a15715a8607edd3171f52090259fd9eb9819462208485111e15bdc
     - name: kickside/uploads
       version: 0.3.4
       hash: 0eec05ab2f40154ce64e07e6b0abe13880ca0fd093d6bf36c6be4e853782c52b
@@ -39,17 +40,17 @@ modules:
       version: 0.2.11
       hash: 4f612e1584d77a5f3c55990f50e81afd70ac16bd67143764e054f2cfbf6f8d33
     - name: kickside/widgets
-      version: 0.1.52
-      hash: 6e1e27afdc85b09f7ba04ddbebbb1c003ee76455f25241e0aee77e2186fd114c
+      version: 0.1.61
+      hash: 4b3e48740b562baab1157de3bb42f590f747cc4715dce8b339fa816631c93da7
     - name: wippy/agent
-      version: 0.5.9
-      hash: c0eff8b8cebd49bec8a2704ead671e0ea79434b54b9ebb5c36873b823c08ab4c
+      version: 0.5.13
+      hash: 857b603fc6f036b053380bf6c8f00f42f6eb2720fe3df5f8fcb436a35dfdddf1
     - name: wippy/bootloader
       version: 0.3.18
       hash: c7e71b358539b450b49b55e725f60f2dac8218e1c596cf3a473ce71e36b10a9b
     - name: wippy/llm
-      version: 0.5.12
-      hash: 4a6aa0e035b639b83add7120b331032b56312f794978988d92ec52a640e565e8
+      version: 0.5.17
+      hash: 87471ea78c78dfdec9c6a6ce478594838f77bded698f2c5964a7bcef43430f01
     - name: wippy/migration
       version: 0.3.26
       hash: cf4848ad3f8ba8d31d944b2f3a7274bc2b7cf2888dd80f0db63b2c71a85f89c1
@@ -57,8 +58,8 @@ modules:
       version: 0.4.3
       hash: f636859979e88b23647a78fb9aa8a553799de18750b0fb5fb085cbe21542c86c
     - name: wippy/session
-      version: 0.6.16
-      hash: 8517dafe2b86d24e7ac286d7141967ad9d422f88aa0aeccaba2c8ae63e4b938a
+      version: 0.6.20
+      hash: 15f21a2d6b85cdc09c4f6c713645c6c4e3c43aaf42f1e7f0313084df792a2ef9
     - name: wippy/terminal
       version: 0.4.6
       hash: aa0c92b85c0dc2c96f00119a7eaa1ced569a2ac8899514d432aef0c910e73e63
@@ -66,7 +67,7 @@ modules:
       version: 0.4.24
       hash: b118903b3a239b3cd423169c64f17d89b8b920b5fefbf79f94789cf49f9341b5
     - name: wippy/views
-      version: 0.5.13
-      hash: b98c1733dfd5aafa628d81a5f587f2a47f78246d55e60ae3d4fd8d2b90853488
+      version: 0.5.14
+      hash: bef6c33c26c9b098b3f2b6ddfc2602341b2d16763030051b693cba466bc6b40c
 options:
     unpack_modules: true

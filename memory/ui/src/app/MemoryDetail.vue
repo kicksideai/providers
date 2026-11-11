@@ -5,8 +5,8 @@ import { Icon } from '@iconify/vue'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from './chrome/ConfirmDialog.vue'
-import { KIND_META, fullTime, relativeTime, topicLabel, STATUS_LABEL, severity } from './format'
-import { errorText, isRecord, type MemoryItem, type Provenance } from './types'
+import { KIND_META, fullTime, relativeTime, topicLabel, STATUS_LABEL, severity, detailFields } from './format'
+import { errorText, type MemoryItem, type Provenance } from './types'
 import { type Memory } from './useMemory'
 import { httpStatus, memoryApi } from './api'
 
@@ -31,8 +31,7 @@ const forgetting = ref(false)
 const meta = computed(() => (item.value ? KIND_META[item.value.kind] : null))
 const icon = computed(() => item.value ? KIND_META[item.value.kind].icon : 'tabler:brain')
 const live = computed(() => item.value?.status === 'current' || item.value?.status === 'conflict')
-const planValue = computed(() => item.value?.kind === 'plan' && isRecord(item.value.value) ? item.value.value : null)
-const valueText = computed(() => item.value?.value === undefined ? '' : JSON.stringify(item.value.value, null, 2))
+const fields = computed(() => item.value ? detailFields(item.value.value, item.value.key) : [])
 
 let generation = 0
 async function load(offset = 0, limit?: number) {
@@ -108,7 +107,7 @@ async function save() {
   if (!content || !item.value) return
   let value: unknown
   if (editingValue.value !== null) {
-    try { value = JSON.parse(editingValue.value) } catch (_) { editError.value = 'Claim value must be valid JSON.'; return }
+    try { value = JSON.parse(editingValue.value) } catch (_) { editError.value = 'Details must be valid JSON.'; return }
   }
   const ok = await props.memory.act(async () => {
     const fields = editingValue.value === null ? { content } : { content, value }
@@ -184,11 +183,11 @@ function sourceLabel(origin: Provenance): string {
           </span>
         </div>
         <div v-if="editing !== null" class="mm-edit">
-          <label class="mm-label" for="memory_content">Display text</label>
+          <label class="mm-label" for="memory_content">Memory text</label>
           <Textarea id="memory_content" v-model="editing" auto-resize rows="2" aria-label="Memory text" />
           <template v-if="editingValue !== null">
-            <label class="mm-label" for="memory_value">Claim value</label>
-            <Textarea id="memory_value" v-model="editingValue" auto-resize rows="5" aria-label="Claim value" />
+            <label class="mm-label" for="memory_value">Details</label>
+            <Textarea id="memory_value" v-model="editingValue" auto-resize rows="5" aria-label="Details" />
             <span v-if="editError" class="mm-hint mm-hint-err">{{ editError }}</span>
           </template>
           <div class="mm-edit-acts">
@@ -207,14 +206,11 @@ function sourceLabel(origin: Provenance): string {
       </div>
     </header>
 
-    <section v-if="editing === null && item.value !== undefined" class="mm-sec" aria-labelledby="mm-claim-value">
-      <h3 id="mm-claim-value" class="mm-sec-h">Claim value</h3>
-      <dl v-if="planValue" class="mm-value-fields">
-        <div><dt>Details</dt><dd>{{ planValue.details }}</dd></div>
-        <div><dt>Next step</dt><dd>{{ planValue.next_step }}</dd></div>
-        <div><dt>Status</dt><dd>{{ planValue.status === 'done' ? 'Done' : planValue.status }}</dd></div>
+    <section v-if="editing === null && fields.length" class="mm-sec" aria-labelledby="mm-details">
+      <h3 id="mm-details" class="mm-sec-h">Details</h3>
+      <dl class="mm-value-fields">
+        <div v-for="(field, index) in fields" :key="index"><dt>{{ field.label }}</dt><dd>{{ field.text }}</dd></div>
       </dl>
-      <pre v-else class="mm-value">{{ valueText }}</pre>
     </section>
 
     <section v-if="versions.length > 1 || nextVersions !== null" class="mm-sec" aria-labelledby="mm-history">

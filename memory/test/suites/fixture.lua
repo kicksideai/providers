@@ -68,7 +68,7 @@ function M.wait_run(user_id: string, run_id: string, predicate: (any) -> boolean
     local deadline = time.now():add(60 * time.SECOND)
     while true do
         local run, err = M.op(user_id, "run", { run_id = run_id })
-        if err then error(tostring(err)) end
+        if err then error(tostring(err) .. ": " .. tostring(json.encode(err:details()))) end
         if predicate(run) then return run end
         if time.now():after(deadline) then error("memory run did not reach its expected state: " .. tostring(run.last_error)) end
         time.sleep(100 * time.MILLISECOND)

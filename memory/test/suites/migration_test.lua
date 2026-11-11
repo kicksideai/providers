@@ -30,6 +30,19 @@ local function define_tests()
             local applied, apply_err = fixture.op(user, "migrate", { name = "05_memory_upgrade", id = "05_memory_upgrade" })
             test.is_nil(apply_err, tostring(apply_err))
             test.eq(applied.failed, 0, applied.error)
+            for _, name in ipairs({"05_memory_upgrade", "01_memory_schema"}) do
+                local removed, remove_err = fixture.op(user, "migrate", { name = name, id = name, direction = "down" })
+                test.is_nil(remove_err, tostring(remove_err))
+                test.eq(removed.failed, 0, removed.error)
+            end
+            local remaining, remaining_err = fixture.op(user, "migration_tables", {})
+            test.is_nil(remaining_err, tostring(remaining_err))
+            test.eq(#remaining, 0)
+            for _, name in ipairs({"01_memory_schema", "05_memory_upgrade"}) do
+                local reinstalled, reinstall_err = fixture.op(user, "migrate", { name = name, id = name })
+                test.is_nil(reinstall_err, tostring(reinstall_err))
+                test.eq(reinstalled.failed, 0, reinstalled.error)
+            end
         end)
     end)
 end

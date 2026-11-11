@@ -32,7 +32,7 @@ function M.new(provider, steps)
             test.eq(options.headers.Authorization, provider == "linear" and "fixture-token" or "Bearer fixture-token")
             test.eq(options.timeout, "30s")
             test.eq(options.max_response_body, 10485760)
-            if step.body then test.eq(json.encode(json.decode(options.body)), json.encode(step.body)) end
+            if step.body then test.eq(json.encode(json.decode(options.body)), (json.encode(step.body))) end
             if step.check then step.check(options) end
             return {status_code = step.status or 200, headers = step.headers or {},
                 body = step.raw or json.encode(step.reply or {})}

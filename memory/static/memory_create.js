@@ -1,6 +1,6 @@
 import { u as o } from "./wc-runtime-KO3cNuNo.js";
 import { P as t } from "./primevue-plugin-CaP7wV_M.js";
-import { l as n, m as i } from "./lazy-l_o3DZGp.js";
+import { l as n, m as i } from "./lazy-Dyi12j7w.js";
 import "@iconify/vue";
 import { define as m } from "@wippy-fe/proxy";
 const r = n(

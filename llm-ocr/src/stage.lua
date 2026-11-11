@@ -42,12 +42,8 @@ local function parallel_map(items: { any }, fn: any, concurrency: integer): { an
     return out
 end
 
--- Universal upload stage that runs after the rasterizer. It transcribes the document's
--- page images with an LLM and replaces the empty primary markdown with the text, so the
--- knowledge base embeds the real document text. The page images are the rendered
--- screenshots when the rasterizer produced them, otherwise the large images doc2md
--- already extracted (image-paged PDFs). Page images stay stored; only the primary
--- content changes. Failures remain visible in document metadata; the file stays available.
+-- Transcribe sparse pages after rasterization, preserving the other pages from
+-- the primary markdown. Page images stay stored and failures remain in metadata.
 
 local SETTINGS_CONTRACT = "kickside.settings:settings"
 local SETTINGS_NS = "kickside.llm_ocr"
@@ -58,9 +54,10 @@ local MAX_ERROR_DETAIL_BYTES = 2000
 -- batches and each batch's text is checkpointed as it completes -- a later failure
 -- or termination keeps the pages already transcribed.
 local DEFAULT_BATCH_SIZE = 4
--- Per-page OCR call budget. Larger than a chat call (a dense page is slow) but
--- still bounded, so a hung inference returns an error instead of pinning the job.
-local DEFAULT_CALL_TIMEOUT_MS = 120000
+-- Per-page OCR call timeout override; 0 leaves the call to the model provider's
+-- request timeout. A hung provider is bounded by that timeout and by the job's
+-- execution ceiling, which each completed page renews.
+local DEFAULT_CALL_TIMEOUT_MS = 0
 
 local log = logger:named("llm_ocr")
 
@@ -98,14 +95,10 @@ local function page_number(artifact: any, fallback: integer): integer
 end
 
 local function build_markdown(sections: { any }): string
-    local multi = #sections > 1
     local parts = {}
-    for _, s in ipairs(sections) do
-        local body = (s.text :: string):match("^%s*(.-)%s*$") or ""
-        if body ~= "" then
-            if multi then parts[#parts + 1] = "## Page " .. tostring(s.page) .. "\n\n" .. body
-            else parts[#parts + 1] = body end
-        end
+    for _, section in ipairs(sections) do
+        local body = (section.text :: string):match("^%s*(.-)%s*$") or ""
+        parts[#parts + 1] = "<!-- page " .. tostring(section.page) .. " -->" .. (body ~= "" and ("\n\n" .. body) or "")
     end
     return table.concat(parts, "\n\n")
 end
@@ -121,28 +114,35 @@ local function image_page(upload_id: string): { any }
     return {}
 end
 
--- Resolve the page images to transcribe: rendered screenshots when present, else the
--- large extracted images -- but extracted images are transcribed only when the document
--- has no text of its own (an image-paged scan), never a text document with figures.
-local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): { any }
-    local rendered = (page_images.rendered(upload_id) or {}) :: { any }
-    if #rendered > 0 then return rendered end
-
+-- Rendered screenshots and extracted images share explicit page identity.
+local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): ({ any }, string)
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
-    if primary_err or type(primary) ~= "table" then return {} end
-    if mime ~= "" and mime ~= "application/pdf" and type(primary.content) == "string" and primary.content:match("%S") then
-        return {}
-    end
+    local content = not primary_err and type(primary) == "table" and type(primary.content) == "string" and primary.content or ""
+    if mime ~= "" and mime ~= "application/pdf" and content:match("%S") then return {}, content end
 
-    local extracted = (page_images.extracted_pages(upload_id, min_bytes) or {}) :: { any }
-    if #extracted == 0 then return {} end
-    if not page_images.needs_ocr_text(primary.content, #extracted, max_text) then return {} end
-    return extracted
+    local candidates = page_images.page_set(upload_id, min_bytes)
+    local text_pages = page_images.text_pages(content, primary and primary.metadata and primary.metadata.ocr_page_outcomes)
+    local identified = true
+    for _, image in ipairs(candidates) do
+        local number = type(image.metadata) == "table" and tonumber(image.metadata.page) or nil
+        if not number or number < 1 or number % 1 ~= 0 then identified = false; break end
+    end
+    if #text_pages > 0 and identified then
+        local by_page = {}
+        for _, image in ipairs(candidates) do by_page[image.metadata.page] = image end
+        local selected = {}
+        for _, page in ipairs(text_pages) do
+            if page_images.needs_ocr_text(page.text, 1, max_text, page.status) then
+                selected[#selected + 1] = by_page[page.page] or {metadata = {page = page.page}}
+            end
+        end
+        return selected, content
+    end
+    if not page_images.needs_ocr_text(content, #candidates, max_text) then return {}, content end
+    return candidates, content
 end
 
--- Replace (or create) the document's primary markdown with the transcribed text.
--- Best-effort: returns (ok, err?) so a checkpoint failure stops further work
--- without failing the whole upload.
+-- Commit page text and outcomes together on the primary artifact.
 local CANONICAL_METADATA_FIELDS = {
     "source", "source_url", "source_mime", "external_id", "external_version",
     "source_ref", "title", "reference_component_id", "reference_context",
@@ -175,15 +175,19 @@ local function transcript_metadata(upload_id: string, params: any, page: any): a
     return out
 end
 
-local function persist_primary(upload_id: string, storage_id: any, markdown: string, params: any, page: any): (boolean, string?)
+local function persist_primary(upload_id: string, storage_id: any, markdown: string, params: any, page: any, outcomes: any): (boolean, string?)
     local primary, primary_err = artifact_parts_repo.get_primary_content_artifact(upload_id)
     if not primary_err and primary then
-        local _, upd_err = artifact_content_repo.update_content(upload_id, primary.artifact_id, markdown, { mime_type = "text/markdown" })
+        local _, upd_err = artifact_content_repo.update_content(upload_id, primary.artifact_id, markdown, { mime_type = "text/markdown", metadata = {ocr_page_outcomes = outcomes}, cancel_ref = params.cancel_ref })
         if upd_err then return false, tostring(upd_err) end
         return true, nil
     end
+    if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then return false, tostring(primary_err) end
+    local metadata = transcript_metadata(upload_id, params, page)
+    metadata.ocr_page_outcomes = outcomes
     local _, create_err = artifact_content_repo.create_artifact({
         upload_id = upload_id,
+        cancel_ref = params.cancel_ref,
         kind = "markdown",
         role = "primary",
         mime_type = "text/markdown",
@@ -191,7 +195,7 @@ local function persist_primary(upload_id: string, storage_id: any, markdown: str
         ordinal = 1,
         content = markdown,
         storage_id = storage_id,
-        metadata = transcript_metadata(upload_id, params, page),
+        metadata = metadata,
     })
     if create_err then return false, tostring(create_err) end
     return true, nil
@@ -207,10 +211,8 @@ local function build_should_continue(deps: any, params: any): () -> boolean
     local ref = type(params.cancel_ref) == "table" and params.cancel_ref or nil
     if ref and type(ref.job_id) == "string" and ref.job_id ~= "" and type(ref.lease_token) == "string" and ref.lease_token ~= "" then
         return function(): boolean
-            local running, err = jobs.still_running({ id = ref.job_id, lease_token = ref.lease_token })
-            -- A transient lookup error must not abort a live job; only a definitive
-            -- "no longer running" stops the loop.
-            if err ~= nil then return true end
+            local running, err = jobs.lease_valid(ref.job_id, {token = ref.lease_token, execution_seq = ref.execution_seq})
+            if err ~= nil then error(tostring(err)) end
             return running == true
         end
     end
@@ -239,6 +241,7 @@ local function run(params: any, deps: any): any
     local declared = type(params.mime_type) == "string" and (params.mime_type :: string):lower() or ""
     local mime = ((declared:match("^[^;]*") or ""):match("^%s*(.-)%s*$")) :: string
     local pages: { any } = {}
+    local original: string = ""
     if mime:sub(1, 6) == "image/" then
         -- SVG is markup, not a raster image. Trim the declared base type first so
         -- valid `image/svg+xml ; charset=utf-8` forms cannot bypass this guard.
@@ -246,97 +249,109 @@ local function run(params: any, deps: any): any
         if not setting_bool("ocr_images", true) then return { success = true } end
         pages = image_page(upload_id)
     else
-        pages = resolve_pages(upload_id, max_text, min_bytes, mime)
+        pages, original = resolve_pages(upload_id, max_text, min_bytes, mime)
     end
-    if #pages == 0 then return { success = true } end
+    local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
+    if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
+        return {success = false, error = tostring(primary_err)}
+    end
+    if original == "" and primary then original = primary.content :: string end
+    local previous = primary and primary.metadata and primary.metadata.ocr_page_outcomes or {}
+    local outcomes, by_page = {}, {}
+    for _, outcome in ipairs(previous) do by_page[outcome.page] = outcome end
+    local document_pages = page_images.text_pages(original)
+    local targets = {}
+    for index, page in ipairs(pages) do
+        local number = page_number(page, index)
+        local outcome = by_page[number]
+        if not outcome or (outcome.status ~= "readable" and outcome.status ~= "blank") then targets[#targets + 1] = {page = page, index = number} end
+    end
+    if #document_pages == 0 then
+        for index, page in ipairs(pages) do
+            document_pages[#document_pages + 1] = {page = page_number(page, index), text = ""}
+        end
+    end
+    if #document_pages == 0 then return {success = true} end
+    local target_numbers = {}
+    for _, item in ipairs(targets) do target_numbers[item.index] = true end
+    for _, page in ipairs(document_pages) do
+        local outcome = by_page[page.page]
+        if not outcome then
+            outcome = {page = page.page, source = target_numbers[page.page] and "ocr" or "text"}
+            if not target_numbers[page.page] then outcome.status = "readable" end
+        end
+        outcomes[#outcomes + 1], by_page[page.page] = outcome, outcome
+    end
 
     local model = setting_str("ocr_model", DEFAULT_MODEL)
     local user_prompt = setting_str("ocr_prompt", "")
-    local batch_size = (math.floor(tonumber(deps.batch_size) or setting_int(SETTINGS_NS, "ocr_batch_size", DEFAULT_BATCH_SIZE))) :: integer
-    if batch_size < 1 then batch_size = 1 end
-    local call_timeout = setting_int(SETTINGS_NS, "ocr_call_timeout_ms", DEFAULT_CALL_TIMEOUT_MS)
-
+    local batch_size = math.max(1, math.floor(tonumber(deps.batch_size) or setting_int(SETTINGS_NS, "ocr_batch_size", DEFAULT_BATCH_SIZE))) :: integer
+    local configured_timeout = setting_int(SETTINGS_NS, "ocr_call_timeout_ms", DEFAULT_CALL_TIMEOUT_MS)
+    local call_timeout: integer? = configured_timeout > 0 and configured_timeout or nil
     local should_continue = build_should_continue(deps, params)
-
-    local page_errors: { string } = {}
-    local persist_failed = false
+    local sections, page_errors = {}, {}
     local function transcribe_page(item: any): any
         local page = item.page
+        if not page.artifact_id then return nil, "page image is unavailable" end
         local bytes, read_err = artifact_content_repo.read_artifact_content(upload_id, page.artifact_id)
-        if read_err or type(bytes) ~= "string" then
-            log:warn("ocr: failed to read page image", { upload_id = upload_id, error = tostring(read_err) })
-            return nil, tostring(read_err or "page image content is unavailable")
-        end
-        local text, ocr_err = transcribe(bytes, { mime = page.mime_type, model = model, prompt = user_prompt, timeout = call_timeout })
-        if ocr_err then
-            log:warn("ocr: transcription failed", { upload_id = upload_id, page = page_number(page, item.index), error = tostring(ocr_err) })
-            return nil, tostring(ocr_err)
-        end
-        if type(text) == "string" and text:match("%S") then
-            return { page = page_number(page, item.index), text = text }
-        end
-        return nil
+        if read_err or type(bytes) ~= "string" then return nil, tostring(read_err or "page image content is unavailable") end
+        local text, ocr_err = transcribe(bytes, {mime = page.mime_type, model = model, prompt = user_prompt, timeout = call_timeout})
+        if ocr_err then return nil, tostring(ocr_err) end
+        if type(text) ~= "string" then return nil, "OCR returned invalid text" end
+        return {page = item.index, text = text}
     end
-
-    local sections = {}
-    local persisted = false
-    local total = #pages
-    local start = 1
-    while start <= total do
-        -- The pipeline already gated before invoking the stage, so the first batch
-        -- runs unconditionally; honor cancellation before each subsequent batch.
-        if start > 1 and not should_continue() then
-            log:info("ocr: cancelled between batches", { upload_id = upload_id, transcribed = #sections })
-            break
+    local function checkpoint(): (boolean, string?)
+        local markdown
+        if #page_images.text_pages(original) > 0 then markdown = page_images.replace_pages(original, sections)
+        else
+            local replacements = {}
+            for _, section in ipairs(sections) do replacements[section.page] = section.text end
+            local ordered = {}
+            for _, page in ipairs(document_pages) do ordered[#ordered + 1] = {page = page.page, text = replacements[page.page] or page.text} end
+            markdown = build_markdown(ordered)
         end
-
-        local last = math.min(start + batch_size - 1, total)
+        return persist(upload_id, params.storage_id, markdown, params, pages[1], outcomes)
+    end
+    local start, persist_error, cancelled = 1, nil, false
+    while start <= #targets do
+        if not should_continue() then cancelled = true; break end
+        local last = math.min(start + batch_size - 1, #targets)
         local batch = {}
-        for i = start, last do batch[#batch + 1] = { page = pages[i], index = i } end
-
+        for index = start, last do batch[#batch + 1] = targets[index] end
         local results = parallel_map(batch, transcribe_page, batch_size)
-        for index = 1, #batch do
+        for index, item in ipairs(batch) do
             local result = results[index]
+            local outcome = by_page[item.index]
             if result.error ~= nil then
-                page_errors[#page_errors + 1] = "Page " .. tostring(page_number(batch[index].page, batch[index].index)) .. ": " .. tostring(result.error)
+                outcome.status, outcome.error = "failed", "transcription_failed"
+                page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(result.error)
+            else
+                local text = result.value.text
+                outcome.status, outcome.error = text:match("%S") and "readable" or "blank", nil
+                sections[#sections + 1] = result.value
             end
-            if type(result.value) == "table" then sections[#sections + 1] = result.value end
         end
-
-        -- Checkpoint after each batch so a later failure/terminate keeps these pages.
-        local markdown = build_markdown(sections)
-        if markdown ~= "" then
-            local ok, perr = persist(upload_id, params.storage_id, markdown, params, pages[1])
-            if not ok then
-                log:warn("ocr: failed to persist transcription checkpoint", { upload_id = upload_id, error = tostring(perr) })
-                page_errors[#page_errors + 1] = "Transcript checkpoint: " .. tostring(perr)
-                persist_failed = true
-                break
-            end
-            persisted = true
-        end
-
+        local ok, err = checkpoint()
+        if not ok then persist_error = tostring(err); break end
         start = last + 1
     end
-
-    -- Public metadata carries only a stable code; provider text stays in the log and
-    -- in the private _ocr_error_detail field.
-    local error_code: any = false
-    local error_detail: any = false
-    if #page_errors > 0 then
-        error_code = persist_failed and "persist_failed" or "transcription_failed"
-        error_detail = table.concat(page_errors, "\n"):sub(1, MAX_ERROR_DETAIL_BYTES)
+    if #targets == 0 and #previous == 0 then
+        local ok, err = checkpoint()
+        if not ok then persist_error = tostring(err) end
     end
-
-    if not persisted or #sections == 0 then
-        if #pages > 0 then
-            return { success = true, metadata = { ocr_error = error_code or "no_text_detected", _ocr_error_detail = error_detail } }
-        end
-        return { success = true }
+    local failed, transcribed = 0, 0
+    for _, outcome in ipairs(outcomes) do
+        if outcome.status == "readable" then
+            if outcome.source == "ocr" then transcribed = transcribed + 1 end
+        elseif outcome.status == "failed" then failed = failed + 1 end
     end
-
-    log:info("ocr transcribed document", { upload_id = upload_id, pages = #sections, total_pages = #pages, model = model })
-    return { success = true, metadata = { ocr_pages = #sections, ocr_total_pages = #pages, ocr_error = error_code, _ocr_error_detail = error_detail } }
+    local code: any = persist_error and "persist_failed" or (failed > 0 and "transcription_failed" or false)
+    if persist_error then page_errors[#page_errors + 1] = "Transcript checkpoint: " .. persist_error end
+    local metadata = {ocr_pages = transcribed, ocr_total_pages = #document_pages, ocr_page_outcomes = outcomes,
+        ocr_error = code, _ocr_error_detail = #page_errors > 0 and table.concat(page_errors, "\n"):sub(1, MAX_ERROR_DETAIL_BYTES) or false}
+    if code or cancelled then return {success = false, error = code or "OCR cancelled", metadata = metadata} end
+    log:info("ocr transcribed document", {upload_id = upload_id, pages = transcribed, total_pages = #document_pages, model = model})
+    return {success = true, metadata = metadata}
 end
 
 local function process(params: any): any
