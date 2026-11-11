@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/kicksideai/providers/compare/memory-v0.1.19...memory-v0.1.20) (2026-11-10)
+
+
+### Bug Fixes
+
+* **memory:** use portable model schemas and remove owned storage on uninstall ([#88](https://github.com/kicksideai/providers/issues/88)) ([cd7aab5](https://github.com/kicksideai/providers/commit/cd7aab5ef8887970ac528260d9c55c62ca392353))
+
 ## [0.1.19](https://github.com/kicksideai/providers/compare/memory-v0.1.18...memory-v0.1.19) (2026-11-10)
 
 

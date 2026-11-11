@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.14](https://github.com/kicksideai/providers/compare/kb10-v0.2.13...kb10-v0.2.14) (2026-11-10)
+
+
+### Bug Fixes
+
+* **kb10:** enable grounded answers for new knowledge bases ([#82](https://github.com/kicksideai/providers/issues/82)) ([aa443b3](https://github.com/kicksideai/providers/commit/aa443b34a78e2bc5c8749e8c7ba4f4ca7d64f8db))
+* **kb10:** remove test files added outside the module's suite ([#92](https://github.com/kicksideai/providers/issues/92)) ([e4149e1](https://github.com/kicksideai/providers/commit/e4149e1637a1f139eae2e2bbef84980958548b8f))
+
 ## [0.2.13](https://github.com/kicksideai/providers/compare/kb10-v0.2.12...kb10-v0.2.13) (2026-11-10)
 
 
