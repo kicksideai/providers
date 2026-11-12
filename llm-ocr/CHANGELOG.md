@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.19](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.18...llm-ocr-v0.1.19) (2026-11-12)
+
+
+### Bug Fixes
+
+* **llm-ocr:** fail a page whose transcription stops at the token limit ([#93](https://github.com/kicksideai/providers/issues/93)) ([281f362](https://github.com/kicksideai/providers/commit/281f3627defb04e64da79efb0bdde634b73a3dd7))
+* **llm-ocr:** give the model an explicit reply for a page without text ([#94](https://github.com/kicksideai/providers/issues/94)) ([1288add](https://github.com/kicksideai/providers/commit/1288add1284d3c32b8391dc7353b7a775103bc00))
+
 ## [0.1.18](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.17...llm-ocr-v0.1.18) (2026-11-10)
 
 
