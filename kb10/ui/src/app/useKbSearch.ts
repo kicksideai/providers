@@ -10,6 +10,7 @@ export function useKbSearch(kbId: () => string) {
   const query = ref('')
   const results = ref<SearchHit[]>([])
   const answer = ref('')
+  const analysisUnavailable = ref<{ status: string; reason: string; model: string } | null>(null)
   const loading = ref(false)
   const error = ref('')
   const performed = ref(false)
@@ -20,6 +21,7 @@ export function useKbSearch(kbId: () => string) {
     query.value = ''
     results.value = []
     answer.value = ''
+    analysisUnavailable.value = null
     performed.value = false
     error.value = ''
   }
@@ -30,10 +32,15 @@ export function useKbSearch(kbId: () => string) {
     if (!q || !id) { results.value = []; performed.value = false; return }
     loading.value = true
     error.value = ''
+    analysisUnavailable.value = null
     performed.value = true
     try {
       const { data } = await api.get(`/api/v1/kb10/${id}/search?q=${encodeURIComponent(q)}&limit=${limit}`)
-      if (data?.success) { results.value = (data.results || []) as SearchHit[]; answer.value = '' }
+      if (data?.success) {
+        results.value = (data.results || []) as SearchHit[]
+        answer.value = ''
+        analysisUnavailable.value = data.retrieval?.analysis?.status === 'unavailable' ? data.retrieval.analysis : null
+      }
       else error.value = data?.error || 'search failed'
     } catch (e: any) {
       error.value = e?.response?.data?.error || e?.message || 'search error'
@@ -52,6 +59,7 @@ export function useKbSearch(kbId: () => string) {
     if (!q || !id) { results.value = []; answer.value = ''; performed.value = false; return }
     loading.value = true
     error.value = ''
+    analysisUnavailable.value = null
     answer.value = ''
     performed.value = true
     try {
@@ -80,7 +88,7 @@ export function useKbSearch(kbId: () => string) {
 
   onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 
-  return { query, results, answer, loading, error, performed, run, ask, runDebounced, clear }
+  return { query, results, answer, analysisUnavailable, loading, error, performed, run, ask, runDebounced, clear }
 }
 
 export function pct(v?: number): string {

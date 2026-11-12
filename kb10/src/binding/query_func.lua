@@ -7,6 +7,7 @@ local kc = require("kc")
 local query_policy = require("query_policy")
 local tuner = require("tuner")
 local model_failure = require("model_failure")
+local model_catalog = require("model_catalog")
 
 local VECTOR_DIMENSIONS = store.VECTOR_DIMENSIONS
 local M = { _ctx = ctx, _llm = llm, _store = store, _tuner = tuner }
@@ -321,6 +322,15 @@ local function handle(request)
     local embedding_model = kb_store.embedding_model :: string?
     local config = (kb_store.config :: table?) or {}
     local analysis_model = query_policy.resolve_analysis_model(config)
+    local analysis_unavailable = nil
+    local model_class = analysis_model and analysis_model:match("^class:(.+)$")
+    if model_class then
+        local models, models_err = model_catalog.get_by_class(model_class)
+        if models_err then return nil, model_failure.wrap("analysis model lookup", models_err) end
+        if #models == 0 then
+            analysis_unavailable = { status = "unavailable", reason = "no_models_for_class", model = analysis_model }
+        end
+    end
     local extra_prompt = config.extra_prompt or ""
     local enable_reranking = config.enable_reranking
 
@@ -333,10 +343,11 @@ local function handle(request)
         end
         local result = { success = true, items = items, count = #items,
             next_offset = #ranked > offset + limit and offset + limit or nil }
-        if config.query_strategy == "hyde" or config.self_tuning == true then
-            result.retrieval = { strategy = config.query_strategy or "plain" }
+        if analysis_unavailable or config.query_strategy == "hyde" or config.self_tuning == true then
+            result.retrieval = { strategy = analysis_unavailable and "plain" or (config.query_strategy or "plain"),
+                analysis = analysis_unavailable }
         end
-        if config.self_tuning == true then
+        if config.self_tuning == true and not analysis_unavailable then
             local outcome, err = M._tuner.observe(component_id, kb_store, request, items)
             if err then return nil, err end
             result.retrieval.tuning = outcome
@@ -347,7 +358,7 @@ local function handle(request)
     local hyde_model, mode_err = query_policy.resolve_hyde_model(config)
     if mode_err then return nil, mode_err end
     local entry_text = query_text
-    if hyde_model then
+    if hyde_model and not analysis_unavailable then
         local hypothetical, hyde_err = hyde_query_text(query_text, hyde_model)
         if hyde_err then return nil, hyde_err end
         entry_text = hypothetical
@@ -377,7 +388,7 @@ local function handle(request)
         return complete(chunk_results)
     end
 
-    if not analysis_model then
+    if not analysis_model or analysis_unavailable then
         local all_results, all_err = M._store.vector_search(kb_store.id :: string, input_vector, {
             query_text = query_text,
             limit = window,

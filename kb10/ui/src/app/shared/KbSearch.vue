@@ -20,7 +20,7 @@ const props = withDefaults(defineProps<{
 }>(), { layout: 'panel' })
 const emit = defineEmits<{ (e: 'open', hit: SearchHit): void; (e: 'close'): void }>()
 
-const { query, results, answer, loading, error, performed, run, ask: askQuery, runDebounced, clear } = useKbSearch(() => props.kbId)
+const { query, results, answer, analysisUnavailable, loading, error, performed, run, ask: askQuery, runDebounced, clear } = useKbSearch(() => props.kbId)
 
 type Mode = 'search' | 'ask'
 const mode = ref<Mode>('search')
@@ -67,6 +67,7 @@ function pick(hit: SearchHit) {
       @clear="clear"
     />
     <div v-if="showPop" class="kc-search-pop">
+      <p v-if="analysisUnavailable" class="kc-search-state" role="status">Showing direct matches. No model is assigned to {{ analysisUnavailable.model }}.</p>
       <div v-if="error" class="kc-search-state err"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ error }}</span></div>
       <div v-else-if="results.length" class="kc-search-hits">
         <button v-for="r in results" :key="r.id" class="kc-search-hit" @mousedown.prevent="pick(r)">
@@ -106,6 +107,8 @@ function pick(hit: SearchHit) {
     </div>
 
     <p v-if="!props.ask" class="kc-search-state">Select an Answer model in knowledge base settings to enable Ask.</p>
+
+    <p v-if="analysisUnavailable" class="kc-search-state" role="status">Showing direct matches. No model is assigned to {{ analysisUnavailable.model }}.</p>
 
     <div v-if="error" class="kc-search-err"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ error }}</span></div>
 
