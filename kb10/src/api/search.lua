@@ -98,6 +98,7 @@ local function handler()
         query = query_text,
         results = results,
         count = #results,
+        retrieval = result.retrieval,
     })
 end
 

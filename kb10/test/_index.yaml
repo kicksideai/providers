@@ -489,6 +489,8 @@ entries:
     imports:
       test: wippy.test:test
       query_service: kickside.kb10.binding:query_service
+      models_repo: kickside.models.persist:repo
+      model_catalog: kickside.models.catalog:model_catalog
 
   # The harness owns one KB10 root and supplies every concrete host choice on
   # that edge, including qualified requirements of its transitive packages.
