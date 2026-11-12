@@ -256,6 +256,7 @@ entries:
       llm: wippy.llm:llm
       ocr: kickside.llm_ocr:ocr
       stage: kickside.llm_ocr:stage_implementation
+      upload_job: kickside.uploads.service:process_job_proc
     method: run
 
   - name: ocr_smoke_test

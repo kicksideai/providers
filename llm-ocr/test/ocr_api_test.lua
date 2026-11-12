@@ -4,6 +4,7 @@ local uuid_v4 = require("uuid").v4
 local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
 local upload_record_repo = require("upload_record_repo")
+local upload_job = require("upload_job")
 local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
@@ -147,6 +148,19 @@ local function define_tests()
             test.eq(text, "TEXT[class:fast]")
         end)
 
+        test.it("transcribes when the provider omits finish_reason", function()
+            local model = ocr.new({
+                llm = { FINISH_REASON = llm.FINISH_REASON, generate = function()
+                    return { result = "Full page body." }, nil
+                end },
+                prompt = fake_prompt(),
+                base64 = { encode = function(value: any): (any, any) return value, nil end },
+            })
+            local text, err = model.transcribe("img", { model = "class:fast" })
+            test.is_nil(err)
+            test.eq(text, "Full page body.")
+        end)
+
         test.it("requires image bytes and a model", function()
             local _, image_err = ocr_with("x").transcribe("", { model = "class:fast" })
             test.not_nil(image_err)
@@ -269,11 +283,36 @@ local function define_tests()
             local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
             test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
             test.eq(primary.metadata.ocr_page_outcomes[1].error, "transcription_failed")
-            test.is_nil(primary.content:find("PAGE HEADER", 1, true))
+            test.is_nil((primary.content:find("PAGE HEADER", 1, true)))
             local retry = stage.run(params, {transcribe = ocr_with("PAGE HEADER\n\nFull page body.").transcribe})
             test.is_true(retry.success)
             test.eq(retry.metadata.ocr_page_outcomes[1].status, "readable")
             test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nPAGE HEADER\n\nFull page body.")
+        end)
+
+        test.it("keeps a length-cut page failed when the upload retry budget is exhausted", function()
+            local upload_id = seed("", {1})
+            local calls = 0
+            local model = ocr_with(function()
+                calls = calls + 1
+                return "Incomplete page body."
+            end, nil, llm.FINISH_REASON.LENGTH)
+            local job = { id = uuid_v4(), attempt_no = 0, max_attempts = 3 }
+            repeat
+                job.attempt_no = job.attempt_no + 1
+                local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {
+                    transcribe = model.transcribe,
+                })
+                test.is_false(result.success)
+                test.eq(result.metadata.ocr_error, "transcription_failed")
+                test.eq(result.metadata.ocr_pages, 0)
+                local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+                test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+                test.eq(primary.metadata.ocr_page_outcomes[1].error, "transcription_failed")
+                test.is_nil((primary.content:find("Incomplete page body.", 1, true)))
+            until upload_job.terminal_failure(job, nil) or job.attempt_no > job.max_attempts
+            test.eq(job.attempt_no, job.max_attempts)
+            test.eq(calls, job.max_attempts)
         end)
 
         test.it("retains sparse text when its image is missing or transcription fails", function()
