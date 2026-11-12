@@ -255,6 +255,7 @@ local function run(params: any, deps: any): any
     local outcomes, by_page = {}, {}
     for _, outcome in ipairs(previous) do by_page[outcome.page] = outcome end
     local document_pages = page_images.text_pages(original)
+    local marked = #document_pages > 0
     local targets = {}
     for index, page in ipairs(pages) do
         local number = page_number(page, index)
@@ -295,9 +296,10 @@ local function run(params: any, deps: any): any
         if type(text) ~= "string" then return nil, "OCR returned invalid text" end
         return {page = item.index, text = text}
     end
+    local committed_outcomes = previous
     local function checkpoint(): (boolean, string?)
         local markdown
-        if #page_images.text_pages(original) > 0 then markdown = page_images.replace_pages(original, sections)
+        if marked then markdown = page_images.replace_pages(original, sections)
         else
             local replacements = {}
             for _, section in ipairs(sections) do replacements[section.page] = section.text end
@@ -305,7 +307,19 @@ local function run(params: any, deps: any): any
             for _, page in ipairs(document_pages) do ordered[#ordered + 1] = {page = page.page, text = replacements[page.page] or page.text} end
             markdown = page_images.replace_pages(original, ordered)
         end
-        return persist(upload_id, params.storage_id, markdown, params, pages[1], outcomes)
+        local checkpoint_outcomes = outcomes
+        if not marked and markdown == original then
+            -- Unmarked text retains the whole original until replacement can carry every transcript.
+            checkpoint_outcomes = {}
+            for _, outcome in ipairs(outcomes) do
+                if outcome.status == "failed" or outcome.status == "blank" then
+                    checkpoint_outcomes[#checkpoint_outcomes + 1] = outcome
+                end
+            end
+        end
+        local ok, err = persist(upload_id, params.storage_id, markdown, params, pages[1], checkpoint_outcomes)
+        if ok then committed_outcomes = checkpoint_outcomes end
+        return ok, err
     end
     local start, persist_error, cancelled = 1, nil, false
     while start <= #targets do
@@ -334,6 +348,7 @@ local function run(params: any, deps: any): any
         local ok, err = checkpoint()
         if not ok then persist_error = tostring(err) end
     end
+    outcomes = committed_outcomes
     local failed, transcribed = 0, 0
     for _, outcome in ipairs(outcomes) do
         if outcome.status == "readable" then

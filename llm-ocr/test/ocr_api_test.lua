@@ -177,6 +177,56 @@ local function define_tests()
         end
     end)
 
+    test.describe("unmarked transcript checkpoints", function()
+        for _, selection in ipairs({"all", "sparse"}) do
+            for _, interrupted in ipairs({false, true}) do
+                test.it("retranscribes unstored readable pages, selection=" .. selection .. ", cancelled=" .. tostring(interrupted), function()
+                    local settings = assert(assert(contract.get("kickside.settings:settings")):open())
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = selection}).success)
+                    local original = "Original unmarked text"
+                    local id = seed(original, {1, 2})
+                    local params = {upload_id = id, storage_id = STORAGE_ID, mime_type = "application/pdf"}
+                    local calls = 0
+                    local first = stage.run(params, {batch_size = 1,
+                        should_continue = function() return not interrupted or calls == 0 end,
+                        transcribe = function(bytes)
+                            calls = calls + 1
+                            if bytes:match("page%-2") then return nil, "OCR request failed" end
+                            return "First page transcript", nil
+                        end})
+                    test.is_false(first.success)
+                    test.eq(calls, interrupted and 1 or 2)
+                    test.eq(primary_text(id), original)
+                    local stored = assert(artifact_parts_repo.read_primary_content(id)).metadata.ocr_page_outcomes
+                    test.eq(#stored, interrupted and 0 or 1)
+                    if not interrupted then
+                        test.eq(stored[1].page, 2)
+                        test.eq(stored[1].status, "failed")
+                    end
+                    test.eq(first.metadata.ocr_pages, 0)
+                    test.eq(#first.metadata.ocr_page_outcomes, #stored)
+                    local retried_pages = {}
+                    local retried = stage.run(params, {batch_size = 1, transcribe = function(bytes)
+                        local page = tonumber(bytes:match("page%-(%d+)"))
+                        retried_pages[#retried_pages + 1] = page
+                        return page == 1 and "First page transcript" or "Second page transcript", nil
+                    end})
+                    test.is_true(retried.success)
+                    test.eq(#retried_pages, 2)
+                    test.eq(retried_pages[1], 1)
+                    test.eq(retried_pages[2], 2)
+                    test.eq(primary_text(id), "<!-- page 1 -->\n\nFirst page transcript\n\n<!-- page 2 -->\n\nSecond page transcript")
+                    test.eq(retried.metadata.ocr_pages, 2)
+                    stored = assert(artifact_parts_repo.read_primary_content(id)).metadata.ocr_page_outcomes
+                    test.eq(#stored, 2)
+                    test.eq(stored[1].status, "readable")
+                    test.eq(stored[2].status, "readable")
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "sparse"}).success)
+                end)
+            end
+        end
+    end)
+
     test.describe("kickside.llm_ocr:ocr lib", function()
         test.it("transcribes image bytes via the model", function()
             local text, err = ocr_with(function(options) return "TEXT[" .. options.model .. "]" end).transcribe(
