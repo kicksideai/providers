@@ -176,6 +176,47 @@ local function define_tests()
             test.is_true(tostring(err):find("token limit", 1, true) ~= nil, tostring(err))
         end)
 
+        test.it("asks the model for an explicit no-text reply and returns empty text for it", function()
+            test.is_true(type(ocr.NO_TEXT_REPLY) == "string" and ocr.NO_TEXT_REPLY ~= "")
+            test.contains(ocr.system_prompt, ocr.NO_TEXT_REPLY)
+            for _, reply in ipairs({ ocr.NO_TEXT_REPLY, "  " .. tostring(ocr.NO_TEXT_REPLY) .. "\n" }) do
+                local text, err = ocr_with(reply).transcribe("img", { model = "class:fast" })
+                test.is_nil(err)
+                test.eq(text, "")
+            end
+        end)
+
+        test.it("keeps a transcription that quotes the no-text reply among page text", function()
+            local reply = "Form field: " .. tostring(ocr.NO_TEXT_REPLY)
+            local text, err = ocr_with(reply).transcribe("img", { model = "class:fast" })
+            test.is_nil(err)
+            test.eq(text, reply)
+        end)
+
+        test.it("records a length-cut no-text reply as failed instead of blank or readable", function()
+            for _, reply in ipairs({
+                ocr.NO_TEXT_REPLY,
+                "  " .. tostring(ocr.NO_TEXT_REPLY) .. "\n",
+                "Form field: " .. tostring(ocr.NO_TEXT_REPLY),
+            }) do
+                local text, err = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe(
+                    "img", { model = "class:fast" })
+                test.is_nil(text)
+                test.contains(tostring(err), "token limit")
+                local upload_id = seed("", {1})
+                local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {
+                    transcribe = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe,
+                })
+                test.is_false(result.success)
+                test.eq(result.metadata.ocr_error, "transcription_failed")
+                test.eq(result.metadata.ocr_pages, 0)
+                local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+                test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+                test.eq(primary.metadata.ocr_page_outcomes[1].error, "transcription_failed")
+                test.is_nil((primary.content:find(tostring(ocr.NO_TEXT_REPLY), 1, true)))
+            end
+        end)
+
         test.it("surfaces a generation error", function()
             local text, err = ocr_with(nil, "model exploded").transcribe("img", { model = "class:fast" })
             test.is_nil(text)
@@ -313,6 +354,18 @@ local function define_tests()
             until upload_job.terminal_failure(job, nil) or job.attempt_no > job.max_attempts
             test.eq(job.attempt_no, job.max_attempts)
             test.eq(calls, job.max_attempts)
+        end)
+
+        test.it("records a page the model reports as having no text as blank", function()
+            local upload_id = seed("", {1, 2})
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = ocr_with(function()
+                return tostring(ocr.NO_TEXT_REPLY)
+            end).transcribe})
+            test.is_true(result.success)
+            test.eq(result.metadata.ocr_pages, 0)
+            test.eq(result.metadata.ocr_page_outcomes[1].status, "blank")
+            test.eq(result.metadata.ocr_page_outcomes[2].status, "blank")
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\n<!-- page 2 -->")
         end)
 
         test.it("retains sparse text when its image is missing or transcription fails", function()
