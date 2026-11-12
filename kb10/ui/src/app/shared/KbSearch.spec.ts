@@ -84,6 +84,41 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     if (layout === 'panel') expect(wrapper.find('.kc-search-modes').exists()).toBe(true)
   })
 
+  it.each(['response', 'rejection'] as const)('disables Ask after an unavailable Ask-first %s and restores it after analysis is available', async (outcome) => {
+    const data = { success: false, error: 'ask failed: answer generation failed: No models found for class: fast',
+      retrieval: { strategy: 'plain', analysis: { status: 'unavailable', reason: 'no_models_for_class', model: 'class:fast' } } }
+    if (outcome === 'response') post.mockResolvedValueOnce({ data })
+    else post.mockRejectedValueOnce({ response: { status: 503, data } })
+    const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
+    await wrapper.get('.kc-search-mode:last-child').trigger('click')
+    await wrapper.get('input').setValue('question')
+    await wrapper.get('button[aria-label="Ask"]').trigger('click')
+    await flushPromises()
+    expect(get).not.toHaveBeenCalled()
+    expect(wrapper.find('.kc-search-modes').exists()).toBe(false)
+    expect(wrapper.text()).toContain(data.error)
+    expect(wrapper.get('input').attributes('placeholder')).toBe('Search every indexed passage…')
+    await wrapper.get('input').trigger('keyup.enter')
+    await flushPromises()
+    expect(get).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain('Search passage')
+    expect(wrapper.find('.kc-search-modes').exists()).toBe(true)
+  })
+
+  it('keeps Ask available after a concrete provider fails', async () => {
+    post.mockRejectedValueOnce({ response: { status: 503, data: {
+      success: false, error: 'ask failed: provider unavailable',
+    } } })
+    const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
+    await wrapper.get('.kc-search-mode:last-child').trigger('click')
+    await wrapper.get('input').setValue('question')
+    await wrapper.get('button[aria-label="Ask"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('ask failed: provider unavailable')
+    expect(wrapper.find('.kc-search-modes').exists()).toBe(true)
+    expect(wrapper.get('input').attributes('placeholder')).toBe('Ask this knowledge base a question…')
+  })
+
   it('returns to search when the Answer capability is removed', async () => {
     const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
     await wrapper.get('.kc-search-mode:last-child').trigger('click')
