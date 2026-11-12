@@ -315,10 +315,6 @@ local function handle(request)
     local kb_store, store_err = M._store.get_store(component_id)
     if store_err then return nil, store_err end
 
-    -- Graph-KB query orchestration lives in the knowledge control plane
-    -- (kickside.knowledge.retrieval:kb_search dispatches it); this provider engine
-    -- only does its own document/vector retrieval over the kb_store primitives.
-
     local embedding_model = kb_store.embedding_model :: string?
     local config = (kb_store.config :: table?) or {}
     local analysis_model = query_policy.resolve_analysis_model(config)

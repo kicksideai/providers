@@ -69,7 +69,7 @@ local function define_tests()
                         children[#children + 1] = { node = { node_type = node_type, content = "Reference passage",
                             content_type = "text/plain", metadata = lineage }, embedding = vector }
                     end
-                    local _, seed_err = materializer:replace_document({ store_id = id,
+                    local _, seed_err = materializer.replace_document(materializer, { store_id = id,
                         document = { node_type = "document", content = "Reference passage", content_type = "text/plain", metadata = lineage },
                         children = children })
                     test.is_nil(seed_err)

@@ -27,7 +27,8 @@ const mode = ref<Mode>('search')
 const focused = ref(false)
 const queryRan = ref('')
 
-const isAsk = computed(() => props.layout === 'panel' && props.ask && mode.value === 'ask')
+const canAsk = computed(() => props.ask && !analysisUnavailable.value)
+const isAsk = computed(() => props.layout === 'panel' && canAsk.value && mode.value === 'ask')
 const submitIcon = computed(() => (
   loading.value ? 'tabler:hourglass' : (isAsk.value ? 'tabler:sparkles' : 'tabler:arrow-right')
 ))
@@ -87,7 +88,7 @@ function pick(hit: SearchHit) {
   <!-- Panel: modes + field + results / answer -->
   <div v-else class="kc-search-panel">
     <div class="kc-search-bar">
-      <div v-if="ask" class="kc-search-modes">
+      <div v-if="canAsk" class="kc-search-modes">
         <button class="kc-search-mode" :class="{ on: mode === 'search' }" @click="pickMode('search')">
           <Icon icon="tabler:search" aria-hidden="true" /> Search
         </button>
