@@ -70,10 +70,13 @@ export function useKbSearch(kbId: () => string) {
         results.value = (data.results || []) as SearchHit[]
         answer.value = String(data.answer || '')
       } else {
+        analysisUnavailable.value = data?.retrieval?.analysis?.status === 'unavailable' ? data.retrieval.analysis : null
         error.value = data?.error || 'ask failed'
       }
     } catch (e: any) {
-      error.value = e?.response?.data?.error || e?.message || 'ask error'
+      const data = e?.response?.data
+      analysisUnavailable.value = data?.retrieval?.analysis?.status === 'unavailable' ? data.retrieval.analysis : null
+      error.value = data?.error || e?.message || 'ask error'
       host.handleError(e?.response?.status === 401 ? 'auth-expired' : 'other', e)
     } finally {
       loading.value = false
