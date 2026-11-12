@@ -89,6 +89,10 @@ local function new(runtime: any): any
         if gen_err or not response then
             return nil, "ocr: generate failed: " .. tostring(gen_err)
         end
+        -- A generation cut at max_tokens is an incomplete transcription of the page.
+        if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
+            return nil, "ocr: generation stopped at the token limit"
+        end
 
         local out = (response :: any).result
         if type(out) ~= "string" then

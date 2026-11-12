@@ -253,8 +253,10 @@ entries:
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       upload_record_repo: kickside.uploads.persist:upload_record_repo
+      llm: wippy.llm:llm
       ocr: kickside.llm_ocr:ocr
       stage: kickside.llm_ocr:stage_implementation
+      upload_job: kickside.uploads.service:process_job_proc
     method: run
 
   - name: ocr_smoke_test
@@ -309,6 +311,7 @@ entries:
       processor: kickside.uploads.documents:processor
       parts: kickside.uploads.persist:artifact_parts_repo
       stage: kickside.llm_ocr:stage_implementation
+      llm: wippy.llm:llm
       ocr: kickside.llm_ocr:ocr
       doc2md: kickside.convert.doc2md:doc2md
 
