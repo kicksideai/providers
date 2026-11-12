@@ -115,7 +115,7 @@ local function image_page(upload_id: string): { any }
 end
 
 -- Rendered screenshots and extracted images share explicit page identity.
-local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): ({ any }, string)
+local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, selection: string?, mime: string): ({ any }, string)
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     local content = not primary_err and type(primary) == "table" and type(primary.content) == "string" and primary.content or ""
     if mime ~= "" and mime ~= "application/pdf" and content:match("%S") then return {}, content end
@@ -132,13 +132,13 @@ local function resolve_pages(upload_id: string, max_text: integer, min_bytes: in
         for _, image in ipairs(candidates) do by_page[image.metadata.page] = image end
         local selected = {}
         for _, page in ipairs(text_pages) do
-            if page_images.needs_ocr_text(page.text, 1, max_text, page.status) then
+            if page_images.needs_ocr_text(page.text, 1, max_text, page.status, selection) then
                 selected[#selected + 1] = by_page[page.page] or {metadata = {page = page.page}}
             end
         end
         return selected, content
     end
-    if not page_images.needs_ocr_text(content, #candidates, max_text) then return {}, content end
+    if not page_images.needs_ocr_text(content, #candidates, max_text, nil, selection) then return {}, content end
     return candidates, content
 end
 
@@ -238,6 +238,8 @@ local function run(params: any, deps: any): any
     local default_min_bytes = (tonumber(page_images.DEFAULT_MIN_PAGE_BYTES) or 200000) :: integer
     local max_text = setting_int(SETTINGS_NS, "ocr_max_text_bytes", default_max_text)
     local min_bytes = setting_int(RASTERIZE_NS, "rasterize_min_page_bytes", default_min_bytes)
+    local configured_selection = get_setting(RASTERIZE_NS, "rasterize_page_selection")
+    local selection: string? = type(configured_selection) == "string" and configured_selection or nil
     local declared = type(params.mime_type) == "string" and (params.mime_type :: string):lower() or ""
     local mime = ((declared:match("^[^;]*") or ""):match("^%s*(.-)%s*$")) :: string
     local pages: { any } = {}
@@ -249,7 +251,7 @@ local function run(params: any, deps: any): any
         if not setting_bool("ocr_images", true) then return { success = true } end
         pages = image_page(upload_id)
     else
-        pages, original = resolve_pages(upload_id, max_text, min_bytes, mime)
+        pages, original = resolve_pages(upload_id, max_text, min_bytes, selection, mime)
     end
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
