@@ -35,6 +35,7 @@ entries:
       tuner: kickside.kb10.engine:tuner
       text_limits: kickside.kb10:text_limits
       model_failure: kickside.contract:model_failure
+      model_catalog: kickside.models.catalog:model_catalog
 
   - name: embed_func
     kind: function.lua

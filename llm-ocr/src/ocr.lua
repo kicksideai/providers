@@ -2,10 +2,15 @@
 -- Dependencies are injectable (new(runtime)) so the transcription seam can be tested
 -- without a live model, mirroring the converter libraries' new(runtime) shape.
 
+-- The reply for a page without readable text. The model states the empty page with
+-- this exact reply, so a description of the image is never the only way to say it.
+local NO_TEXT_REPLY = "[[NO_TEXT]]"
+
 local OCR_SYSTEM = "You are an OCR engine. Transcribe ALL text visible in the image " ..
     "exactly as it appears, preserving reading order and structure (headings, tables, " ..
     "labels, lists). Output only the transcribed text as Markdown -- no commentary, no " ..
-    "description of the image. If the image contains no readable text, output nothing."
+    "description of the image. If the image contains no readable text, output exactly " ..
+    NO_TEXT_REPLY .. " and nothing else."
 
 local DEFAULT_USER = "Transcribe the text in this page."
 local DEFAULT_MAX_TOKENS = 4000
@@ -84,10 +89,17 @@ local function new(runtime: any): any
         if gen_err or not response then
             return nil, "ocr: generate failed: " .. tostring(gen_err)
         end
+        -- A generation cut at max_tokens is an incomplete transcription of the page.
+        if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
+            return nil, "ocr: generation stopped at the token limit"
+        end
 
         local out = (response :: any).result
         if type(out) ~= "string" then
             return nil, "ocr: unexpected model result"
+        end
+        if (out :: string):match("^%s*(.-)%s*$") == NO_TEXT_REPLY then
+            return "", nil
         end
         return out, nil
     end
@@ -98,6 +110,7 @@ end
 return {
     new = new,
     system_prompt = OCR_SYSTEM,
+    NO_TEXT_REPLY = NO_TEXT_REPLY,
     clamp_timeout_ms = clamp_timeout_ms,
     to_ms = to_ms,
     PROVIDER_TIMEOUT_CAP_MS = PROVIDER_TIMEOUT_CAP_MS,
