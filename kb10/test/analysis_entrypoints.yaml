@@ -1,0 +1,40 @@
+version: "1.0"
+namespace: app.analysis
+entries:
+  - name: test
+    kind: function.lua
+    meta: { type: test, suite: kb10_analysis }
+    source: file://analysis_entrypoints_test.lua
+    method: run
+    modules: [registry, contract, security, uuid]
+    imports:
+      test: wippy.test:test
+      store: kickside.kb10.persist:store
+      materializer: kickside.kb10.injection:materializer_store
+      models: kickside.models.persist:repo
+      kb_answer: kickside.knowledge.retrieval:kb_answer
+  - name: provider
+    kind: registry.entry
+    meta: { type: llm.provider, name: analysis-fixture }
+    driver: { id: app.analysis:driver }
+  - name: driver
+    kind: contract.binding
+    contracts:
+      - contract: wippy.llm:provider
+        methods: { status: app.analysis:status }
+      - contract: wippy.llm:embedder
+        methods: { embed: app.analysis:embed }
+      - contract: wippy.llm:structured_output
+        methods: { structured_output: app.analysis:structured_output }
+  - name: embed
+    kind: function.lua
+    source: file://analysis_provider.lua
+    method: embed
+  - name: structured_output
+    kind: function.lua
+    source: file://analysis_provider.lua
+    method: structured_output
+  - name: status
+    kind: function.lua
+    source: file://analysis_provider.lua
+    method: status
