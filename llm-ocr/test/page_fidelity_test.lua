@@ -25,13 +25,13 @@ return { run = test.run_cases(function()
                 mime_type = "application/pdf", size = #bytes, metadata = {filename = "composite.pdf"}}
             test.is_nil(select(2, uploads.create(id, "page-reader", #bytes, "application/pdf", "app:temp_fs", path, "documents", {}, "processing")))
             local settings = assert(assert(contract.get("kickside.settings:settings")):open())
-            for key, value in pairs({rasterize_min_source_bytes = 0, rasterize_min_page_bytes = 0, rasterize_format = "invalid"}) do
+            for key, value in pairs({rasterize_min_source_bytes = 0, rasterize_min_page_bytes = 0}) do
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = key, value = value}).success)
             end
             test.is_true(processor.process(params).success)
             local original = assert(parts.read_primary_content(id)).content
+            assert(storage:remove(path))
             local rendered, err = funcs.call("kickside.uploads.rasterize:stage", params)
-            test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_format", value = "jpeg"}).success)
             test.is_nil(err)
             test.is_true(rendered.success)
             local calls = 0
@@ -42,7 +42,6 @@ return { run = test.run_cases(function()
             test.eq(primary.content, original)
             test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
             test.eq(#doc2md.markers(primary.content), 1)
-            assert(storage:remove(path))
         end)
         for _, selection in ipairs({"default", "all"}) do
             test.it("transcribes text-layer pages only under the all page selection: " .. selection, function()

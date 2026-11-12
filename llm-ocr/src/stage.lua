@@ -94,14 +94,7 @@ local function page_number(artifact: any, fallback: integer): integer
     return (tonumber(meta.page) or fallback) :: integer
 end
 
-local function build_markdown(sections: { any }): string
-    local parts = {}
-    for _, section in ipairs(sections) do
-        local body = (section.text :: string):match("^%s*(.-)%s*$") or ""
-        parts[#parts + 1] = "<!-- page " .. tostring(section.page) .. " -->" .. (body ~= "" and ("\n\n" .. body) or "")
-    end
-    return table.concat(parts, "\n\n")
-end
+local build_markdown = page_images.build_markdown
 
 -- The image processor stores the uploaded image as its own primary artifact; it
 -- is not a text primary and therefore is deliberately distinct from the markdown
@@ -310,7 +303,7 @@ local function run(params: any, deps: any): any
             for _, section in ipairs(sections) do replacements[section.page] = section.text end
             local ordered = {}
             for _, page in ipairs(document_pages) do ordered[#ordered + 1] = {page = page.page, text = replacements[page.page] or page.text} end
-            markdown = build_markdown(ordered)
+            markdown = page_images.replace_pages(original, ordered)
         end
         return persist(upload_id, params.storage_id, markdown, params, pages[1], outcomes)
     end
