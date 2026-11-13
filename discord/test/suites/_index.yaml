@@ -405,6 +405,7 @@ entries:
     source: file://worker_source.lua
     modules: [time, channel, logger, process]
     imports:
+      component: kickside.component:component
       protocol: kickside.discord.gateway:protocol
       backoff: kickside.discord.gateway:backoff
       consts: kickside.discord.gateway:consts

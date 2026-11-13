@@ -27,6 +27,8 @@ local function define_tests()
                     set_options = function(value) options = value; return true, nil end,
                     event = { CANCEL = "cancel" },
                     spawn_monitored = function(_, _, args)
+                        test.is_nil(args.token)
+                        test.is_nil(args.bot_token)
                         local id = args.component_id
                         attempts[id] = (attempts[id] or 0) + 1
                         if id == "unavailable" and attempts[id] == 1 then

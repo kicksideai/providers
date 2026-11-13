@@ -9,12 +9,6 @@ local function credential_context_with(cmp: any, component_id: string): (any?, e
     local allowed, access_err = cmp.get_context(component_id, cmp.ACCESS.READ)
     if access_err then return nil, access_err end
     if not allowed then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "connection access denied" }) end
-    if cmp.get_private_context then
-        local ctx, err = cmp.get_private_context(component_id)
-        if err then return nil, err end
-        if type(ctx) ~= "table" then return nil, errors.new({ kind = errors.INVALID, message = "GitHub credential context is invalid" }) end
-        return ctx, nil
-    end
     return allowed, nil
 end
 M._credential_context_with = credential_context_with

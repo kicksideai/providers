@@ -64,7 +64,7 @@ local function define_tests()
                 get_context = function(id: string, access: any): (any?, any?)
                     test.eq(id, "pat1")
                     test.eq(access, "read")
-                    return { component_id = id }, nil
+                    return { component_id = id, token = "ghp_test" }, nil
                 end,
                 get_private_context = function(id: string): any
                     test.eq(id, "pat1")
