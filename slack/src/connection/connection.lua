@@ -48,6 +48,7 @@ end
 function M.test_connection(args: any): (SimpleResult?, error?)
     local conn, err = open()
     if err then return nil, err end
+    conn = conn :: types.Conn
     local result, request_err = transport.test_connection(conn)
     if request_err then return nil, request_err end
     if not result.success then return slack_failure(result) end
@@ -57,6 +58,7 @@ end
 function M.get_status(args: any): (StatusResult?, error?)
     local conn, err = open()
     if err then return nil, err end
+    conn = conn :: types.Conn
     local result, request_err = transport.test_connection(conn)
     if request_err then return nil, request_err end
     if not result.success then return slack_failure(result, { status = "error" }) end
@@ -87,6 +89,7 @@ function M.discover_resources(args: any): (DiscoverResult?, error?)
     args = type(args) == "table" and args or {}
     local conn, err = open()
     if err then return nil, err end
+    conn = conn :: types.Conn
 
     local result, request_err = transport.list_conversations(conn, { limit = 1000 })
     if request_err then return nil, request_err end
