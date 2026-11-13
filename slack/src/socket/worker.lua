@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local component = require("component")
 local time = require("time")
 local channel = require("channel")
