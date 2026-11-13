@@ -94,14 +94,7 @@ local function page_number(artifact: any, fallback: integer): integer
     return (tonumber(meta.page) or fallback) :: integer
 end
 
-local function build_markdown(sections: { any }): string
-    local parts = {}
-    for _, section in ipairs(sections) do
-        local body = (section.text :: string):match("^%s*(.-)%s*$") or ""
-        parts[#parts + 1] = "<!-- page " .. tostring(section.page) .. " -->" .. (body ~= "" and ("\n\n" .. body) or "")
-    end
-    return table.concat(parts, "\n\n")
-end
+local build_markdown = page_images.build_markdown
 
 -- The image processor stores the uploaded image as its own primary artifact; it
 -- is not a text primary and therefore is deliberately distinct from the markdown
@@ -115,7 +108,7 @@ local function image_page(upload_id: string): { any }
 end
 
 -- Rendered screenshots and extracted images share explicit page identity.
-local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, mime: string): ({ any }, string)
+local function resolve_pages(upload_id: string, max_text: integer, min_bytes: integer, selection: string?, mime: string): ({ any }, string)
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     local content = not primary_err and type(primary) == "table" and type(primary.content) == "string" and primary.content or ""
     if mime ~= "" and mime ~= "application/pdf" and content:match("%S") then return {}, content end
@@ -132,13 +125,13 @@ local function resolve_pages(upload_id: string, max_text: integer, min_bytes: in
         for _, image in ipairs(candidates) do by_page[image.metadata.page] = image end
         local selected = {}
         for _, page in ipairs(text_pages) do
-            if page_images.needs_ocr_text(page.text, 1, max_text, page.status) then
+            if page_images.needs_ocr_text(page.text, 1, max_text, page.status, selection) then
                 selected[#selected + 1] = by_page[page.page] or {metadata = {page = page.page}}
             end
         end
         return selected, content
     end
-    if not page_images.needs_ocr_text(content, #candidates, max_text) then return {}, content end
+    if not page_images.needs_ocr_text(content, #candidates, max_text, nil, selection) then return {}, content end
     return candidates, content
 end
 
@@ -238,6 +231,8 @@ local function run(params: any, deps: any): any
     local default_min_bytes = (tonumber(page_images.DEFAULT_MIN_PAGE_BYTES) or 200000) :: integer
     local max_text = setting_int(SETTINGS_NS, "ocr_max_text_bytes", default_max_text)
     local min_bytes = setting_int(RASTERIZE_NS, "rasterize_min_page_bytes", default_min_bytes)
+    local configured_selection = get_setting(RASTERIZE_NS, "rasterize_page_selection")
+    local selection: string? = type(configured_selection) == "string" and configured_selection or nil
     local declared = type(params.mime_type) == "string" and (params.mime_type :: string):lower() or ""
     local mime = ((declared:match("^[^;]*") or ""):match("^%s*(.-)%s*$")) :: string
     local pages: { any } = {}
@@ -249,7 +244,7 @@ local function run(params: any, deps: any): any
         if not setting_bool("ocr_images", true) then return { success = true } end
         pages = image_page(upload_id)
     else
-        pages, original = resolve_pages(upload_id, max_text, min_bytes, mime)
+        pages, original = resolve_pages(upload_id, max_text, min_bytes, selection, mime)
     end
     local primary, primary_err = artifact_parts_repo.read_primary_content(upload_id)
     if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
@@ -260,6 +255,7 @@ local function run(params: any, deps: any): any
     local outcomes, by_page = {}, {}
     for _, outcome in ipairs(previous) do by_page[outcome.page] = outcome end
     local document_pages = page_images.text_pages(original)
+    local marked = #document_pages > 0
     local targets = {}
     for index, page in ipairs(pages) do
         local number = page_number(page, index)
@@ -300,17 +296,30 @@ local function run(params: any, deps: any): any
         if type(text) ~= "string" then return nil, "OCR returned invalid text" end
         return {page = item.index, text = text}
     end
+    local committed_outcomes = previous
     local function checkpoint(): (boolean, string?)
         local markdown
-        if #page_images.text_pages(original) > 0 then markdown = page_images.replace_pages(original, sections)
+        if marked then markdown = page_images.replace_pages(original, sections)
         else
             local replacements = {}
             for _, section in ipairs(sections) do replacements[section.page] = section.text end
             local ordered = {}
             for _, page in ipairs(document_pages) do ordered[#ordered + 1] = {page = page.page, text = replacements[page.page] or page.text} end
-            markdown = build_markdown(ordered)
+            markdown = page_images.replace_pages(original, ordered)
         end
-        return persist(upload_id, params.storage_id, markdown, params, pages[1], outcomes)
+        local checkpoint_outcomes = outcomes
+        if not marked and markdown == original then
+            -- Unmarked text retains the whole original until replacement can carry every transcript.
+            checkpoint_outcomes = {}
+            for _, outcome in ipairs(outcomes) do
+                if outcome.status == "failed" or outcome.status == "blank" then
+                    checkpoint_outcomes[#checkpoint_outcomes + 1] = outcome
+                end
+            end
+        end
+        local ok, err = persist(upload_id, params.storage_id, markdown, params, pages[1], checkpoint_outcomes)
+        if ok then committed_outcomes = checkpoint_outcomes end
+        return ok, err
     end
     local start, persist_error, cancelled = 1, nil, false
     while start <= #targets do
@@ -339,6 +348,7 @@ local function run(params: any, deps: any): any
         local ok, err = checkpoint()
         if not ok then persist_error = tostring(err) end
     end
+    outcomes = committed_outcomes
     local failed, transcribed = 0, 0
     for _, outcome in ipairs(outcomes) do
         if outcome.status == "readable" then

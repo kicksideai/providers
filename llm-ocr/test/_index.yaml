@@ -247,7 +247,7 @@ entries:
     kind: function.lua
     meta: { type: test, suite: llm_ocr, timeout: 120s }
     source: file://ocr_api_test.lua
-    modules: [uuid, sql]
+    modules: [uuid, sql, contract]
     imports:
       test: wippy.test:test
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo

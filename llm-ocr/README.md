@@ -59,6 +59,9 @@ variables in the harness configuration for your test server.
 
 Install the OCR processor and PDF rasterizer requirements, configure the generation model, and upload a scanned or image-only document through Uploads. OCR processes selected pages; original content and derived artifacts stay owned by Uploads.
 
+A page whose OCR returns blank keeps its existing text and committed blank outcome; retrying the upload does not automatically transcribe that page again.
+For documents without page markers, readable outcomes are saved with the replacement text; a retry transcribes pages whose successful OCR text is not yet stored.
+
 ## Links
 
 - [KickSide](https://kickside.ai)
