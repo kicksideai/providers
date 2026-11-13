@@ -144,7 +144,8 @@ return { run = test.run_cases(function()
                     end
                 end
                 local calls, current_bytes = 0, ""
-                local model = ocr.new({llm = {FINISH_REASON = llm.FINISH_REASON, generate = function()
+                local model = ocr.new({llm = {FINISH_REASON = llm.FINISH_REASON,
+                    resolve_model = function(name) return {name = name}, nil end, generate = function()
                     calls = calls + 1
                     return {result = (mode == "extracted" or mode == "uneven") and assert(words_by_image[current_bytes]) or "SCANNED " .. images[calls].metadata.page}, nil
                 end}})

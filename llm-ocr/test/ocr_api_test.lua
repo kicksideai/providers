@@ -24,8 +24,12 @@ local function fake_prompt(): any
     }
 end
 
+local function resolve_card(name: string): (any, any)
+    return { name = name }, nil
+end
+
 local function fake_llm(reply: any, err: any, finish_reason: string?): any
-    return { FINISH_REASON = llm.FINISH_REASON, generate = function(_prompt: any, options: any): (any, any)
+    return { FINISH_REASON = llm.FINISH_REASON, resolve_model = resolve_card, generate = function(_prompt: any, options: any): (any, any)
         if err ~= nil then return nil, err end
         return { result = type(reply) == "function" and reply(options) or reply, finish_reason = finish_reason or llm.FINISH_REASON.STOP }, nil
     end }
@@ -237,7 +241,7 @@ local function define_tests()
 
         test.it("transcribes when the provider omits finish_reason", function()
             local model = ocr.new({
-                llm = { FINISH_REASON = llm.FINISH_REASON, generate = function()
+                llm = { FINISH_REASON = llm.FINISH_REASON, resolve_model = resolve_card, generate = function()
                     return { result = "Full page body." }, nil
                 end },
                 prompt = fake_prompt(),

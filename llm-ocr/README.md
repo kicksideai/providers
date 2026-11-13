@@ -59,6 +59,28 @@ variables in the harness configuration for your test server.
 
 Install the OCR processor and PDF rasterizer requirements, configure the generation model, and upload a scanned or image-only document through Uploads. OCR processes selected pages; original content and derived artifacts stay owned by Uploads.
 
+### Model request shape
+
+Each page is sent as a system prompt, then a user message with the instruction text
+followed by the image, with a 4000-token output limit. A model card that expects a
+different request declares it in its `metadata.ocr` object; every field is optional:
+
+| Field | Value |
+| --- | --- |
+| `system` | `false` sends no system message; text replaces the default system prompt |
+| `prompt` | instruction text sent with the image |
+| `image_first` | `true` sends the image before the instruction text |
+| `output_limit` | positive integer output token limit |
+
+A non-empty `ocr_prompt` setting takes precedence over the card's `prompt`. When
+`ocr_model` names a class, the profile of the card the class resolves to applies.
+PaddleOCR-VL models expect the image first, the task prompt `OCR:`, and no system
+message:
+
+```json
+{"ocr": {"system": false, "prompt": "OCR:", "image_first": true}}
+```
+
 A page whose OCR returns blank keeps its existing text and committed blank outcome; retrying the upload does not automatically transcribe that page again.
 For documents without page markers, readable outcomes are saved with the replacement text; a retry transcribes pages whose successful OCR text is not yet stored.
 
