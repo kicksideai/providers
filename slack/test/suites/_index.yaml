@@ -135,3 +135,38 @@ entries:
     imports:
       test: wippy.test:test
       hub: kickside.slack.socket:hub
+
+  - name: worker_token_fixture
+    kind: library.lua
+    source: file://worker_token_fixture.lua
+  - name: worker_socket_api
+    kind: library.lua
+    source: file://socket_api_source.lua
+    modules: [json, websocket]
+    imports:
+      http_client: app.suites:worker_token_fixture
+      consts: kickside.slack.socket:consts
+  - name: worker_token_source
+    kind: library.lua
+    source: file://worker_source.lua
+    modules: [time, channel, logger]
+    imports:
+      process: app.suites:worker_process_fixture
+      component: app.suites:worker_token_fixture
+      protocol: kickside.slack.socket:protocol
+      backoff: kickside.slack.socket:backoff
+      socket_api: app.suites:worker_socket_api
+  - name: worker_token_test
+    kind: function.lua
+    meta: {type: test, suite: slack}
+    source: file://worker_token_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      worker: app.suites:worker_token_source
+      fixture: app.suites:worker_token_fixture
+
+  - name: worker_process_fixture
+    kind: library.lua
+    source: file://worker_process_fixture.lua
+    modules: [channel]
