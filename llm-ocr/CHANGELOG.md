@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.19...llm-ocr-v0.1.20) (2026-11-13)
+
+
+### Features
+
+* **llm-ocr:** apply the uploads page selection when choosing pages to transcribe ([#101](https://github.com/kicksideai/providers/issues/101)) ([b7ef8c3](https://github.com/kicksideai/providers/commit/b7ef8c3fe9b24121ff0eddc63e71aca594eccd58))
+
 ## [0.1.19](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.18...llm-ocr-v0.1.19) (2026-11-12)
 
 

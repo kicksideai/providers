@@ -25,13 +25,13 @@ return { run = test.run_cases(function()
                 mime_type = "application/pdf", size = #bytes, metadata = {filename = "composite.pdf"}}
             test.is_nil(select(2, uploads.create(id, "page-reader", #bytes, "application/pdf", "app:temp_fs", path, "documents", {}, "processing")))
             local settings = assert(assert(contract.get("kickside.settings:settings")):open())
-            for key, value in pairs({rasterize_min_source_bytes = 0, rasterize_min_page_bytes = 0, rasterize_format = "invalid"}) do
+            for key, value in pairs({rasterize_min_source_bytes = 0, rasterize_min_page_bytes = 0}) do
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = key, value = value}).success)
             end
             test.is_true(processor.process(params).success)
             local original = assert(parts.read_primary_content(id)).content
+            assert(storage:remove(path))
             local rendered, err = funcs.call("kickside.uploads.rasterize:stage", params)
-            test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_format", value = "jpeg"}).success)
             test.is_nil(err)
             test.is_true(rendered.success)
             local calls = 0
@@ -42,8 +42,56 @@ return { run = test.run_cases(function()
             test.eq(primary.content, original)
             test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
             test.eq(#doc2md.markers(primary.content), 1)
-            assert(storage:remove(path))
         end)
+        for _, selection in ipairs({"default", "all"}) do
+            test.it("transcribes text-layer pages only under the all page selection: " .. selection, function()
+                local kinds = {"text", "scan", "text"}
+                local bytes = fixtures.pdf(kinds)
+                local id, storage = uuid.v4(), fs.get("app:temp_fs")
+                local path = id .. ".pdf"
+                assert(storage:writefile(path, bytes))
+                local params = {upload_id = id, storage_id = "app:temp_fs", storage_path = path,
+                    mime_type = "application/pdf", size = #bytes, metadata = {filename = "selection.pdf"}}
+                test.is_nil(select(2, uploads.create(id, "page-reader", #bytes, "application/pdf", "app:temp_fs", path, "documents", {}, "processing")))
+                local settings = assert(assert(contract.get("kickside.settings:settings")):open())
+                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_source_bytes", value = 0}).success)
+                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_page_bytes", value = 51200}).success)
+                if selection == "all" then
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "all"}).success)
+                end
+                test.is_true(processor.process(params).success)
+                local original = assert(parts.read_primary_content(id)).content
+                local originals = doc2md.markers(original)
+                local rendered, render_err = funcs.call("kickside.uploads.rasterize:stage", params)
+                test.is_nil(render_err, tostring(render_err)); test.is_true(rendered.success)
+                local images = {}
+                for _, artifact in ipairs(assert(parts.list_artifacts(id))) do
+                    if artifact.role == "rendered-page" then images[#images + 1] = artifact end
+                end
+                table.sort(images, function(a, b) return a.metadata.page < b.metadata.page end)
+                local calls = 0
+                local result = stage.run(params, {batch_size = 1, transcribe = function()
+                    calls = calls + 1
+                    return "OCR TEXT " .. images[calls].metadata.page, nil
+                end})
+                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "sparse"}).success)
+                test.is_true(result.success)
+                test.eq(calls, selection == "all" and #kinds or 1)
+                local markdown = assert(parts.read_primary_content(id)).content
+                local markers = doc2md.markers(markdown)
+                test.eq(#markers, #kinds)
+                for page, marker in ipairs(markers) do
+                    local body = markdown:sub(marker.finish + 1, markers[page + 1] and markers[page + 1].start - 1 or #markdown)
+                    if selection == "all" or kinds[page] == "scan" then
+                        test.eq(body:match("^%s*(.-)%s*$"), "OCR TEXT " .. page)
+                    else
+                        local old = original:sub(originals[page].finish + 1, originals[page + 1] and originals[page + 1].start - 1 or #original)
+                        test.eq(body, old, "the text layer stays byte-for-byte intact")
+                    end
+                end
+                assert(storage:remove(path))
+            end)
+        end
         for _, mode in ipairs({"mixed", "text", "scan", "extracted", "uneven", "form", "inline", "large"}) do
             test.it("keeps ordered pages and calls the model only for sparse pages: " .. mode, function()
                 local kinds, expected = {}, 0

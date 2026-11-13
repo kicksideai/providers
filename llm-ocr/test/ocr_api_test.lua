@@ -8,6 +8,7 @@ local upload_job = require("upload_job")
 local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
+local contract = require("contract")
 
 local STORAGE_ID = "app:temp_fs"
 
@@ -138,6 +139,92 @@ local function define_tests()
             test.is_true(updated.blob_id ~= old_blob)
             test.eq(primary_text(upload_id), "brand new content")
         end)
+    end)
+
+    test.describe("all-page text preservation", function()
+        for _, marked in ipairs({false, true}) do
+            for _, result in ipairs({"blank", "failed", "readable", "mixed"}) do
+                test.it("preserves text through " .. result .. " OCR, marked=" .. tostring(marked), function()
+                    local body = string.rep("Original embedded document text. ", 60)
+                    local original = marked and ("<!-- page 1 -->\n\n" .. body .. "\n\n<!-- page 2 -->\n\n" .. body) or body
+                    local id = seed(original, {1, 2})
+                    local settings = assert(assert(contract.get("kickside.settings:settings")):open())
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "all"}).success)
+                    local calls = 0
+                    local params = {upload_id = id, storage_id = STORAGE_ID, mime_type = "application/pdf"}
+                    local response = stage.run(params, {transcribe = function(bytes)
+                        calls = calls + 1
+                        if result == "failed" then return nil, "OCR request failed" end
+                        if result == "blank" or (result == "mixed" and bytes:match("page%-2")) then return " \t\n", nil end
+                        return "Real OCR text", nil
+                    end})
+                    test.eq(calls, 2)
+                    test.eq(response.success, result ~= "failed")
+                    if result == "readable" then
+                        test.eq(primary_text(id), "<!-- page 1 -->\n\nReal OCR text\n\n<!-- page 2 -->\n\nReal OCR text")
+                    elseif result == "mixed" and marked then
+                        test.eq(primary_text(id), "<!-- page 1 -->\n\nReal OCR text\n\n<!-- page 2 -->\n\n" .. body)
+                    else test.eq(primary_text(id), original) end
+                    if result == "blank" then
+                        local retried = stage.run(params, {transcribe = function() calls = calls + 1; return "Later OCR text", nil end})
+                        test.is_true(retried.success)
+                        test.eq(calls, 2)
+                        test.eq(primary_text(id), original)
+                    end
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "sparse"}).success)
+                end)
+            end
+        end
+    end)
+
+    test.describe("unmarked transcript checkpoints", function()
+        for _, selection in ipairs({"all", "sparse"}) do
+            for _, interrupted in ipairs({false, true}) do
+                test.it("retranscribes unstored readable pages, selection=" .. selection .. ", cancelled=" .. tostring(interrupted), function()
+                    local settings = assert(assert(contract.get("kickside.settings:settings")):open())
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = selection}).success)
+                    local original = "Original unmarked text"
+                    local id = seed(original, {1, 2})
+                    local params = {upload_id = id, storage_id = STORAGE_ID, mime_type = "application/pdf"}
+                    local calls = 0
+                    local first = stage.run(params, {batch_size = 1,
+                        should_continue = function() return not interrupted or calls == 0 end,
+                        transcribe = function(bytes)
+                            calls = calls + 1
+                            if bytes:match("page%-2") then return nil, "OCR request failed" end
+                            return "First page transcript", nil
+                        end})
+                    test.is_false(first.success)
+                    test.eq(calls, interrupted and 1 or 2)
+                    test.eq(primary_text(id), original)
+                    local stored = assert(artifact_parts_repo.read_primary_content(id)).metadata.ocr_page_outcomes
+                    test.eq(#stored, interrupted and 0 or 1)
+                    if not interrupted then
+                        test.eq(stored[1].page, 2)
+                        test.eq(stored[1].status, "failed")
+                    end
+                    test.eq(first.metadata.ocr_pages, 0)
+                    test.eq(#first.metadata.ocr_page_outcomes, #stored)
+                    local retried_pages = {}
+                    local retried = stage.run(params, {batch_size = 1, transcribe = function(bytes)
+                        local page = tonumber(bytes:match("page%-(%d+)"))
+                        retried_pages[#retried_pages + 1] = page
+                        return page == 1 and "First page transcript" or "Second page transcript", nil
+                    end})
+                    test.is_true(retried.success)
+                    test.eq(#retried_pages, 2)
+                    test.eq(retried_pages[1], 1)
+                    test.eq(retried_pages[2], 2)
+                    test.eq(primary_text(id), "<!-- page 1 -->\n\nFirst page transcript\n\n<!-- page 2 -->\n\nSecond page transcript")
+                    test.eq(retried.metadata.ocr_pages, 2)
+                    stored = assert(artifact_parts_repo.read_primary_content(id)).metadata.ocr_page_outcomes
+                    test.eq(#stored, 2)
+                    test.eq(stored[1].status, "readable")
+                    test.eq(stored[2].status, "readable")
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "sparse"}).success)
+                end)
+            end
+        end
     end)
 
     test.describe("kickside.llm_ocr:ocr lib", function()
