@@ -194,9 +194,11 @@ local function persist_primary(upload_id: string, storage_id: any, markdown: str
     return true, nil
 end
 
--- The cancellation gate checked between batches. An injected deps.should_continue
--- wins (tests); otherwise the job lease carried in params.cancel_ref is polled so a
--- cancelled or reclaimed job stops promptly. With neither, OCR runs to completion.
+-- The progress and cancellation gate checked between batches. An injected
+-- deps.should_continue wins (tests); otherwise the job carried in
+-- params.cancel_ref is heartbeated, which keeps a job that declares a heartbeat
+-- timeout alive while batches complete and stops OCR promptly once the job is
+-- cancelled or reclaimed. With neither, OCR runs to completion.
 local function build_should_continue(deps: any, params: any): () -> boolean
     if type(deps.should_continue) == "function" then
         return function(): boolean return deps.should_continue() ~= false end
@@ -204,7 +206,7 @@ local function build_should_continue(deps: any, params: any): () -> boolean
     local ref = type(params.cancel_ref) == "table" and params.cancel_ref or nil
     if ref and type(ref.job_id) == "string" and ref.job_id ~= "" and type(ref.lease_token) == "string" and ref.lease_token ~= "" then
         return function(): boolean
-            local running, err = jobs.lease_valid(ref.job_id, {token = ref.lease_token, execution_seq = ref.execution_seq})
+            local running, err = jobs.heartbeat(ref.job_id, {token = ref.lease_token, execution_seq = ref.execution_seq})
             if err ~= nil then error(tostring(err)) end
             return running == true
         end

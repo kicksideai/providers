@@ -351,6 +351,26 @@ local function define_tests()
             end
         end)
 
+        test.it("heartbeats the job after each page batch", function()
+            local upload_id = seed("", {1,2,3})
+            local job_id = uuid_v4()
+            local db = assert(sql.get("app:db"))
+            local _, err = sql.builder.insert("kickside_job"):set_map({id = job_id,
+                job_type = "ocr.fixture", job_identity = job_id, owner_kind = "installation", owner_id = "ocr-fixture",
+                status = "running", lease_token = "ocr-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00"})
+                :run_with(db):exec()
+            test.is_nil(err)
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = 1}}, {
+                batch_size = 1, transcribe = function() return "Scanned words", nil end})
+            test.is_true(result.success)
+            local rows = assert(db:query("SELECT heartbeat_at FROM kickside_job WHERE id = $1", {job_id}))
+            test.not_nil(rows[1].heartbeat_at, "a transcribed batch heartbeats the job")
+            local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
+            db:release()
+            test.is_nil(delete_err)
+        end)
+
         test.it("uses the document-wide decision for marked legacy images", function()
             local pages = {}
             for page = 1, 12 do
