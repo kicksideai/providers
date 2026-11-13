@@ -1,3 +1,4 @@
+local component = require("component")
 local time = require("time")
 local channel = require("channel")
 local logger = require("logger")
@@ -11,6 +12,7 @@ local health = require("health")
 
 local function construct(dependencies: any): any
 local process = dependencies.process or process
+local component = dependencies.component or component
 
 local DM_DISPATCH_PROC_ID = "kickside.discord.gateway:dm_dispatch_proc"
 local CHANNEL_DISPATCH_PROC_ID = "kickside.discord.gateway:channel_dispatch_proc"
@@ -93,7 +95,7 @@ end
 
 -- One connection lifetime. Returns "stop" | "reconnect"; sets session.ready when
 -- the gateway reaches READY/RESUMED (the caller uses that to reset the backoff).
-local function run_session(state: any, ws: any, args: any, events_ch: any, session: any): string
+local function run_session(state: any, ws: any, args: any, events_ch: any, session: any, token: string): string
     local ws_ch, channel_err = ws:channel()
     if channel_err or not ws_ch then
         report(args, "gateway_channel_failed", channel_err)
@@ -111,9 +113,9 @@ local function run_session(state: any, ws: any, args: any, events_ch: any, sessi
     local function execute(action: any): string?
         local k = action.kind
         if k == "identify" then
-            if send(protocol.identify_payload(args.token, consts.intents(state.message_content))) then return "reconnect" end
+            if send(protocol.identify_payload(token, consts.intents(state.message_content))) then return "reconnect" end
         elseif k == "resume" then
-            if send(protocol.resume_payload(args.token, state.session_id, state.seq)) then return "reconnect" end
+            if send(protocol.resume_payload(token, state.session_id, state.seq)) then return "reconnect" end
         elseif k == "heartbeat" then
             if send(protocol.heartbeat_payload(state.seq)) then return "reconnect" end
         elseif k == "ready" or k == "resumed" then
@@ -177,7 +179,10 @@ end
 
 local function main(args: any)
     args = type(args) == "table" and args or {}
-    if type(args.token) ~= "string" or (args.token :: string) == "" then
+    local context, context_err = component.get_private_context(args.component_id)
+    if context_err then return nil, context_err end
+    local token = context and (context.bot_token or context.token)
+    if type(token) ~= "string" or token == "" then
         report(args, "bot_token_missing", "Discord gateway requires a bot token")
         return
     end
@@ -188,7 +193,7 @@ local function main(args: any)
     log:info("discord gateway worker started")
 
     while true do
-        local application, application_err = api.get_application({ bot_token = args.token })
+        local application, application_err = api.get_application({ bot_token = token })
         local ready, reason, message = preconditions.application(application)
         if not ready then
             report(args, reason :: string, application_err or message)
@@ -204,7 +209,7 @@ local function main(args: any)
                 if wait_or_stop(events_ch, backoff.delay_ms(attempt)) then break end
             else
                 local session = { ready = false }
-                local outcome = run_session(state, ws, args, events_ch, session)
+                local outcome = run_session(state, ws, args, events_ch, session, token)
                 local _, close_err = gateway_api.close(ws, outcome)
                 if close_err then report(args, "gateway_close_failed", close_err) end
                 if outcome == "stop" then break end
