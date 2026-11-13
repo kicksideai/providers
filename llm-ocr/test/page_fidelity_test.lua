@@ -18,6 +18,8 @@ return { run = test.run_cases(function()
     test.describe("PDF page fidelity through extraction, rendering and OCR", function()
         test.it("records an unavailable page after a composite render fails", function()
             local bytes = fixtures.pdf({"double"})
+            local extracted = assert(doc2md.convert({bytes = bytes}, {extract_images = true}))
+            test.eq(#extracted.images, 2, "a composite page paints two distinct images")
             local id, storage = uuid.v4(), fs.get("app:temp_fs")
             local path = id .. ".pdf"
             assert(storage:writefile(path, bytes))
