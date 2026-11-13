@@ -5,6 +5,7 @@ local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
 local ocr = require("ocr")
 local page_images = require("page_images")
+local doc2md = require("doc2md")
 local jobs = require("jobs")
 
 -- Bounded-concurrency map: page transcription is network-bound (one vision call each),
@@ -99,12 +100,7 @@ local build_markdown = page_images.build_markdown
 -- A transcript carries text when any page body, or unmarked content, has a
 -- non-whitespace character; page markers alone are not text.
 local function carries_text(markdown: string): boolean
-    local pages = page_images.text_pages(markdown)
-    if #pages == 0 then return markdown:match("%S") ~= nil end
-    for _, page in ipairs(pages) do
-        if (page.text :: string):match("%S") then return true end
-    end
-    return false
+    return doc2md.strip_markers(markdown):match("%S") ~= nil
 end
 
 -- The image processor stores the uploaded image as its own primary artifact; it

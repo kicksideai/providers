@@ -138,6 +138,33 @@ local function define_tests()
             end
         end)
 
+        test.it("retains introductory text when the first page cannot be transcribed", function()
+            for _, original in ipairs({ "Existing introductory text.\n\n<!-- page 1 -->\n", "\n<!-- page 1 -->\n" }) do
+                set_setting("ocr_enabled", true)
+                local id = uuid_v4()
+                local _, upload_err = upload_record_repo.create(id, "ocr-test-user", 16,
+                    "application/pdf", STORAGE_ID, id .. ".pdf", "documents", {}, "processing")
+                test.is_nil(upload_err)
+                test.is_nil(select(2, artifact_content_repo.create_artifact({ upload_id = id,
+                    kind = "markdown", role = "primary", mime_type = "text/markdown",
+                    content = original, storage_id = STORAGE_ID })))
+                test.is_nil(select(2, artifact_content_repo.create_artifact({ upload_id = id,
+                    kind = "image", role = "rendered-page", mime_type = "image/png",
+                    content = PNG, storage_id = STORAGE_ID, ordinal = 1, metadata = {page = 1} })))
+                local calls = 0
+                local result = stage.run({upload_id = id, mime_type = "application/pdf", storage_id = STORAGE_ID}, {
+                    transcribe = function() calls = calls + 1; return nil, "provider timeout" end,
+                })
+                test.eq(calls, 1)
+                test.eq(result.success, original:find("Existing", 1, true) ~= nil)
+                test.eq(result.metadata.ocr_error, "transcription_failed")
+                local primary = assert(artifact_parts_repo.read_primary_content(id))
+                test.eq(primary.content, original)
+                test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+                test.eq(primary.metadata.ocr_page_outcomes[1].page, 1)
+            end
+        end)
+
         test.it("leaves the call timeout to the model provider unless one is configured", function()
             set_setting("ocr_enabled", true)
             set_setting("ocr_images", true)
