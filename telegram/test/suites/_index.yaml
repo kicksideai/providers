@@ -42,6 +42,7 @@ entries:
       type: test
       suite: telegram
       comment: Exercises Telegram request encoding, retry, status, and error behavior with a fake transport.
+    modules: [json]
     source: file://api_test.lua
     method: run
     imports:

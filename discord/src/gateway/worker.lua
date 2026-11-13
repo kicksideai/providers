@@ -181,7 +181,7 @@ local function main(args: any)
     args = type(args) == "table" and args or {}
     local context, context_err = component.get_private_context(args.component_id)
     if context_err then return nil, context_err end
-    local token = context and (context.bot_token or context.token)
+    local token = trim(context and (context.bot_token or context.token))
     if type(token) ~= "string" or token == "" then
         report(args, "bot_token_missing", "Discord gateway requires a bot token")
         return
