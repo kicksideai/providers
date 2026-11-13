@@ -5,6 +5,9 @@ entries:
   - name: bitbucket_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [api_token], type: string}
+        - {path: [access_token], type: string}
       title: Bitbucket
       comment: Connect Bitbucket Cloud with an Atlassian API token or a workspace, project, or repository access token.
       icon: tabler:brand-bitbucket
@@ -83,6 +86,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.bitbucket.security:secret_context_dispatch, kickside.bitbucket.security:secret_context_read]
     meta: { comment: "bitbucket connection - test_connection" }
     source: file://test_connection.lua
     method: test_connection
@@ -91,6 +96,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.bitbucket.security:secret_context_dispatch, kickside.bitbucket.security:secret_context_read]
     meta: { comment: "bitbucket connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources

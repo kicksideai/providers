@@ -1,3 +1,4 @@
+local component = require("component")
 local time = require("time")
 local channel = require("channel")
 local logger = require("logger")
@@ -41,7 +42,9 @@ end
 
 function M.main(args: any)
     args = type(args) == "table" and args or {}
-    local token = trim(args.bot_token)
+    local context, context_err = component.get_private_context(args.component_id)
+    if context_err then return nil, context_err end
+    local token = trim(context and context.bot_token)
     if token == "" then
         log:error("telegram polling worker requires a bot_token")
         return

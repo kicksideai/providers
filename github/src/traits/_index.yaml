@@ -31,6 +31,8 @@ entries:
 
   - name: read_tool
     kind: function.lua
+    security:
+      policies: [kickside.github.security:secret_context_dispatch, kickside.github.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -162,6 +164,8 @@ entries:
 
   - name: write_tool
     kind: function.lua
+    security:
+      policies: [kickside.github.security:secret_context_dispatch, kickside.github.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -223,6 +227,8 @@ entries:
 
   - name: repo_read_tool
     kind: function.lua
+    security:
+      policies: [kickside.github.security:secret_context_dispatch, kickside.github.security:secret_context_read]
     source: file://repo_read_tool.lua
     method: handler
     imports:
@@ -305,6 +311,8 @@ entries:
 
   - name: repo_write_tool
     kind: function.lua
+    security:
+      policies: [kickside.github.security:secret_context_dispatch, kickside.github.security:secret_context_read]
     source: file://repo_write_tool.lua
     method: handler
     imports:

@@ -14,18 +14,20 @@ local CONNECTION_NAME = "MCP OAuth integration " .. tostring(time.now():unix_nan
 
 local function query(statement, params)
     local db, err = sql.get("app:db")
-    test.is_nil(err)
+    if err or not db then error(tostring(err or "database unavailable")) end
     local rows, read_err = db:query(statement, params or {})
-    db:release()
+    local _, release_err = db:release()
     test.is_nil(read_err)
+    test.is_nil(release_err)
     return rows
 end
 local function execute(statement, params)
     local db, err = sql.get("app:db")
-    test.is_nil(err)
+    if err or not db then error(tostring(err or "database unavailable")) end
     local _, write_err = db:execute(statement, params or {})
-    db:release()
+    local _, release_err = db:release()
     test.is_nil(write_err)
+    test.is_nil(release_err)
 end
 local function request(method, url, body)
     local response, err = http.request(method, url, {headers = {["Content-Type"] = "application/json"}, body = body and json.encode(body) or nil})

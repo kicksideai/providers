@@ -4,6 +4,8 @@ namespace: kickside.telegram.traits
 entries:
   - name: telegram_get
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -45,6 +47,8 @@ entries:
 
   - name: telegram_write
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       type: tool
       mcp:

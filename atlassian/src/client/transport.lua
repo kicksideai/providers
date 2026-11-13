@@ -213,9 +213,7 @@ function transport.connect(component_id: string?): (atlassian_types.Conn?, error
     local allowed, access_err = component.get_context(component_id :: string, component.ACCESS.READ)
     if access_err then return nil, access_err end
     if not allowed then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "connection access denied" }) end
-    local pc, perr = component.get_private_context(component_id :: string)
-    if perr then return nil, perr end
-    pc = pc or {}
+    local pc = allowed
     if pc.site_url or pc.deployment then
         local conn, err = credential_conn(pc)
         if not conn then return nil, err end

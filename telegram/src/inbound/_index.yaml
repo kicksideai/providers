@@ -12,6 +12,8 @@ entries:
 
   - name: fetch_attachment
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       comment: Resolve a Telegram file_id to bounded bytes for the declared uploads attachment fetcher.
     source: file://fetch_attachment.lua
@@ -38,6 +40,8 @@ entries:
 
   - name: normalize_message
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       comment: Normalize a Telegram private-message update into kickside.dm:receive payload shape.
     source: file://normalize_message.lua
@@ -50,6 +54,8 @@ entries:
 
   - name: receive_message
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       comment: Normalize a Telegram private-message update and hand it to kickside.dm:receive.
     source: file://receive_message.lua
@@ -62,6 +68,8 @@ entries:
 
   - name: receive_channel_message
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       comment: Normalize a Telegram group/supergroup/channel update and hand it to kickside.channel:receive (routing + installer identity live there).
     source: file://receive_channel_message.lua

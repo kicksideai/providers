@@ -16,6 +16,8 @@ entries:
 
   - name: write_content
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       comment: kickside.data:writable.write for Confluence content selected by space and content_type config.
     source: file://_fn_write_content.lua

@@ -16,6 +16,8 @@ entries:
 
   - name: write_crm
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       comment: kickside.data:writable.write for HubSpot CRM objects selected by config.object_type.
     source: file://_fn_write_crm.lua

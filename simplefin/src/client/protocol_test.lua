@@ -90,6 +90,18 @@ local function define_tests()
             test.eq(protocol.accounts_query(nil), "")
         end)
 
+        test.it("never includes bridge response bodies in external errors", function()
+            local secret = "https://account:access-url-error-sentinel@bridge.example/simplefin"
+            for _, status in ipairs({0, 400, 401, 402, 403, 429, 500, 503}) do
+                local message, code = protocol.http_error(status, secret)
+                test.is_nil(message:find(secret, 1, true))
+                test.is_nil(message:find("access-url-error-sentinel", 1, true))
+                local other, other_code = protocol.http_error(status, string.rep("x", 8192))
+                test.eq(message, other)
+                test.eq(code, other_code)
+            end
+        end)
+
         test.it("maps HTTP failures to data error codes", function()
             local _, code403 = protocol.http_error(403, "")
             test.eq(code403, "auth_expired")
@@ -100,7 +112,7 @@ local function define_tests()
             test.eq(code429, "rate_limited")
             local msg500, code500 = protocol.http_error(500, "boom")
             test.eq(code500, "provider_error")
-            test.is_true(msg500:find("boom", 1, true) ~= nil, msg500)
+            test.eq(msg500, "SimpleFIN request failed with status 500")
         end)
     end)
 

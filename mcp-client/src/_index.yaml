@@ -144,6 +144,8 @@ entries:
 
   - name: worker
     kind: process.lua
+    security:
+      policies: [kickside.mcp_client.security:secret_list_dispatch, kickside.mcp_client.security:secret_context_read]
     source: file://worker.lua
     method: main
     modules: [channel, logger, process, time, json]
@@ -160,6 +162,9 @@ entries:
   - name: remote_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [bearer_token], type: string}
+        - {path: [header_value], type: string}
       title: Remote MCP
       comment: Connect a Streamable HTTP MCP server and expose its tools to agents.
       icon: simple-icons:modelcontextprotocol
@@ -243,6 +248,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.mcp_client.security:secret_context_dispatch, kickside.mcp_client.security:secret_context_read]
     source: file://test_connection.lua
     method: test_connection
     imports:
@@ -252,6 +259,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.mcp_client.security:secret_context_dispatch, kickside.mcp_client.security:secret_context_read]
     source: file://discover_resources.lua
     method: discover_resources
     imports:
@@ -261,6 +270,8 @@ entries:
 
   - name: list_tools
     kind: function.lua
+    security:
+      policies: [kickside.mcp_client.security:secret_context_dispatch, kickside.mcp_client.security:secret_context_read]
     source: file://list_tools.lua
     method: list_tools
     imports:
@@ -270,6 +281,8 @@ entries:
 
   - name: call_tool
     kind: function.lua
+    security:
+      policies: [kickside.mcp_client.security:secret_context_dispatch, kickside.mcp_client.security:secret_context_read]
     source: file://call_tool.lua
     method: call_tool
     imports:

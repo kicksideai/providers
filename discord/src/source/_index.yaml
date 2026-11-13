@@ -23,6 +23,8 @@ entries:
 
   - name: pull_messages
     kind: function.lua
+    security:
+      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for the Discord channel-messages source.
     source: file://pull_messages.lua
@@ -32,6 +34,8 @@ entries:
 
   - name: pull_keys
     kind: function.lua
+    security:
+      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: Keys-only Discord channel message listing used by Data Sync reconcile.
     source: file://pull_keys.lua

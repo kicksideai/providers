@@ -11,6 +11,8 @@ namespace: kickside.slack.traits
 entries:
   - name: slack_get
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -65,6 +67,8 @@ entries:
 
   - name: slack_write
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta:
       type: tool
       mcp:

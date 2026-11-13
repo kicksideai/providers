@@ -7,10 +7,6 @@ M._component = component
 
 local function credential_context(component_id: string): (any?, error?)
     local cmp = M._component
-    if cmp.get_private_context then
-        local ctx, err = cmp.get_private_context(component_id)
-        if not err and type(ctx) == "table" and next(ctx) ~= nil then return ctx, nil end
-    end
     local ctx, err = cmp.get_context(component_id, cmp.ACCESS.READ)
     if err then return nil, err end
     return ctx, nil

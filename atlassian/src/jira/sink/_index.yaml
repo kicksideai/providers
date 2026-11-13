@@ -16,6 +16,8 @@ entries:
 
   - name: write_issues
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       comment: kickside.data:writable.write for Jira issues selected by project/JQL config.
     source: file://_fn_write_issues.lua

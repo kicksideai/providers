@@ -13,6 +13,8 @@ namespace: kickside.discord.sink
 entries:
   - name: message_write
     kind: function.lua
+    security:
+      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: kickside.data:writable.write — post/edit/delete a Discord channel message keyed by dest_ref.
     source: file://_fn_message_write.lua
