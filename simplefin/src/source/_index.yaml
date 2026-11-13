@@ -21,6 +21,8 @@ entries:
 
   - name: pull_core_test
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       type: test
       suite: simplefin
@@ -33,6 +35,8 @@ entries:
 
   - name: pull_transactions
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for the transactions source.
     source: file://pull_transactions.lua
@@ -42,6 +46,8 @@ entries:
 
   - name: pull_balances
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for the balances source.
     source: file://pull_balances.lua
@@ -51,6 +57,8 @@ entries:
 
   - name: pull_holdings
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for the holdings source.
     source: file://pull_holdings.lua
@@ -60,6 +68,8 @@ entries:
 
   - name: pull_keys
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       comment: Keys-only SimpleFIN transaction enumeration used by Data Sync reconcile.
     source: file://pull_keys.lua
@@ -69,6 +79,8 @@ entries:
 
   - name: pull_balance_keys
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     source: file://pull_keys.lua
     method: pull_balance_keys
     imports:
@@ -76,6 +88,8 @@ entries:
 
   - name: pull_holding_keys
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     source: file://pull_keys.lua
     method: pull_holding_keys
     imports:

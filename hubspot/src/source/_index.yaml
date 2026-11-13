@@ -78,6 +78,8 @@ entries:
 
   - name: pull_crm
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for HubSpot CRM objects selected by config.object_type.
     source: file://pull_core.lua
@@ -96,6 +98,8 @@ entries:
 
   - name: pull_crm_keys
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       comment: Keys-only HubSpot CRM listing used by Data Sync reconcile.
     source: file://pull_core.lua
@@ -318,6 +322,8 @@ entries:
 
   - name: pull_associations
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       comment: Pull typed directed HubSpot association edges with per-object pagination.
     source: file://association_pull.lua
@@ -330,6 +336,8 @@ entries:
 
   - name: pull_association_keys
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       comment: Enumerate stable HubSpot association keys used by Data Sync reconciliation.
     source: file://association_pull.lua

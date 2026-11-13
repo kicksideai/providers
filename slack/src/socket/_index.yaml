@@ -75,18 +75,23 @@ entries:
 
   - name: worker
     kind: process.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta:
       comment: One per-connection Slack Socket Mode worker (open via apps.connections.open, receive + ack envelopes, reconnect on disconnect); forwards channel messages to kickside.channel:receive and DMs to kickside.dm:receive. Carries no routing.
     source: file://worker.lua
     method: main
     modules: [time, channel, logger, process]
     imports:
+      component: kickside.component:component
       protocol: kickside.slack.socket:protocol
       backoff: kickside.slack.socket:backoff
       socket_api: kickside.slack.socket:socket_api
 
   - name: hub
     kind: process.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta:
       comment: Socket Mode supervisor -- waits for the component store, enumerates slack connections, and spawns/supervises one worker per connection. Channel coverage is resolved per message by kickside.channel:receive; the hub owns no routing.
     source: file://hub.lua

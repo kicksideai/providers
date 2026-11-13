@@ -98,6 +98,8 @@ entries:
   # ─── tools ───────────────────────────────────────────────────────────
   - name: confluence_get
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -149,6 +151,8 @@ entries:
 
   - name: confluence_write
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       type: tool
       mcp:

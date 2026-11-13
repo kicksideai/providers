@@ -26,16 +26,21 @@ entries:
 
   - name: worker
     kind: process.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       comment: One per-connection Telegram long-poll worker; forwards updates to DM/channel receivers.
     source: file://worker.lua
     method: main
     modules: [time, channel, logger, process]
     imports:
+      component: kickside.component:component
       api: kickside.telegram.client:api
 
   - name: hub
     kind: process.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta:
       comment: Telegram polling supervisor; enumerates Telegram connections and spawns one worker per bot token.
     source: file://hub.lua

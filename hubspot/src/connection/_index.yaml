@@ -5,6 +5,8 @@ entries:
   - name: hubspot_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [api_key], type: string}
       title: HubSpot
       comment: Connect HubSpot with a private-app access token to read and write CRM records.
       icon: simple-icons:hubspot
@@ -62,6 +64,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta: { comment: "hubspot connection - test_connection" }
     source: file://test_connection.lua
     method: test_connection
@@ -73,6 +77,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta: { comment: "hubspot connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources

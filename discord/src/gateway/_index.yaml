@@ -107,12 +107,15 @@ entries:
 
   - name: worker
     kind: process.lua
+    security:
+      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: One per-bot Discord Gateway connection (connect/identify/resume/heartbeat/reconnect); forwards guild messages to kickside.channel:receive and DMs to kickside.dm:receive. Carries no routing.
     source: file://worker.lua
     method: main
     modules: [time, channel, logger, process]
     imports:
+      component: kickside.component:component
       protocol: kickside.discord.gateway:protocol
       backoff: kickside.discord.gateway:backoff
       consts: kickside.discord.gateway:consts
@@ -143,6 +146,8 @@ entries:
 
   - name: hub
     kind: process.lua
+    security:
+      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: Gateway supervisor -- enumerates discord connections and spawns/supervises one worker per connection. Channel coverage is resolved per message by kickside.channel:receive; the hub owns no routing. Reconciles on startup, worker death and committed connection lifecycle changes.
     source: file://hub.lua

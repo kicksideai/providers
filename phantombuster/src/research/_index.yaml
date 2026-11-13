@@ -12,6 +12,8 @@ entries:
 
   - name: run
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     meta: { comment: Execute one PhantomBuster Research Source operation under the ambient actor. }
     source: file://source.lua
     method: run

@@ -5,6 +5,9 @@ entries:
   - name: simplefin_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [setup_token], type: string}
+        - {path: [access_url], type: string}
       title: SimpleFIN
       comment: Connect SimpleFIN Bridge with a setup token to read bank accounts, transactions and investment holdings.
       icon: tabler:building-bank
@@ -62,6 +65,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta: { comment: "simplefin connection - test_connection; claims a pending setup token" }
     source: file://test_connection.lua
     method: test_connection
@@ -70,6 +75,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta: { comment: "simplefin connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources

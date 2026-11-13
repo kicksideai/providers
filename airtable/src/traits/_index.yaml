@@ -27,6 +27,8 @@ entries:
       - kickside.airtable.traits:read_tool
   - name: read_tool
     kind: function.lua
+    security:
+      policies: [kickside.airtable.security:secret_context_dispatch, kickside.airtable.security:secret_context_read]
     meta:
       type: tool
       title: Airtable Read
@@ -458,6 +460,8 @@ entries:
       - kickside.airtable.traits:write_tool
   - name: write_tool
     kind: function.lua
+    security:
+      policies: [kickside.airtable.security:secret_context_dispatch, kickside.airtable.security:secret_context_read]
     meta:
       type: tool
       title: Airtable Write

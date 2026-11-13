@@ -5,6 +5,8 @@ entries:
   - name: telegram_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [bot_token], type: string}
       title: Telegram
       comment: Connect a Telegram bot to send replies, show typing status, and route inbound Telegram updates.
       icon: tabler:brand-telegram
@@ -83,6 +85,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta: { comment: "telegram connection - test_connection" }
     source: file://test_connection.lua
     method: test_connection
@@ -94,6 +98,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta: { comment: "telegram connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources
@@ -105,6 +111,8 @@ entries:
 
   - name: send_reply
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta: { comment: "telegram reply_provider - send_reply" }
     source: file://send_reply.lua
     method: send_reply
@@ -116,6 +124,8 @@ entries:
 
   - name: update_reply
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta: { comment: "telegram reply_provider - update_reply" }
     source: file://update_reply.lua
     method: update_reply
@@ -127,6 +137,8 @@ entries:
 
   - name: send_status
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta: { comment: "telegram reply_provider - send_status (typing action)" }
     source: file://send_status.lua
     method: send_status

@@ -10,6 +10,8 @@ namespace: kickside.discord.traits
 entries:
   - name: discord_get
     kind: function.lua
+    security:
+      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -61,6 +63,8 @@ entries:
 
   - name: discord_write
     kind: function.lua
+    security:
+      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       type: tool
       mcp:

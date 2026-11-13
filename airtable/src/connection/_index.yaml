@@ -4,6 +4,8 @@ entries:
   - name: connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [api_key], type: string}
       title: Airtable (access token)
       comment: Connect Airtable using an integration or personal access token. OAuth is also available.
       icon: simple-icons:airtable
@@ -55,12 +57,16 @@ entries:
       implementation: kickside.airtable.connection:implementation
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.airtable.security:secret_context_dispatch, kickside.airtable.security:secret_context_read]
     source: file://test_connection.lua
     method: test_connection
     imports:
       implementation: kickside.airtable.connection:implementation
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.airtable.security:secret_context_dispatch, kickside.airtable.security:secret_context_read]
     source: file://discover_resources.lua
     method: discover_resources
     imports:

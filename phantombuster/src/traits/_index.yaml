@@ -102,6 +102,8 @@ entries:
 
   - name: get_tool
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -207,6 +209,8 @@ entries:
 
   - name: write_tool
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     meta:
       type: tool
       mcp:

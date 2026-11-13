@@ -74,6 +74,8 @@ entries:
 
   - name: read_tool
     kind: function.lua
+    security:
+      policies: [kickside.bitbucket.security:secret_context_dispatch, kickside.bitbucket.security:secret_context_read]
     source: file://read_tool.lua
     method: handler
     imports:
@@ -157,6 +159,8 @@ entries:
 
   - name: write_tool
     kind: function.lua
+    security:
+      policies: [kickside.bitbucket.security:secret_context_dispatch, kickside.bitbucket.security:secret_context_read]
     source: file://write_tool.lua
     method: handler
     imports:

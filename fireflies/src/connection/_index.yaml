@@ -5,6 +5,8 @@ entries:
   - name: fireflies_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [api_key], type: string}
       title: Fireflies
       comment: Connect Fireflies.ai with an API key to read meeting transcripts and summaries.
       icon: tabler:flame
@@ -62,6 +64,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.fireflies.security:secret_context_dispatch, kickside.fireflies.security:secret_context_read]
     meta: { comment: "fireflies connection - test_connection" }
     source: file://test_connection.lua
     method: test_connection
@@ -73,6 +77,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.fireflies.security:secret_context_dispatch, kickside.fireflies.security:secret_context_read]
     meta: { comment: "fireflies connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources

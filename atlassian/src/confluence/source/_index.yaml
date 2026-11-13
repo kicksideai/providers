@@ -17,6 +17,8 @@ entries:
 
   - name: pull_content
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for Confluence content selected by space and content_type.
     source: file://pull_content.lua
@@ -31,6 +33,8 @@ entries:
 
   - name: pull_content_keys
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       comment: Keys-only Confluence content listing used by Data Sync reconcile.
     source: file://pull_content_keys.lua
