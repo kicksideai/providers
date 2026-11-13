@@ -48,6 +48,46 @@ local function clamp_timeout_ms(requested_ms: any, cap_ms: integer): integer?
     return ms
 end
 
+-- A model card may declare the request shape its model expects for OCR in
+-- metadata.ocr. Every field is optional and an absent field keeps the default:
+--   system       false sends no system message; a string replaces OCR_SYSTEM
+--   prompt       the instruction text sent with the image
+--   image_first  true places the image before the instruction text
+--   output_limit the generation's max_tokens
+local function request_profile(card: any): (table?, string?)
+    local metadata = type(card) == "table" and card.metadata or nil
+    local declared = nil
+    if type(metadata) == "table" then declared = metadata.ocr end
+    if declared == nil then
+        return {system = OCR_SYSTEM, image_first = false}, nil
+    end
+    if type(declared) ~= "table" then
+        return nil, "ocr profile must be an object"
+    end
+    local system = declared.system
+    if system == nil then
+        system = OCR_SYSTEM
+    elseif system == false then
+        system = nil
+    elseif type(system) ~= "string" or system == "" then
+        return nil, "ocr profile system must be false or non-empty text"
+    end
+    local prompt = declared.prompt
+    if prompt ~= nil and (type(prompt) ~= "string" or prompt == "") then
+        return nil, "ocr profile prompt must be non-empty text"
+    end
+    local image_first = declared.image_first
+    if image_first ~= nil and type(image_first) ~= "boolean" then
+        return nil, "ocr profile image_first must be a boolean"
+    end
+    local output_limit = declared.output_limit
+    if output_limit ~= nil and (type(output_limit) ~= "number" or output_limit < 1
+        or output_limit ~= math.floor(output_limit)) then
+        return nil, "ocr profile output_limit must be a positive integer"
+    end
+    return {system = system, prompt = prompt, image_first = image_first == true, output_limit = output_limit}, nil
+end
+
 local function new(runtime: any): any
     local deps = runtime or {}
     local llm = deps.llm or require("llm")
@@ -55,7 +95,8 @@ local function new(runtime: any): any
     local base64 = deps.base64 or require("base64")
 
     -- transcribe(image_bytes, opts) -> (text, err). opts = { model, mime?, prompt?,
-    -- max_tokens?, timeout? }. Returns "" for a page with no readable text.
+    -- max_tokens?, timeout? }; opts.prompt and opts.max_tokens take precedence over
+    -- the model card's OCR profile. Returns "" for a page with no readable text.
     local function transcribe(image_bytes: any, opts: any): (string?, string?)
         opts = type(opts) == "table" and opts or {}
         if type(image_bytes) ~= "string" or image_bytes == "" then
@@ -72,18 +113,29 @@ local function new(runtime: any): any
             return nil, "ocr: failed to encode image"
         end
 
+        local card, resolve_err = llm.resolve_model(model)
+        if not card then
+            return nil, "ocr: resolve model failed: " .. tostring(resolve_err)
+        end
+        local profile, profile_err = request_profile(card)
+        if not profile then
+            return nil, "ocr: model " .. model .. ": " .. tostring(profile_err)
+        end
+
+        local instruction = prompt.text(type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt
+            or profile.prompt or DEFAULT_USER)
+        local image = prompt.image_base64(mime, encoded)
         local p = prompt.new()
-        p:add_system(OCR_SYSTEM)
-        p:add_message(prompt.ROLE.USER, {
-            prompt.text(type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt or DEFAULT_USER),
-            prompt.image_base64(mime, encoded),
-        })
+        if profile.system then
+            p:add_system(profile.system)
+        end
+        p:add_message(prompt.ROLE.USER, profile.image_first and { image, instruction } or { instruction, image })
 
         local timeout_ms = clamp_timeout_ms(opts.timeout, PROVIDER_TIMEOUT_CAP_MS)
         local response, gen_err = llm.generate(p, {
             model = model,
             temperature = 0,
-            max_tokens = tonumber(opts.max_tokens) or DEFAULT_MAX_TOKENS,
+            max_tokens = tonumber(opts.max_tokens) or profile.output_limit or DEFAULT_MAX_TOKENS,
             timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil,
         })
         if gen_err or not response then
