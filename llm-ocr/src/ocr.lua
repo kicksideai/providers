@@ -56,7 +56,8 @@ end
 --   output_limit the generation's max_tokens
 local function request_profile(card: any): (table?, string?)
     local metadata = type(card) == "table" and card.metadata or nil
-    local declared = type(metadata) == "table" and metadata.ocr or nil
+    local declared = nil
+    if type(metadata) == "table" then declared = metadata.ocr end
     if declared == nil then
         return {system = OCR_SYSTEM, image_first = false}, nil
     end

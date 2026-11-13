@@ -131,6 +131,7 @@ return { run = test.run_cases(function()
                 {output_limit = "8192"},
                 {output_limit = 1.5},
                 "OCR:",
+                false,
             }) do
                 local text, err, requests = transcribe_with_card(
                     {name = "broken-vl", metadata = {ocr = profile}}, {model = "broken-vl"})

@@ -94,3 +94,11 @@ For documents without page markers, readable outcomes are saved with the replace
 ## License
 
 [KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
+
+### OCR profile and model selection
+
+OCR profile shaping currently applies to the initially resolved concrete model.
+Cross-model fallback and class selection require per-candidate request preparation
+in `wippy/llm`; a concrete model name may itself declare fallback models. Profiles
+with different request shapes across those models are not supported by this
+version. The LLM owns fallback selection; OCR does not implement a separate chain.
