@@ -33,8 +33,6 @@ entries:
 
   - name: parse_refs
     kind: function.lua
-    security:
-      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       comment: Parse a HubSpot form file property value into file refs without downloading.
     source: file://functions.lua

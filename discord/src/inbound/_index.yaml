@@ -13,8 +13,6 @@ entries:
 
   - name: normalize_message
     kind: function.lua
-    security:
-      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: Normalize a Discord MESSAGE_CREATE-style event into kickside.dm:receive payload shape.
     source: file://normalize_message.lua
@@ -27,8 +25,6 @@ entries:
 
   - name: receive_message
     kind: function.lua
-    security:
-      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: Normalize a Discord inbound DM event and hand it to kickside.dm:receive.
     source: file://receive_message.lua
@@ -41,8 +37,6 @@ entries:
 
   - name: receive_channel_message
     kind: function.lua
-    security:
-      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: Normalize a Discord guild channel message and hand it to kickside.channel:receive (routing + installer identity live there).
     source: file://receive_channel_message.lua

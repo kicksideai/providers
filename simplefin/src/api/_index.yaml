@@ -5,7 +5,7 @@ entries:
   - name: rotate
     kind: function.lua
     security:
-      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
+      policies: [kickside.simplefin.security:secret_private_dispatch, kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       comment: Replace a SimpleFIN connection's credential with a freshly claimed setup token.
     source: file://rotate.lua

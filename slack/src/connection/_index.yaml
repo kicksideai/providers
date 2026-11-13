@@ -78,6 +78,8 @@ entries:
 
   - name: get_status
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta: { comment: "slack connection - get_status" }
     source: file://get_status.lua
     method: get_status

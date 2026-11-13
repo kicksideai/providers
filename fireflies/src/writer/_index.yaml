@@ -38,8 +38,6 @@ entries:
 
   - name: describe
     kind: function.lua
-    security:
-      policies: [kickside.fireflies.security:secret_context_dispatch, kickside.fireflies.security:secret_context_read]
     meta: { comment: "fireflies record writer - describe" }
     source: file://describe.lua
     method: describe

@@ -21,8 +21,6 @@ entries:
 
   - name: pull_core_test
     kind: function.lua
-    security:
-      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       type: test
       suite: simplefin

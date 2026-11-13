@@ -147,7 +147,7 @@ entries:
   - name: hub
     kind: process.lua
     security:
-      policies: [kickside.discord.security:secret_context_dispatch, kickside.discord.security:secret_context_read]
+      policies: [kickside.discord.security:secret_list_dispatch, kickside.discord.security:secret_context_read]
     meta:
       comment: Gateway supervisor -- enumerates discord connections and spawns/supervises one worker per connection. Channel coverage is resolved per message by kickside.channel:receive; the hub owns no routing. Reconciles on startup, worker death and committed connection lifecycle changes.
     source: file://hub.lua

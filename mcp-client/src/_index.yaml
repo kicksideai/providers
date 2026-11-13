@@ -145,7 +145,7 @@ entries:
   - name: worker
     kind: process.lua
     security:
-      policies: [kickside.mcp_client.security:secret_context_dispatch, kickside.mcp_client.security:secret_context_read]
+      policies: [kickside.mcp_client.security:secret_list_dispatch, kickside.mcp_client.security:secret_context_read]
     source: file://worker.lua
     method: main
     modules: [channel, logger, process, time, json]

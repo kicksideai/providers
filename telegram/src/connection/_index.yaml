@@ -74,6 +74,8 @@ entries:
 
   - name: get_status
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     meta: { comment: "telegram connection - get_status" }
     source: file://get_status.lua
     method: get_status
