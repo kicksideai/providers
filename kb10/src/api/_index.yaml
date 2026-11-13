@@ -13,6 +13,7 @@ namespace: kickside.kb10.api
 # same code path the endpoints run rather than executing the verb itself.
 
 entries:
+
   - name: query_params
     kind: library.lua
     meta:
@@ -228,6 +229,9 @@ entries:
       kc: kickside.kb10:types
       uploads: kickside.uploads:uploads
     method: handler
+    security:
+      policies:
+      - kickside.kb10:upload_read_token_call
 
   - name: source.endpoint
     kind: http.endpoint
@@ -265,6 +269,7 @@ entries:
   # through. Every caller mints a job -- the HTTP endpoints below and, through
   # the library seams beside them, another module's tool;
   # kickside.kb10.engine:maintenance_worker runs it.
+
   - name: maintenance_implementation
     kind: library.lua
     meta:
@@ -284,6 +289,7 @@ entries:
   # reach these through the knowledge module's engine requirements, so both
   # surfaces defer a run through one path instead of one deferring and the other
   # blocking. Each answers (value, err).
+
   - name: schedule_resummarize
     kind: library.lua
     meta:

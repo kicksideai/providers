@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: '1.0'
+namespace: app
+entries:
+  - name: key_owner_policy_test
+    kind: function.lua
+    meta: {type: test, suite: key_owner}
+    source: file://key_owner_policy_test.lua
+    method: run
+    modules: [registry,security]
+    imports:
+      test: wippy.test:test
