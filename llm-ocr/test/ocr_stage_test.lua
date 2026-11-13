@@ -129,7 +129,8 @@ local function define_tests()
                 end,
             })
             test.eq(result.metadata.ocr_pages, 4)
-            test.is_false(result.success)
+            test.is_true(result.success)
+            test.eq(result.metadata.ocr_error, "transcription_failed")
             local primary, err = artifact_parts_repo.read_primary_content(upload_id)
             test.is_nil(err)
             for _, page in ipairs({1, 2, 3, 5}) do
