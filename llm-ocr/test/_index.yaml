@@ -247,7 +247,7 @@ entries:
     kind: function.lua
     meta: { type: test, suite: llm_ocr, timeout: 120s }
     source: file://ocr_api_test.lua
-    modules: [uuid, sql, contract]
+    modules: [uuid, sql, contract, time]
     imports:
       test: wippy.test:test
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
@@ -257,6 +257,7 @@ entries:
       ocr: kickside.llm_ocr:ocr
       stage: kickside.llm_ocr:stage_implementation
       upload_job: kickside.uploads.service:process_job_proc
+      jobs: kickside.core.jobs:jobs
     method: run
 
   - name: ocr_smoke_test

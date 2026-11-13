@@ -41,6 +41,7 @@ entries:
     kind: function.lua
     meta:
       type: processor
+      reports_progress: true
       comment: Universal upload stage; OCRs rendered-page screenshots and replaces empty primary content with transcribed text.
     source: file://_fn_stage.lua
     imports:

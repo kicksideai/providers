@@ -205,8 +205,9 @@ local function build_should_continue(deps: any, params: any): () -> boolean
     end
     local ref = type(params.cancel_ref) == "table" and params.cancel_ref or nil
     if ref and type(ref.job_id) == "string" and ref.job_id ~= "" and type(ref.lease_token) == "string" and ref.lease_token ~= "" then
+        local report = type(jobs.heartbeat) == "function" and jobs.heartbeat or jobs.lease_valid
         return function(): boolean
-            local running, err = jobs.heartbeat(ref.job_id, {token = ref.lease_token, execution_seq = ref.execution_seq})
+            local running, err = report(ref.job_id, {token = ref.lease_token, execution_seq = ref.execution_seq})
             if err ~= nil then error(tostring(err)) end
             return running == true
         end
