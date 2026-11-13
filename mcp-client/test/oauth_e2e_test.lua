@@ -16,7 +16,7 @@ local function query(statement, params)
     local db, err = sql.get("app:db")
     if err or not db then error(tostring(err or "database unavailable")) end
     local rows, read_err = db:query(statement, params or {})
-    local release_err = db:release()
+    local _, release_err = db:release()
     test.is_nil(read_err)
     test.is_nil(release_err)
     return rows
@@ -25,7 +25,7 @@ local function execute(statement, params)
     local db, err = sql.get("app:db")
     if err or not db then error(tostring(err or "database unavailable")) end
     local _, write_err = db:execute(statement, params or {})
-    local release_err = db:release()
+    local _, release_err = db:release()
     test.is_nil(write_err)
     test.is_nil(release_err)
 end

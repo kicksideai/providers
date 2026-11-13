@@ -358,6 +358,7 @@ entries:
     source: file://hub_soak_worker.lua
     method: main
     modules: [process, channel]
+    imports: {component: "kickside.component:component"}
   - name: hub_soak
     kind: process.lua
     source: file://src_link/gateway/hub.lua
