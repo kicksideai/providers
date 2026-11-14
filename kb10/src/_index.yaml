@@ -2,6 +2,7 @@ version: "1.0"
 namespace: kickside.kb10
 
 entries:
+
   - name: text_limits
     kind: library.lua
     meta:
@@ -124,6 +125,7 @@ entries:
   # created, replaced, embedded, and deleted only by kb10's own materialization
   # pipeline (the injection workers via the internal materializer_store surface);
   # direct kb_store mutations are for taxonomy/graph state.
+
   - name: api_router
     kind: ns.requirement
     meta:
@@ -195,6 +197,7 @@ entries:
   # kb10 implements ONLY the model-agnostic store lifecycle toward knowledge. Node,
   # edge, embedding, summary and graph operations are kb10-internal (persist:node_store
   # + injection:materializer_store) and never cross the contract seam.
+
   - name: kb_store_lifecycle
     kind: contract.binding
     meta:
@@ -214,6 +217,7 @@ entries:
   # The embeddable binding also declares queryable so component-bound dispatch
   # (component.open(kb_id, READ, queryable), used by the agent kb_query trait)
   # resolves through the component's impl binding.
+
   - name: embeddable
     kind: contract.binding
     meta:
@@ -324,6 +328,7 @@ entries:
   # mints a job on kb10's own queue and answers a receipt. The engine descriptors
   # name this binding as maintenance_binding; knowledge resolves a KB's engine,
   # reads that id and opens this binding with the KB as context.
+
   - name: maintainable
     kind: contract.binding
     meta:
@@ -343,6 +348,7 @@ entries:
   # declared here — knowledge never names kb10. One entry per kb_type kb10
   # provides (document, graph). Both back onto the same store + bindings; the
   # graph entry seeds a root concept node (is_graph).
+
   - name: engine_document
     kind: registry.entry
     meta:
@@ -516,6 +522,7 @@ entries:
   # of the same concept+edge data behind a view switch: the wiki reader (page tree)
   # and the graph canvas (node/edge map). depth is the default concept-link depth,
   # carried in default_config, applied by create/read APIs and enforced by placement.
+
   - name: engine_wiki
     kind: registry.entry
     meta:
@@ -701,3 +708,18 @@ entries:
             description: Documents longer than this many characters are marked failed instead of indexed; the uploaded file is kept. Empty means no limit.
             minimum: 0
             maximum: 268435456
+
+  - name: upload_read_token_call
+    kind: security.policy
+    policy:
+      resources:
+        - kickside.uploads.persist:token_pack_read
+      actions: [funcs.call, funcs.security]
+      effect: allow
+
+  - name: models_reload_call
+    kind: security.policy
+    policy:
+      resources: [kickside.models.persist:reload_profiles]
+      actions: [funcs.call, funcs.security]
+      effect: allow
