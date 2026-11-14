@@ -68,6 +68,7 @@ async function add() {
       <wc-agent-picker v-if="picker.ready.value" aria-labelledby="add_agent" multi="false" placeholder="Pick the agent"
         :selected="agent ? JSON.stringify([agent]) : '[]'" @change="onAgent"></wc-agent-picker>
       <div v-else-if="picker.failed.value" class="kx-notice error">The agent picker could not load: {{ picker.failed.value }}</div>
+      <div v-else class="mm-picker-pending mm-picker-pending--list" aria-hidden="true"></div>
     </div>
     <div class="mm-field">
       <label class="mm-label" for="add_topic">Topic</label>

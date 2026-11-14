@@ -1,8 +1,14 @@
-import { WippyVueElement, define } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import CodeBody from './app/CodeBody.vue'
+import { lazyControl } from './lazy'
 import stylesText from './styles.css?inline'
 import type { CodeBodyProps, CodeBodyEvents } from './codeExecutionTypes.ts'
+
+const CodeBody = lazyControl(
+  () => import('./app/CodeBody.vue'),
+  { loading: 'Loading the code editor…', failed: 'Could not load the code editor. Reload the page to try again.' },
+  useEvents,
+)
 
 // The Run Code Block authoring view (kickside-code-body): the rich editor the Workflow
 // builder mounts through the Block declaration. It edits the complete canonical

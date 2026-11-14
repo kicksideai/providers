@@ -173,3 +173,6 @@
 @media (prefers-color-scheme: dark) {
   :host { --p-primary-contrast-color: var(--p-surface-0) !important; }
 }
+
+/* Reserved only while the implementation loads, so a loaded tag keeps its own size (estimate from the form CSS). */
+:host > div:empty, :host > div:has(> [data-lazy-state]) { min-height: 373px; }

@@ -1,33 +1,40 @@
-import { u as i, a as r, W as p, s as m } from "./styles-CFY21Xvp.js";
-import { defineComponent as f, computed as a, openBlock as u, createBlock as l } from "vue";
+import { u as i, a as p, W as m } from "./wc-runtime-h8e5VJvv.js";
+import { defineComponent as f, computed as u, openBlock as a, createBlock as l } from "vue";
 import { _ as g } from "./PickerBody.vue_vue_type_script_setup_true_lang-DhxSgt-1.js";
+import { s as C } from "./styles-CV5852_Q.js";
 import "@iconify/vue";
 import { define as _ } from "@wippy-fe/proxy";
-const C = /* @__PURE__ */ f({
+const y = /* @__PURE__ */ f({
   __name: "ConfluencePicker",
-  setup(n) {
-    const o = i(), t = r(), s = a(() => o.value.config || null);
-    function c(e) {
-      t("config-changed", e);
+  setup(o) {
+    const t = i(), c = p(), r = u(() => t.value.config || null);
+    function s(e) {
+      c("config-changed", e);
     }
-    return (e, h) => (u(), l(g, {
+    return (e, d) => (a(), l(g, {
       kind: "confluence",
-      config: s.value,
-      onChange: c
+      config: r.value,
+      onChange: s
     }, null, 8, ["config"]));
   }
 });
-class d extends p {
+class n extends m {
   static get wippyConfig() {
     return {
       propsSchema: { type: "object", properties: { config: { type: "object" } } },
       hostCssKeys: ["themeConfigUrl"],
-      inlineCss: m
+      inlineCss: C
     };
   }
   static get vueConfig() {
-    return { rootComponent: C };
+    return { rootComponent: y };
   }
 }
-_(import.meta.url, d);
+async function P() {
+  return n;
+}
+_(import.meta.url, n);
+export {
+  P as webComponent
+};
 //# sourceMappingURL=confluence_picker.js.map

@@ -9,7 +9,7 @@ const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@wippy-fe/proxy', () => ({ api: { get, post }, host: { handleError: vi.fn() } }))
 vi.mock('@iconify/vue', () => ({ Icon: { render: () => null } }))
 
-const bundles = import.meta.glob('../../../../static/package-*.js', { eager: true })
+const bundles = import.meta.glob('../../../../static/AddPanel.vue_vue_type_script_setup_true_lang-*.js', { eager: true })
 const packed = Object.values(bundles).flatMap((module) => Object.values(module as object))
   .find((value) => value?.__name === 'KbSearch') as Component
 
