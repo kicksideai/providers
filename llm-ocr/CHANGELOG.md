@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.20...llm-ocr-v0.1.21) (2026-11-14)
+
+
+### Bug Fixes
+
+* **llm-ocr:** report failed pages as outcomes instead of failing the stage ([#106](https://github.com/kicksideai/providers/issues/106)) ([282fd7a](https://github.com/kicksideai/providers/commit/282fd7a31ed5f4915d48bfa53337f4e23352b366))
+
 ## [0.1.20](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.19...llm-ocr-v0.1.20) (2026-11-13)
 
 
