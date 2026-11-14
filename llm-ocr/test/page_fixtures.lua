@@ -49,8 +49,11 @@ local function pdf(kinds: { string }, first_page: integer?): string
         else
             local words = "SCANNED " .. page
             local img = stream(image(words), "/Type /XObject /Subtype /Image /Width " .. (#words * 6) .. " /Height 7 /ColorSpace /DeviceGray /BitsPerComponent 8")
-            content = stream("q 432 0 0 56 40 680 cm /I Do Q" .. (kind == "double" and "\nq 432 0 0 56 40 580 cm /J Do Q" or ""), "")
-            local extra = kind == "double" and ("/J " .. img .. " 0 R ") or ""
+            local double = kind == "double" or kind == "distinct"
+            content = stream("q 432 0 0 56 40 680 cm /I Do Q" .. (double and "\nq 432 0 0 56 40 580 cm /J Do Q" or ""), "")
+            local second_words = "SCANNED " .. (page + 1)
+            local second = kind == "distinct" and stream(image(second_words), "/Type /XObject /Subtype /Image /Width " .. (#second_words * 6) .. " /Height 7 /ColorSpace /DeviceGray /BitsPerComponent 8") or img
+            local extra = double and ("/J " .. second .. " 0 R ") or ""
             if kind == "form" then
                 local nested = stream("q 432 0 0 56 40 580 cm /I Do Q", "/Type /XObject /Subtype /Form /BBox [0 0 612 792] /Resources << /XObject << /I " .. img .. " 0 R >> >>")
                 extra = "/F " .. nested .. " 0 R "
