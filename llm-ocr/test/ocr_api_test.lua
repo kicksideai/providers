@@ -391,10 +391,12 @@ local function define_tests()
                 cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = 1}}, {
                 batch_size = 1, transcribe = function()
                     local previous = observed[#observed] or {heartbeat_at = "2000-01-01T00:00:00Z", lease_until = "2000-01-01T00:00:00Z"}
-                    local snapshot = assert(db:query([[SELECT heartbeat_at,lease_until,
+                    local snapshot = assert(db:query([[WITH current_job AS (
+                        SELECT heartbeat_at,lease_until FROM kickside_job WHERE id=$1)
+                        SELECT heartbeat_at,lease_until,
                         CASE WHEN heartbeat_at>$2 THEN 1 ELSE 0 END AS heartbeat_advanced,
                         CASE WHEN lease_until>$3 THEN 1 ELSE 0 END AS lease_advanced
-                        FROM kickside_job WHERE id=$1]], {job_id, previous.heartbeat_at, previous.lease_until}))[1]
+                        FROM current_job]], {job_id, previous.heartbeat_at, previous.lease_until}))[1]
                     observed[#observed + 1] = snapshot
                     time.sleep("10ms")
                     return "Scanned words", nil
