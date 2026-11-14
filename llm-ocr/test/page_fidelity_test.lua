@@ -16,33 +16,35 @@ local doc2md = require("doc2md")
 
 return { run = test.run_cases(function()
     test.describe("PDF page fidelity through extraction, rendering and OCR", function()
-        test.it("records an unavailable page after a composite render fails", function()
-            local bytes = fixtures.pdf({"double"})
-            local id, storage = uuid.v4(), fs.get("app:temp_fs")
-            local path = id .. ".pdf"
-            assert(storage:writefile(path, bytes))
-            local params = {upload_id = id, storage_id = "app:temp_fs", storage_path = path,
-                mime_type = "application/pdf", size = #bytes, metadata = {filename = "composite.pdf"}}
-            test.is_nil(select(2, uploads.create(id, "page-reader", #bytes, "application/pdf", "app:temp_fs", path, "documents", {}, "processing")))
-            local settings = assert(assert(contract.get("kickside.settings:settings")):open())
-            for key, value in pairs({rasterize_min_source_bytes = 0, rasterize_min_page_bytes = 0}) do
-                test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = key, value = value}).success)
-            end
-            test.is_true(processor.process(params).success)
-            local original = assert(parts.read_primary_content(id)).content
-            assert(storage:remove(path))
-            local rendered, err = funcs.call("kickside.uploads.rasterize:stage", params)
-            test.is_nil(err)
-            test.is_true(rendered.success)
-            local calls = 0
-            local result = stage.run(params, {transcribe = function() calls = calls + 1; return "Partial page", nil end})
-            test.is_false(result.success)
-            test.eq(calls, 0)
-            local primary = assert(parts.read_primary_content(id))
-            test.eq(primary.content, original)
-            test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
-            test.eq(#doc2md.markers(primary.content), 1)
-        end)
+        for _, kind in ipairs({"double", "distinct"}) do
+            test.it("records an unavailable page after a composite render fails: " .. kind, function()
+                local bytes = fixtures.pdf({kind})
+                local id, storage = uuid.v4(), fs.get("app:temp_fs")
+                local path = id .. ".pdf"
+                assert(storage:writefile(path, bytes))
+                local params = {upload_id = id, storage_id = "app:temp_fs", storage_path = path,
+                    mime_type = "application/pdf", size = #bytes, metadata = {filename = "composite.pdf"}}
+                test.is_nil(select(2, uploads.create(id, "page-reader", #bytes, "application/pdf", "app:temp_fs", path, "documents", {}, "processing")))
+                local settings = assert(assert(contract.get("kickside.settings:settings")):open())
+                for key, value in pairs({rasterize_min_source_bytes = 0, rasterize_min_page_bytes = 0}) do
+                    test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = key, value = value}).success)
+                end
+                test.is_true(processor.process(params).success)
+                local original = assert(parts.read_primary_content(id)).content
+                assert(storage:remove(path))
+                local rendered, err = funcs.call("kickside.uploads.rasterize:stage", params)
+                test.is_nil(err)
+                test.is_true(rendered.success)
+                local calls = 0
+                local result = stage.run(params, {transcribe = function() calls = calls + 1; return "Partial page", nil end})
+                test.is_false(result.success)
+                test.eq(calls, 0)
+                local primary = assert(parts.read_primary_content(id))
+                test.eq(primary.content, original)
+                test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+                test.eq(#doc2md.markers(primary.content), 1)
+            end)
+        end
         for _, selection in ipairs({"default", "all"}) do
             test.it("transcribes text-layer pages only under the all page selection: " .. selection, function()
                 local kinds = {"text", "scan", "text"}
