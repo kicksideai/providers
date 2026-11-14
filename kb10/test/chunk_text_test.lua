@@ -42,19 +42,39 @@ local function define_tests()
     end)
 
     test.describe("markdown-aware chunk_text", function()
-        test.it("keeps a fenced code block intact", function()
+        test.it("keeps a fenced code block that fits the chunk size intact", function()
             local code = "```lua\n" .. string.rep("local x = 1\n", 40) .. "```"
-            local text = "Intro paragraph about the code below.\n\n" .. code .. "\n\nClosing remarks."
-            local chunks = chunk_text(text, 300, 50)
+            local text = string.rep("Intro paragraph about the code below.\n\n", 120) .. code .. "\n\nClosing remarks."
+            local chunk_size = 600
+            test.is_true(#code < chunk_size)
+            local chunks = chunk_text(text, chunk_size, 50)
+            test.is_true(#chunks > 1)
 
             local hit = nil
             for _, c in ipairs(chunks) do
                 if c:find("```lua", 1, true) then hit = c end
             end
             test.not_nil(hit)
-            -- the whole fence (open, body, close) lives in one chunk
-            test.is_true(hit:find("local x = 1", 1, true) ~= nil)
-            test.is_true(count(hit, "```") >= 2)
+            test.is_true(hit:find(code, 1, true) ~= nil)
+            test.eq(count(hit, "```"), 2)
+        end)
+
+        test.it("preserves all content when a fenced code block exceeds the chunk size", function()
+            local lines = {}
+            for i = 1, 100 do lines[i] = "local value_" .. i .. " = " .. i end
+            local code = "```lua\n" .. table.concat(lines, "\n") .. "\n```"
+            local chunk_size = 300
+            test.is_true(#code > chunk_size)
+            local chunks = chunk_text(code, chunk_size, 50)
+            test.is_true(#chunks > 1)
+            local joined = table.concat(chunks, "\n")
+            test.eq(count(joined, "```"), 2)
+            local position = 1
+            for _, line in ipairs(lines) do
+                local start = joined:find(line, position, true)
+                test.not_nil(start, line)
+                position = assert(start) + #line
+            end
         end)
 
         -- join_table_rows keeps a table's data rows grouped instead of shredding it

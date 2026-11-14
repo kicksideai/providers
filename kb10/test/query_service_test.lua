@@ -1,5 +1,7 @@
 local test = require("test")
 local query_service = require("query_service")
+local models_repo = require("models_repo")
+local model_catalog = require("model_catalog")
 
 local function define_tests()
     test.describe("kb10 query service", function()
@@ -89,6 +91,89 @@ local function define_tests()
             query_service._ctx, query_service._store = previous_ctx, previous_store
             test.is_nil(result)
             test.eq(err, failure)
+        end)
+
+        test.it("retrieves with an unassigned class and enables analysis after assignment", function()
+            local previous_ctx, previous_llm, previous_store = query_service._ctx, query_service._llm, query_service._store
+            local configured = "class:query-analysis-fixture"
+            local structured_calls = 0
+            local optimizations = false
+            local provider_failure = nil
+            query_service._ctx = { get = function(): any return "kb" end }
+            query_service._llm = {
+                embed = function(texts: any): (any, any)
+                    local vectors = {}
+                    for _ in ipairs(texts) do vectors[#vectors + 1] = { 1, 0 } end
+                    return { result = vectors }, nil
+                end,
+                structured_output = function(): (any, any)
+                    structured_calls = structured_calls + 1
+                    local _, resolve_err = model_catalog.resolve(configured)
+                    if resolve_err then return nil, resolve_err end
+                    if provider_failure then return nil, provider_failure end
+                    return { result = { documents = {
+                        { document_id = "document", relevant = true, search_query = "refined" },
+                    } } }, nil
+                end,
+            }
+            query_service._store = {
+                get_store = function(): (any, any)
+                    return { id = "store", config = { analysis_model = configured, enable_reranking = optimizations,
+                        query_strategy = optimizations and "hyde" or "plain", self_tuning = optimizations } }, nil
+                end,
+                vector_search = function(_, _, options: any): (any, any)
+                    if #options.node_types == 1 and options.node_types[1] == "summary" then
+                        return { { id = "summary", parent_id = "document", node_type = "summary", similarity = 0.8 } }, nil
+                    end
+                    return { { id = "passage", parent_id = "document", node_type = "chunk", content = "Reference passage", similarity = 0.9 } }, nil
+                end,
+            }
+            local ok, failure = pcall(function()
+                local card, card_err = models_repo.upsert_card({ name = "query-analysis-fixture", class = {},
+                    capabilities = { "generate", "structured_output" }, max_tokens = 4096, output_tokens = 1024 })
+                test.is_nil(card_err)
+                test.not_nil(card)
+                local result, err = query_service.handle({ query = "reference" })
+                test.is_nil(err)
+                test.is_true(result.success)
+                test.eq(result.items[1].content, "Reference passage")
+                test.eq(result.retrieval.strategy, "plain")
+                test.eq(result.retrieval.analysis.status, "unavailable")
+                test.eq(result.retrieval.analysis.reason, "no_models_for_class")
+                test.eq(result.retrieval.analysis.model, configured)
+                test.eq(structured_calls, 0)
+
+                optimizations = true
+                result, err = query_service.handle({ query = "reference" })
+                test.is_nil(err)
+                test.is_true(result.success)
+                test.eq(result.retrieval.strategy, "plain")
+                test.eq(result.retrieval.analysis.reason, "no_models_for_class")
+                test.eq(structured_calls, 0)
+                optimizations = false
+
+                local _, assign_err = models_repo.upsert_card({ name = "query-analysis-fixture", class = { "query-analysis-fixture" } })
+                test.is_nil(assign_err)
+                result, err = query_service.handle({ query = "reference" })
+                test.is_nil(err)
+                test.is_true(result.success)
+                test.eq(structured_calls, 1)
+                test.is_nil(result.retrieval)
+
+                provider_failure = errors.new({ kind = errors.UNAVAILABLE, message = "No models found for class: provider response" })
+                for _, identifier in ipairs({ configured, "query-analysis-fixture" }) do
+                    configured = identifier
+                    result, err = query_service.handle({ query = "reference" })
+                    test.is_nil(result)
+                    test.is_true(errors.is(err, errors.UNAVAILABLE))
+                    test.contains(tostring(err), "document analysis failed")
+                end
+                test.eq(structured_calls, 3)
+            end)
+            query_service._ctx, query_service._llm, query_service._store = previous_ctx, previous_llm, previous_store
+            local _, cleanup_err = models_repo.delete_card("query-analysis-fixture")
+            test.is_nil(cleanup_err)
+            if not ok then error(failure) end
         end)
 
         test.it("constrains analysis to document identities supplied by the summaries", function()

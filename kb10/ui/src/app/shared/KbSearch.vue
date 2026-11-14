@@ -20,14 +20,15 @@ const props = withDefaults(defineProps<{
 }>(), { layout: 'panel' })
 const emit = defineEmits<{ (e: 'open', hit: SearchHit): void; (e: 'close'): void }>()
 
-const { query, results, answer, loading, error, performed, run, ask: askQuery, runDebounced, clear } = useKbSearch(() => props.kbId)
+const { query, results, answer, analysisUnavailable, loading, error, performed, run, ask: askQuery, runDebounced, clear } = useKbSearch(() => props.kbId)
 
 type Mode = 'search' | 'ask'
 const mode = ref<Mode>('search')
 const focused = ref(false)
 const queryRan = ref('')
 
-const isAsk = computed(() => props.layout === 'panel' && props.ask && mode.value === 'ask')
+const canAsk = computed(() => props.ask && !analysisUnavailable.value)
+const isAsk = computed(() => props.layout === 'panel' && canAsk.value && mode.value === 'ask')
 const submitIcon = computed(() => (
   loading.value ? 'tabler:hourglass' : (isAsk.value ? 'tabler:sparkles' : 'tabler:arrow-right')
 ))
@@ -67,6 +68,7 @@ function pick(hit: SearchHit) {
       @clear="clear"
     />
     <div v-if="showPop" class="kc-search-pop">
+      <p v-if="analysisUnavailable" class="kc-search-state" role="status">Showing direct matches. No model is assigned to {{ analysisUnavailable.model }}.</p>
       <div v-if="error" class="kc-search-state err"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ error }}</span></div>
       <div v-else-if="results.length" class="kc-search-hits">
         <button v-for="r in results" :key="r.id" class="kc-search-hit" @mousedown.prevent="pick(r)">
@@ -86,7 +88,7 @@ function pick(hit: SearchHit) {
   <!-- Panel: modes + field + results / answer -->
   <div v-else class="kc-search-panel">
     <div class="kc-search-bar">
-      <div v-if="ask" class="kc-search-modes">
+      <div v-if="canAsk" class="kc-search-modes">
         <button class="kc-search-mode" :class="{ on: mode === 'search' }" @click="pickMode('search')">
           <Icon icon="tabler:search" aria-hidden="true" /> Search
         </button>
@@ -106,6 +108,8 @@ function pick(hit: SearchHit) {
     </div>
 
     <p v-if="!props.ask" class="kc-search-state">Select an Answer model in knowledge base settings to enable Ask.</p>
+
+    <p v-if="analysisUnavailable" class="kc-search-state" role="status">Showing direct matches. No model is assigned to {{ analysisUnavailable.model }}.</p>
 
     <div v-if="error" class="kc-search-err"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ error }}</span></div>
 

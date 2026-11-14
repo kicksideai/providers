@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.21](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.20...llm-ocr-v0.1.21) (2026-11-14)
+
+
+### Bug Fixes
+
+* **llm-ocr:** report failed pages as outcomes instead of failing the stage ([#106](https://github.com/kicksideai/providers/issues/106)) ([282fd7a](https://github.com/kicksideai/providers/commit/282fd7a31ed5f4915d48bfa53337f4e23352b366))
+
+## [0.1.20](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.19...llm-ocr-v0.1.20) (2026-11-13)
+
+
+### Features
+
+* **llm-ocr:** apply the uploads page selection when choosing pages to transcribe ([#101](https://github.com/kicksideai/providers/issues/101)) ([b7ef8c3](https://github.com/kicksideai/providers/commit/b7ef8c3fe9b24121ff0eddc63e71aca594eccd58))
+
+## [0.1.19](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.18...llm-ocr-v0.1.19) (2026-11-12)
+
+
+### Bug Fixes
+
+* **llm-ocr:** fail a page whose transcription stops at the token limit ([#93](https://github.com/kicksideai/providers/issues/93)) ([281f362](https://github.com/kicksideai/providers/commit/281f3627defb04e64da79efb0bdde634b73a3dd7))
+* **llm-ocr:** give the model an explicit reply for a page without text ([#94](https://github.com/kicksideai/providers/issues/94)) ([1288add](https://github.com/kicksideai/providers/commit/1288add1284d3c32b8391dc7353b7a775103bc00))
+
 ## [0.1.18](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.17...llm-ocr-v0.1.18) (2026-11-10)
 
 

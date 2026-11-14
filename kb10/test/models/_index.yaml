@@ -14,6 +14,7 @@ entries:
     kind: registry.entry
     meta:
       type: llm.model
+      name: gpt-4.1-mini
       title: GPT-4.1 Mini
       comment: Fast generation model the ingest pre-summary + chunk enrichment resolve via class:fast.
       capabilities:
@@ -38,6 +39,7 @@ entries:
     kind: registry.entry
     meta:
       type: llm.model
+      name: text-embedding-3-small
       title: Text Embedding 3 Small
       comment: Embedding model the kb10 store resolves via class:embed.
       capabilities:

@@ -71,6 +71,11 @@ entries:
     meta:
       comment: Reads and writes knowledge bases through the knowledge contract.
 
+  - name: dep.kickside.models
+    kind: ns.dependency
+    component: kickside/models
+    version: "*"
+
   - name: dep.kickside.uploads
     kind: ns.dependency
     component: kickside/uploads

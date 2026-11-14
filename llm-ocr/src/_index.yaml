@@ -35,6 +35,7 @@ entries:
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       ocr: kickside.llm_ocr:ocr
       page_images: kickside.uploads.rasterize:page_images
+      doc2md: kickside.convert.doc2md:doc2md
       jobs: kickside.core.jobs:jobs
 
   - name: stage

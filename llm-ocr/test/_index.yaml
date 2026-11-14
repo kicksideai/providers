@@ -247,14 +247,18 @@ entries:
     kind: function.lua
     meta: { type: test, suite: llm_ocr, timeout: 120s }
     source: file://ocr_api_test.lua
-    modules: [uuid, sql]
+    modules: [uuid, sql, contract]
     imports:
       test: wippy.test:test
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       upload_record_repo: kickside.uploads.persist:upload_record_repo
+      llm: wippy.llm:llm
       ocr: kickside.llm_ocr:ocr
       stage: kickside.llm_ocr:stage_implementation
+      upload_job: kickside.uploads.service:process_job_proc
+      pipeline: kickside.uploads:pipeline
+      upload_type: kickside.uploads:upload_type
     method: run
 
   - name: ocr_smoke_test
@@ -309,6 +313,7 @@ entries:
       processor: kickside.uploads.documents:processor
       parts: kickside.uploads.persist:artifact_parts_repo
       stage: kickside.llm_ocr:stage_implementation
+      llm: wippy.llm:llm
       ocr: kickside.llm_ocr:ocr
       doc2md: kickside.convert.doc2md:doc2md
 

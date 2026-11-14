@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/kicksideai/providers/compare/kb10-v0.2.14...kb10-v0.2.15) (2026-11-12)
+
+
+### Bug Fixes
+
+* **kb10:** keep search available without an assigned analysis model ([#99](https://github.com/kicksideai/providers/issues/99)) ([a1b019c](https://github.com/kicksideai/providers/commit/a1b019cd2de3fad2969b916a6c7b8e6f25649b55))
+
 ## [0.2.14](https://github.com/kicksideai/providers/compare/kb10-v0.2.13...kb10-v0.2.14) (2026-11-10)
 
 
