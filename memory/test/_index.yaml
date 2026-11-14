@@ -274,3 +274,8 @@ entries:
     claim: kickside.core.jobs.persist:claim
     lifecycle: kickside.core.jobs.persist:lifecycle
     completion: kickside.core.jobs.service:worker_completion
+- name: memory_recall_maintenance_actor
+  kind: registry.entry
+  meta:
+    type: kickside.execution.maintenance_actor
+    actor_id: system:memory-recall

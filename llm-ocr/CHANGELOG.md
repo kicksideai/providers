@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.21](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.20...llm-ocr-v0.1.21) (2026-11-14)
+
+
+### Bug Fixes
+
+* **llm-ocr:** report failed pages as outcomes instead of failing the stage ([#106](https://github.com/kicksideai/providers/issues/106)) ([282fd7a](https://github.com/kicksideai/providers/commit/282fd7a31ed5f4915d48bfa53337f4e23352b366))
+
+## [0.1.20](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.19...llm-ocr-v0.1.20) (2026-11-13)
+
+
+### Features
+
+* **llm-ocr:** apply the uploads page selection when choosing pages to transcribe ([#101](https://github.com/kicksideai/providers/issues/101)) ([b7ef8c3](https://github.com/kicksideai/providers/commit/b7ef8c3fe9b24121ff0eddc63e71aca594eccd58))
+
 ## [0.1.19](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.18...llm-ocr-v0.1.19) (2026-11-12)
 
 
