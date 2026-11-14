@@ -1,5 +1,6 @@
 local test = require("test")
 local api = require("api")
+local json = require("json")
 
 local function response(status: number, body: string?, headers: any?): any
     return { status_code = status, body = body or "", headers = headers or {} }
@@ -49,6 +50,21 @@ local function define_tests()
                 "request <token> failed at /bot<token>/getFile: <token>")
         end)
 
+        test.it("keeps raw and encoded credentials out of the entire failed result", function()
+            local token = "123:secret-sentinel"
+            local encoded = api.encode_component(token)
+            local body = assert(json.encode({ok = false, description = "failed /bot" .. encoded .. "/getChat",
+                nested = {token, {[token] = encoded}}, parameters = {retry_after = 7}}))
+            with_transport({{response = response(400, body)}}, function()
+                local result, err = api.get_chat({bot_token = token}, "chat")
+                test.is_nil(err)
+                test.is_false(result.success)
+                local serialized = assert(json.encode(result))
+                test.is_nil((serialized:find(token, 1, true)))
+                test.is_nil((serialized:find(encoded, 1, true)))
+                test.eq(result.data.parameters.retry_after, 7)
+            end)
+        end)
         test.it("builds JSON headers", function()
             local headers = api.headers()
             test.eq(headers["Accept"], "application/json")

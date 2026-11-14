@@ -114,6 +114,16 @@ local function without_token(conn: types.Conn, err: any): string
 end
 M.without_token = without_token
 
+local function without_token_data(conn: types.Conn, value: any): any
+    if type(value) == "string" then return without_token(conn, value) end
+    if type(value) ~= "table" then return value end
+    local clean: any = {}
+    for key, item in pairs(value) do
+        clean[without_token_data(conn, key)] = without_token_data(conn, item)
+    end
+    return clean
+end
+
 local function decode_body(response: any): any
     local raw = response and (response :: any).body or nil
     if type(raw) ~= "string" or (raw :: string) == "" then return nil end
@@ -169,7 +179,7 @@ function M.call(conn: types.Conn, method_name: string, params: { [string]: any }
     if status >= 200 and status < 300 and type(body) == "table" and (body :: any).ok == true then
         return { success = true, data = (body :: any).result, status_code = status }
     end
-    local result: types.Result = { success = false, error = without_token(conn, M.extract_error(body, status)), status_code = status, data = body }
+    local result: types.Result = { success = false, error = without_token(conn, M.extract_error(body, status)), status_code = status, data = without_token_data(conn, body) }
     if status == 429 then
         local params = type(body) == "table" and type(body.parameters) == "table" and body.parameters or {}
         local seconds = tonumber(params.retry_after)

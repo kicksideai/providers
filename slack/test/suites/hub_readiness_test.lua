@@ -15,6 +15,16 @@ local function fixture(options)
                 return true
             end},
             event = {CANCEL = "cancel"},
+            spawn_monitored = function(_, _, args)
+                test.eq(args.component_id, "fixture-connection")
+                test.is_nil(args.token)
+                test.is_nil(args.app_token)
+                test.is_nil(args.bot_token)
+                options.spawned = (options.spawned or 0) + 1
+                return "fixture-worker", nil
+            end,
+            link = function() return true, nil end,
+            cancel = function() return true, nil end,
             set_options = function() return true end,
             events = function() return events end,
             inbox = function() inbox_ready = true; return inbox end,
@@ -23,6 +33,7 @@ local function fixture(options)
             test.is_true(registered, "startup scan precedes wake registration")
             scans = scans + 1
             if scans == options.fail_scan then return nil, options.cause end
+            if options.credential then return {{component_id = "fixture-connection", private_context = {app_token = "spawn-credential-sentinel"}}}, nil end
             return {}, nil
         end},
         channel = {select = function(cases)
@@ -37,6 +48,11 @@ end
 
 local function define_tests()
     test.describe("Slack hub readiness and wake delivery", function()
+        test.it("spawns a worker with identifiers only", function()
+            local options = {credential = true}
+            fixture(options).main({})
+            test.eq(options.spawned, 1)
+        end)
         test.it("opens its inbox before publishing its wake address", function()
             fixture({registration = true}).main({})
         end)
