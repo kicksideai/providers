@@ -56,7 +56,8 @@ end
 --   output_limit the generation's max_tokens
 local function request_profile(card: any): (table?, string?)
     local metadata = type(card) == "table" and card.metadata or nil
-    local declared = type(metadata) == "table" and metadata.ocr or nil
+    local declared = nil
+    if type(metadata) == "table" then declared = metadata.ocr end
     if declared == nil then
         return {system = OCR_SYSTEM, image_first = false}, nil
     end
@@ -101,20 +102,25 @@ local function new(runtime: any): any
             return nil, "ocr: model required"
         end
 
-        local card, resolve_err = llm.resolve_model(model)
-        if not card then
-            return nil, "ocr: resolve model failed: " .. tostring(resolve_err)
-        end
-        local profile, profile_err = request_profile(card)
-        if not profile then
-            return nil, "ocr: model " .. model .. ": " .. tostring(profile_err)
-        end
-
-        local instruction = prompt.text(type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt
-            or profile.prompt or DEFAULT_USER)
-        local max_tokens = tonumber(opts.max_tokens) or profile.output_limit or DEFAULT_MAX_TOKENS
+        local configured_prompt = type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt or nil
+        local configured_limit = tonumber(opts.max_tokens)
         local timeout_ms = clamp_timeout_ms(opts.timeout, PROVIDER_TIMEOUT_CAP_MS)
         local timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil
+        local profiles = {}
+        local function prepared_profile(card: table): (table?, string?)
+            local name = card.name
+            local cached = profiles[name]
+            if cached then return cached.profile, cached.err end
+            local profile, err = request_profile(card)
+            if profile then
+                profile.instruction = prompt.text(configured_prompt or profile.prompt or DEFAULT_USER)
+                profile.max_tokens = configured_limit or profile.output_limit or DEFAULT_MAX_TOKENS
+            else
+                err = "ocr: model " .. tostring(name) .. ": " .. tostring(err)
+            end
+            profiles[name] = {profile = profile, err = err}
+            return profile, err
+        end
         return function(image_bytes: any, page: any): (string?, string?)
             if type(image_bytes) ~= "string" or image_bytes == "" then
                 return nil, "ocr: image bytes required"
@@ -126,17 +132,21 @@ local function new(runtime: any): any
                 return nil, "ocr: failed to encode image"
             end
             local image = prompt.image_base64(mime, encoded)
-            local p = prompt.new()
-            if profile.system then
-                p:add_system(profile.system)
+            local function prepare_request(context: table): (table?, string?)
+                local profile, err = prepared_profile(context.model)
+                if not profile then return nil, err end
+                local p = prompt.new()
+                if profile.system then p:add_system(profile.system) end
+                local instruction = profile.instruction
+                p:add_message(prompt.ROLE.USER, profile.image_first and {image, instruction} or {instruction, image})
+                return {messages = p, max_tokens = profile.max_tokens}, nil
             end
-            p:add_message(prompt.ROLE.USER, profile.image_first and { image, instruction } or { instruction, image })
-
-            local response, gen_err = llm.generate(p, {
+            local response, gen_err = llm.generate({messages = {}}, {
                 model = model,
                 temperature = 0,
-                max_tokens = max_tokens,
+                max_tokens = configured_limit or DEFAULT_MAX_TOKENS,
                 timeout = timeout,
+                prepare_request = prepare_request,
             })
             if gen_err or not response then
                 return nil, "ocr: generate failed: " .. tostring(gen_err)

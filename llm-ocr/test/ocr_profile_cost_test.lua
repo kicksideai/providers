@@ -52,7 +52,9 @@ return {run = test.run_cases(function()
                         end,
                         generate = function(_, options)
                             generations = generations + 1
-                            test.eq(options.max_tokens, profiled and 8192 or 4000)
+                            local prepared, err = options.prepare_request({model = {name = "stage-model", metadata = metadata}})
+                            test.is_nil(err, tostring(err))
+                            test.eq(prepared.max_tokens, profiled and 8192 or 4000)
                             return {result = "Transcribed page"}, nil
                         end,
                     },
@@ -85,7 +87,7 @@ return {run = test.run_cases(function()
             test.is_nil(write_err, tostring(write_err))
             for _, measurement in ipairs(measurements) do
                 test.eq(measurement.generations, 1000)
-                test.eq(measurement.resolves, 1, "Model resolution repeats per page")
+                test.eq(measurement.resolves, 0, "OCR does not resolve separately from generation")
                 test.eq(measurement.profile_reads, 1, "Profile validation repeats per page")
                 test.eq(measurement.instructions, 1, "Instruction construction repeats per page")
             end
@@ -94,14 +96,18 @@ return {run = test.run_cases(function()
         test.it("records invalid profiles once and preserves the existing text failure policy", function()
             for _, markdown in ipairs({"", "<!-- page 1 -->\n\nExisting caption\n\n<!-- page 2 -->"}) do
                 local id = seed(2, markdown)
-                local resolves, generations, checkpoints = 0, 0, 0
+                local profile_reads, generations, checkpoints = 0, 0, 0
                 local original = ocr.new
                 ocr.new = function() return original({llm = {
-                    resolve_model = function()
-                        resolves = resolves + 1
-                        return {metadata = {ocr = {output_limit = 0}}}, nil
+                    generate = function(_, options)
+                        local metadata = setmetatable({}, {__index = function(_, key)
+                            if key == "ocr" then profile_reads = profile_reads + 1; return {output_limit = 0} end
+                        end})
+                        local prepared, err = options.prepare_request({model = {name = "invalid-model", metadata = metadata}})
+                        if err then return nil, err end
+                        generations = generations + 1
+                        return {result = "unexpected"}, nil
                     end,
-                    generate = function() generations = generations + 1 end,
                 }}) end
                 local ok, result = pcall(stage.run, {upload_id = id, storage_id = "app:temp_fs"}, {
                     persist = function(_, _, text, _, _, outcomes)
@@ -116,7 +122,7 @@ return {run = test.run_cases(function()
                 test.is_true(ok, tostring(result))
                 test.eq(result.success, markdown ~= "")
                 test.eq(result.metadata.ocr_error, "transcription_failed")
-                test.eq(resolves, 1)
+                test.eq(profile_reads, 1)
                 test.eq(generations, 0)
                 test.eq(checkpoints, 1)
             end

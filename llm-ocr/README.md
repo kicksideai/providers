@@ -72,8 +72,9 @@ different request declares it in its `metadata.ocr` object; every field is optio
 | `image_first` | `true` sends the image before the instruction text |
 | `output_limit` | positive integer output token limit |
 
-A non-empty `ocr_prompt` setting takes precedence over the card's `prompt`. When
-`ocr_model` names a class, the profile of the card the class resolves to applies.
+A non-empty `ocr_prompt` setting takes precedence over the card's `prompt`. Each model
+the LLM attempts, including class members and fallbacks, receives the request its own
+card declares.
 PaddleOCR-VL models expect the image first, the task prompt `OCR:`, and no system
 message:
 

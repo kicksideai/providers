@@ -210,7 +210,7 @@ entries:
     component: kickside/widgets
 
   - name: dep.wippy.llm
-    version: '*'
+    version: '>=0.5.20'
     kind: ns.dependency
     meta:
       comment: Transcribes page images through the configured multimodal LLM.
