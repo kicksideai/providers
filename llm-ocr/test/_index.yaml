@@ -280,6 +280,19 @@ entries:
       migration_registry: wippy.migration:registry
     method: run
 
+  - name: ocr_profile_cost_test
+    kind: function.lua
+    meta: {type: test, suite: llm_ocr, timeout: 120s}
+    source: file://ocr_profile_cost_test.lua
+    method: run
+    modules: [fs, json, time, uuid]
+    imports:
+      test: wippy.test:test
+      ocr: kickside.llm_ocr:ocr
+      stage: kickside.llm_ocr:stage_implementation
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_record_repo: kickside.uploads.persist:upload_record_repo
+
   - name: model_compatibility_test
     kind: function.lua
     meta: {type: test, suite: llm_ocr}

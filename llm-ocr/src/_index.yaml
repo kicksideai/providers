@@ -17,7 +17,7 @@ entries:
     kind: library.lua
     meta:
       name: ocr
-      comment: LLM OCR transcription seam. new(runtime?) returns { transcribe(image_bytes, opts) }.
+      comment: LLM OCR transcription seam. new(runtime?) exposes transcribe(image_bytes, opts) and prepare(opts) for a document's pages.
     source: file://ocr.lua
     modules: [base64]
     imports:

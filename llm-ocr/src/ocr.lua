@@ -93,23 +93,12 @@ local function new(runtime: any): any
     local prompt = deps.prompt or require("prompt")
     local base64 = deps.base64 or require("base64")
 
-    -- transcribe(image_bytes, opts) -> (text, err). opts = { model, mime?, prompt?,
-    -- max_tokens?, timeout? }; opts.prompt and opts.max_tokens take precedence over
-    -- the model card's OCR profile. Returns "" for a page with no readable text.
-    local function transcribe(image_bytes: any, opts: any): (string?, string?)
+    -- Prepare the document's invariant request fields before any page work.
+    local function prepare(opts: any): (any?, string?)
         opts = type(opts) == "table" and opts or {}
-        if type(image_bytes) ~= "string" or image_bytes == "" then
-            return nil, "ocr: image bytes required"
-        end
         local model = opts.model
         if type(model) ~= "string" or model == "" then
             return nil, "ocr: model required"
-        end
-
-        local mime = type(opts.mime) == "string" and opts.mime ~= "" and opts.mime or "image/png"
-        local encoded, enc_err = base64.encode(image_bytes)
-        if enc_err or type(encoded) ~= "string" or encoded == "" then
-            return nil, "ocr: failed to encode image"
         end
 
         local card, resolve_err = llm.resolve_model(model)
@@ -123,39 +112,59 @@ local function new(runtime: any): any
 
         local instruction = prompt.text(type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt
             or profile.prompt or DEFAULT_USER)
-        local image = prompt.image_base64(mime, encoded)
-        local p = prompt.new()
-        if profile.system then
-            p:add_system(profile.system)
-        end
-        p:add_message(prompt.ROLE.USER, profile.image_first and { image, instruction } or { instruction, image })
-
+        local max_tokens = tonumber(opts.max_tokens) or profile.output_limit or DEFAULT_MAX_TOKENS
         local timeout_ms = clamp_timeout_ms(opts.timeout, PROVIDER_TIMEOUT_CAP_MS)
-        local response, gen_err = llm.generate(p, {
-            model = model,
-            temperature = 0,
-            max_tokens = tonumber(opts.max_tokens) or profile.output_limit or DEFAULT_MAX_TOKENS,
-            timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil,
-        })
-        if gen_err or not response then
-            return nil, "ocr: generate failed: " .. tostring(gen_err)
-        end
-        -- A generation cut at max_tokens is an incomplete transcription of the page.
-        if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
-            return nil, "ocr: generation stopped at the token limit"
-        end
+        local timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil
+        return function(image_bytes: any, page: any): (string?, string?)
+            if type(image_bytes) ~= "string" or image_bytes == "" then
+                return nil, "ocr: image bytes required"
+            end
+            local mime = type(page) == "table" and page.mime or opts.mime
+            if type(mime) ~= "string" or mime == "" then mime = "image/png" end
+            local encoded, enc_err = base64.encode(image_bytes)
+            if enc_err or type(encoded) ~= "string" or encoded == "" then
+                return nil, "ocr: failed to encode image"
+            end
+            local image = prompt.image_base64(mime, encoded)
+            local p = prompt.new()
+            if profile.system then
+                p:add_system(profile.system)
+            end
+            p:add_message(prompt.ROLE.USER, profile.image_first and { image, instruction } or { instruction, image })
 
-        local out = (response :: any).result
-        if type(out) ~= "string" then
-            return nil, "ocr: unexpected model result"
-        end
-        if (out :: string):match("^%s*(.-)%s*$") == NO_TEXT_REPLY then
-            return "", nil
-        end
-        return out, nil
+            local response, gen_err = llm.generate(p, {
+                model = model,
+                temperature = 0,
+                max_tokens = max_tokens,
+                timeout = timeout,
+            })
+            if gen_err or not response then
+                return nil, "ocr: generate failed: " .. tostring(gen_err)
+            end
+            -- A generation cut at max_tokens is an incomplete transcription of the page.
+            if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
+                return nil, "ocr: generation stopped at the token limit"
+            end
+
+            local out = (response :: any).result
+            if type(out) ~= "string" then
+                return nil, "ocr: unexpected model result"
+            end
+            if (out :: string):match("^%s*(.-)%s*$") == NO_TEXT_REPLY then
+                return "", nil
+            end
+            return out, nil
+        end, nil
     end
 
-    return { transcribe = transcribe }
+    -- Single-page callers retain the original API and option precedence.
+    local function transcribe(image_bytes: any, opts: any): (string?, string?)
+        local prepared, err = prepare(opts)
+        if not prepared then return nil, err end
+        return prepared(image_bytes, opts)
+    end
+
+    return { transcribe = transcribe, prepare = prepare }
 end
 
 return {
