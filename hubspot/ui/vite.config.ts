@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => ({
   define: {
     "process.env": JSON.stringify({ NODE_ENV: mode }),
   },
+  esbuild: { supported: { 'template-literal': false } },
   build: {
     target: "esnext",
     emptyOutDir: true,

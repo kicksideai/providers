@@ -20,6 +20,7 @@ export default defineConfig({
     wippyComponentPlugin(),
   ],
   resolve: { dedupe: ['vue', '@iconify/vue', '@wippy-fe/proxy'] },
+  define: { 'process.env.NODE_ENV': JSON.stringify('production'), 'process.env': '{}' },
   build: {
     target: 'esnext',
     emptyOutDir: true,

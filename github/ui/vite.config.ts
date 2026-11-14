@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
-import { hostExternals, wcRuntimeChunk } from '../../wc-build'
+import { proxyExternals, wcRuntimeChunk } from '../../wc-build'
 
 export default defineConfig({
   plugins: [vue(), wippyComponentPlugin()],
@@ -26,7 +26,7 @@ export default defineConfig({
       input: {
         connect: resolve(__dirname, 'src/connect.ts'),
       },
-      external: hostExternals,
+      external: proxyExternals,
       output: {
         manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',

@@ -1,4 +1,4 @@
-import { Icon as i } from "@iconify/vue";
+import { I as i } from "./wc-runtime-CWzMpxrl.js";
 import { defineAsyncComponent as c, defineComponent as p, h as e, onMounted as d } from "vue";
 const s = 3e4, n = "display:flex;align-items:center;justify-content:center;min-height:2rem;font-size:.875rem;", l = "position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;";
 function m(o) {

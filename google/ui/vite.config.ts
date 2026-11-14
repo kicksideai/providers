@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import vue from "@vitejs/plugin-vue";
 import { wippyComponentPlugin } from "@wippy-fe/vite-plugin";
 import { defineConfig } from "vite";
-import { hostExternals, wcRuntimeChunk } from "../../wc-build";
+import { proxyExternals, wcRuntimeChunk } from "../../wc-build";
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -31,7 +31,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         google_picker: resolve(__dirname, "src/google_picker.ts"),
       },
-      external: hostExternals,
+      external: proxyExternals,
       output: {
         manualChunks: wcRuntimeChunk,
         entryFileNames: "[name].js",

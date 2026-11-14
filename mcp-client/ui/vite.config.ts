@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
-import { hostExternals, wcRuntimeChunk } from '../../wc-build'
+import { proxyExternals, wcRuntimeChunk } from '../../wc-build'
 
 export default defineConfig(({ mode }) => ({
   plugins: [vue(), wippyComponentPlugin()],
@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => ({
     },
     rollupOptions: {
       preserveEntrySignatures: 'strict',
-      external: hostExternals,
+      external: proxyExternals,
       output: { entryFileNames: '[name].js', chunkFileNames: '[name]-[hash].js', assetFileNames: '[name]-[hash][extname]', manualChunks: wcRuntimeChunk },
     },
     sourcemap: false,

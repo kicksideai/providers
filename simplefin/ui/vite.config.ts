@@ -3,9 +3,26 @@ import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
-import { hostExternals, wcRuntimeChunk } from '../../wc-build'
+import { wcRuntimeChunk } from '../../wc-build'
 
 const moduleRoot = fileURLToPath(new URL('.', import.meta.url))
+
+const shellProvided = [
+  'vue',
+  'pinia',
+  'vue-router',
+  'axios',
+  'nanoevents',
+  'luxon',
+  '@iconify/vue',
+  'iconify-icon',
+  '@tanstack/vue-query',
+  'sanitize-html',
+  'markdown-it',
+  'markdown-it-async',
+  '@wippy-fe/proxy',
+  '@wippy-fe/markdown-iframe',
+]
 
 export default defineConfig({
   plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }), wippyComponentPlugin()],
@@ -25,7 +42,7 @@ export default defineConfig({
     },
     rollupOptions: {
       input: { index: resolve(moduleRoot, 'src/index.ts') },
-      external: hostExternals,
+      external: [...shellProvided, /^primevue\//],
       output: {
         manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',

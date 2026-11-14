@@ -1,4 +1,4 @@
-import { W as e, u as t } from "./wc-runtime-CNDpK4lj.js";
+import { W as e, u as t } from "./wc-runtime-f54Bo-yJ.js";
 import { b as i, a } from "./styles-B-Ei5Rxs.js";
 import { p as n } from "./package-BnnarOlp.js";
 import "@iconify/vue";
@@ -15,7 +15,7 @@ class r extends e {
   static get vueConfig() {
     return {
       lazyConfig: a(
-        () => import("./wiki-mount-RHrhp3zT.js").then((o) => o.mountConfig),
+        () => import("./wiki-mount-BHFIJdxK.js").then((o) => o.mountConfig),
         "Could not load the wiki knowledge base. Reload the page to try again.",
         t
       )

@@ -1,9 +1,9 @@
-import { W as t, u as o } from "./wc-runtime-CNDpK4lj.js";
+import { W as t, u as o } from "./wc-runtime-f54Bo-yJ.js";
 import { l as n, b as i } from "./styles-B-Ei5Rxs.js";
 import "@iconify/vue";
 import { define as s } from "@wippy-fe/proxy";
 const r = n(
-  () => import("./KbCreateConfig-CS5NgD5H.js"),
+  () => import("./KbCreateConfig-DGe_h8ZI.js"),
   { loading: "Loading the knowledge base settings…", failed: "Could not load the knowledge base settings. Reload the page to try again." },
   o
 ), a = {

@@ -1,10 +1,9 @@
-import { u as o } from "./wc-runtime-KO3cNuNo.js";
-import { P as t } from "./primevue-plugin-CaP7wV_M.js";
-import { l as n, m as i } from "./lazy-Dyi12j7w.js";
+import { u as o, P as t } from "./wc-runtime-Cnj2CWxS.js";
+import { l as n, m as i } from "./lazy-0O1vWIeh.js";
 import "@iconify/vue";
 import { define as m } from "@wippy-fe/proxy";
 const r = n(
-  () => import("./MemoryCreate-BXSQo9P9.js"),
+  () => import("./MemoryCreate-CbP4Cm6G.js"),
   { loading: "Loading the memory settings…", failed: "Could not load the memory settings. Reload the page to try again." },
   o
 ), e = i(
@@ -16,11 +15,11 @@ const r = n(
     }
   }
 );
-async function c() {
+async function d() {
   return e;
 }
 m(import.meta.url, e);
 export {
-  c as webComponent
+  d as webComponent
 };
 //# sourceMappingURL=memory_create.js.map

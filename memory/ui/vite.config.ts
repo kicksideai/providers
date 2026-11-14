@@ -19,6 +19,7 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify('production'),
     'process.env': '{}',
   },
+  esbuild: { supported: { 'template-literal': false } },
   build: {
     target: 'esnext',
     // Build into the module's own served directory so kickside/memory ships and

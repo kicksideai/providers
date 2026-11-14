@@ -1,4 +1,4 @@
-import { W as p, a as d } from "./wc-runtime-h8e5VJvv.js";
+import { W as p, a as d } from "./wc-runtime-C70m2Vvt.js";
 import { Icon as r } from "@iconify/vue";
 import { defineAsyncComponent as l, defineComponent as c, h as n, onMounted as m } from "vue";
 import { s as u } from "./styles-CV5852_Q.js";
@@ -41,7 +41,7 @@ function w(t, e, o) {
 const x = { props: { type: "object", properties: { "provider-id": { type: "string", description: "Provider key (atlassian)", default: "" }, "component-id": { type: "string", description: "Existing connection id when reauthorizing", default: "" } } } }, v = {
   wippy: x
 }, z = w(
-  () => import("./Connect-MIbchh-w.js"),
+  () => import("./Connect-D5ViinZn.js"),
   { loading: "Loading Atlassian connection…", failed: "Could not load the Atlassian connection form. Reload the page to try again." },
   d
 );

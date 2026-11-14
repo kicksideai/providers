@@ -1,7 +1,7 @@
 import { defineComponent as se, ref as i, computed as D, watch as P, onMounted as ae, openBlock as a, createElementBlock as n, createElementVNode as t, createVNode as m, unref as d, createTextVNode as w, createBlock as q, toDisplayString as p, normalizeClass as le, Fragment as M, renderList as z, createCommentVNode as x } from "vue";
 import { Icon as v } from "@iconify/vue";
 import { api as F, host as re, loadByTagName as ne } from "@wippy-fe/proxy";
-import { a as ie, u as ce } from "./wc-runtime-CNDpK4lj.js";
+import { a as ie, u as ce } from "./wc-runtime-f54Bo-yJ.js";
 function U(c, l) {
   if (c && typeof c == "object") {
     const s = c;
