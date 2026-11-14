@@ -5,6 +5,7 @@ local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
 local ocr = require("ocr")
 local page_images = require("page_images")
+local doc2md = require("doc2md")
 local jobs = require("jobs")
 
 -- Bounded-concurrency map: page transcription is network-bound (one vision call each),
@@ -95,6 +96,12 @@ local function page_number(artifact: any, fallback: integer): integer
 end
 
 local build_markdown = page_images.build_markdown
+
+-- A transcript carries text when any page body, or unmarked content, has a
+-- non-whitespace character; page markers alone are not text.
+local function carries_text(markdown: string): boolean
+    return doc2md.strip_markers(markdown):match("%S") ~= nil
+end
 
 -- The image processor stores the uploaded image as its own primary artifact; it
 -- is not a text primary and therefore is deliberately distinct from the markdown
@@ -296,7 +303,7 @@ local function run(params: any, deps: any): any
         if type(text) ~= "string" then return nil, "OCR returned invalid text" end
         return {page = item.index, text = text}
     end
-    local committed_outcomes = previous
+    local committed_outcomes, committed_markdown = previous, original
     local function checkpoint(): (boolean, string?)
         local markdown
         if marked then markdown = page_images.replace_pages(original, sections)
@@ -318,7 +325,7 @@ local function run(params: any, deps: any): any
             end
         end
         local ok, err = persist(upload_id, params.storage_id, markdown, params, pages[1], checkpoint_outcomes)
-        if ok then committed_outcomes = checkpoint_outcomes end
+        if ok then committed_outcomes, committed_markdown = checkpoint_outcomes, markdown end
         return ok, err
     end
     local start, persist_error, cancelled = 1, nil, false
@@ -359,8 +366,18 @@ local function run(params: any, deps: any): any
     if persist_error then page_errors[#page_errors + 1] = "Transcript checkpoint: " .. persist_error end
     local metadata = {ocr_pages = transcribed, ocr_total_pages = #document_pages, ocr_page_outcomes = outcomes,
         ocr_error = code, _ocr_error_detail = #page_errors > 0 and table.concat(page_errors, "\n"):sub(1, MAX_ERROR_DETAIL_BYTES) or false}
-    if code or cancelled then return {success = false, error = code or "OCR cancelled", metadata = metadata} end
-    log:info("ocr transcribed document", {upload_id = upload_id, pages = transcribed, total_pages = #document_pages, model = model})
+    -- Failed pages are page outcomes. The stage fails only when it could not run
+    -- (cancelled, checkpoint not stored) or when pages failed and the transcript
+    -- holds no text at all: nothing was transcribed and no text layer remains.
+    if persist_error or cancelled or (failed > 0 and not carries_text(committed_markdown)) then
+        return {success = false, error = code or "OCR cancelled", metadata = metadata}
+    end
+    if failed > 0 then
+        log:warn("ocr completed with failed pages", {upload_id = upload_id, pages = transcribed, failed_pages = failed,
+            total_pages = #document_pages, model = model})
+    else
+        log:info("ocr transcribed document", {upload_id = upload_id, pages = transcribed, total_pages = #document_pages, model = model})
+    end
     return {success = true, metadata = metadata}
 end
 
