@@ -41,7 +41,7 @@ local function define_tests()
 
         test.it("refuses gateway writes after another component owner claims Discord identity", function()
             local owner = service("owner-" .. uuid.v4(), { "app:user" })
-            local target = owner:register({ impl_id = "app:other_component", meta = {} })
+            local target = owner:register({ impl_id = "test:other_component", meta = {} })
             test.is_true(target.success, tostring(target.error))
             local claims = owner:set_meta({ component_id = target.component_id,
                 fields = { class = "connection", provider = "discord" } })

@@ -261,18 +261,6 @@ entries:
       actions: [contract.*, db.*, funcs.*, security.*, registry.*, env.*]
       effect: allow
 
-  - name: other_component_status
-    kind: function.lua
-    source: file://other_component.lua
-    method: get_status
-
-  - name: other_component
-    kind: contract.binding
-    contracts:
-    - contract: kickside.contract:component
-      methods:
-        get_status: app:other_component_status
-
   - name: capacity_client
     kind: library.lua
     source: file://capacity_client.lua
