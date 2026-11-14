@@ -24,6 +24,7 @@ entries:
       models_cache: kickside.models.service:models_cache
       upload_records: kickside.uploads.persist:upload_record_repo
       upload_tokens: kickside.uploads.persist:upload_tokens
+      upload_types: kickside.uploads:types
   - name: key_owner_runtime_probe
     kind: function.lua
     source: file://key_owner_runtime_test.lua
