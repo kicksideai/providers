@@ -72,8 +72,9 @@ different request declares it in its `metadata.ocr` object; every field is optio
 | `image_first` | `true` sends the image before the instruction text |
 | `output_limit` | positive integer output token limit |
 
-A non-empty `ocr_prompt` setting takes precedence over the card's `prompt`. When
-`ocr_model` names a class, the profile of the card the class resolves to applies.
+A non-empty `ocr_prompt` setting takes precedence over the card's `prompt`. Each model
+the LLM attempts, including class members and fallbacks, receives the request its own
+card declares.
 PaddleOCR-VL models expect the image first, the task prompt `OCR:`, and no system
 message:
 
@@ -94,11 +95,3 @@ For documents without page markers, readable outcomes are saved with the replace
 ## License
 
 [KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
-
-### OCR profile and model selection
-
-OCR profile shaping currently applies to the initially resolved concrete model.
-Cross-model fallback and class selection require per-candidate request preparation
-in `wippy/llm`; a concrete model name may itself declare fallback models. Profiles
-with different request shapes across those models are not supported by this
-version. The LLM owns fallback selection; OCR does not implement a separate chain.

@@ -3,22 +3,54 @@ local test = require("test")
 local llm = require("llm")
 local ocr = require("ocr")
 
--- Runs a transcription against a resolved model card, recording each request.
-local function transcribe_with_card(card: any, opts: any): (any, any, {any})
-    local original_resolver, original_generate = llm._model_resolver, llm.generate
-    local requests: {any} = {}
-    llm._model_resolver = {resolve = function(_, input)
-        test.eq(input.model, opts.model)
-        return card, nil
-    end}
+-- A generation-capable vision card served by one fake provider route.
+local function vision_card(name: string, metadata: table?, fallback: {string}?): table
+    return {name = name, capabilities = {"generate"}, metadata = metadata, fallback = fallback,
+        providers = {{id = "review-provider", provider_model = name}}}
+end
+
+-- Transcribes through the real LLM call path against the given cards, recording each
+-- driver request and each generate call's options. A model named "<name>-down" fails
+-- with a retryable provider error.
+local function transcribe_with_cards(cards: {[string]: table}, opts: table): (string?, string?, {table}, {table})
+    local saved = {llm._models, llm._providers, llm._model_resolver, llm._usage_tracker, llm.generate}
+    local requests: {table} = {}
+    local calls: {table} = {}
+    local generate = llm.generate
     llm.generate = function(prompt_input, options)
-        requests[#requests + 1] = { messages = prompt_input:get_messages(), options = options }
-        return { result = "Receipt total: 12.50", tokens = {} }, nil
+        calls[#calls + 1] = options
+        return generate(prompt_input, options)
     end
+    llm._model_resolver = false
+    llm._usage_tracker = false
+    llm._models = {
+        get_by_name = function(name: string) return cards[name] end,
+        get_by_class = function() return {} end,
+    }
+    llm._providers = {
+        driver_declares_legacy_reasoning_flag = function() return false end,
+        driver_output_policy = function() return nil end,
+        open = function() return {generate = function(_, args: table)
+            requests[#requests + 1] = args
+            if tostring(args.model):match("%-down$") then
+                return nil, errors.new({kind = errors.INTERNAL, retryable = true,
+                    message = "unavailable", details = {error_type = "server_error"}})
+            end
+            return {result = "Receipt total: 12.50", tokens = {}}, nil
+        end} end,
+    }
     local ok, text, err = pcall(function() return ocr.new({llm = llm}).transcribe("image bytes", opts) end)
-    llm._model_resolver, llm.generate = original_resolver, original_generate
+    llm._models, llm._providers, llm._model_resolver, llm._usage_tracker, llm.generate =
+        saved[1], saved[2], saved[3], saved[4], saved[5]
     test.is_true(ok, tostring(text))
-    return text, err, requests
+    return text, err, requests, calls
+end
+
+local function transcribe_with_card(card: table?, opts: table): (string?, string?, {table}, {table})
+    local cards: {[string]: table} = {}
+    if card then cards[card.name] = card end
+    local text, err, requests, calls = transcribe_with_cards(cards, opts)
+    return text, err, requests, calls
 end
 
 return { run = test.run_cases(function()
@@ -26,16 +58,16 @@ return { run = test.run_cases(function()
         for _, with_fallback in ipairs({false, true}) do
             test.it(with_fallback and "preserves a configured generation-only fallback" or "preserves a generation-only vision model", function()
                 local model = with_fallback and "review-primary" or "review-vision-only"
-                local card = {name = model, providers = {{id = "review-provider", provider_model = model}}}
-                local text, err, requests = transcribe_with_card(card, {model = model})
+                local card = vision_card(model, nil, with_fallback and {"review-vision-only"} or nil)
+                local text, err, requests, calls = transcribe_with_card(card, {model = model})
                 test.is_nil(err, tostring(err))
                 test.eq(text, "Receipt total: 12.50")
                 test.eq(#requests, 1)
-                test.eq(requests[1].options.model, model)
+                test.eq(requests[1].model, model)
                 test.eq(requests[1].options.temperature, 0)
                 test.eq(requests[1].options.max_tokens, 4000)
                 -- The model provider's configured request timeout governs the call.
-                test.is_nil(requests[1].options.timeout)
+                test.is_nil(calls[1].timeout)
                 local messages = requests[1].messages
                 test.eq(#messages, 2)
                 test.eq(messages[1].role, "system")
@@ -49,10 +81,10 @@ return { run = test.run_cases(function()
             end)
         end
         test.it("bounds the call by an explicitly configured timeout", function()
-            local _, err, requests = transcribe_with_card({name = "review-vision-only"},
+            local _, err, _, calls = transcribe_with_card(vision_card("review-vision-only"),
                 {model = "review-vision-only", timeout = "90s"})
             test.is_nil(err, tostring(err))
-            test.eq(requests[1].options.timeout, 90)
+            test.eq(calls[1].timeout, 90)
         end)
     end)
 
@@ -61,11 +93,11 @@ return { run = test.run_cases(function()
 
         test.it("sends the image then the declared prompt, without a system message, under the declared limit", function()
             local text, err, requests = transcribe_with_card(
-                {name = "paddle-vl", metadata = {ocr = paddle_profile}}, {model = "paddle-vl"})
+                vision_card("paddle-vl", {ocr = paddle_profile}), {model = "paddle-vl"})
             test.is_nil(err, tostring(err))
             test.eq(text, "Receipt total: 12.50")
             test.eq(#requests, 1)
-            test.eq(requests[1].options.model, "paddle-vl")
+            test.eq(requests[1].model, "paddle-vl")
             test.eq(requests[1].options.temperature, 0)
             test.eq(requests[1].options.max_tokens, 8192)
             local messages = requests[1].messages
@@ -80,9 +112,9 @@ return { run = test.run_cases(function()
 
         test.it("sends today's request for a card without an OCR profile", function()
             for _, card in ipairs({
-                {name = "plain-vision"},
-                {name = "plain-vision", metadata = {}},
-                {name = "plain-vision", metadata = {discovered = {family = "vision"}}},
+                vision_card("plain-vision"),
+                vision_card("plain-vision", {}),
+                vision_card("plain-vision", {discovered = {family = "vision"}}),
             }) do
                 local _, err, requests = transcribe_with_card(card, {model = "plain-vision"})
                 test.is_nil(err, tostring(err))
@@ -100,7 +132,7 @@ return { run = test.run_cases(function()
 
         test.it("replaces the system prompt with the declared text", function()
             local _, err, requests = transcribe_with_card(
-                {name = "custom-vl", metadata = {ocr = {system = "Read the page."}}}, {model = "custom-vl"})
+                vision_card("custom-vl", {ocr = {system = "Read the page."}}), {model = "custom-vl"})
             test.is_nil(err, tostring(err))
             local messages = requests[1].messages
             test.eq(#messages, 2)
@@ -113,7 +145,7 @@ return { run = test.run_cases(function()
 
         test.it("keeps the configured OCR prompt over the card's prompt", function()
             local _, err, requests = transcribe_with_card(
-                {name = "paddle-vl", metadata = {ocr = paddle_profile}}, {model = "paddle-vl", prompt = "Read every line."})
+                vision_card("paddle-vl", {ocr = paddle_profile}), {model = "paddle-vl", prompt = "Read every line."})
             test.is_nil(err, tostring(err))
             test.eq(requests[1].messages[1].content[1].type, "image")
             test.eq(requests[1].messages[1].content[2].text, "Read every line.")
@@ -134,11 +166,31 @@ return { run = test.run_cases(function()
                 false,
             }) do
                 local text, err, requests = transcribe_with_card(
-                    {name = "broken-vl", metadata = {ocr = profile}}, {model = "broken-vl"})
+                    vision_card("broken-vl", {ocr = profile}), {model = "broken-vl"})
                 test.is_nil(text)
                 test.contains(tostring(err), "ocr profile")
                 test.eq(#requests, 0)
             end
+        end)
+
+        test.it("shapes each fallback candidate by its own card", function()
+            local _, err, requests = transcribe_with_cards({
+                ["paddle-down"] = vision_card("paddle-down", {ocr = paddle_profile}, {"plain-vision"}),
+                ["plain-vision"] = vision_card("plain-vision"),
+            }, {model = "paddle-down"})
+            test.is_nil(err, tostring(err))
+            test.eq(#requests, 2)
+            test.eq(requests[1].model, "paddle-down")
+            test.eq(#requests[1].messages, 1)
+            test.eq(requests[1].messages[1].content[1].type, "image")
+            test.eq(requests[1].messages[1].content[2].text, "OCR:")
+            test.eq(requests[1].options.max_tokens, 8192)
+            test.eq(requests[2].model, "plain-vision")
+            test.eq(#requests[2].messages, 2)
+            test.eq(requests[2].messages[1].content[1].text, ocr.system_prompt)
+            test.eq(requests[2].messages[2].content[1].text, "Transcribe the text in this page.")
+            test.eq(requests[2].messages[2].content[2].type, "image")
+            test.eq(requests[2].options.max_tokens, 4000)
         end)
 
         test.it("fails when the model cannot be resolved", function()

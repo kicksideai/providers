@@ -73,7 +73,7 @@ return {run = test.run_cases(function()
 
         it("serializes the complete no-profile request identically to the previous construction", function()
             local params = seed(nil)
-            local result = stage.run(params)
+            local result = stage.process(params)
             test.is_true(result.success)
             test.eq(#requests, 1)
             local observed = json.encode(requests[1])
@@ -93,7 +93,7 @@ return {run = test.run_cases(function()
             }) do
                 card.metadata = {ocr = profile}
                 local params = seed(nil)
-                local result = stage.run(params)
+                local result = stage.process(params)
                 test.is_true(result.success)
                 local request = requests[#requests]
                 test.eq(request.options.max_tokens, 2048)
@@ -110,7 +110,7 @@ return {run = test.run_cases(function()
 
         it("rejects false metadata before generation through the stage", function()
             card.metadata = {ocr = false}
-            local result = stage.run(seed(nil))
+            local result = stage.process(seed(nil))
             test.is_false(result.success)
             test.eq(result.metadata.ocr_error, "transcription_failed")
             test.contains(result.metadata._ocr_error_detail, "ocr profile must be an object")
@@ -122,7 +122,7 @@ return {run = test.run_cases(function()
             reply = "[[NO_TEXT]]"
             local original = "<!-- page 1 -->\n\nEmbedded text survives profiled blank OCR."
             local params = seed(original)
-            local result = stage.run(params)
+            local result = stage.process(params)
             test.is_true(result.success)
             test.eq(#requests, 1)
             local primary, err = parts.read_primary_content(params.upload_id)

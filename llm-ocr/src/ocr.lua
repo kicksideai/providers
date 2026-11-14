@@ -48,18 +48,20 @@ local function clamp_timeout_ms(requested_ms: any, cap_ms: integer): integer?
     return ms
 end
 
+-- The request shape a model receives when its card declares no OCR profile.
+local DEFAULT_PROFILE = {system = OCR_SYSTEM, image_first = false}
+
 -- A model card may declare the request shape its model expects for OCR in
 -- metadata.ocr. Every field is optional and an absent field keeps the default:
 --   system       false sends no system message; a string replaces OCR_SYSTEM
 --   prompt       the instruction text sent with the image
 --   image_first  true places the image before the instruction text
 --   output_limit the generation's max_tokens
-local function request_profile(card: any): (table?, string?)
-    local metadata = type(card) == "table" and card.metadata or nil
-    local declared = nil
-    if type(metadata) == "table" then declared = metadata.ocr end
+local function request_profile(card: table?): (table?, string?)
+    local metadata = card and card.metadata
+    local declared = metadata and metadata.ocr
     if declared == nil then
-        return {system = OCR_SYSTEM, image_first = false}, nil
+        return DEFAULT_PROFILE, nil
     end
     if type(declared) ~= "table" then
         return nil, "ocr profile must be an object"
@@ -96,7 +98,7 @@ local function new(runtime: any): any
 
     -- transcribe(image_bytes, opts) -> (text, err). opts = { model, mime?, prompt?,
     -- max_tokens?, timeout? }; opts.prompt and opts.max_tokens take precedence over
-    -- the model card's OCR profile. Returns "" for a page with no readable text.
+    -- each attempted model card's OCR profile. Returns "" for a page with no readable text.
     local function transcribe(image_bytes: any, opts: any): (string?, string?)
         opts = type(opts) == "table" and opts or {}
         if type(image_bytes) ~= "string" or image_bytes == "" then
@@ -113,30 +115,37 @@ local function new(runtime: any): any
             return nil, "ocr: failed to encode image"
         end
 
-        local card, resolve_err = llm.resolve_model(model)
-        if not card then
-            return nil, "ocr: resolve model failed: " .. tostring(resolve_err)
-        end
-        local profile, profile_err = request_profile(card)
-        if not profile then
-            return nil, "ocr: model " .. model .. ": " .. tostring(profile_err)
-        end
-
-        local instruction = prompt.text(type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt
-            or profile.prompt or DEFAULT_USER)
+        local configured_prompt = type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt or nil
+        local configured_limit = tonumber(opts.max_tokens)
         local image = prompt.image_base64(mime, encoded)
-        local p = prompt.new()
-        if profile.system then
-            p:add_system(profile.system)
+        local function build(profile: table): table
+            local instruction = prompt.text(configured_prompt or profile.prompt or DEFAULT_USER)
+            local p = prompt.new()
+            if profile.system then
+                p:add_system(profile.system)
+            end
+            p:add_message(prompt.ROLE.USER, profile.image_first and { image, instruction } or { instruction, image })
+            return {messages = p, max_tokens = configured_limit or profile.output_limit or DEFAULT_MAX_TOKENS}
         end
-        p:add_message(prompt.ROLE.USER, profile.image_first and { image, instruction } or { instruction, image })
+        -- The LLM prepares the request for each model it attempts, so a fallback or
+        -- class candidate receives the shape its own card declares.
+        local function prepare_request(context: table): (table?, string?)
+            local profile, profile_err = request_profile(context.model)
+            if not profile then
+                local card = context.model
+                return nil, "ocr: model " .. tostring(card and card.name) .. ": " .. tostring(profile_err)
+            end
+            return build(profile), nil
+        end
 
+        local base = build(DEFAULT_PROFILE)
         local timeout_ms = clamp_timeout_ms(opts.timeout, PROVIDER_TIMEOUT_CAP_MS)
-        local response, gen_err = llm.generate(p, {
+        local response, gen_err = llm.generate(base.messages, {
             model = model,
             temperature = 0,
-            max_tokens = tonumber(opts.max_tokens) or profile.output_limit or DEFAULT_MAX_TOKENS,
+            max_tokens = base.max_tokens,
             timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil,
+            prepare_request = prepare_request,
         })
         if gen_err or not response then
             return nil, "ocr: generate failed: " .. tostring(gen_err)
