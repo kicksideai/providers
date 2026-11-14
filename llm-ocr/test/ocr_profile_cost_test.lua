@@ -4,8 +4,6 @@ local ocr = require("ocr")
 local stage = require("stage")
 local content = require("artifact_content_repo")
 local uploads = require("upload_record_repo")
-local fs = require("fs")
-local json = require("json")
 local time = require("time")
 local uuid = require("uuid")
 
@@ -82,9 +80,6 @@ return {run = test.run_cases(function()
                     resolves = resolves, profile_reads = profile_reads, instructions = instructions,
                     generations = generations}
             end
-            local storage = assert(fs.get("app:temp_fs"))
-            local _, write_err = storage:writefile("ocr-stage-cost.json", json.encode(measurements))
-            test.is_nil(write_err, tostring(write_err))
             for _, measurement in ipairs(measurements) do
                 test.eq(measurement.generations, 1000)
                 test.eq(measurement.resolves, 0, "OCR does not resolve separately from generation")

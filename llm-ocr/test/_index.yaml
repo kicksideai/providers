@@ -285,7 +285,7 @@ entries:
     meta: {type: test, suite: llm_ocr, timeout: 120s}
     source: file://ocr_profile_cost_test.lua
     method: run
-    modules: [fs, json, time, uuid]
+    modules: [time, uuid]
     imports:
       test: wippy.test:test
       ocr: kickside.llm_ocr:ocr
