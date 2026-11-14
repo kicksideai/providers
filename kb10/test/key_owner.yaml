@@ -10,3 +10,56 @@ entries:
     modules: [registry,security]
     imports:
       test: wippy.test:test
+  - name: key_owner_runtime_test
+    kind: function.lua
+    meta: {type: test, suite: key_owner}
+    source: file://key_owner_runtime_test.lua
+    method: run
+    modules: [funcs, security, env, uuid, sql, json, store]
+    imports: &key_owner_imports
+      test: wippy.test:test
+      kb_store: kickside.kb10.persist:store
+      materializer: kickside.kb10.injection:materializer_store
+      models: kickside.models.persist:repo
+      models_cache: kickside.models.service:models_cache
+      upload_records: kickside.uploads.persist:upload_record_repo
+      upload_tokens: kickside.uploads.persist:upload_tokens
+  - name: key_owner_runtime_probe
+    kind: function.lua
+    source: file://key_owner_runtime_test.lua
+    method: probe
+    modules: [funcs, security, env, uuid, sql, json, store]
+    imports: *key_owner_imports
+  - name: key_owner_http
+    kind: library.lua
+    source: file://key_owner_http.lua
+    modules: [ctx, env, store, json, http]
+  - name: key_owner_responses
+    kind: store.memory
+  - name: key_owner_runtime
+    kind: security.policy
+    policy:
+      resources: '*'
+      actions: [funcs.security, funcs.context, contract.get, contract.open, contract.call, contract.security, contract.context, contract.implementations, registry.get, registry.find, db.get, store.get, store.key.get, store.key.set, store.key.delete, process.registry.lookup, process.send, pg.open, pg.broadcast, access, fs.get, fs.stat]
+      effect: allow
+  - name: key_owner_calls
+    kind: security.policy
+    policy:
+      resources:
+        - app:key_owner_runtime_probe
+        - kickside.kb10.api:source
+        - kickside.kb10.binding:query_func
+        - kickside.component.binding:get_component_func
+        - app.analysis:embed
+        - app.analysis:status
+      actions: funcs.call
+      effect: allow
+  - name: key_owner_storage_env
+    kind: security.policy
+    policy:
+      resources:
+        - kickside.uploads.env:database_resource
+        - kickside.uploads.env:storage_id
+        - kickside.uploads.env:storage_s3
+      actions: env.get
+      effect: allow

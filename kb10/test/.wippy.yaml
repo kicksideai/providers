@@ -36,6 +36,8 @@ workspace:
     kickside/uploads: ../../../kickside/platform/uploads
     kickside/users: ../../../kickside/platform/users
 override:
+  kickside.kb10.api:source:modules: [security]
+  kickside.kb10.api:source:imports.http: app:key_owner_http
   kickside.core.jobs.service:worker.service:lifecycle.auto_start: false
   kickside.kb10.graph:enrichment_service.service:lifecycle.auto_start: false
 registry:
