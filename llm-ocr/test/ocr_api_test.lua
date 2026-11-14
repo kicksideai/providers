@@ -9,6 +9,8 @@ local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
 local contract = require("contract")
+local jobs = require("jobs")
+local time = require("time")
 
 local STORAGE_ID = "app:temp_fs"
 
@@ -349,6 +351,67 @@ local function define_tests()
                 db:release()
                 test.is_nil(delete_err)
             end
+        end)
+
+        test.it("keeps cancellation semantics when Jobs has no heartbeat capability", function()
+            for _, sequence in ipairs({1, 2}) do
+                local upload_id = seed("", {1,2,3})
+                local job_id = uuid_v4()
+                local db = assert(sql.get("app:db"))
+                assert(sql.builder.insert("kickside_job"):set_map({id = job_id,
+                    job_type = "ocr.fixture", job_identity = job_id, owner_kind = "installation", owner_id = "ocr-fixture",
+                    status = "running", lease_token = "ocr-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00"})
+                    :run_with(db):exec())
+                local heartbeat = jobs.heartbeat
+                jobs.heartbeat = nil
+                local calls = 0
+                local ok, result = pcall(stage.run, {upload_id = upload_id, storage_id = STORAGE_ID,
+                    cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = sequence}}, {
+                    batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
+                jobs.heartbeat = heartbeat
+                assert(sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec())
+                db:release()
+                test.is_true(ok, tostring(result))
+                test.eq(calls, sequence == 1 and 3 or 0)
+                test.eq(result.success, sequence == 1)
+            end
+        end)
+
+        test.it("heartbeats the job after each page batch", function()
+            local upload_id = seed("", {1,2,3})
+            local job_id = uuid_v4()
+            local db = assert(sql.get("app:db"))
+            local _, err = sql.builder.insert("kickside_job"):set_map({id = job_id,
+                job_type = "ocr.fixture", job_identity = job_id, owner_kind = "installation", owner_id = "ocr-fixture",
+                status = "running", lease_token = "ocr-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00"})
+                :run_with(db):exec()
+            test.is_nil(err)
+            local observed = {}
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = 1}}, {
+                batch_size = 1, transcribe = function()
+                    local previous = observed[#observed] or {heartbeat_at = "2000-01-01T00:00:00Z", lease_until = "2000-01-01T00:00:00Z"}
+                    local snapshot = assert(db:query([[WITH current_job AS (
+                        SELECT heartbeat_at,lease_until FROM kickside_job WHERE id=$1)
+                        SELECT heartbeat_at,lease_until,
+                        CASE WHEN heartbeat_at>$2 THEN 1 ELSE 0 END AS heartbeat_advanced,
+                        CASE WHEN lease_until>$3 THEN 1 ELSE 0 END AS lease_advanced
+                        FROM current_job]], {job_id, previous.heartbeat_at, previous.lease_until}))[1]
+                    observed[#observed + 1] = snapshot
+                    time.sleep("10ms")
+                    return "Scanned words", nil
+                end})
+            test.is_true(result.success)
+            test.eq(#observed, 3)
+            for i = 2, #observed do
+                test.is_true(tonumber(observed[i].heartbeat_advanced) == 1, "each batch advances progress")
+                test.is_true(tonumber(observed[i].lease_advanced) == 1, "each batch renews the lease")
+            end
+            local rows = assert(db:query("SELECT heartbeat_at FROM kickside_job WHERE id = $1", {job_id}))
+            test.not_nil(rows[1].heartbeat_at, "a transcribed batch heartbeats the job")
+            local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
+            db:release()
+            test.is_nil(delete_err)
         end)
 
         test.it("uses the document-wide decision for marked legacy images", function()

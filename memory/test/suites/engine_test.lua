@@ -15,7 +15,7 @@ local function define_tests()
         end)
 
         test.it("preserves a principal lookup failure while selecting recall scopes", function()
-            local result, err = fixture.op("system:memory-recall", "recall_scope_failure", { agent_id = "agent:reader" })
+            local result, err = fixture.op("system:kickside.jobs", "recall_scope_failure", { agent_id = "agent:reader" })
             test.is_nil(err, tostring(err))
             test.is_false(result.raised)
             test.eq(result.count, 0)
