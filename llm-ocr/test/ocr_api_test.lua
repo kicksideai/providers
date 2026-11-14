@@ -9,6 +9,8 @@ local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
 local contract = require("contract")
+local pipeline = require("pipeline")
+local upload_type = require("upload_type")
 
 local STORAGE_ID = "app:temp_fs"
 
@@ -39,9 +41,9 @@ local function ocr_with(reply: any, err: any, finish_reason: string?): any
     })
 end
 
-local function seed(markdown: string?, pages: { any }): string
+local function seed(markdown: string?, pages: { any }): (string, any)
     local upload_id = uuid_v4()
-    local _, upload_err = upload_record_repo.create(
+    local upload, upload_err = upload_record_repo.create(
         upload_id, "user-ocr", 5000, "application/pdf",
         STORAGE_ID, upload_id .. ".pdf", "documents", { filename = "scan.pdf" }, "completed"
     )
@@ -76,7 +78,7 @@ local function seed(markdown: string?, pages: { any }): string
         })
         test.is_nil(img_err)
     end
-    return upload_id
+    return upload_id, upload
 end
 
 local function seed_extracted(markdown: string?, count: integer, legacy: boolean?): string
@@ -159,7 +161,8 @@ local function define_tests()
                         return "Real OCR text", nil
                     end})
                     test.eq(calls, 2)
-                    test.eq(response.success, result ~= "failed")
+                    test.is_true(response.success)
+                    test.eq(response.metadata.ocr_error, result == "failed" and "transcription_failed" or false)
                     if result == "readable" then
                         test.eq(primary_text(id), "<!-- page 1 -->\n\nReal OCR text\n\n<!-- page 2 -->\n\nReal OCR text")
                     elseif result == "mixed" and marked then
@@ -194,7 +197,7 @@ local function define_tests()
                             if bytes:match("page%-2") then return nil, "OCR request failed" end
                             return "First page transcript", nil
                         end})
-                    test.is_false(first.success)
+                    test.eq(first.success, not interrupted)
                     test.eq(calls, interrupted and 1 or 2)
                     test.eq(primary_text(id), original)
                     local stored = assert(artifact_parts_repo.read_primary_content(id)).metadata.ocr_page_outcomes
@@ -225,6 +228,100 @@ local function define_tests()
                 end)
             end
         end
+    end)
+
+    test.describe("page transcription failures", function()
+        local function scanned_except(failing: { [integer]: boolean }): any
+            return function(bytes: string): (any, any)
+                local page = tonumber(bytes:match("page%-(%d+)"))
+                if failing[page] then return nil, "vision request failed" end
+                return "Scanned page " .. tostring(page), nil
+            end
+        end
+
+        -- Runs the upload pipeline with the OCR stage as its only stage, so the
+        -- pipeline's handling of the stage result is exercised end to end.
+        local function process_upload(upload: any, transcribe: any, final_attempt: boolean): (boolean, any, any, any)
+            local get_pipeline, stage_executor = upload_type.get_pipeline, pipeline.upload_stage_executor
+            upload_type.get_pipeline = function() return {{func = "kickside.llm_ocr:stage", title = "Transcribing pages"}} end
+            pipeline.upload_stage_executor = function()
+                return {call = function(_, _func: any, params: any) return stage.run(params, {transcribe = transcribe}), nil end}
+            end
+            local ok, processed, err, record, retriable = pcall(pipeline.process_upload, upload, {final_attempt = final_attempt})
+            upload_type.get_pipeline, pipeline.upload_stage_executor = get_pipeline, stage_executor
+            if not ok then error(processed) end
+            return processed, err, record, retriable
+        end
+
+        test.it("completes the stage with a failed page outcome when one page cannot be transcribed", function()
+            local upload_id = seed("", {1, 2, 3})
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = scanned_except({[2] = true})})
+            test.is_true(result.success)
+            test.eq(result.metadata.ocr_error, "transcription_failed")
+            test.eq(result.metadata.ocr_pages, 2)
+            test.eq(result.metadata.ocr_total_pages, 3)
+            local outcomes = result.metadata.ocr_page_outcomes
+            test.eq(outcomes[1].status, "readable")
+            test.eq(outcomes[2].status, "failed")
+            test.eq(outcomes[2].error, "transcription_failed")
+            test.eq(outcomes[3].status, "readable")
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\n<!-- page 3 -->\n\nScanned page 3")
+        end)
+
+        test.it("fails the stage when every page fails and the document has no text", function()
+            local upload_id = seed("", {1, 2})
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = scanned_except({[1] = true, [2] = true})})
+            test.is_false(result.success)
+            test.eq(result.error, "transcription_failed")
+            test.eq(result.metadata.ocr_pages, 0)
+            test.eq(result.metadata.ocr_page_outcomes[1].status, "failed")
+            test.eq(result.metadata.ocr_page_outcomes[2].status, "failed")
+        end)
+
+        test.it("keeps a fully transcribed document successful without an OCR error", function()
+            local upload_id = seed("", {1, 2})
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = scanned_except({})})
+            test.is_true(result.success)
+            test.is_false(result.metadata.ocr_error)
+            test.is_false(result.metadata._ocr_error_detail)
+            test.eq(result.metadata.ocr_pages, 2)
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\nScanned page 2")
+        end)
+
+        test.it("retries a page failure and completes the upload with the failed page on the final attempt", function()
+            local upload_id, upload = seed("", {1, 2, 3})
+            local transcribe = scanned_except({[2] = true})
+            local processed, err, _, retriable = process_upload(upload, transcribe, false)
+            test.is_false(processed)
+            test.contains(tostring(err), "ocr_error: transcription_failed")
+            test.is_true(retriable)
+            local completed, final_err, record = process_upload(upload, transcribe, true)
+            test.is_true(completed, tostring(final_err))
+            test.eq(record.metadata.ocr_error, "transcription_failed")
+            local outcomes = record.metadata.ocr_page_outcomes
+            test.eq(outcomes[1].status, "readable")
+            test.eq(outcomes[2].status, "failed")
+            test.eq(outcomes[3].status, "readable")
+            local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+            test.eq(primary.content, "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\n<!-- page 3 -->\n\nScanned page 3")
+            test.eq(primary.metadata.ocr_page_outcomes[2].status, "failed")
+            test.eq(primary.metadata.ocr_page_outcomes[2].error, "transcription_failed")
+        end)
+
+        test.it("fails the upload on the final attempt when no page of a document without text is transcribed", function()
+            local _, upload = seed("", {1, 2})
+            local processed, err = process_upload(upload, scanned_except({[1] = true, [2] = true}), true)
+            test.is_false(processed)
+            test.contains(tostring(err), "transcription_failed")
+        end)
+
+        test.it("completes a fully transcribed upload on its first attempt", function()
+            local _, upload = seed("", {1, 2})
+            local processed, err, record = process_upload(upload, scanned_except({}), false)
+            test.is_true(processed, tostring(err))
+            test.is_false(record.metadata.ocr_error)
+            test.eq(record.metadata.ocr_pages, 2)
+        end)
     end)
 
     test.describe("kickside.llm_ocr:ocr lib", function()
@@ -376,7 +473,8 @@ local function define_tests()
                 if calls == 2 then return nil, "vision request failed" end
                 return "First transcription", nil
             end})
-            test.is_false(first.success)
+            test.is_true(first.success)
+            test.eq(first.metadata.ocr_error, "transcription_failed")
             test.eq(calls, 2)
             local expected = "<!-- page 1 -->\n\nFirst transcription\n\n<!-- page 2 -->\n\nOriginal second caption"
             test.eq(primary_text(upload_id), expected)
@@ -388,7 +486,8 @@ local function define_tests()
                 calls = calls + 1
                 return nil, "vision request still fails"
             end})
-            test.is_false(failed_retry.success)
+            test.is_true(failed_retry.success)
+            test.eq(failed_retry.metadata.ocr_error, "transcription_failed")
             test.eq(calls, 1)
             test.eq(primary_text(upload_id), expected)
             calls = 0
@@ -462,7 +561,8 @@ local function define_tests()
                 local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = function()
                     return nil, "vision request failed"
                 end})
-                test.is_false(result.success)
+                test.is_true(result.success)
+                test.eq(result.metadata.ocr_error, "transcription_failed")
                 test.eq(primary_text(upload_id), original)
                 test.eq(assert(artifact_parts_repo.read_primary_content(upload_id)).metadata.ocr_page_outcomes[1].status, "failed")
             end
@@ -543,7 +643,8 @@ local function define_tests()
                 return page == 1 and "A scanned fact" or "", nil
             end
             local first = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {batch_size = 1, transcribe = transcribe})
-            test.is_false(first.success)
+            test.is_true(first.success)
+            test.eq(first.metadata.ocr_error, "transcription_failed")
             test.eq(#calls, 3)
             for page = 1, 4 do test.contains(primary_text(upload_id), "<!-- page " .. page .. " -->") end
             test.contains(primary_text(upload_id), text)
