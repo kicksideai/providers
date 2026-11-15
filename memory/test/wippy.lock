@@ -7,6 +7,7 @@ modules:
       hash: f955351cb544feb1bcb00382ade88587b261208bcd04ead27241b9315a2a4e20
     - name: kickside/component
       version: 0.3.20
+      hash: 2ec01f483229958b9c4c20ef8c07377b47664d60962f1e76cf025933bbc7cd09
     - name: kickside/connection
       version: 0.5.3
       hash: 0eba66d58d632725beade6a222c1ffc5febda683a2f0a31d7aecfe572bab0034
@@ -15,6 +16,7 @@ modules:
       hash: 2b458c26be9a2a88e3ab630eb303f58ef5a29d29132a897a9f86b277df6492f3
     - name: kickside/core
       version: 0.3.19
+      hash: 5630a7b2d9722ae52cf966f3c64f7f5c5e624c5dfdc81c4c1775b16b74666917
     - name: kickside/doc2md
       version: 0.8.18
       hash: e9dc4ac1c886dc2490a7921bb7845d1ba44ea57b73c7e5dafd45bf0f1837e4be
