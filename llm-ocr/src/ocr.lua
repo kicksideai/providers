@@ -48,63 +48,133 @@ local function clamp_timeout_ms(requested_ms: any, cap_ms: integer): integer?
     return ms
 end
 
+-- A model card may declare the request shape its model expects for OCR in
+-- metadata.ocr. Every field is optional and an absent field keeps the default:
+--   system       false sends no system message; a string replaces OCR_SYSTEM
+--   prompt       the instruction text sent with the image
+--   image_first  true places the image before the instruction text
+--   output_limit the generation's max_tokens
+local function request_profile(card: any): (table?, string?)
+    local metadata = type(card) == "table" and card.metadata or nil
+    local declared = nil
+    if type(metadata) == "table" then declared = metadata.ocr end
+    if declared == nil then
+        return {system = OCR_SYSTEM, image_first = false}, nil
+    end
+    if type(declared) ~= "table" then
+        return nil, "ocr profile must be an object"
+    end
+    local system = declared.system
+    if system == nil then
+        system = OCR_SYSTEM
+    elseif system == false then
+        system = nil
+    elseif type(system) ~= "string" or system == "" then
+        return nil, "ocr profile system must be false or non-empty text"
+    end
+    local prompt = declared.prompt
+    if prompt ~= nil and (type(prompt) ~= "string" or prompt == "") then
+        return nil, "ocr profile prompt must be non-empty text"
+    end
+    local image_first = declared.image_first
+    if image_first ~= nil and type(image_first) ~= "boolean" then
+        return nil, "ocr profile image_first must be a boolean"
+    end
+    local output_limit = declared.output_limit
+    if output_limit ~= nil and (type(output_limit) ~= "number" or output_limit < 1
+        or output_limit ~= math.floor(output_limit)) then
+        return nil, "ocr profile output_limit must be a positive integer"
+    end
+    return {system = system, prompt = prompt, image_first = image_first == true, output_limit = output_limit}, nil
+end
+
 local function new(runtime: any): any
     local deps = runtime or {}
     local llm = deps.llm or require("llm")
     local prompt = deps.prompt or require("prompt")
     local base64 = deps.base64 or require("base64")
 
-    -- transcribe(image_bytes, opts) -> (text, err). opts = { model, mime?, prompt?,
-    -- max_tokens?, timeout? }. Returns "" for a page with no readable text.
-    local function transcribe(image_bytes: any, opts: any): (string?, string?)
+    -- Prepare the document's invariant request fields before any page work.
+    local function prepare(opts: any): (any?, string?)
         opts = type(opts) == "table" and opts or {}
-        if type(image_bytes) ~= "string" or image_bytes == "" then
-            return nil, "ocr: image bytes required"
-        end
         local model = opts.model
         if type(model) ~= "string" or model == "" then
             return nil, "ocr: model required"
         end
 
-        local mime = type(opts.mime) == "string" and opts.mime ~= "" and opts.mime or "image/png"
-        local encoded, enc_err = base64.encode(image_bytes)
-        if enc_err or type(encoded) ~= "string" or encoded == "" then
-            return nil, "ocr: failed to encode image"
-        end
-
-        local p = prompt.new()
-        p:add_system(OCR_SYSTEM)
-        p:add_message(prompt.ROLE.USER, {
-            prompt.text(type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt or DEFAULT_USER),
-            prompt.image_base64(mime, encoded),
-        })
-
+        local configured_prompt = type(opts.prompt) == "string" and opts.prompt ~= "" and opts.prompt or nil
+        local configured_limit = tonumber(opts.max_tokens)
         local timeout_ms = clamp_timeout_ms(opts.timeout, PROVIDER_TIMEOUT_CAP_MS)
-        local response, gen_err = llm.generate(p, {
-            model = model,
-            temperature = 0,
-            max_tokens = tonumber(opts.max_tokens) or DEFAULT_MAX_TOKENS,
-            timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil,
-        })
-        if gen_err or not response then
-            return nil, "ocr: generate failed: " .. tostring(gen_err)
+        local timeout = timeout_ms and math.ceil(timeout_ms / 1000) or nil
+        local profiles = {}
+        local function prepared_profile(card: table): (table?, string?)
+            local name = card.name
+            local cached = profiles[name]
+            if cached then return cached.profile, cached.err end
+            local profile, err = request_profile(card)
+            if profile then
+                profile.instruction = prompt.text(configured_prompt or profile.prompt or DEFAULT_USER)
+                profile.max_tokens = configured_limit or profile.output_limit or DEFAULT_MAX_TOKENS
+            else
+                err = "ocr: model " .. tostring(name) .. ": " .. tostring(err)
+            end
+            profiles[name] = {profile = profile, err = err}
+            return profile, err
         end
-        -- A generation cut at max_tokens is an incomplete transcription of the page.
-        if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
-            return nil, "ocr: generation stopped at the token limit"
-        end
+        return function(image_bytes: any, page: any): (string?, string?)
+            if type(image_bytes) ~= "string" or image_bytes == "" then
+                return nil, "ocr: image bytes required"
+            end
+            local mime = type(page) == "table" and page.mime or opts.mime
+            if type(mime) ~= "string" or mime == "" then mime = "image/png" end
+            local encoded, enc_err = base64.encode(image_bytes)
+            if enc_err or type(encoded) ~= "string" or encoded == "" then
+                return nil, "ocr: failed to encode image"
+            end
+            local image = prompt.image_base64(mime, encoded)
+            local function prepare_request(context: table): (table?, string?)
+                local profile, err = prepared_profile(context.model)
+                if not profile then return nil, err end
+                local p = prompt.new()
+                if profile.system then p:add_system(profile.system) end
+                local instruction = profile.instruction
+                p:add_message(prompt.ROLE.USER, profile.image_first and {image, instruction} or {instruction, image})
+                return {messages = p, max_tokens = profile.max_tokens}, nil
+            end
+            local response, gen_err = llm.generate({messages = {}}, {
+                model = model,
+                temperature = 0,
+                max_tokens = configured_limit or DEFAULT_MAX_TOKENS,
+                timeout = timeout,
+                prepare_request = prepare_request,
+            })
+            if gen_err or not response then
+                return nil, "ocr: generate failed: " .. tostring(gen_err)
+            end
+            -- A generation cut at max_tokens is an incomplete transcription of the page.
+            if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
+                return nil, "ocr: generation stopped at the token limit"
+            end
 
-        local out = (response :: any).result
-        if type(out) ~= "string" then
-            return nil, "ocr: unexpected model result"
-        end
-        if (out :: string):match("^%s*(.-)%s*$") == NO_TEXT_REPLY then
-            return "", nil
-        end
-        return out, nil
+            local out = (response :: any).result
+            if type(out) ~= "string" then
+                return nil, "ocr: unexpected model result"
+            end
+            if (out :: string):match("^%s*(.-)%s*$") == NO_TEXT_REPLY then
+                return "", nil
+            end
+            return out, nil
+        end, nil
     end
 
-    return { transcribe = transcribe }
+    -- Single-page callers retain the original API and option precedence.
+    local function transcribe(image_bytes: any, opts: any): (string?, string?)
+        local prepared, err = prepare(opts)
+        if not prepared then return nil, err end
+        return prepared(image_bytes, opts)
+    end
+
+    return { transcribe = transcribe, prepare = prepare }
 end
 
 return {
