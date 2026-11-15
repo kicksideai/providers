@@ -37,7 +37,7 @@ end
 
 function M.connect(url: string): (any?, string?)
     local client, err = websocket.connect(url, { dial_timeout = 10 })
-    if err or not client then return nil, tostring(err or "socket connect failed") end
+    if err or not client then return nil, "socket connect failed: transport" end
     return client, nil
 end
 
