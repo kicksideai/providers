@@ -386,6 +386,75 @@ local function define_tests()
             end)
         end
 
+        for _, batch_size in ipairs({1, 4}) do
+            test.it("does not rewrite an identical page failure during an outage, batch=" .. batch_size, function()
+                local upload_id, upload = seed("", {1, 2})
+                local calls = {0, 0}
+                local recovered = false
+                local transcribe = function(bytes: string, opts: any): (any, any)
+                    local page = tonumber(bytes:match("page%-(%d+)"))
+                    calls[page] = calls[page] + 1
+                    if recovered then return ocr_with("Scanned page " .. page).transcribe(bytes, opts) end
+                    if page == 1 then
+                        return ocr_with("partial text", nil, llm.FINISH_REASON.LENGTH).transcribe(bytes, opts)
+                    end
+                    return backend_down_on(2)(bytes, opts)
+                end
+                with_checkpoint_writes(function(writes)
+                    for attempt = 1, 3 do
+                        local processed, err, record, retriable = process_upload(upload, transcribe, false, batch_size)
+                        test.is_false(processed)
+                        test.is_nil(record)
+                        test.is_true(retriable)
+                        test.contains(tostring(err), "model backend unavailable")
+                        test.eq(writes(), 1, "an identical failed outcome does not write another checkpoint")
+                        local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+                        test.eq(primary.content, "<!-- page 1 -->\n\n<!-- page 2 -->")
+                        test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+                        test.eq(primary.metadata.ocr_page_outcomes[1].error, "transcription_failed")
+                        test.is_nil(primary.metadata.ocr_page_outcomes[2].status)
+                    end
+                    test.eq(calls[1], 3)
+                    test.eq(calls[2], 3)
+                    recovered = true
+                    local completed, err, record = process_upload(upload, transcribe, true, batch_size)
+                    test.is_true(completed, tostring(err))
+                    test.eq(writes(), batch_size == 1 and 3 or 2, "recovery persists changed text and outcomes")
+                    test.eq(calls[1], 4)
+                    test.eq(calls[2], 4)
+                    test.eq(record.metadata.ocr_page_outcomes[1].status, "readable")
+                    test.is_nil(record.metadata.ocr_page_outcomes[1].error)
+                    test.eq(record.metadata.ocr_page_outcomes[2].status, "readable")
+                    test.eq(primary_text(upload_id):gsub("%s+$", ""), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\nScanned page 2")
+                end)
+            end)
+        end
+
+        for _, preparation in ipairs({false, true}) do
+            test.it("does not rewrite repeated failures without an outage, preparation=" .. tostring(preparation), function()
+                local upload_id = seed("", {1})
+                local new_ocr = ocr.new
+                ocr.new = function(): any
+                    return {prepare = function(): (any, any) return nil, "invalid OCR configuration" end}
+                end
+                local ok, err = pcall(function()
+                    with_checkpoint_writes(function(writes)
+                        for attempt = 1, 3 do
+                            local deps = preparation and {} or {transcribe = function(): (any, any)
+                                return nil, "page request failed"
+                            end}
+                            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, deps)
+                            test.is_false(result.success)
+                            test.eq(result.metadata.ocr_error, "transcription_failed")
+                            test.eq(writes(), 1, "only the first failure changes the stored outcome")
+                        end
+                    end)
+                end)
+                ocr.new = new_ocr
+                if not ok then error(err) end
+            end)
+        end
+
         for _, all_down in ipairs({false, true}) do
             test.it("ends a persistent outage at the job retry budget, all pages=" .. tostring(all_down), function()
                 local upload_id, upload = seed("", {1, 2})

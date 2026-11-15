@@ -292,10 +292,12 @@ local function run(params: any, deps: any): any
     local call_timeout: integer? = configured_timeout > 0 and configured_timeout or nil
     local should_continue = build_should_continue(deps, params)
     local sections, page_errors = {}, {}
-    local function fail_page(item: any, err: any)
+    local function fail_page(item: any, err: any): boolean
         local outcome = by_page[item.index]
+        local changed = outcome.status ~= "failed" or outcome.error ~= "transcription_failed"
         outcome.status, outcome.error = "failed", "transcription_failed"
         page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(err)
+        return changed
     end
     local function transcribe_page(item: any): any
         local page = item.page
@@ -339,9 +341,14 @@ local function run(params: any, deps: any): any
         local prepare_err
         transcribe, prepare_err = ocr.new().prepare({model = model, prompt = user_prompt, timeout = call_timeout})
         if prepare_err then
-            for _, item in ipairs(targets) do fail_page(item, prepare_err) end
-            local ok, err = checkpoint()
-            if not ok then persist_error = tostring(err) end
+            local changed = false
+            for _, item in ipairs(targets) do
+                if fail_page(item, prepare_err) then changed = true end
+            end
+            if changed then
+                local ok, err = checkpoint()
+                if not ok then persist_error = tostring(err) end
+            end
             start = #targets + 1
         end
     end
@@ -359,8 +366,7 @@ local function run(params: any, deps: any): any
             if errors.is(result.error, errors.UNAVAILABLE) then
                 backend_error = result.error
             elseif result.error ~= nil then
-                changed = true
-                fail_page(item, result.error)
+                if fail_page(item, result.error) then changed = true end
             else
                 changed = true
                 local text = result.value.text
