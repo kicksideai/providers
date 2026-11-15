@@ -353,7 +353,7 @@ local function define_tests()
                 local down = true
                 local transcribe = function(bytes: string, opts: any): (any, any)
                     local page = tonumber(bytes:match("page%-(%d+)"))
-                    calls[page] = calls[page] + 1
+                    calls[page] = assert(calls[page]) + 1
                     if down and page == 2 then return backend_down_on(2)(bytes, opts) end
                     return ocr_with(page == 3 and ocr.NO_TEXT_REPLY or "Scanned page " .. page).transcribe(bytes, opts)
                 end
@@ -393,7 +393,7 @@ local function define_tests()
                 local recovered = false
                 local transcribe = function(bytes: string, opts: any): (any, any)
                     local page = tonumber(bytes:match("page%-(%d+)"))
-                    calls[page] = calls[page] + 1
+                    calls[page] = assert(calls[page]) + 1
                     if recovered then return ocr_with("Scanned page " .. page).transcribe(bytes, opts) end
                     if page == 1 then
                         return ocr_with("partial text", nil, llm.FINISH_REASON.LENGTH).transcribe(bytes, opts)
@@ -462,7 +462,7 @@ local function define_tests()
                 local job = {id = uuid_v4(), attempt_no = 0, max_attempts = 3}
                 local transcribe = function(bytes: string, opts: any): (any, any)
                     local page = tonumber(bytes:match("page%-(%d+)"))
-                    calls[page] = calls[page] + 1
+                    calls[page] = assert(calls[page]) + 1
                     return backend_down_on(all_down and page or 2)(bytes, opts)
                 end
                 with_checkpoint_writes(function(writes)
