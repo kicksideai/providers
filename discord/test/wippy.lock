@@ -9,13 +9,13 @@ modules:
     - name: kickside/channel
       version: 0.0.0
     - name: kickside/component
-      version: 0.3.16
+      version: 0.3.20
     - name: kickside/connection
       version: 0.5.7
     - name: kickside/contract
       version: 0.3.7
     - name: kickside/core
-      version: 0.0.0
+      version: 0.3.19
     - name: kickside/discord
       version: 0.0.0
     - name: kickside/dm
