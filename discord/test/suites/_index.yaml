@@ -426,3 +426,22 @@ entries:
       worker: app.suites:worker_error_source
       fixture: app.suites:worker_failure_fixture
       health: app.suites:worker_health_fixture
+
+  - name: health_write_fixture
+    kind: library.lua
+    source: file://health_write_fixture.lua
+  - name: health_write_source
+    kind: library.lua
+    source: file://src_link/gateway/health.lua
+    modules: [time]
+    imports:
+      component: app.suites:health_write_fixture
+  - name: health_write_test
+    kind: function.lua
+    meta: {type: test, suite: discord}
+    source: file://health_write_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      health: app.suites:health_write_source
+      fixture: app.suites:health_write_fixture

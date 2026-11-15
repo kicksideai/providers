@@ -113,7 +113,7 @@ local function construct(dependencies: any): any
                     table.insert(conns, { id = conn_id, token = token })
                 else
                     if conn_id ~= "" then
-                        local ok, health_err = health.report(conn_id, "bot_token_missing", "Discord connection has no bot token")
+                        local ok, health_err = health.report(conn_id, "bot_token_missing", "Discord connection has no bot token", nil, row.meta)
                         if not ok then
                             failure = health_err
                             log:warn("connection health unavailable", { connection = conn_id, error = health_err })
