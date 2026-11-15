@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/kicksideai/providers/compare/slack-v0.1.18...slack-v0.1.19) (2026-11-15)
+
+
+### Bug Fixes
+
+* resolve messaging credentials inside provider workers ([#104](https://github.com/kicksideai/providers/issues/104)) ([fadff22](https://github.com/kicksideai/providers/commit/fadff22fd2b817fd75c79a7a3a5cc5877659449f))
+
 ## [0.1.18](https://github.com/kicksideai/providers/compare/slack-v0.1.17...slack-v0.1.18) (2026-11-06)
 
 
