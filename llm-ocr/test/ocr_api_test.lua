@@ -245,7 +245,7 @@ local function define_tests()
             local get_pipeline, stage_executor = upload_type.get_pipeline, pipeline.upload_stage_executor
             upload_type.get_pipeline = function() return {{func = "kickside.llm_ocr:stage", title = "Transcribing pages"}} end
             pipeline.upload_stage_executor = function()
-                return {call = function(_, _func: any, params: any) return stage.run(params, {transcribe = transcribe}), nil end}
+                return {call = function(_, _func: any, params: any) return stage.run(params, {transcribe = transcribe}) end}
             end
             local ok, processed, err, record, retriable = pcall(pipeline.process_upload, upload, {final_attempt = final_attempt})
             upload_type.get_pipeline, pipeline.upload_stage_executor = get_pipeline, stage_executor
@@ -321,6 +321,37 @@ local function define_tests()
             test.is_true(processed, tostring(err))
             test.is_false(record.metadata.ocr_error)
             test.eq(record.metadata.ocr_pages, 2)
+        end)
+
+        -- The model backend answers page 2 with an unavailable error, so the model
+        -- never read that page.
+        local function backend_down_on(down: integer): any
+            local unavailable = errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "model backend unavailable"})
+            return function(bytes: string, opts: any): (any, any)
+                local page = tonumber(bytes:match("page%-(%d+)"))
+                if page == down then return ocr_with(nil, unavailable).transcribe(bytes, opts) end
+                return ocr_with("Scanned page " .. tostring(page)).transcribe(bytes, opts)
+            end
+        end
+
+        test.it("fails the stage with the backend error when the model backend is unavailable", function()
+            local upload_id = seed("", {1, 2})
+            local result, err = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {batch_size = 1, transcribe = backend_down_on(2)})
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+            test.eq(primary.content, "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->")
+            test.eq(primary.metadata.ocr_page_outcomes[1].status, "readable")
+            test.neq(primary.metadata.ocr_page_outcomes[2].status, "failed")
+        end)
+
+        test.it("leaves the upload retriable on the final attempt when the model backend is unavailable", function()
+            local _, upload = seed("", {1, 2})
+            local processed, err, record, retriable = process_upload(upload, backend_down_on(2), true)
+            test.is_false(processed)
+            test.is_nil(record)
+            test.is_true(retriable)
+            test.contains(tostring(err), "model backend unavailable")
         end)
     end)
 
@@ -402,10 +433,11 @@ local function define_tests()
         end)
 
         test.it("surfaces a generation error", function()
-            local text, err = ocr_with(nil, "model exploded").transcribe("img", { model = "class:fast" })
+            local text, err = ocr_with(nil, errors.new({kind = errors.INTERNAL, message = "model exploded"})).transcribe("img", { model = "class:fast" })
             test.is_nil(text)
             test.not_nil(err)
             test.is_true(tostring(err):find("generate failed", 1, true) ~= nil)
+            test.is_true(errors.is(err, errors.INTERNAL))
         end)
     end)
 
