@@ -22,6 +22,7 @@ entries:
     kind: library.lua
     source: file://hub_process_fixture.lua
     modules: [process]
+    imports: {fixture: "app.suites:hub_fixture"}
   - name: hub_worker_fixture
     kind: process.lua
     source: file://hub_worker_fixture.lua
@@ -358,6 +359,7 @@ entries:
     source: file://hub_soak_worker.lua
     method: main
     modules: [process, channel]
+    imports: {component: "kickside.component:component"}
   - name: hub_soak
     kind: process.lua
     source: file://src_link/gateway/hub.lua
@@ -405,6 +407,7 @@ entries:
     source: file://worker_source.lua
     modules: [time, channel, logger, process]
     imports:
+      component: kickside.component:component
       protocol: kickside.discord.gateway:protocol
       backoff: kickside.discord.gateway:backoff
       consts: kickside.discord.gateway:consts
@@ -423,3 +426,22 @@ entries:
       worker: app.suites:worker_error_source
       fixture: app.suites:worker_failure_fixture
       health: app.suites:worker_health_fixture
+
+  - name: health_write_fixture
+    kind: library.lua
+    source: file://health_write_fixture.lua
+  - name: health_write_source
+    kind: library.lua
+    source: file://src_link/gateway/health.lua
+    modules: [time]
+    imports:
+      component: app.suites:health_write_fixture
+  - name: health_write_test
+    kind: function.lua
+    meta: {type: test, suite: discord}
+    source: file://health_write_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      health: app.suites:health_write_source
+      fixture: app.suites:health_write_fixture

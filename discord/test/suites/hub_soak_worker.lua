@@ -1,7 +1,10 @@
+local component = require("component")
 local function main(args)
     local parent, err = process.registry.lookup("app.suites.discord.soak.parent", process.registry.CONSISTENT)
     if err then error(err) end
-    local _, send_err = process.send(parent, "soak-ready", {id = args.component_id, token = args.token, pid = process.pid()})
+    local context, context_err = component.get_private_context(args.component_id)
+    if context_err then error(context_err) end
+    local _, send_err = process.send(parent, "soak-ready", {id = args.component_id, token = context.bot_token, pid = process.pid()})
     if send_err then error(send_err) end
     local inbox, events = process.inbox(), process.events()
     while true do
