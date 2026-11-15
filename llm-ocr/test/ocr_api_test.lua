@@ -9,6 +9,8 @@ local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
 local contract = require("contract")
+local pipeline = require("pipeline")
+local upload_type = require("upload_type")
 
 local STORAGE_ID = "app:temp_fs"
 
@@ -39,9 +41,9 @@ local function ocr_with(reply: any, err: any, finish_reason: string?): any
     })
 end
 
-local function seed(markdown: string?, pages: { any }): string
+local function seed(markdown: string?, pages: { any }): (string, any)
     local upload_id = uuid_v4()
-    local _, upload_err = upload_record_repo.create(
+    local upload, upload_err = upload_record_repo.create(
         upload_id, "user-ocr", 5000, "application/pdf",
         STORAGE_ID, upload_id .. ".pdf", "documents", { filename = "scan.pdf" }, "completed"
     )
@@ -76,7 +78,7 @@ local function seed(markdown: string?, pages: { any }): string
         })
         test.is_nil(img_err)
     end
-    return upload_id
+    return upload_id, upload
 end
 
 local function seed_extracted(markdown: string?, count: integer, legacy: boolean?): string
@@ -159,7 +161,8 @@ local function define_tests()
                         return "Real OCR text", nil
                     end})
                     test.eq(calls, 2)
-                    test.eq(response.success, result ~= "failed")
+                    test.is_true(response.success)
+                    test.eq(response.metadata.ocr_error, result == "failed" and "transcription_failed" or false)
                     if result == "readable" then
                         test.eq(primary_text(id), "<!-- page 1 -->\n\nReal OCR text\n\n<!-- page 2 -->\n\nReal OCR text")
                     elseif result == "mixed" and marked then
@@ -194,7 +197,7 @@ local function define_tests()
                             if bytes:match("page%-2") then return nil, "OCR request failed" end
                             return "First page transcript", nil
                         end})
-                    test.is_false(first.success)
+                    test.eq(first.success, not interrupted)
                     test.eq(calls, interrupted and 1 or 2)
                     test.eq(primary_text(id), original)
                     local stored = assert(artifact_parts_repo.read_primary_content(id)).metadata.ocr_page_outcomes
@@ -225,6 +228,309 @@ local function define_tests()
                 end)
             end
         end
+    end)
+
+    test.describe("page transcription failures", function()
+        local function scanned_except(failing: { [integer]: boolean }): any
+            return function(bytes: string): (any, any)
+                local page = tonumber(bytes:match("page%-(%d+)"))
+                if failing[page] then return nil, "vision request failed" end
+                return "Scanned page " .. tostring(page), nil
+            end
+        end
+
+        -- Runs the upload pipeline with the OCR stage as its only stage, so the
+        -- pipeline's handling of the stage result is exercised end to end.
+        local function process_upload(upload: any, transcribe: any, final_attempt: boolean, batch_size: integer?): (boolean, any, any, any)
+            local get_pipeline, stage_executor = upload_type.get_pipeline, pipeline.upload_stage_executor
+            upload_type.get_pipeline = function() return {{func = "kickside.llm_ocr:stage", title = "Transcribing pages"}} end
+            pipeline.upload_stage_executor = function()
+                return {call = function(_, _func: any, params: any) return stage.run(params, {transcribe = transcribe, batch_size = batch_size}) end}
+            end
+            local ok, processed, err, record, retriable = pcall(pipeline.process_upload, upload, {final_attempt = final_attempt})
+            upload_type.get_pipeline, pipeline.upload_stage_executor = get_pipeline, stage_executor
+            if not ok then error(processed) end
+            return processed, err, record, retriable
+        end
+
+        test.it("completes the stage with a failed page outcome when one page cannot be transcribed", function()
+            local upload_id = seed("", {1, 2, 3})
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = scanned_except({[2] = true})})
+            test.is_true(result.success)
+            test.eq(result.metadata.ocr_error, "transcription_failed")
+            test.eq(result.metadata.ocr_pages, 2)
+            test.eq(result.metadata.ocr_total_pages, 3)
+            local outcomes = result.metadata.ocr_page_outcomes
+            test.eq(outcomes[1].status, "readable")
+            test.eq(outcomes[2].status, "failed")
+            test.eq(outcomes[2].error, "transcription_failed")
+            test.eq(outcomes[3].status, "readable")
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\n<!-- page 3 -->\n\nScanned page 3")
+        end)
+
+        test.it("fails the stage when every page fails and the document has no text", function()
+            local upload_id = seed("", {1, 2})
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = scanned_except({[1] = true, [2] = true})})
+            test.is_false(result.success)
+            test.eq(result.error, "transcription_failed")
+            test.eq(result.metadata.ocr_pages, 0)
+            test.eq(result.metadata.ocr_page_outcomes[1].status, "failed")
+            test.eq(result.metadata.ocr_page_outcomes[2].status, "failed")
+        end)
+
+        test.it("keeps a fully transcribed document successful without an OCR error", function()
+            local upload_id = seed("", {1, 2})
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = scanned_except({})})
+            test.is_true(result.success)
+            test.is_false(result.metadata.ocr_error)
+            test.is_false(result.metadata._ocr_error_detail)
+            test.eq(result.metadata.ocr_pages, 2)
+            test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\nScanned page 2")
+        end)
+
+        test.it("retries a page failure and completes the upload with the failed page on the final attempt", function()
+            local upload_id, upload = seed("", {1, 2, 3})
+            local transcribe = scanned_except({[2] = true})
+            local processed, err, _, retriable = process_upload(upload, transcribe, false)
+            test.is_false(processed)
+            test.contains(tostring(err), "ocr_error: transcription_failed")
+            test.is_true(retriable)
+            local completed, final_err, record = process_upload(upload, transcribe, true)
+            test.is_true(completed, tostring(final_err))
+            test.eq(record.metadata.ocr_error, "transcription_failed")
+            local outcomes = record.metadata.ocr_page_outcomes
+            test.eq(outcomes[1].status, "readable")
+            test.eq(outcomes[2].status, "failed")
+            test.eq(outcomes[3].status, "readable")
+            local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+            test.eq(primary.content, "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\n<!-- page 3 -->\n\nScanned page 3")
+            test.eq(primary.metadata.ocr_page_outcomes[2].status, "failed")
+            test.eq(primary.metadata.ocr_page_outcomes[2].error, "transcription_failed")
+        end)
+
+        test.it("fails the upload on the final attempt when no page of a document without text is transcribed", function()
+            local _, upload = seed("", {1, 2})
+            local processed, err = process_upload(upload, scanned_except({[1] = true, [2] = true}), true)
+            test.is_false(processed)
+            test.contains(tostring(err), "transcription_failed")
+        end)
+
+        test.it("completes a fully transcribed upload on its first attempt", function()
+            local _, upload = seed("", {1, 2})
+            local processed, err, record = process_upload(upload, scanned_except({}), false)
+            test.is_true(processed, tostring(err))
+            test.is_false(record.metadata.ocr_error)
+            test.eq(record.metadata.ocr_pages, 2)
+        end)
+
+        -- The model backend answers page 2 with an unavailable error, so the model
+        -- never read that page.
+        local function backend_down_on(down: integer): any
+            local unavailable = errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "model backend unavailable"})
+            return function(bytes: string, opts: any): (any, any)
+                local page = tonumber(bytes:match("page%-(%d+)"))
+                if page == down then return ocr_with(nil, unavailable).transcribe(bytes, opts) end
+                return ocr_with("Scanned page " .. tostring(page)).transcribe(bytes, opts)
+            end
+        end
+
+        local function with_checkpoint_writes(fn: any)
+            local update_content = artifact_content_repo.update_content
+            local writes = 0
+            artifact_content_repo.update_content = function(...: any): any
+                writes = writes + 1
+                return update_content(...)
+            end
+            local ok, err = pcall(fn, function(): integer return writes end)
+            artifact_content_repo.update_content = update_content
+            if not ok then error(err) end
+        end
+
+        for _, batch_size in ipairs({1, 4}) do
+            test.it("resumes after an outage without rewriting checkpoints, batch=" .. batch_size, function()
+                local upload_id, upload = seed("", {1, 2, 3})
+                local calls = {0, 0, 0}
+                local down = true
+                local transcribe = function(bytes: string, opts: any): (any, any)
+                    local page = tonumber(bytes:match("page%-(%d+)"))
+                    calls[page] = assert(calls[page]) + 1
+                    if down and page == 2 then return backend_down_on(2)(bytes, opts) end
+                    return ocr_with(page == 3 and ocr.NO_TEXT_REPLY or "Scanned page " .. page).transcribe(bytes, opts)
+                end
+                with_checkpoint_writes(function(writes)
+                    local committed
+                    for attempt = 1, 3 do
+                        local processed, err, _, retriable = process_upload(upload, transcribe, false, batch_size)
+                        test.is_false(processed)
+                        test.is_true(retriable)
+                        test.contains(tostring(err), "model backend unavailable")
+                        if attempt == 1 then committed = writes() end
+                        test.eq(writes(), committed, "unchanged outage retries do not write a checkpoint")
+                    end
+                    test.eq(calls[1], 1, "a readable page is not transcribed again")
+                    test.eq(calls[2], 3)
+                    test.eq(calls[3], batch_size == 1 and 0 or 1)
+                    test.eq(committed, 1, "the mixed batch checkpoints finished pages")
+                    down = false
+                    local completed, err, record = process_upload(upload, transcribe, true, batch_size)
+                    test.is_true(completed, tostring(err))
+                    test.eq(calls[1], 1)
+                    test.eq(calls[2], 4)
+                    test.eq(calls[3], 1, "a blank page is not transcribed again")
+                    test.eq(writes(), batch_size == 1 and 3 or 2)
+                    test.eq(record.metadata.ocr_page_outcomes[1].status, "readable")
+                    test.eq(record.metadata.ocr_page_outcomes[2].status, "readable")
+                    test.eq(record.metadata.ocr_page_outcomes[3].status, "blank")
+                    test.eq((primary_text(upload_id):gsub("%s+$", "")), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\nScanned page 2\n\n<!-- page 3 -->")
+                end)
+            end)
+        end
+
+        for _, batch_size in ipairs({1, 4}) do
+            test.it("does not rewrite an identical page failure during an outage, batch=" .. batch_size, function()
+                local upload_id, upload = seed("", {1, 2})
+                local calls = {0, 0}
+                local recovered = false
+                local transcribe = function(bytes: string, opts: any): (any, any)
+                    local page = tonumber(bytes:match("page%-(%d+)"))
+                    calls[page] = assert(calls[page]) + 1
+                    if recovered then return ocr_with("Scanned page " .. page).transcribe(bytes, opts) end
+                    if page == 1 then
+                        return ocr_with("partial text", nil, llm.FINISH_REASON.LENGTH).transcribe(bytes, opts)
+                    end
+                    return backend_down_on(2)(bytes, opts)
+                end
+                with_checkpoint_writes(function(writes)
+                    for attempt = 1, 3 do
+                        local processed, err, record, retriable = process_upload(upload, transcribe, false, batch_size)
+                        test.is_false(processed)
+                        test.is_nil(record)
+                        test.is_true(retriable)
+                        test.contains(tostring(err), "model backend unavailable")
+                        test.eq(writes(), 1, "an identical failed outcome does not write another checkpoint")
+                        local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+                        test.eq(primary.content, "<!-- page 1 -->\n\n<!-- page 2 -->")
+                        test.eq(primary.metadata.ocr_page_outcomes[1].status, "failed")
+                        test.eq(primary.metadata.ocr_page_outcomes[1].error, "transcription_failed")
+                        test.is_nil(primary.metadata.ocr_page_outcomes[2].status)
+                    end
+                    test.eq(calls[1], 3)
+                    test.eq(calls[2], 3)
+                    recovered = true
+                    local completed, err, record = process_upload(upload, transcribe, true, batch_size)
+                    test.is_true(completed, tostring(err))
+                    test.eq(writes(), batch_size == 1 and 3 or 2, "recovery persists changed text and outcomes")
+                    test.eq(calls[1], 4)
+                    test.eq(calls[2], 4)
+                    test.eq(record.metadata.ocr_page_outcomes[1].status, "readable")
+                    test.is_nil(record.metadata.ocr_page_outcomes[1].error)
+                    test.eq(record.metadata.ocr_page_outcomes[2].status, "readable")
+                    test.eq(primary_text(upload_id):gsub("%s+$", ""), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\nScanned page 2")
+                end)
+            end)
+        end
+
+        for _, preparation in ipairs({false, true}) do
+            test.it("does not rewrite repeated failures without an outage, preparation=" .. tostring(preparation), function()
+                local upload_id = seed("", {1})
+                local new_ocr = ocr.new
+                ocr.new = function(): any
+                    return {prepare = function(): (any, any) return nil, "invalid OCR configuration" end}
+                end
+                local ok, err = pcall(function()
+                    with_checkpoint_writes(function(writes)
+                        for attempt = 1, 3 do
+                            local deps = preparation and {} or {transcribe = function(): (any, any)
+                                return nil, "page request failed"
+                            end}
+                            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, deps)
+                            test.is_false(result.success)
+                            test.eq(result.metadata.ocr_error, "transcription_failed")
+                            test.eq(writes(), 1, "only the first failure changes the stored outcome")
+                        end
+                    end)
+                end)
+                ocr.new = new_ocr
+                if not ok then error(err) end
+            end)
+        end
+
+        for _, all_down in ipairs({false, true}) do
+            test.it("ends a persistent outage at the job retry budget, all pages=" .. tostring(all_down), function()
+                local upload_id, upload = seed("", {1, 2})
+                local calls = {0, 0}
+                local job = {id = uuid_v4(), attempt_no = 0, max_attempts = 3}
+                local transcribe = function(bytes: string, opts: any): (any, any)
+                    local page = tonumber(bytes:match("page%-(%d+)"))
+                    calls[page] = assert(calls[page]) + 1
+                    return backend_down_on(all_down and page or 2)(bytes, opts)
+                end
+                with_checkpoint_writes(function(writes)
+                    repeat
+                        job.attempt_no = job.attempt_no + 1
+                        local processed, err, record, retriable = process_upload(upload, transcribe,
+                            job.attempt_no >= job.max_attempts)
+                        test.is_false(processed)
+                        test.is_nil(record)
+                        test.is_true(retriable)
+                        test.contains(tostring(err), "model backend unavailable")
+                        test.eq(writes(), all_down and 0 or 1)
+                        test.eq(upload_job.terminal_failure(job, retriable), job.attempt_no == job.max_attempts)
+                    until upload_job.terminal_failure(job, true) or job.attempt_no > job.max_attempts
+                    test.eq(job.attempt_no, job.max_attempts)
+                    test.eq(calls[1], all_down and job.max_attempts or 1)
+                    test.eq(calls[2], job.max_attempts)
+                    local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+                    if all_down then
+                        test.eq(primary.content, "")
+                        test.is_nil(primary.metadata.ocr_page_outcomes)
+                    else
+                        test.eq(primary.metadata.ocr_page_outcomes[1].status, "readable")
+                        test.is_nil(primary.metadata.ocr_page_outcomes[2].status)
+                    end
+                end)
+            end)
+        end
+
+        for _, kind in ipairs({errors.INTERNAL, errors.INVALID, errors.PERMISSION_DENIED,
+            errors.TIMEOUT, errors.CANCELED, errors.NOT_FOUND, errors.RATE_LIMITED}) do
+            test.it("keeps non-unavailable model errors as page failures: " .. tostring(kind), function()
+                local native = errors.new({kind = kind, retryable = true, message = "model rejected request",
+                    details = {source = "model"}})
+                local model = ocr_with(nil, native)
+                local _, err = model.transcribe("img", {model = "class:fast"})
+                test.is_true(errors.is(err, kind))
+                test.is_true(err:retryable())
+                test.eq(err:details().source, "model")
+                local upload_id = seed("", {1})
+                local result, stage_err = stage.run({upload_id = upload_id, storage_id = STORAGE_ID},
+                    {transcribe = model.transcribe})
+                test.is_nil(stage_err)
+                test.is_false(result.success)
+                test.eq(result.metadata.ocr_error, "transcription_failed")
+                test.eq(result.metadata.ocr_page_outcomes[1].status, "failed")
+            end)
+        end
+
+        test.it("fails the stage with the backend error when the model backend is unavailable", function()
+            local upload_id = seed("", {1, 2})
+            local result, err = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {batch_size = 1, transcribe = backend_down_on(2)})
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+            test.eq(primary.content, "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->")
+            test.eq(primary.metadata.ocr_page_outcomes[1].status, "readable")
+            test.neq(primary.metadata.ocr_page_outcomes[2].status, "failed")
+        end)
+
+        test.it("leaves the upload retriable on the final attempt when the model backend is unavailable", function()
+            local _, upload = seed("", {1, 2})
+            local processed, err, record, retriable = process_upload(upload, backend_down_on(2), true)
+            test.is_false(processed)
+            test.is_nil(record)
+            test.is_true(retriable)
+            test.contains(tostring(err), "model backend unavailable")
+        end)
     end)
 
     test.describe("kickside.llm_ocr:ocr lib", function()
@@ -305,10 +611,11 @@ local function define_tests()
         end)
 
         test.it("surfaces a generation error", function()
-            local text, err = ocr_with(nil, "model exploded").transcribe("img", { model = "class:fast" })
+            local text, err = ocr_with(nil, errors.new({kind = errors.INTERNAL, message = "model exploded"})).transcribe("img", { model = "class:fast" })
             test.is_nil(text)
             test.not_nil(err)
             test.is_true(tostring(err):find("generate failed", 1, true) ~= nil)
+            test.is_true(errors.is(err, errors.INTERNAL))
         end)
     end)
 
@@ -376,7 +683,8 @@ local function define_tests()
                 if calls == 2 then return nil, "vision request failed" end
                 return "First transcription", nil
             end})
-            test.is_false(first.success)
+            test.is_true(first.success)
+            test.eq(first.metadata.ocr_error, "transcription_failed")
             test.eq(calls, 2)
             local expected = "<!-- page 1 -->\n\nFirst transcription\n\n<!-- page 2 -->\n\nOriginal second caption"
             test.eq(primary_text(upload_id), expected)
@@ -388,7 +696,8 @@ local function define_tests()
                 calls = calls + 1
                 return nil, "vision request still fails"
             end})
-            test.is_false(failed_retry.success)
+            test.is_true(failed_retry.success)
+            test.eq(failed_retry.metadata.ocr_error, "transcription_failed")
             test.eq(calls, 1)
             test.eq(primary_text(upload_id), expected)
             calls = 0
@@ -462,7 +771,8 @@ local function define_tests()
                 local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {transcribe = function()
                     return nil, "vision request failed"
                 end})
-                test.is_false(result.success)
+                test.is_true(result.success)
+                test.eq(result.metadata.ocr_error, "transcription_failed")
                 test.eq(primary_text(upload_id), original)
                 test.eq(assert(artifact_parts_repo.read_primary_content(upload_id)).metadata.ocr_page_outcomes[1].status, "failed")
             end
@@ -543,7 +853,8 @@ local function define_tests()
                 return page == 1 and "A scanned fact" or "", nil
             end
             local first = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {batch_size = 1, transcribe = transcribe})
-            test.is_false(first.success)
+            test.is_true(first.success)
+            test.eq(first.metadata.ocr_error, "transcription_failed")
             test.eq(#calls, 3)
             for page = 1, 4 do test.contains(primary_text(upload_id), "<!-- page " .. page .. " -->") end
             test.contains(primary_text(upload_id), text)

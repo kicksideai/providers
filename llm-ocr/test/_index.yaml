@@ -257,6 +257,8 @@ entries:
       ocr: kickside.llm_ocr:ocr
       stage: kickside.llm_ocr:stage_implementation
       upload_job: kickside.uploads.service:process_job_proc
+      pipeline: kickside.uploads:pipeline
+      upload_type: kickside.uploads:upload_type
     method: run
 
   - name: ocr_smoke_test
@@ -277,6 +279,19 @@ entries:
       test: wippy.test:test
       migration_registry: wippy.migration:registry
     method: run
+
+  - name: ocr_profile_cost_test
+    kind: function.lua
+    meta: {type: test, suite: llm_ocr, timeout: 120s}
+    source: file://ocr_profile_cost_test.lua
+    method: run
+    modules: [time, uuid]
+    imports:
+      test: wippy.test:test
+      ocr: kickside.llm_ocr:ocr
+      stage: kickside.llm_ocr:stage_implementation
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_record_repo: kickside.uploads.persist:upload_record_repo
 
   - name: model_compatibility_test
     kind: function.lua
@@ -338,3 +353,19 @@ entries:
       google_client: wippy.llm.google:client
       generative_ai_client: wippy.llm.google.generative_ai:client
       vertex_client: wippy.llm.google.vertex:client
+
+  - name: request_profile_stage_test
+    kind: function.lua
+    meta: {type: test, suite: ocr_request_profiles}
+    source: file://request_profile_stage_test.lua
+    modules: [contract, fs, uuid, json, base64]
+    method: run
+    imports:
+      test: wippy.test:test
+      llm: wippy.llm:llm
+      prompt: wippy.llm:prompt
+      ocr: kickside.llm_ocr:ocr
+      stage: kickside.llm_ocr:stage_implementation
+      uploads: kickside.uploads.persist:upload_record_repo
+      content: kickside.uploads.persist:artifact_content_repo
+      parts: kickside.uploads.persist:artifact_parts_repo

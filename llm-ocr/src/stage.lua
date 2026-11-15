@@ -5,6 +5,7 @@ local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
 local ocr = require("ocr")
 local page_images = require("page_images")
+local doc2md = require("doc2md")
 local jobs = require("jobs")
 
 -- Bounded-concurrency map: page transcription is network-bound (one vision call each),
@@ -95,6 +96,12 @@ local function page_number(artifact: any, fallback: integer): integer
 end
 
 local build_markdown = page_images.build_markdown
+
+-- A transcript carries text when any page body, or unmarked content, has a
+-- non-whitespace character; page markers alone are not text.
+local function carries_text(markdown: string): boolean
+    return doc2md.strip_markers(markdown):match("%S") ~= nil
+end
 
 -- The image processor stores the uploaded image as its own primary artifact; it
 -- is not a text primary and therefore is deliberately distinct from the markdown
@@ -215,7 +222,6 @@ end
 local function run(params: any, deps: any): any
     deps = type(deps) == "table" and deps or {}
     local transcribe = deps.transcribe
-    if transcribe == nil then transcribe = ocr.new().transcribe end
     local persist = type(deps.persist) == "function" and deps.persist or persist_primary
 
     -- A universal best-effort stage must never fail the upload: malformed params is a
@@ -286,17 +292,24 @@ local function run(params: any, deps: any): any
     local call_timeout: integer? = configured_timeout > 0 and configured_timeout or nil
     local should_continue = build_should_continue(deps, params)
     local sections, page_errors = {}, {}
+    local function fail_page(item: any, err: any): boolean
+        local outcome = by_page[item.index]
+        local changed = outcome.status ~= "failed" or outcome.error ~= "transcription_failed"
+        outcome.status, outcome.error = "failed", "transcription_failed"
+        page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(err)
+        return changed
+    end
     local function transcribe_page(item: any): any
         local page = item.page
         if not page.artifact_id then return nil, "page image is unavailable" end
         local bytes, read_err = artifact_content_repo.read_artifact_content(upload_id, page.artifact_id)
         if read_err or type(bytes) ~= "string" then return nil, tostring(read_err or "page image content is unavailable") end
         local text, ocr_err = transcribe(bytes, {mime = page.mime_type, model = model, prompt = user_prompt, timeout = call_timeout})
-        if ocr_err then return nil, tostring(ocr_err) end
+        if ocr_err then return nil, ocr_err end
         if type(text) ~= "string" then return nil, "OCR returned invalid text" end
         return {page = item.index, text = text}
     end
-    local committed_outcomes = previous
+    local committed_outcomes, committed_markdown = previous, original
     local function checkpoint(): (boolean, string?)
         local markdown
         if marked then markdown = page_images.replace_pages(original, sections)
@@ -318,31 +331,56 @@ local function run(params: any, deps: any): any
             end
         end
         local ok, err = persist(upload_id, params.storage_id, markdown, params, pages[1], checkpoint_outcomes)
-        if ok then committed_outcomes = checkpoint_outcomes end
+        if ok then committed_outcomes, committed_markdown = checkpoint_outcomes, markdown end
         return ok, err
     end
-    local start, persist_error, cancelled = 1, nil, false
+    local start, persist_error, cancelled, backend_error = 1, nil, false, nil
+    if #targets > 0 and not should_continue() then
+        cancelled, start = true, #targets + 1
+    elseif transcribe == nil and #targets > 0 then
+        local prepare_err
+        transcribe, prepare_err = ocr.new().prepare({model = model, prompt = user_prompt, timeout = call_timeout})
+        if prepare_err then
+            local changed = false
+            for _, item in ipairs(targets) do
+                if fail_page(item, prepare_err) then changed = true end
+            end
+            if changed then
+                local ok, err = checkpoint()
+                if not ok then persist_error = tostring(err) end
+            end
+            start = #targets + 1
+        end
+    end
     while start <= #targets do
-        if not should_continue() then cancelled = true; break end
         local last = math.min(start + batch_size - 1, #targets)
         local batch = {}
         for index = start, last do batch[#batch + 1] = targets[index] end
         local results = parallel_map(batch, transcribe_page, batch_size)
+        local changed = false
         for index, item in ipairs(batch) do
             local result = results[index]
             local outcome = by_page[item.index]
-            if result.error ~= nil then
-                outcome.status, outcome.error = "failed", "transcription_failed"
-                page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(result.error)
+            -- An unavailable backend never read the page: the page stays pending
+            -- and the stage fails so the job retries it.
+            if errors.is(result.error, errors.UNAVAILABLE) then
+                backend_error = result.error
+            elseif result.error ~= nil then
+                if fail_page(item, result.error) then changed = true end
             else
+                changed = true
                 local text = result.value.text
                 outcome.status, outcome.error = text:match("%S") and "readable" or "blank", nil
                 sections[#sections + 1] = result.value
             end
         end
-        local ok, err = checkpoint()
-        if not ok then persist_error = tostring(err); break end
+        if changed then
+            local ok, err = checkpoint()
+            if not ok then persist_error = tostring(err); break end
+        end
+        if backend_error then return nil, backend_error end
         start = last + 1
+        if start <= #targets and not should_continue() then cancelled = true; break end
     end
     if #targets == 0 and #previous == 0 then
         local ok, err = checkpoint()
@@ -359,8 +397,18 @@ local function run(params: any, deps: any): any
     if persist_error then page_errors[#page_errors + 1] = "Transcript checkpoint: " .. persist_error end
     local metadata = {ocr_pages = transcribed, ocr_total_pages = #document_pages, ocr_page_outcomes = outcomes,
         ocr_error = code, _ocr_error_detail = #page_errors > 0 and table.concat(page_errors, "\n"):sub(1, MAX_ERROR_DETAIL_BYTES) or false}
-    if code or cancelled then return {success = false, error = code or "OCR cancelled", metadata = metadata} end
-    log:info("ocr transcribed document", {upload_id = upload_id, pages = transcribed, total_pages = #document_pages, model = model})
+    -- Failed pages are page outcomes. The stage fails only when it could not run
+    -- (cancelled, checkpoint not stored) or when pages failed and the transcript
+    -- holds no text at all: nothing was transcribed and no text layer remains.
+    if persist_error or cancelled or (failed > 0 and not carries_text(committed_markdown)) then
+        return {success = false, error = code or "OCR cancelled", metadata = metadata}
+    end
+    if failed > 0 then
+        log:warn("ocr completed with failed pages", {upload_id = upload_id, pages = transcribed, failed_pages = failed,
+            total_pages = #document_pages, model = model})
+    else
+        log:info("ocr transcribed document", {upload_id = upload_id, pages = transcribed, total_pages = #document_pages, model = model})
+    end
     return {success = true, metadata = metadata}
 end
 
