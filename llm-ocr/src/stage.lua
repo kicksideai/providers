@@ -350,6 +350,7 @@ local function run(params: any, deps: any): any
         local batch = {}
         for index = start, last do batch[#batch + 1] = targets[index] end
         local results = parallel_map(batch, transcribe_page, batch_size)
+        local changed = false
         for index, item in ipairs(batch) do
             local result = results[index]
             local outcome = by_page[item.index]
@@ -358,15 +359,19 @@ local function run(params: any, deps: any): any
             if errors.is(result.error, errors.UNAVAILABLE) then
                 backend_error = result.error
             elseif result.error ~= nil then
+                changed = true
                 fail_page(item, result.error)
             else
+                changed = true
                 local text = result.value.text
                 outcome.status, outcome.error = text:match("%S") and "readable" or "blank", nil
                 sections[#sections + 1] = result.value
             end
         end
-        local ok, err = checkpoint()
-        if not ok then persist_error = tostring(err); break end
+        if changed then
+            local ok, err = checkpoint()
+            if not ok then persist_error = tostring(err); break end
+        end
         if backend_error then return nil, backend_error end
         start = last + 1
         if start <= #targets and not should_continue() then cancelled = true; break end

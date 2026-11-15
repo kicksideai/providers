@@ -241,11 +241,11 @@ local function define_tests()
 
         -- Runs the upload pipeline with the OCR stage as its only stage, so the
         -- pipeline's handling of the stage result is exercised end to end.
-        local function process_upload(upload: any, transcribe: any, final_attempt: boolean): (boolean, any, any, any)
+        local function process_upload(upload: any, transcribe: any, final_attempt: boolean, batch_size: integer?): (boolean, any, any, any)
             local get_pipeline, stage_executor = upload_type.get_pipeline, pipeline.upload_stage_executor
             upload_type.get_pipeline = function() return {{func = "kickside.llm_ocr:stage", title = "Transcribing pages"}} end
             pipeline.upload_stage_executor = function()
-                return {call = function(_, _func: any, params: any) return stage.run(params, {transcribe = transcribe}) end}
+                return {call = function(_, _func: any, params: any) return stage.run(params, {transcribe = transcribe, batch_size = batch_size}) end}
             end
             local ok, processed, err, record, retriable = pcall(pipeline.process_upload, upload, {final_attempt = final_attempt})
             upload_type.get_pipeline, pipeline.upload_stage_executor = get_pipeline, stage_executor
@@ -332,6 +332,115 @@ local function define_tests()
                 if page == down then return ocr_with(nil, unavailable).transcribe(bytes, opts) end
                 return ocr_with("Scanned page " .. tostring(page)).transcribe(bytes, opts)
             end
+        end
+
+        local function with_checkpoint_writes(fn: any)
+            local update_content = artifact_content_repo.update_content
+            local writes = 0
+            artifact_content_repo.update_content = function(...: any): any
+                writes = writes + 1
+                return update_content(...)
+            end
+            local ok, err = pcall(fn, function(): integer return writes end)
+            artifact_content_repo.update_content = update_content
+            if not ok then error(err) end
+        end
+
+        for _, batch_size in ipairs({1, 4}) do
+            test.it("resumes after an outage without rewriting checkpoints, batch=" .. batch_size, function()
+                local upload_id, upload = seed("", {1, 2, 3})
+                local calls = {0, 0, 0}
+                local down = true
+                local transcribe = function(bytes: string, opts: any): (any, any)
+                    local page = tonumber(bytes:match("page%-(%d+)"))
+                    calls[page] = calls[page] + 1
+                    if down and page == 2 then return backend_down_on(2)(bytes, opts) end
+                    return ocr_with(page == 3 and ocr.NO_TEXT_REPLY or "Scanned page " .. page).transcribe(bytes, opts)
+                end
+                with_checkpoint_writes(function(writes)
+                    local committed
+                    for attempt = 1, 3 do
+                        local processed, err, _, retriable = process_upload(upload, transcribe, false, batch_size)
+                        test.is_false(processed)
+                        test.is_true(retriable)
+                        test.contains(tostring(err), "model backend unavailable")
+                        if attempt == 1 then committed = writes() end
+                        test.eq(writes(), committed, "unchanged outage retries do not write a checkpoint")
+                    end
+                    test.eq(calls[1], 1, "a readable page is not transcribed again")
+                    test.eq(calls[2], 3)
+                    test.eq(calls[3], batch_size == 1 and 0 or 1)
+                    test.eq(committed, 1, "the mixed batch checkpoints finished pages")
+                    down = false
+                    local completed, err, record = process_upload(upload, transcribe, true, batch_size)
+                    test.is_true(completed, tostring(err))
+                    test.eq(calls[1], 1)
+                    test.eq(calls[2], 4)
+                    test.eq(calls[3], 1, "a blank page is not transcribed again")
+                    test.eq(writes(), batch_size == 1 and 3 or 2)
+                    test.eq(record.metadata.ocr_page_outcomes[1].status, "readable")
+                    test.eq(record.metadata.ocr_page_outcomes[2].status, "readable")
+                    test.eq(record.metadata.ocr_page_outcomes[3].status, "blank")
+                    test.eq((primary_text(upload_id):gsub("%s+$", "")), "<!-- page 1 -->\n\nScanned page 1\n\n<!-- page 2 -->\n\nScanned page 2\n\n<!-- page 3 -->")
+                end)
+            end)
+        end
+
+        for _, all_down in ipairs({false, true}) do
+            test.it("ends a persistent outage at the job retry budget, all pages=" .. tostring(all_down), function()
+                local upload_id, upload = seed("", {1, 2})
+                local calls = {0, 0}
+                local job = {id = uuid_v4(), attempt_no = 0, max_attempts = 3}
+                local transcribe = function(bytes: string, opts: any): (any, any)
+                    local page = tonumber(bytes:match("page%-(%d+)"))
+                    calls[page] = calls[page] + 1
+                    return backend_down_on(all_down and page or 2)(bytes, opts)
+                end
+                with_checkpoint_writes(function(writes)
+                    repeat
+                        job.attempt_no = job.attempt_no + 1
+                        local processed, err, record, retriable = process_upload(upload, transcribe,
+                            job.attempt_no >= job.max_attempts)
+                        test.is_false(processed)
+                        test.is_nil(record)
+                        test.is_true(retriable)
+                        test.contains(tostring(err), "model backend unavailable")
+                        test.eq(writes(), all_down and 0 or 1)
+                        test.eq(upload_job.terminal_failure(job, retriable), job.attempt_no == job.max_attempts)
+                    until upload_job.terminal_failure(job, true) or job.attempt_no > job.max_attempts
+                    test.eq(job.attempt_no, job.max_attempts)
+                    test.eq(calls[1], all_down and job.max_attempts or 1)
+                    test.eq(calls[2], job.max_attempts)
+                    local primary = assert(artifact_parts_repo.read_primary_content(upload_id))
+                    if all_down then
+                        test.eq(primary.content, "")
+                        test.is_nil(primary.metadata.ocr_page_outcomes)
+                    else
+                        test.eq(primary.metadata.ocr_page_outcomes[1].status, "readable")
+                        test.is_nil(primary.metadata.ocr_page_outcomes[2].status)
+                    end
+                end)
+            end)
+        end
+
+        for _, kind in ipairs({errors.INTERNAL, errors.INVALID, errors.PERMISSION_DENIED,
+            errors.TIMEOUT, errors.CANCELED, errors.NOT_FOUND, errors.RATE_LIMITED}) do
+            test.it("keeps non-unavailable model errors as page failures: " .. tostring(kind), function()
+                local native = errors.new({kind = kind, retryable = true, message = "model rejected request",
+                    details = {source = "model"}})
+                local model = ocr_with(nil, native)
+                local _, err = model.transcribe("img", {model = "class:fast"})
+                test.is_true(errors.is(err, kind))
+                test.is_true(err:retryable())
+                test.eq(err:details().source, "model")
+                local upload_id = seed("", {1})
+                local result, stage_err = stage.run({upload_id = upload_id, storage_id = STORAGE_ID},
+                    {transcribe = model.transcribe})
+                test.is_nil(stage_err)
+                test.is_false(result.success)
+                test.eq(result.metadata.ocr_error, "transcription_failed")
+                test.eq(result.metadata.ocr_page_outcomes[1].status, "failed")
+            end)
         end
 
         test.it("fails the stage with the backend error when the model backend is unavailable", function()
