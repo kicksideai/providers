@@ -1,5 +1,5 @@
 import { u as o, P as t } from "./wc-runtime-Cnj2CWxS.js";
-import { l as n, m as i } from "./lazy-0O1vWIeh.js";
+import { l as n, m as i } from "./lazy-CG__0OGb.js";
 import "@iconify/vue";
 import { define as m } from "@wippy-fe/proxy";
 const r = n(

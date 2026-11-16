@@ -81,6 +81,7 @@ entries:
     method: main
     modules: [time, channel, logger, process]
     imports:
+      component: kickside.component:component
       protocol: kickside.slack.socket:protocol
       backoff: kickside.slack.socket:backoff
       socket_api: kickside.slack.socket:socket_api

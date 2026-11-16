@@ -70,7 +70,6 @@ local function construct(dependencies: any): any
 
         local function spawn_for(conn_id: string, token: string)
             local pid, serr = process.spawn_monitored(WORKER_ID, host, {
-                app_token = token,
                 component_id = conn_id,
                 host = host,
             })

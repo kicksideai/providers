@@ -32,6 +32,7 @@ entries:
     method: main
     modules: [time, channel, logger, process]
     imports:
+      component: kickside.component:component
       api: kickside.telegram.client:api
 
   - name: hub

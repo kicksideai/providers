@@ -2,6 +2,9 @@
 version: '1.0'
 namespace: app
 entries:
+- name: recall_maintenance_actor
+  kind: registry.entry
+  meta: {type: kickside.execution.maintenance_actor, actor_id: 'system:memory-recall'}
 - name: dep.kickside.realtime
   kind: ns.dependency
   component: kickside/realtime

@@ -222,7 +222,6 @@ end
 local function run(params: any, deps: any): any
     deps = type(deps) == "table" and deps or {}
     local transcribe = deps.transcribe
-    if transcribe == nil then transcribe = ocr.new().transcribe end
     local persist = type(deps.persist) == "function" and deps.persist or persist_primary
 
     -- A universal best-effort stage must never fail the upload: malformed params is a
@@ -293,13 +292,20 @@ local function run(params: any, deps: any): any
     local call_timeout: integer? = configured_timeout > 0 and configured_timeout or nil
     local should_continue = build_should_continue(deps, params)
     local sections, page_errors = {}, {}
+    local function fail_page(item: any, err: any): boolean
+        local outcome = by_page[item.index]
+        local changed = outcome.status ~= "failed" or outcome.error ~= "transcription_failed"
+        outcome.status, outcome.error = "failed", "transcription_failed"
+        page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(err)
+        return changed
+    end
     local function transcribe_page(item: any): any
         local page = item.page
         if not page.artifact_id then return nil, "page image is unavailable" end
         local bytes, read_err = artifact_content_repo.read_artifact_content(upload_id, page.artifact_id)
         if read_err or type(bytes) ~= "string" then return nil, tostring(read_err or "page image content is unavailable") end
         local text, ocr_err = transcribe(bytes, {mime = page.mime_type, model = model, prompt = user_prompt, timeout = call_timeout})
-        if ocr_err then return nil, tostring(ocr_err) end
+        if ocr_err then return nil, ocr_err end
         if type(text) ~= "string" then return nil, "OCR returned invalid text" end
         return {page = item.index, text = text}
     end
@@ -328,28 +334,53 @@ local function run(params: any, deps: any): any
         if ok then committed_outcomes, committed_markdown = checkpoint_outcomes, markdown end
         return ok, err
     end
-    local start, persist_error, cancelled = 1, nil, false
+    local start, persist_error, cancelled, backend_error = 1, nil, false, nil
+    if #targets > 0 and not should_continue() then
+        cancelled, start = true, #targets + 1
+    elseif transcribe == nil and #targets > 0 then
+        local prepare_err
+        transcribe, prepare_err = ocr.new().prepare({model = model, prompt = user_prompt, timeout = call_timeout})
+        if prepare_err then
+            local changed = false
+            for _, item in ipairs(targets) do
+                if fail_page(item, prepare_err) then changed = true end
+            end
+            if changed then
+                local ok, err = checkpoint()
+                if not ok then persist_error = tostring(err) end
+            end
+            start = #targets + 1
+        end
+    end
     while start <= #targets do
-        if not should_continue() then cancelled = true; break end
         local last = math.min(start + batch_size - 1, #targets)
         local batch = {}
         for index = start, last do batch[#batch + 1] = targets[index] end
         local results = parallel_map(batch, transcribe_page, batch_size)
+        local changed = false
         for index, item in ipairs(batch) do
             local result = results[index]
             local outcome = by_page[item.index]
-            if result.error ~= nil then
-                outcome.status, outcome.error = "failed", "transcription_failed"
-                page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(result.error)
+            -- An unavailable backend never read the page: the page stays pending
+            -- and the stage fails so the job retries it.
+            if errors.is(result.error, errors.UNAVAILABLE) then
+                backend_error = result.error
+            elseif result.error ~= nil then
+                if fail_page(item, result.error) then changed = true end
             else
+                changed = true
                 local text = result.value.text
                 outcome.status, outcome.error = text:match("%S") and "readable" or "blank", nil
                 sections[#sections + 1] = result.value
             end
         end
-        local ok, err = checkpoint()
-        if not ok then persist_error = tostring(err); break end
+        if changed then
+            local ok, err = checkpoint()
+            if not ok then persist_error = tostring(err); break end
+        end
+        if backend_error then return nil, backend_error end
         start = last + 1
+        if start <= #targets and not should_continue() then cancelled = true; break end
     end
     if #targets == 0 and #previous == 0 then
         local ok, err = checkpoint()

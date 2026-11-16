@@ -17,7 +17,7 @@ entries:
     kind: library.lua
     meta:
       name: ocr
-      comment: LLM OCR transcription seam. new(runtime?) returns { transcribe(image_bytes, opts) }.
+      comment: LLM OCR transcription seam. new(runtime?) exposes transcribe(image_bytes, opts) and prepare(opts) for a document's pages.
     source: file://ocr.lua
     modules: [base64]
     imports:
@@ -210,7 +210,7 @@ entries:
     component: kickside/widgets
 
   - name: dep.wippy.llm
-    version: '*'
+    version: '>=0.5.20'
     kind: ns.dependency
     meta:
       comment: Transcribes page images through the configured multimodal LLM.
