@@ -13,8 +13,43 @@ local function call(event)
     return funcs.call(EXTRACTOR_REF, { event = event })
 end
 
+local function check_trimmed_title(value)
+    local result, err = call({type="kickside.knowledge.events:content.upserted",
+        external={external_id="trim-document"}, body={content="document", title=value}})
+    test.is_nil(err)
+    test.is_nil(result.error)
+    local expected = value:match("^%s*(.-)%s*$")
+    test.eq(result.documents[1].title, expected ~= "" and expected or nil)
+end
+
 local function define_tests()
     test.describe("content extractor", function()
+        test.it("matches pattern trimming for every boundary byte", function()
+            for byte = 0, 255 do
+                local char = string.char(byte)
+                check_trimmed_title(char)
+                check_trimmed_title(char .. "x" .. char)
+                check_trimmed_title(" \t\r\n\v\f" .. char .. "x" .. char .. "\f\v\n\r\t ")
+            end
+        end)
+
+        test.it("matches pattern trimming for randomized byte strings", function()
+            local state = 1729
+            local function random(limit)
+                state = (state * 16807) % 2147483647
+                return state % limit
+            end
+            for _ = 1, 50000 do
+                local bytes = {}
+                for index = 1, random(64) do
+                    bytes[index] = string.char(random(256))
+                end
+                local whitespace = " \t\r\n\v\f"
+                local value = whitespace:sub(1, random(7)) .. table.concat(bytes) .. whitespace:sub(1, random(7))
+                check_trimmed_title(value)
+            end
+        end)
+
         local uploads = {}
         test.after_each(function()
             local db, db_err = sql.get("app:db")
@@ -71,7 +106,7 @@ local function define_tests()
             local title = string.rep("title ", 10000) .. "end"
             local result, err = call({type="kickside.knowledge.events:content.upserted",
                 external={external_id=" \tinline-document\r\n", external_version=" \v\fv1\t "},
-                body={content=content, title=" \t" .. title .. "\r\n ", content_type=" \ttext/plain\n "}})
+                body={content=content, title=" \t" .. title .. string.rep(" \t\r\n\v\f", 10000), content_type=" \ttext/plain\n "}})
             test.is_nil(err)
             test.is_nil(result.error)
             test.eq(#result.documents, 1)
