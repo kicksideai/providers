@@ -8,7 +8,13 @@ local EXTERNAL_SOURCE = "knowledge.kb"
 
 local function trim(value)
     if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
+    local first = value:find("%S")
+    if not first then return "" end
+    local last = #value
+    while value:sub(last, last):match("%s") do
+        last = last - 1
+    end
+    return value:sub(first, last)
 end
 
 local function shallow_copy(input)

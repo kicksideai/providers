@@ -66,6 +66,28 @@ local function define_tests()
                 end
             end)
         end
+        test.it("preserves long inline content and trims metadata whitespace", function()
+            local content = " \t\r\n\v\f" .. string.rep("document text ", 400000) .. "\t\n "
+            local title = string.rep("title ", 10000) .. "end"
+            local result, err = call({type="kickside.knowledge.events:content.upserted",
+                external={external_id=" \tinline-document\r\n", external_version=" \v\fv1\t "},
+                body={content=content, title=" \t" .. title .. "\r\n ", content_type=" \ttext/plain\n "}})
+            test.is_nil(err)
+            test.is_nil(result.error)
+            test.eq(#result.documents, 1)
+            test.eq(result.documents[1].content, content)
+            test.eq(result.documents[1].title, title)
+            test.eq(result.documents[1].content_type, "text/plain")
+            test.eq(result.documents[1].external_id, "inline-document")
+            test.eq(result.documents[1].external_version, "v1")
+        end)
+        test.it("rejects long whitespace-only inline content", function()
+            local result, err = call({type="kickside.knowledge.events:content.upserted",
+                external={external_id="inline-document"}, body={content=string.rep(" \t\r\n\v\f", 10000)}})
+            test.is_nil(err)
+            test.eq(result.error, "content event missing content")
+            test.eq(#result.documents, 0)
+        end)
         test.it("retains inline events after their artifact is unavailable", function()
             local result, err = call({type="kickside.knowledge.events:content.upserted",
                 external={external_id="upload:missing"},body={content="Retained inline document",
