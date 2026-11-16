@@ -109,7 +109,9 @@ function M.trim(value: any): string
     local first = value:find("%S")
     if not first then return "" end
     local last = #value
-    while value:sub(last, last):match("%s") do
+    while last > first do
+        local byte = value:byte(last)
+        if byte ~= 32 and (byte < 9 or byte > 13) then break end
         last = last - 1
     end
     return value:sub(first, last)

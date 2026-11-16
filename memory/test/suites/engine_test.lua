@@ -8,9 +8,39 @@ local types = require("types")
 
 local function define_tests()
     test.describe("memory knowledge base engine", function()
+        test.it("matches pattern trimming for every boundary byte", function()
+            local function check(value)
+                test.eq(types.trim(value), value:match("^%s*(.-)%s*$"))
+            end
+            for byte = 0, 255 do
+                local char = string.char(byte)
+                check(char)
+                check(char .. "x" .. char)
+                check(" \t\r\n\v\f" .. char .. "x" .. char .. "\f\v\n\r\t ")
+            end
+        end)
+
+        test.it("matches pattern trimming for randomized byte strings", function()
+            local state = 1729
+            local function random(limit)
+                state = (state * 16807) % 2147483647
+                return state % limit
+            end
+            for _ = 1, 50000 do
+                local bytes = {}
+                for index = 1, random(64) do
+                    bytes[index] = string.char(random(256))
+                end
+                local whitespace = " \t\r\n\v\f"
+                local value = whitespace:sub(1, random(7)) .. table.concat(bytes) .. whitespace:sub(1, random(7))
+                test.eq(types.trim(value), value:match("^%s*(.-)%s*$"))
+            end
+        end)
+
         test.it("trims long strings while preserving interior bytes", function()
             local text = string.rep("word ", 10000) .. "end\0é"
             local whitespace = string.rep(" \t\r\n\v\f", 10000)
+            test.eq(types.trim("x" .. whitespace), "x")
             test.eq(types.trim(text), text)
             test.eq(types.trim(whitespace .. text .. whitespace), text)
             test.eq(types.trim(whitespace), "")
