@@ -4,9 +4,21 @@ local test = require("test")
 local fixture = require("fixture")
 local json = require("json")
 local registry = require("registry")
+local types = require("types")
 
 local function define_tests()
     test.describe("memory knowledge base engine", function()
+        test.it("trims long strings while preserving interior bytes", function()
+            local text = string.rep("word ", 10000) .. "end\0é"
+            local whitespace = string.rep(" \t\r\n\v\f", 10000)
+            test.eq(types.trim(text), text)
+            test.eq(types.trim(whitespace .. text .. whitespace), text)
+            test.eq(types.trim(whitespace), "")
+            test.eq(types.trim(""), "")
+            test.eq(types.trim(false), "")
+            test.eq(types.trim(nil), "")
+        end)
+
         test.it("supplies working host defaults for automatic installation", function()
             for name, expected in pairs({ui_server="app:gateway", api_router="app:api", target_db="app:db"}) do
                 local entry, err=registry.get("kickside.memory:"..name)

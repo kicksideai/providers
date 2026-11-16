@@ -135,6 +135,7 @@ entries:
       test: wippy.test:test
       fixture: app.suites:fixture
       deletion_worker: app:deletion_test_worker
+      types: kickside.memory:types
 
   - name: tools_test
     kind: function.lua
