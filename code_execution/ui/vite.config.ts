@@ -17,7 +17,7 @@ export default defineConfig({
         },
       },
     }),
-    wippyComponentPlugin(),
+    wippyComponentPlugin({ required: true, lazyEntries: ['code-body'] }),
   ],
   resolve: { dedupe: ['vue', '@iconify/vue', '@wippy-fe/proxy'] },
   define: { 'process.env.NODE_ENV': JSON.stringify('production'), 'process.env': '{}' },

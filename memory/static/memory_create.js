@@ -1,13 +1,8 @@
-import { u as o, P as t } from "./wc-runtime-Cnj2CWxS.js";
-import { l as n, m as i } from "./lazy-CG__0OGb.js";
-import "@iconify/vue";
+import { l as o, P as i } from "./wc-runtime-DBE0CU59.js";
+import { m as n } from "./element-CzSM43lK.js";
 import { define as m } from "@wippy-fe/proxy";
-const r = n(
-  () => import("./MemoryCreate-CbP4Cm6G.js"),
-  { loading: "Loading the memory settings…", failed: "Could not load the memory settings. Reload the page to try again." },
-  o
-), e = i(
-  { rootComponent: r, plugins: [t] },
+const e = n(
+  o(() => import("./MemoryCreate-Cw1DrRo8.js").then((t) => ({ rootComponent: t.default, plugins: [i] })), { surface: "compact", loading: "Loading the memory settings…", failed: "Could not load the memory settings. Reload the page to try again.", delay: 200, timeout: 3e4 }),
   {
     type: "object",
     properties: {

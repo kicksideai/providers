@@ -1,7 +1,7 @@
-import { defineComponent as T, ref as d, watch as D, computed as A, openBlock as a, createElementBlock as n, toDisplayString as m, createElementVNode as r, withDirectives as I, vModelCheckbox as L, createVNode as y, unref as s, createCommentVNode as c, Fragment as C, renderList as F, normalizeClass as P, createTextVNode as b } from "vue";
-import { Icon as k } from "@iconify/vue";
-import { b as U, u as q } from "./wc-runtime-Cnj2CWxS.js";
-import { u as B, a as $, r as z, h as R, _ as j, l as G } from "./usePaged-BxR1AKIL.js";
+import { defineComponent as T, ref as d, watch as D, computed as A, openBlock as a, createElementBlock as n, toDisplayString as m, createElementVNode as r, withDirectives as I, vModelCheckbox as L, createVNode as y, unref as s, createCommentVNode as c, Fragment as C, renderList as F, normalizeClass as P, createTextVNode as k } from "vue";
+import { Icon as b } from "@iconify/vue";
+import { u as U, c as q } from "./wc-runtime-DBE0CU59.js";
+import { u as B, a as $, l as z, r as R, h as j, _ as G } from "./usePaged-BxR1AKIL.js";
 import { p as H, e as M } from "./types-DQ01_s6c.js";
 const J = {
   key: 0,
@@ -43,13 +43,13 @@ const J = {
         f.value = M(e);
       }
     }, { immediate: !0, deep: !0 });
-    const l = $(() => w.value, (t) => G(w.value, t)), h = d(""), x = d(!1);
+    const l = $(() => w.value, (t) => z(w.value, t)), h = d(""), x = d(!1);
     D(i, async (t) => {
       if (h.value = "", x.value = !1, !!t)
         try {
-          if (await z(t), t !== i.value) return;
+          if (await R(t), t !== i.value) return;
         } catch (e) {
-          t === i.value && ([403, 404].includes(R(e) ?? 0) || M(e) === "Selected resource is not a memory" ? x.value = !0 : h.value = M(e));
+          t === i.value && ([403, 404].includes(j(e) ?? 0) || M(e) === "Selected resource is not a memory" ? x.value = !0 : h.value = M(e));
         }
     }, { immediate: !0 });
     function V() {
@@ -84,19 +84,19 @@ const J = {
         }, "Memory", -1)),
         e[7] || (e[7] = r("span", { class: "mm-hint" }, "Memory learns from conversations automatically and supplies recall. Models, limits, memory rules and cadence are set on the memory.", -1)),
         h.value ? (a(), n("div", X, [
-          y(s(k), {
+          y(s(b), {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
           r("span", null, m(h.value), 1)
         ])) : x.value ? (a(), n("div", Y, [
-          y(s(k), {
+          y(s(b), {
             icon: "tabler:alert-triangle",
             "aria-hidden": "true"
           }),
           e[4] || (e[4] = r("span", null, "The memory this agent used is not available to you, or is not a Memory knowledge base. Pick one below.", -1))
         ])) : c("", !0),
-        y(j, {
+        y(G, {
           modelValue: g.value,
           "onUpdate:modelValue": e[1] || (e[1] = (o) => g.value = o),
           placeholder: "Find a memory…",
@@ -115,7 +115,7 @@ const J = {
             onKeydown: (v) => K(v, _)
           }, [
             r("span", oe, [
-              y(s(k), {
+              y(s(b), {
                 icon: o.id === i.value ? "tabler:circle-check-filled" : "tabler:brain",
                 "aria-hidden": "true"
               }, null, 8, ["icon"])
@@ -123,23 +123,23 @@ const J = {
             r("span", te, [
               r("span", se, m(o.name), 1),
               o.description || o.item_count !== void 0 ? (a(), n("span", ae, [
-                b(m(o.description), 1),
+                k(m(o.description), 1),
                 o.description && o.item_count !== void 0 ? (a(), n(C, { key: 0 }, [
-                  b(" · ")
+                  k(" · ")
                 ], 64)) : c("", !0),
                 o.item_count !== void 0 ? (a(), n(C, { key: 1 }, [
-                  b(m(o.item_count) + " memories", 1)
+                  k(m(o.item_count) + " memories", 1)
                 ], 64)) : c("", !0)
               ])) : c("", !0)
             ])
           ], 42, ee))), 128)),
           s(l).loading.value && !s(l).rows.value.length ? (a(), n("div", ne, [
-            y(s(k), {
+            y(s(b), {
               icon: "tabler:loader-2",
               class: "spin",
               "aria-hidden": "true"
             }),
-            e[5] || (e[5] = b("Loading memories…", -1))
+            e[5] || (e[5] = k("Loading memories…", -1))
           ])) : s(l).error.value ? (a(), n("div", re, m(s(l).error.value), 1)) : s(l).rows.value.length ? c("", !0) : (a(), n("div", le, m(s(w) ? "No memory matches." : "No memories yet. Create one from Knowledge → New knowledge base → Memory."), 1))
         ]),
         s(l).next.value !== null ? (a(), n("button", {
@@ -157,4 +157,4 @@ const J = {
 export {
   pe as default
 };
-//# sourceMappingURL=MemorySettings-BRJZsSj5.js.map
+//# sourceMappingURL=MemorySettings-D9qqUe95.js.map

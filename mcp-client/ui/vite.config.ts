@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 import { proxyExternals, wcRuntimeChunk } from '../../wc-build'
 
 export default defineConfig(({ mode }) => ({
-  plugins: [vue(), wippyComponentPlugin()],
+  plugins: [vue(), wippyComponentPlugin({ required: true, lazyEntries: ['connect', 'picker'] })],
   // Library builds leave Vue's environment checks intact unless defined here.
   define: { 'process.env.NODE_ENV': JSON.stringify(mode === 'development' ? 'development' : 'production') },
   build: {

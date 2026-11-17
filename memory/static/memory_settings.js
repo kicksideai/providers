@@ -1,22 +1,17 @@
-import { P as t, u as e } from "./wc-runtime-Cnj2CWxS.js";
-import { l as n, m as r } from "./lazy-CG__0OGb.js";
-import "@iconify/vue";
-import { define as i } from "@wippy-fe/proxy";
+import { l as o, P as i } from "./wc-runtime-DBE0CU59.js";
+import { m as n } from "./element-CzSM43lK.js";
+import { define as r } from "@wippy-fe/proxy";
 const m = { props: { type: "object", properties: { config: { type: "object", description: "Memory trait context { memory_id }.", default: {} } } } }, p = {
   wippy: m
-}, s = n(
-  () => import("./MemorySettings-BRJZsSj5.js"),
-  { loading: "Loading the memory settings…", failed: "Could not load the memory settings. Reload the page to try again." },
-  e
-), o = r(
-  { rootComponent: s, plugins: [t] },
+}, e = n(
+  o(() => import("./MemorySettings-D9qqUe95.js").then((t) => ({ rootComponent: t.default, plugins: [i] })), { surface: "compact", loading: "Loading the memory settings…", failed: "Could not load the memory settings. Reload the page to try again.", delay: 200, timeout: 3e4 }),
   p.wippy.props
 );
-async function d() {
-  return o;
+async function c() {
+  return e;
 }
-i(import.meta.url, o);
+r(import.meta.url, e);
 export {
-  d as webComponent
+  c as webComponent
 };
 //# sourceMappingURL=memory_settings.js.map
