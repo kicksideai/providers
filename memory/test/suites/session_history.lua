@@ -2,6 +2,7 @@
 
 local context_repo = require("context_repo")
 local session_repo = require("session_repo")
+local reader = require("reader")
 local writer = require("writer")
 local message_handlers = require("message_handlers")
 local consts = require("consts")
@@ -22,11 +23,12 @@ local function ensure_session(user_id: string, session_id: string)
     return true
 end
 
-local function input_context(user_id: string, session_id: string, session_writer: any): any
+local function input_context(user_id: string, session_id: string, session_reader: any, session_writer: any): any
     return {
         session_id = session_id,
         user_id = user_id,
         admission_actor_id = user_id,
+        reader = session_reader,
         writer = session_writer,
         held = {},
         status = consts.STATUS.IDLE,
@@ -50,7 +52,7 @@ local function emitted_type(role: string): string?
     return nil
 end
 
-local function record_one(user_id: string, session_id: string, session_writer: any, message: any)
+local function record_one(user_id: string, session_id: string, session_reader: any, session_writer: any, message: any)
     if type(message) ~= "table" or type(message.id) ~= "string" or message.id == ""
         or type(message.role) ~= "string" or type(message.content) ~= "string"
         or type(message.author) ~= "table" then
@@ -59,7 +61,7 @@ local function record_one(user_id: string, session_id: string, session_writer: a
 
     local accepted = input_type(message.role)
     if accepted then
-        local result, admit_err = message_handlers.handle_message(input_context(user_id, session_id, session_writer), {
+        local result, admit_err = message_handlers.handle_message(input_context(user_id, session_id, session_reader, session_writer), {
             data = { type = accepted, text = message.content },
             author = message.author,
         })
@@ -101,11 +103,13 @@ function M.record(args: any)
     end
     local _, setup_err = ensure_session(args.user_id, args.session_id)
     if setup_err then return nil, setup_err end
+    local session_reader, read_err = reader.open(args.session_id)
+    if not session_reader then return nil, read_err end
     local session_writer, writer_err = writer.new(args.session_id)
     if not session_writer then return nil, writer_err end
     local event_ids = {}
     for _, message in ipairs(args.messages) do
-        local _, record_err = record_one(args.user_id, args.session_id, session_writer, message)
+        local _, record_err = record_one(args.user_id, args.session_id, session_reader, session_writer, message)
         if record_err then return nil, record_err end
         event_ids[#event_ids + 1] = message.id
     end

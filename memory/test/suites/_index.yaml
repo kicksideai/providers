@@ -32,6 +32,7 @@ entries:
     imports:
       context_repo: wippy.session.persist:context_repo
       session_repo: wippy.session.persist:session_repo
+      reader: wippy.session.persist:reader
       writer: wippy.session.persist:writer
       message_handlers: wippy.session.process:message_handlers
       consts: wippy.session:consts
@@ -44,6 +45,7 @@ entries:
     imports:
       context_repo: wippy.session.persist:context_repo
       session_repo: wippy.session.persist:session_repo
+      reader: wippy.session.persist:reader
       writer: wippy.session.persist:writer
       message_handlers: wippy.session.process:message_handlers
       consts: wippy.session:consts
@@ -56,6 +58,7 @@ entries:
     imports:
       context_repo: wippy.session.persist:context_repo
       session_repo: wippy.session.persist:session_repo
+      reader: wippy.session.persist:reader
       writer: wippy.session.persist:writer
       message_handlers: wippy.session.process:message_handlers
       consts: wippy.session:consts
