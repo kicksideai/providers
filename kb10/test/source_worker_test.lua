@@ -43,13 +43,14 @@ local function define_tests()
                     worker_config={target_kb_ids={uuid()}},
                 },worker_deps({embedder=fake_embedder,
                     dispatcher=function() return nil,"artifact unavailable",retryable end}))
-                test.is_nil(err)
                 if retryable then
-                    test.eq(result.patch.last_status,"retrying")
-                    test.eq(result.patch.last_failed_batch.attempts,1)
-                    test.contains(result.patch.last_error,"artifact unavailable")
+                    test.is_nil(result)
+                    test.eq(err:kind(), errors.UNAVAILABLE)
+                    test.is_true(err:retryable())
+                    test.contains(tostring(err), "artifact unavailable")
                 else
-                    test.eq(result.patch.last_status,"skipped_no_items")
+                    test.is_nil(err)
+                    test.eq(result.patch.last_status, "skipped_no_items")
                 end
             end)
         end
@@ -188,7 +189,7 @@ local function define_tests()
             end)
         end
 
-        test.it("durably retries when a target KB has no source materializer", function()
+        test.it("dead-letters a batch when a target KB has no source materializer", function()
             local missing_kb_id = uuid()
             local result, err = source_worker.run_with_deps({
                 thread_id = uuid(),
@@ -205,9 +206,10 @@ local function define_tests()
 
             test.is_nil(err)
             test.not_nil(result)
-            test.eq(result.patch.last_status, "retrying")
-            test.is_true(string.find(tostring(result.patch.last_error), "no source materializer", 1, true) ~= nil)
-            test.eq(result.patch.last_failed_batch.attempts, 1)
+            test.eq(result.patch.last_status, "dead_lettered")
+            test.contains(result.patch.last_error, "no source materializer")
+            test.eq(result.last_seq, 1)
+            test.eq(#result.patch.dead_lettered_batches, 1)
         end)
 
         test.it("inserts a document into a kb10 KB", function()
@@ -377,10 +379,10 @@ local function define_tests()
             }, worker_deps({ embedder = bad_embedder, dispatcher = doc_dispatcher,
                  resolve_materialized_store = resolver }))
 
-            test.is_nil(err)
-            test.eq(result.patch.last_status, "retrying")
-            test.eq(result.metrics.documents_inserted, 0)
-            test.eq(result.metrics.items_failed, 1)
+            test.is_nil(result)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(err:retryable())
+            test.contains(tostring(err), "vector missing")
 
             local nodes = fetch_kb10_nodes(db, cid) or {}
             test.eq(#nodes, 0, "retryable vector failures must not leave materialized graph nodes")
@@ -439,11 +441,10 @@ local function define_tests()
             }, worker_deps({ embedder = failing_embedder, dispatcher = doc_dispatcher,
                  resolve_materialized_store = resolver }))
 
-            test.is_nil(err)
-            test.not_nil(result)
-            test.eq(result.patch.last_status, "retrying")
-            test.is_true(string.find(tostring(result.patch.last_error), "embed failed", 1, true) ~= nil)
-            test.eq(result.metrics.items_failed, 1)
+            test.is_nil(result)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.is_true(err:retryable())
+            test.contains(tostring(err), "embed backend unavailable")
 
             local nodes = fetch_kb10_nodes(db, cid) or {}
             test.eq(#nodes, 0, "retryable embedding failures must not leave materialized graph nodes")
@@ -759,11 +760,10 @@ local function define_tests()
                 }, worker_deps({ embedder = fake_embedder, dispatcher = del_dispatcher,
                      resolve_materialized_store = resolver }))
 
-                test.is_nil(err)
-                test.not_nil(result)
-                test.eq(result.patch.last_status, "retrying")
-                test.is_true(string.find(tostring(result.patch.last_error), "delete_documents_by_external_id failed", 1, true) ~= nil)
-                test.eq(result.patch.last_failed_batch.attempts, 1)
+                test.is_nil(result)
+                test.eq(err:kind(), errors.UNAVAILABLE)
+                test.is_true(err:retryable())
+                test.contains(tostring(err), "delete backend unavailable")
 
                 teardown_kb10_store(db, cid)
             end)

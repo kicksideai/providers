@@ -21,7 +21,7 @@ local function define_tests()
         local db = sql.get(APP_DB)
         if not db then error("db unavailable") end
 
-        test.it("durably retries extractor lineage that points at a different thread", function()
+        test.it("dead-letters extractor lineage that points at a different thread", function()
             local cid = bootstrap_kb10_store(db)
             local resolver = materialized_store_resolver_for({ [cid] = true })
             local dispatcher = dispatcher_for({
@@ -62,9 +62,10 @@ local function define_tests()
 
             test.is_nil(err)
             test.not_nil(result)
-            test.eq(result.patch.last_status, "retrying")
-            test.is_true(string.find(tostring(result.patch.last_error), "source_ref.thread_id mismatch", 1, true) ~= nil)
-            test.eq(result.patch.last_failed_batch.attempts, 1)
+            test.eq(result.patch.last_status, "dead_lettered")
+            test.contains(result.patch.last_error, "source_ref.thread_id mismatch")
+            test.eq(result.last_seq, 1)
+            test.eq(#result.patch.dead_lettered_batches, 1)
 
             local nodes = fetch_kb10_nodes(db, cid)
             test.eq(#nodes, 0)

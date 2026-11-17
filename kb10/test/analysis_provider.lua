@@ -1,12 +1,16 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-local function embed(args: any): any
+local function embed(args: any): (any, any)
     local vectors = {}
-    for _ in ipairs(args.input) do
+    for _, input in ipairs(args.input) do
+        if args.model == "source-unavailable"
+            or (args.model == "source-prefix" and input:find("Blocked document", 1, true)) then
+            return nil, errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = "embedding backend unavailable" })
+        end
         local vector = {}
         for i = 1, 512 do vector[i] = i == 1 and 1 or 0 end
         vectors[#vectors + 1] = vector
     end
-    return { success = true, result = { embeddings = vectors } }
+    return { success = true, result = { embeddings = vectors } }, nil
 end
 local function structured_output(args: any): (any, any)
     if args.model == "unavailable" then

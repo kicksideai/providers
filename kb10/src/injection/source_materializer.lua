@@ -103,9 +103,62 @@ type DocIngestResult = {
     chunk_count: number,
     failed: number,
     system_failed: number?,
+    consumed: number,
     materialization: any?,
     notifications: {any}?,
 }
+
+-- Classify a per-document failure so the worker can flag genuinely system-level
+-- causes (resource/registry exhaustion, provider outages, the store being
+-- unavailable) distinctly from content errors (a malformed or unembeddable
+-- document). A system failure points at the instance, not the document, and is
+-- worth retrying; a content failure is the document's own and is not.
+local CONTENT_FAILURE_PATTERNS: {string} = {
+    "document chunk count exceeds kb policy",
+    "document content too large",
+    "invalid byte sequence for encoding",
+    "no materialized summary or chunks",
+}
+
+local SYSTEM_FAILURE_PATTERNS: {string} = {
+    "registry overflow",
+    "stack overflow",
+    "out of memory",
+    "cannot allocate",
+    "vector_dimensions unavailable",
+    "store unavailable",
+    "embed failed",
+    "embed returned",
+    "vector missing",
+    "vector dimension",
+    "vector contains non-number",
+    "timeout",
+    "connection refused",
+    "unavailable",
+    "failed to connect to database",
+    "connection reset",
+    "database is locked",
+    "too many requests",
+    "rate limit",
+}
+
+local function is_system_failure(message: any): boolean
+    local lowered = tostring(message):lower()
+    for _, pat in ipairs(CONTENT_FAILURE_PATTERNS) do
+        if lowered:find(pat, 1, true) then return false end
+    end
+    if errors.is(message, errors.UNAVAILABLE) or errors.is(message, errors.TIMEOUT)
+        or errors.is(message, errors.RATE_LIMITED) then
+        return true
+    end
+    for _, pat in ipairs(SYSTEM_FAILURE_PATTERNS) do
+        if lowered:find(pat, 1, true) then return true end
+    end
+    local status = lowered:match("%f[%d]([45]%d%d)%f[%D]")
+    return status == "429" or status == "502" or status == "503" or status == "504"
+end
+
+M.is_system_failure = is_system_failure
 
 local function trim(s: any): string
     if type(s) ~= "string" then return "" end
@@ -613,6 +666,8 @@ function M.plan_document_writes(documents: any, opts: MaterializationOptions, su
             local compressed, summary_err = summarize(doc)
             if type(compressed) == "string" and trim(compressed) ~= "" then
                 summary_text = compressed
+            elseif is_system_failure(summary_err) then
+                return nil, nil, tostring(summary_err)
             elseif summary_err then
                 -- The document still gets the deterministic head summary below;
                 -- the model's own cause would otherwise be lost.
@@ -754,7 +809,7 @@ function M.plan_document_writes(documents: any, opts: MaterializationOptions, su
     return plans, embed_texts
 end
 
-function M.delete_documents_from_store(target, deletes): (any, string?)
+function M.delete_documents_from_store(target, deletes): (any, string?, boolean?)
     local store_row = target.store_row or target
     local store_id = store_row.id
     local result = {
@@ -789,7 +844,7 @@ function M.delete_documents_from_store(target, deletes): (any, string?)
             if delete_err then
                 local message = "delete_documents_by_external_id failed: " .. tostring(delete_err)
                 logger:warn("delete_documents_by_external_id failed", { error = delete_err })
-                return result, message
+                return result, message, M.is_system_failure(delete_err)
             end
 
             local removed_row = type(removed) == "table" and removed or nil
@@ -901,49 +956,6 @@ M.DEFAULT_MAX_IMAGE_CAPTIONS_PER_DOC = DEFAULT_MAX_IMAGE_CAPTIONS_PER_DOC
 M.MAX_IMAGE_CAPTIONS_PER_DOC = MAX_IMAGE_CAPTIONS_PER_DOC
 M.MAX_SUMMARY_CHARS = MAX_SUMMARY_CHARS
 
--- Classify a per-document failure so the worker can flag genuinely system-level
--- causes (resource/registry exhaustion, provider outages, the store being
--- unavailable) distinctly from content errors (a malformed or unembeddable
--- document). A system failure points at the instance, not the document, and is
--- worth retrying; a content failure is the document's own and is not.
-local CONTENT_FAILURE_PATTERNS: {string} = {
-    "document chunk count exceeds kb policy",
-    "document content too large",
-    "invalid byte sequence for encoding",
-    "no materialized summary or chunks",
-}
-
-local SYSTEM_FAILURE_PATTERNS: {string} = {
-    "registry overflow",
-    "stack overflow",
-    "out of memory",
-    "cannot allocate",
-    "vector_dimensions unavailable",
-    "store unavailable",
-    "embed failed",
-    "embed returned",
-    "vector missing",
-    "vector dimension",
-    "vector contains non-number",
-    "timeout",
-    "connection refused",
-    "unavailable",
-}
-
-local function is_system_failure(message: any): boolean
-    if type(message) ~= "string" then return false end
-    local lowered = (message :: string):lower()
-    for _, pat in ipairs(CONTENT_FAILURE_PATTERNS) do
-        if lowered:find(pat, 1, true) then return false end
-    end
-    for _, pat in ipairs(SYSTEM_FAILURE_PATTERNS) do
-        if lowered:find(pat, 1, true) then return true end
-    end
-    return false
-end
-
-M.is_system_failure = is_system_failure
-
 local function validate_vector(vec: any, dims: any, label: string): string?
     if type(vec) ~= "table" then
         return label .. " vector missing"
@@ -974,12 +986,13 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         summary_count = 0,
         chunk_count = 0,
         failed = 0,
+        consumed = 0,
         materialization = materialization,
         notifications = {},
     }
 
     if materialization_err then return result, materialization_err end
-    if not materialization then return result, "materialization options unavailable" end
+    if not materialization then return result, "source materializer returned no options" end
     local materialization_opts: MaterializationOptions = materialization
     if not store then return result, "materializer store unavailable" end
     if #documents == 0 then return result, nil end
@@ -1036,16 +1049,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         return result, "vector_dimensions unavailable: " .. tostring(dim_err)
     end
 
-    -- Per-document fault isolation. Plan, embed, and write each document on its
-    -- own so one document that throws mid-materialization (a registry overflow on
-    -- a pathological block, a provider rejection, a malformed chunk) fails in
-    -- isolation and the rest of the batch still materializes. A single document's
-    -- summary/chunks/images are still planned and embedded together, preserving
-    -- their order and node associations; documents simply no longer share a fate.
-    -- A thrown error and a returned error are both recorded as a per-document
-    -- failure: the document is counted failed with its specific cause, never
-    -- aborting the loop.
-    local function materialize_one(doc: any): (boolean, string?)
+    local function materialize_one(doc: any): (boolean, string?, string?)
         local content = type(doc.content) == "string" and doc.content or ""
         local max_doc_chars = tonumber(materialization_opts.max_document_content_chars)
         if max_doc_chars and max_doc_chars > 0 and #content > max_doc_chars then
@@ -1200,8 +1204,12 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             },
             children = children,
         })
-        if replace_err or not replacement then
-            return false, "replace document failed: " .. tostring(replace_err or "no result")
+        if replace_err then
+            local classification = is_system_failure(replace_err) and "infrastructure" or nil
+            return false, "replace document failed: " .. tostring(replace_err), classification
+        end
+        if type(replacement) ~= "table" then
+            return false, "replace document returned an invalid result", "deterministic"
         end
 
         result.inserted = result.inserted + 1
@@ -1234,16 +1242,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         return true, nil
     end
 
-    -- Dead-letter a poison document onto the KB-owned source-document read-model:
-    -- write the document node by canonical identity with status=failed and the
-    -- captured error (no children, since it never materialized). This replaces any
-    -- prior row for the same (external_source, external_id), so the failed doc is
-    -- queryable on the KB and re-ingestion replaces it with a completed row. A
-    -- failure to persist the dead-letter is logged but never re-raised: the
-    -- isolation guarantee (siblings still materialize, cursor still advances) holds
-    -- regardless. Returns the document node id when the row was written.
-    local function dead_letter(doc: any, failure: string, system_level: boolean): any?
-        if type(doc) ~= "table" then return nil end
+    local function dead_letter(doc: any, failure: string): (any, any)
         local meta = {}
         for k, v in pairs(doc.metadata or {}) do meta[k] = v end
         meta.external_source = meta.external_source or doc.external_source
@@ -1260,7 +1259,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         meta.title = "Indexing failed: " .. failure
         if meta.label ~= nil then meta.label = meta.title end
         meta.error = failure
-        meta.system_level = system_level
+        meta.system_level = false
 
         local ok, replacement, replace_err = pcall(function()
             return store:replace_document({
@@ -1276,56 +1275,35 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         end)
         if not ok then
             logger:warn("dead-letter persist raised", { external_id = meta.external_id, error = tostring(replacement) })
-            return nil
+            return nil, replacement
         end
         if replace_err or type(replacement) ~= "table" then
-            logger:warn("dead-letter persist failed", { external_id = meta.external_id, error = tostring(replace_err) })
-            return nil
+            local cause = replace_err or "replace document returned an invalid result"
+            logger:warn("dead-letter persist failed", { external_id = meta.external_id, error = tostring(cause) })
+            return nil, cause
         end
-        return replacement
+        return replacement, nil
     end
 
-    -- Drive each document through its own isolated materialization. Content-level
-    -- failures stay isolated so poison documents cannot head-of-line-block their
-    -- siblings. If every document fails for a system-level cause (provider down,
-    -- store unavailable, malformed provider vectors), the batch returns an error
-    -- without writing failed rows so the source worker can retry instead of
-    -- advancing a cursor through an infrastructure outage.
-    local system_failures = 0
-    local first_system_failure = nil
     for _, doc in ipairs(documents) do
-        -- pcall returns (call_ok, materialize_one's first return, second return).
-        local call_ok, doc_ok, doc_err = pcall(materialize_one, doc)
-        local succeeded = false
-        local failure = nil
-        if not call_ok then
-            -- materialize_one raised (e.g. a registry overflow on a pathological
-            -- block); doc_ok holds the raised error.
-            failure = tostring(doc_ok)
-        elseif doc_ok == true then
-            succeeded = true
-        else
-            failure = tostring(doc_err or "document materialization failed")
-        end
-
-        if not succeeded then
-            local failure_message = failure or "document materialization failed"
-            result.failed = result.failed + 1
-            local system_level = is_system_failure(failure_message)
+        local call_ok, doc_ok, doc_err, classification = pcall(materialize_one, doc)
+        if not call_ok or doc_ok ~= true then
+            local cause = (call_ok and doc_err) or doc_ok
+            local failure = tostring(cause)
+            local system_level = classification == "infrastructure" or is_system_failure(cause)
             logger:warn("document materialization failed", {
-                error = failure_message,
+                error = failure,
                 external_id = doc.external_id,
                 system_level = system_level,
             })
-            local dead_letter_result = nil
+            result.failed = result.failed + 1
+            if classification == "deterministic" then return result, failure end
+            local dead_letter_result, persist_err
             if not system_level then
-                dead_letter_result = dead_letter(doc, failure_message, system_level)
+                dead_letter_result, persist_err = dead_letter(doc, failure)
+                system_level = is_system_failure(persist_err)
             end
-            local dead_letter_node_id = type(dead_letter_result) == "table" and dead_letter_result.document_node_id or nil
-            if system_level then
-                system_failures = system_failures + 1
-                if not first_system_failure then first_system_failure = failure_message end
-            end
+            local dead_letter_node_id = dead_letter_result and dead_letter_result.document_node_id
             local removed_documents = tonumber(dead_letter_result and dead_letter_result.removed_document_count) or tonumber(dead_letter_result and dead_letter_result.removed) or 0
             local removed_failed_documents = tonumber(dead_letter_result and dead_letter_result.removed_failed_document_count) or 0
             local removed_summaries = tonumber(dead_letter_result and dead_letter_result.removed_summary_count) or 0
@@ -1338,7 +1316,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
                 user_id = type(doc) == "table" and type(doc.metadata) == "table"
                     and doc.metadata.actor_id or nil,
                 status = "failed",
-                error = failure_message,
+                error = failure,
                 system_level = system_level,
                 document_node_id = dead_letter_node_id,
                 persisted = persisted,
@@ -1352,13 +1330,13 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
                 summary_delta = persisted and -removed_summaries or 0,
                 embedding_delta = persisted and -(removed_chunks + removed_summaries) or 0,
             }
+            if system_level then
+                result.system_failed = 1
+                return result, tostring(persist_err or failure)
+            end
+            if persist_err then return result, tostring(persist_err) end
         end
-    end
-
-    result.system_failed = system_failures
-    if result.failed > 0 and result.inserted == 0 and system_failures == result.failed then
-        return result, "system-level document materialization failed for all documents: " ..
-            tostring(first_system_failure or "unknown")
+        result.consumed = result.consumed + 1
     end
 
     return result, nil

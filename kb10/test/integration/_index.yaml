@@ -90,6 +90,24 @@ entries:
     imports:
       kb10_store: kickside.kb10.persist:store
 
+  - name: source_cursor_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_injection }
+    source: file://source_cursor_test.lua
+    method: run
+    modules: [sql, json, uuid]
+    imports:
+      test: wippy.test:test
+      store: kickside.kb10.persist:store
+      meta_projection: kickside.kb10.injection:meta_projection
+      models: kickside.models.persist:repo
+      invoke: kickside.core.projections:invoke
+      projections: kickside.core.projections.persist:writer
+      claim: kickside.core.jobs.persist:claim
+      lifecycle: kickside.core.jobs.persist:lifecycle
+      jobs: kickside.core.jobs:jobs
+      job_types: kickside.core.jobs:types
+
   # Node methods are not bound as contract functions, lifecycle binding present, graph engine declares query_binding.
   - name: contract_split_test
     kind: function.lua

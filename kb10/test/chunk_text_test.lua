@@ -705,6 +705,7 @@ local function define_tests()
             test.is_nil(err)
             test.eq(result.inserted, 2)
             test.eq(result.failed, 1)
+            test.eq(result.consumed, 3)
             -- siblings materialized, in order, and the poison one did not
             test.eq(#replaced, 2)
             test.eq(replaced[1], "a")
@@ -745,9 +746,11 @@ local function define_tests()
             test.is_false(source_materializer.is_system_failure("no materialized summary or chunks"))
         end)
 
-        test.it("returns a batch error without writing failed rows when every document hits a system embedding failure", function()
+        test.it("stops at the first system embedding failure without writing failed rows", function()
             local target, replaced, rows = make_target(nil)
+            local calls = 0
             local function down_embedder(_batch, _model, _dims)
+                calls = calls + 1
                 return nil, "provider down"
             end
             local result, err = source_materializer.ingest_documents_into_store(
@@ -755,10 +758,12 @@ local function define_tests()
             )
 
             test.not_nil(err)
-            test.is_true(tostring(err):find("system-level document materialization failed", 1, true) ~= nil)
+            test.contains(tostring(err), "provider down")
+            test.eq(calls, 1)
             test.eq(result.inserted, 0)
-            test.eq(result.failed, 3)
-            test.eq(result.system_failed, 3)
+            test.eq(result.consumed, 0)
+            test.eq(result.failed, 1)
+            test.eq(result.system_failed, 1)
             test.eq(#replaced, 0)
             test.is_nil(rows.a)
             test.is_nil(rows.poison)
