@@ -87,6 +87,22 @@ return {run = test.run_cases(function()
             test.eq(json.encode(requests[2]), observed)
         end)
 
+        it("transcribes a page with omitted or zero model limits", function()
+            for _, output_tokens in ipairs({false, 0}) do
+                card.output_tokens = output_tokens or nil
+                card.max_tokens = output_tokens or nil
+                card.dimensions = output_tokens or nil
+                local params = seed(nil)
+                local result = stage.process(params)
+                test.is_true(result.success, tostring(result.error))
+                test.eq(requests[#requests].options.max_tokens, 4000)
+                local primary, err = parts.read_primary_content(params.upload_id)
+                test.is_nil(err)
+                test.contains(primary.content, reply)
+            end
+            test.eq(#requests, 2)
+        end)
+
         it("uses each concrete card's profile and enforces its model output limit", function()
             for _, profile in ipairs({
                 {system = false, prompt = "OCR:", image_first = true, output_limit = 8192},

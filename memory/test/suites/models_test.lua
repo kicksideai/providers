@@ -599,18 +599,23 @@ local function define_tests()
             test.is_true(stored.config.extraction_model ~= model)
         end)
 
-        test.it("rejects models without a positive output limit consistently", function()
+        test.it("creates memory and extracts without a configured model output limit", function()
             local user = fixture.user()
-            local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = "test-no-output" })
-            test.is_nil(capacity)
-            test.not_nil(capacity_err)
-            test.is_true(tostring(capacity_err):find("requires a positive output limit", 1, true) ~= nil, tostring(capacity_err))
-            local result, err = fixture.op(user, "model_step", { model = "test-no-output", step = "extract", span = {
-                { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." },
-            } })
-            test.is_nil(result)
-            test.not_nil(err)
-            test.is_true(tostring(err):find("requires a positive output limit", 1, true) ~= nil, tostring(err))
+            for _, model in ipairs({ "test-no-output", "test-no-limits" }) do
+                local id, create_err = fixture.try_memory(user, { extraction_model = model })
+                test.is_nil(create_err, tostring(create_err))
+                test.not_nil(id)
+                local _, capacity_err = fixture.op(user, "extraction_capacity", { model = model })
+                test.is_nil(capacity_err, tostring(capacity_err))
+                fixture.script.respond(user, "structured_output", { items = {}, lessons = {}, plans = {} })
+                local result, err = fixture.op(user, "model_step", { model = model, step = "extract", span = {
+                    { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." },
+                } })
+                test.is_nil(err, tostring(err))
+                test.eq(#result.items, 0)
+                local requests = fixture.script.requests(user, "structured_options")
+                test.is_nil(requests[#requests].max_tokens)
+            end
         end)
 
         test.it("admits a 4096-token extraction model on creation and update", function()
