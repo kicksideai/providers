@@ -13,10 +13,15 @@ function M.new(provider, steps)
                 test.eq(filter.meta.class, "connection")
                 return {{component_id = "selected-account", meta = {provider = provider, connection_state = "connected"}}}
             end,
-            get_context = function(id, mask)
+            get_runtime_context = function(id, mask)
                 test.eq(id, "selected-account")
-                if mask == 2 then state.writes = state.writes + 1 else state.reads = state.reads + 1 end
-                return {api_key = "fixture-token"}
+                if mask == 2 then
+                    state.writes = state.writes + 1
+                else
+                    test.eq(mask, 1)
+                    state.reads = state.reads + 1
+                end
+                return {component_id = id, api_key = "fixture-token"}, nil
             end,
         },
         capacity = {new = function() return {invoke = function(id, callback)
