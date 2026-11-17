@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/kicksideai/providers/compare/discord-v0.1.25...discord-v0.1.26) (2026-11-15)
+
+
+### Bug Fixes
+
+* resolve messaging credentials inside provider workers ([#104](https://github.com/kicksideai/providers/issues/104)) ([fadff22](https://github.com/kicksideai/providers/commit/fadff22fd2b817fd75c79a7a3a5cc5877659449f))
+
 ## [0.1.25](https://github.com/kicksideai/providers/compare/discord-v0.1.24...discord-v0.1.25) (2026-11-06)
 
 

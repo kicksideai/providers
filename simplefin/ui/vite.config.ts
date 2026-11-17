@@ -3,12 +3,10 @@ import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
+import { wcRuntimeChunk } from '../../wc-build'
 
 const moduleRoot = fileURLToPath(new URL('.', import.meta.url))
 
-// The KickSide shell serves these packages through its import map; they must
-// stay external so the bundle never ships its own copy (a bundled copy both
-// bloats the artifact and breaks on `process.env` references in library code).
 const shellProvided = [
   'vue',
   'pinia',
@@ -46,11 +44,12 @@ export default defineConfig({
       input: { index: resolve(moduleRoot, 'src/index.ts') },
       external: [...shellProvided, /^primevue\//],
       output: {
+        manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',
         chunkFileNames: '[name]-[hash].js',
         assetFileNames: '[name]-[hash][extname]',
       },
-      preserveEntrySignatures: false,
+      preserveEntrySignatures: 'strict',
     },
     sourcemap: true,
   },

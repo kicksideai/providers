@@ -121,7 +121,7 @@ local function new(runtime: any): any
             profiles[name] = {profile = profile, err = err}
             return profile, err
         end
-        return function(image_bytes: any, page: any): (string?, string?)
+        return function(image_bytes: any, page: any): (string?, string | error | nil)
             if type(image_bytes) ~= "string" or image_bytes == "" then
                 return nil, "ocr: image bytes required"
             end
@@ -148,9 +148,11 @@ local function new(runtime: any): any
                 timeout = timeout,
                 prepare_request = prepare_request,
             })
-            if gen_err or not response then
-                return nil, "ocr: generate failed: " .. tostring(gen_err)
+            if gen_err then
+                return nil, errors.new({kind = gen_err:kind(), retryable = gen_err:retryable(), details = gen_err:details(),
+                    message = "ocr: generate failed: " .. gen_err:message()})
             end
+            if not response then return nil, "ocr: generate failed: no response" end
             -- A generation cut at max_tokens is an incomplete transcription of the page.
             if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
                 return nil, "ocr: generation stopped at the token limit"
@@ -168,7 +170,7 @@ local function new(runtime: any): any
     end
 
     -- Single-page callers retain the original API and option precedence.
-    local function transcribe(image_bytes: any, opts: any): (string?, string?)
+    local function transcribe(image_bytes: any, opts: any): (string?, string | error | nil)
         local prepared, err = prepare(opts)
         if not prepared then return nil, err end
         return prepared(image_bytes, opts)

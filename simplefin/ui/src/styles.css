@@ -147,3 +147,6 @@
 }
 @keyframes sf-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .sf-spinner { animation: none; } }
+
+/* Reserved only while the implementation loads, so a loaded tag keeps its own size (estimate from the form CSS). */
+:host > div:empty, :host > div:has(> [data-lazy-state]) { min-height: 461px; }

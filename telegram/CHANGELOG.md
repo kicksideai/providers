@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/kicksideai/providers/compare/telegram-v0.2.6...telegram-v0.2.7) (2026-11-15)
+
+
+### Bug Fixes
+
+* resolve messaging credentials inside provider workers ([#104](https://github.com/kicksideai/providers/issues/104)) ([fadff22](https://github.com/kicksideai/providers/commit/fadff22fd2b817fd75c79a7a3a5cc5877659449f))
+
 ## [0.2.6](https://github.com/kicksideai/providers/compare/telegram-v0.2.5...telegram-v0.2.6) (2026-11-06)
 
 

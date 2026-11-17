@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.22...llm-ocr-v0.1.23) (2026-11-15)
+
+
+### Bug Fixes
+
+* **llm-ocr:** fail the stage when the model backend is unavailable ([#114](https://github.com/kicksideai/providers/issues/114)) ([f8f7c72](https://github.com/kicksideai/providers/commit/f8f7c727d7296dd8d9ca8bf104ea232abe442ab7))
+
 ## [0.1.22](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.21...llm-ocr-v0.1.22) (2026-11-14)
 
 

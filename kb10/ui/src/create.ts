@@ -1,7 +1,13 @@
-import { WippyVueElement, define } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import Root from './app/KbCreateConfig.vue'
+import { lazyControl } from './lazy'
 import stylesText from './styles.css?inline'
+
+const Root = lazyControl(
+  () => import('./app/KbCreateConfig.vue'),
+  { loading: 'Loading the knowledge base settings…', failed: 'Could not load the knowledge base settings. Reload the page to try again.' },
+  useEvents,
+)
 
 // kx-kb-create — the kb10 configuration element. The knowledge create/edit
 // dialog mounts it by tag (the engine's create_ui_id) in its right pane and owns

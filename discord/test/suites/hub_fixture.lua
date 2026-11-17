@@ -20,4 +20,5 @@ end
 function M.register()
     return process.registry.register(M.HUB_NAME, nil, process.registry.CONSISTENT)
 end
+M.parent = parent
 return M

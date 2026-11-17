@@ -128,3 +128,6 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Reserved only while the implementation loads, so a loaded tag keeps its own size (estimate from the form CSS). */
+:host(kickside-atlassian-connect) > div:empty, :host(kickside-atlassian-connect) > div:has(> [data-lazy-state]) { min-height: 200px; }
