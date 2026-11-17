@@ -89,16 +89,20 @@ function M.run(input)
         local ref = source_ref or {}
         local read_err
         content, read_err = artifact_content_repo.read_artifact_content(ref.upload_id, ref.artifact_id)
-        if read_err then
-            return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err), retryable = true }
+        if read_err or type(content) ~= "string" then
+            local message = "content artifact read failed: " .. tostring(read_err or "no bytes returned")
+            return { documents = {}, deletes = {}, error = message, retryable = true }
         end
-        if type(content) ~= "string" or #content ~= body.content_bytes then
-            return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
+        if #content ~= body.content_bytes then
+            return { documents = {}, deletes = {}, error = "content artifact byte length changed" }
         end
         if body.content_sha256 ~= nil then
             local digest, digest_err = hash.sha256(content)
-            if digest_err or digest ~= body.content_sha256 then
-                return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
+            if digest_err then
+                return { documents = {}, deletes = {}, error = "content artifact hash failed: " .. tostring(digest_err), retryable = true }
+            end
+            if digest ~= body.content_sha256 then
+                return { documents = {}, deletes = {}, error = "content artifact digest changed" }
             end
         end
     end

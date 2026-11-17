@@ -10,6 +10,7 @@ local logger = require("logger"):named("knowledge.injection.source_materializer"
 
 local kb_types = require("kb_types")
 local engines = require("engines")
+local job_types = require("job_types")
 local tabular_chunker = require("tabular_chunker")
 
 local M = {}
@@ -102,7 +103,7 @@ type DocIngestResult = {
     summary_count: number,
     chunk_count: number,
     failed: number,
-    system_failed: number?,
+    system_failed: number,
     consumed: number,
     materialization: any?,
     notifications: {any}?,
@@ -143,15 +144,10 @@ local SYSTEM_FAILURE_PATTERNS: {string} = {
 }
 
 local function is_system_failure(message: any): boolean
-    if errors.is(message, errors.UNAVAILABLE) or errors.is(message, errors.TIMEOUT)
-        or errors.is(message, errors.RATE_LIMITED) then
-        return true
-    end
-    if type(message) ~= "string" and not errors.is(message, errors.INTERNAL)
-        and not errors.is(message, errors.UNKNOWN) then
-        return false
-    end
-    local lowered = tostring(message):lower()
+    local native = job_types.native_error(message)
+    if native then return not job_types.is_deterministic_kind(native:kind()) end
+    if type(message) ~= "string" then return false end
+    local lowered = message:lower()
     for _, pat in ipairs(CONTENT_FAILURE_PATTERNS) do
         if lowered:find(pat, 1, true) then return false end
     end
@@ -162,6 +158,11 @@ local function is_system_failure(message: any): boolean
 end
 
 M.is_system_failure = is_system_failure
+
+local function with_context(cause: any, context: string): any
+    if job_types.native_error(cause) then return errors.wrap(cause, context) end
+    return context .. ": " .. tostring(cause)
+end
 
 local function trim(s: any): string
     if type(s) ~= "string" then return "" end
@@ -201,10 +202,10 @@ local function store_config(store_row)
     return {}
 end
 
-function M.resolve_engine(store_row: any): (any, string?)
+function M.resolve_engine(store_row: any): (any, any)
     local kb_type = trim(store_row and (store_row :: any).kb_type)
     local engine, engine_err = engines.resolve(kb_type)
-    if not engine then return nil, tostring(engine_err or ("no knowledge engine for kb_type " .. kb_type)) end
+    if not engine then return nil, engine_err or ("no knowledge engine for kb_type " .. kb_type) end
     return engine, nil
 end
 
@@ -810,7 +811,7 @@ function M.plan_document_writes(documents: any, opts: MaterializationOptions, su
     return plans, embed_texts
 end
 
-function M.delete_documents_from_store(target, deletes): (any, string?, boolean?)
+function M.delete_documents_from_store(target, deletes): (any, any, boolean?)
     local store_row = target.store_row or target
     local store_id = store_row.id
     local result = {
@@ -843,9 +844,9 @@ function M.delete_documents_from_store(target, deletes): (any, string?, boolean?
                 thread_event_seq = d.thread_event_seq,
             })
             if delete_err then
-                local message = "delete_documents_by_external_id failed: " .. tostring(delete_err)
+                local cause = with_context(delete_err, "delete_documents_by_external_id failed")
                 logger:warn("delete_documents_by_external_id failed", { error = delete_err })
-                return result, message, M.is_system_failure(delete_err)
+                return result, cause, is_system_failure(cause)
             end
 
             local removed_row = type(removed) == "table" and removed or nil
@@ -898,7 +899,7 @@ local function estimate_tokens(text: string): integer
     return math.ceil(#text / EMBED_BYTES_PER_TOKEN)
 end
 
-local function batch_embed(embedder: any, embed_texts: {string}, model: any, dims: any): (any, string?)
+local function batch_embed(embedder: any, embed_texts: {string}, model: any, dims: any): (any, any)
     local all: {any} = {}
     local i = 1
     local n = #embed_texts
@@ -933,7 +934,7 @@ local function batch_embed(embedder: any, embed_texts: {string}, model: any, dim
 
         local vectors, emb_err = embedder(batch, model, dims)
         if emb_err or type(vectors) ~= "table" or type(vectors.result) ~= "table" then
-            return nil, "embed failed: " .. tostring(emb_err)
+            return nil, with_context(emb_err, "embed failed")
         end
         if #vectors.result ~= #batch then
             return nil, "embed returned " .. tostring(#vectors.result) .. " vectors for " .. tostring(#batch) .. " texts"
@@ -974,18 +975,19 @@ local function validate_vector(vec: any, dims: any, label: string): string?
     return nil
 end
 
-function M.prepare_document_ingest(target, worker_config): (any?, string?, boolean?)
+function M.prepare_document_ingest(target, worker_config): (any?, any, boolean?)
     local options, err = M.materialization_options(target, worker_config)
     if not options then return nil, err or "source materializer returned no options" end
     if not target.store then return nil, "materializer store unavailable", true end
     local dims, dim_err = target.store:vector_dimensions({})
     if dim_err or type(dims) ~= "number" then
-        return nil, "vector_dimensions unavailable: " .. tostring(dim_err), true
+        local cause = with_context(dim_err, "vector_dimensions unavailable")
+        return nil, cause, is_system_failure(cause)
     end
     return { options = options, dimensions = dims }, nil
 end
 
-function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, prepared, batch_enricher): (DocIngestResult, string?, boolean?)
+function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, prepared, batch_enricher): (DocIngestResult, any, boolean?)
     local store_row = target.store_row or target
     local store_id = store_row.id
     local store = target.store
@@ -999,6 +1001,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         summary_count = 0,
         chunk_count = 0,
         failed = 0,
+        system_failed = 0,
         consumed = 0,
         materialization = materialization_opts,
         notifications = {},
@@ -1054,7 +1057,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     -- Each document plans, embeds and replaces its own tree. Content failures
     -- stay isolated while the summary, chunks and images of one document keep
     -- their embedding order and node associations.
-    local function materialize_one(doc: any): (boolean, string?, string?)
+    local function materialize_one(doc: any): (boolean, any, boolean?)
         local content = type(doc.content) == "string" and doc.content or ""
         local max_doc_chars = tonumber(materialization_opts.max_document_content_chars)
         if max_doc_chars and max_doc_chars > 0 and #content > max_doc_chars then
@@ -1210,11 +1213,10 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             children = children,
         })
         if replace_err then
-            local classification = is_system_failure(replace_err) and "infrastructure" or nil
-            return false, "replace document failed: " .. tostring(replace_err), classification
+            return false, with_context(replace_err, "replace document failed")
         end
         if type(replacement) ~= "table" then
-            return false, "replace document returned an invalid result", "deterministic"
+            return false, "replace document returned an invalid result", true
         end
 
         result.inserted = result.inserted + 1
@@ -1293,18 +1295,18 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     end
 
     for _, doc in ipairs(documents) do
-        local call_ok, doc_ok, doc_err, classification = pcall(materialize_one, doc)
+        local call_ok, doc_ok, doc_err, invalid_result = pcall(materialize_one, doc)
         if not call_ok or doc_ok ~= true then
             local cause = (call_ok and doc_err) or doc_ok
             local failure = tostring(cause)
-            local system_level = classification == "infrastructure" or is_system_failure(cause)
+            local system_level = is_system_failure(cause)
             logger:warn("document materialization failed", {
                 error = failure,
                 external_id = doc.external_id,
                 system_level = system_level,
             })
             result.failed = result.failed + 1
-            if classification == "deterministic" then return result, failure end
+            if invalid_result then return result, failure end
             local dead_letter_result, persist_err
             if not system_level then
                 dead_letter_result, persist_err = dead_letter(doc, failure)
@@ -1339,9 +1341,9 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             }
             if system_level then
                 result.system_failed = 1
-                return result, tostring(persist_err or failure), true
+                return result, persist_err or cause, true
             end
-            if persist_err then return result, tostring(persist_err) end
+            if persist_err then return result, persist_err end
         end
         result.consumed = result.consumed + 1
     end

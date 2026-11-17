@@ -61,7 +61,7 @@ local function define_tests()
                             external={external_id="upload:"..upload_id},body=body})
                         test.is_nil(stale_err)
                         test.eq(#stale.documents,0)
-                        test.eq(stale.retryable,true)
+                        test.is_false(stale.retryable == true)
                     end
                 end
             end)

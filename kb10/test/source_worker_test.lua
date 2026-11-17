@@ -50,7 +50,7 @@ local function define_tests()
                     test.contains(tostring(err), "artifact unavailable")
                 else
                     test.is_nil(err)
-                    test.eq(result.body.last_status, "skipped_no_items")
+                    test.eq(result.patch.last_status, "skipped_no_items")
                 end
             end)
         end
@@ -108,7 +108,7 @@ local function define_tests()
             }, worker_deps({ embedder = fake_embedder, dispatcher = doc_dispatcher,
                  resolve_materialized_store = resolver }))
             test.is_nil(err)
-            test.eq(result.body.last_status, "skipped_no_events")
+            test.eq(result.patch.last_status, "skipped_no_events")
             teardown_kb10_store(db, cid)
         end)
 
@@ -120,7 +120,7 @@ local function define_tests()
             }, worker_deps({ dispatcher = doc_dispatcher }))
             test.is_nil(err, tostring(err))
             test.eq(result.last_seq, 2)
-            test.eq(result.body.last_status, "skipped_no_items")
+            test.eq(result.patch.last_status, "skipped_no_items")
         end)
 
         test.it("uses only the flat external identity emitted by projections", function()
@@ -334,11 +334,48 @@ local function define_tests()
             teardown_kb10_store(db, cid)
         end)
 
+        test.it("does not request placement for a document deleted in the same prefix", function()
+            local cid = bootstrap_kb10_store(db)
+            local resolver = materialized_store_resolver_for({ [cid] = true })
+            local sent = 0
+            local result, err = source_worker.run_with_deps({
+                thread_id = uuid(),
+                projection = { id = uuid() },
+                events = {
+                    build_event({ seq = 1, type = "fixture.page", body = { page_id = "same", text = "Document" } }),
+                    build_event({ seq = 2, type = "fixture.delete" }),
+                },
+                worker_config = { target_kb_ids = { cid } },
+            }, worker_deps({
+                dispatcher = dispatcher_for({
+                    ["fixture.page"] = document_handler,
+                    ["fixture.delete"] = function()
+                        return { deletes = { { external_source = "fixture", external_id = "same" } } }
+                    end,
+                }),
+                embedder = fake_embedder,
+                execution_identity_row = {},
+                send = function()
+                    sent = sent + 1
+                    return true
+                end,
+                resolve_materialized_store = function(id)
+                    local target = resolver(id)
+                    target.engine.is_graph = true
+                    return target
+                end,
+            }))
+            test.is_nil(err, tostring(err))
+            test.eq(result.metrics.documents_removed, 1)
+            test.eq(sent, 0)
+            teardown_kb10_store(db, cid)
+        end)
+
         test.it("does not request another digest for final no-item batches", function()
             local cid = bootstrap_kb10_store(db)
             local result, err = source_worker.run_with_deps({
                 thread_id = uuid(),
-                projection = { id = uuid() },
+                projection = { id = uuid(), body = { opaque = string.rep("x", 8192) } },
                 range = { from_seq = 1, to_seq = 1, target_seq = 1 },
                 events = {
                     build_event({
@@ -353,8 +390,10 @@ local function define_tests()
 
             test.is_nil(err)
             test.not_nil(result)
-            test.eq(result.body.last_status, "skipped_no_items")
+            test.eq(result.patch.last_status, "skipped_no_items")
             test.is_nil(result.append_events)
+            test.is_nil(result.body)
+            test.is_true(#assert(json.encode(result.patch)) < 256)
 
             teardown_kb10_store(db, cid)
         end)

@@ -95,9 +95,12 @@ entries:
     meta: { type: test, suite: knowledge_injection }
     source: file://source_cursor_test.lua
     method: run
-    modules: [sql, json, uuid]
+    modules: [sql, json, uuid, time]
     imports:
       test: wippy.test:test
+      uploads: kickside.uploads.persist:upload_record_repo
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       store: kickside.kb10.persist:store
       meta_projection: kickside.kb10.injection:meta_projection
       models: kickside.models.persist:repo
@@ -112,9 +115,22 @@ entries:
     kind: function.lua
     meta:
       type: projection.extractor
-      event_types: [fixture.source.extracted]
+      event_types: [fixture.source.extracted, "kickside.knowledge.events:content.upserted"]
+      source: fixture
     source: file://source_cursor_extractor.lua
     method: run
+    modules: [sql]
+
+  - name: source_cursor_store_fault
+    kind: process.lua
+    meta: { type: projection.worker }
+    source: file://source_cursor_store_fault.lua
+    method: run
+    imports:
+      source_worker: kickside.kb10.injection:source_worker_lib
+      source_materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      job_types: kickside.core.jobs:types
 
   # Node methods are not bound as contract functions, lifecycle binding present, graph engine declares query_binding.
   - name: contract_split_test

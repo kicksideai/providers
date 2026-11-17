@@ -13,7 +13,7 @@
 --                              title?, embed_text, metadata, node_type? }, ...] }
 --          | { documents = [], error = "...", retryable? = true }
 -- Explicitly retryable extractor failures use the projection runner's retry policy;
--- ordinary extractor validation errors keep their existing skip behavior.
+-- validation failures on knowledge content events dead-letter that event.
 --
 -- The worker:
 --   1. Builds an event_type → extractor_id map from the registry.
@@ -53,12 +53,18 @@ local MAX_PENDING_ITEMS_GUARD = 10000
 local MAX_DEAD_LETTERED_BATCHES = 50
 local DIGEST_REQUEST_EVENT_TYPE = "kickside.knowledge.events:digest.requested"
 local DIGEST_REQUEST_EXTERNAL_SOURCE = "knowledge.source.finalizer"
+local CONTENT_UPSERTED_EVENT_TYPE = "kickside.knowledge.events:content.upserted"
+local CONTENT_DELETED_EVENT_TYPE = "kickside.knowledge.events:content.deleted"
 local GRAPH_CHANGED_EVENT_TYPE = "kickside.knowledge.events:graph.changed"
 local GRAPH_CHANGED_EXTERNAL_SOURCE = "knowledge.graph.meta"
 -- Companion finalizer marker for graph treatment (concept dedup). Same shape and
 -- source as digest.requested; emitted on the same post-materialization batch so the
 -- digest projection that already consumes the thread can drive treatment too.
 local TREATMENT_REQUEST_EVENT_TYPE = "kickside.knowledge.events:treatment.requested"
+
+local function is_knowledge_content_event(event_type: string): boolean
+    return event_type == CONTENT_UPSERTED_EVENT_TYPE or event_type == CONTENT_DELETED_EVENT_TYPE
+end
 
 local function trim(s: any): string
     if type(s) ~= "string" then return "" end
@@ -686,11 +692,25 @@ local function apply_document_result(state: table, result: any): ()
     end
 end
 
-local function request_graph_placement(deps: any, kb_id: string, target: any, result: any): (boolean?, string?)
+local function request_graph_placement(deps: any, kb_id: string, target: any, result: any, sources: table): (boolean?, string?)
     local engine = type(target) == "table" and target.engine or nil
     if not (type(engine) == "table" and engine.is_graph == true) then
         return true, nil
     end
+
+    local remaining, selected = {}, {}
+    for i = #result.notifications, 1, -1 do
+        local notification = result.notifications[i]
+        local key = source_key(notification.external_source, notification.external_id)
+        local current = key and sources[key]
+        local node_id = trim(notification.document_node_id)
+        if trim(notification.status) == "completed" and current and current.status == "completed"
+            and current.document_node_id == notification.document_node_id and node_id ~= "" and not selected[node_id] then
+            selected[node_id] = true
+            remaining[#remaining + 1] = notification
+        end
+    end
+    if #remaining == 0 then return true, nil end
 
     local store_row = type(target.store_row) == "table" and target.store_row or {}
     local store_id = trim(store_row.id)
@@ -710,34 +730,26 @@ local function request_graph_placement(deps: any, kb_id: string, target: any, re
     end
 
     local send = (type(deps) == "table" and deps.send) or process.send
-    local requested = 0
-    for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
-        if trim(n.status) == "completed" then
-            local document_node_id = trim(n.document_node_id)
-            if document_node_id ~= "" then
-                local user_id = trim(n.user_id)
-                local sent, send_err = send(enrichment_consts.PROCESS, enrichment_consts.TOPIC, {
-                    store_id = store_id,
-                    component_id = kb_id,
-                    document_node_id = document_node_id,
-                    user_id = user_id ~= "" and user_id or nil,
-                    execution_identity = identity_row,
-                })
-                if send_err or sent == false then
-                    return nil, "graph placement request failed: " .. tostring(send_err or "process.send failed")
-                end
-                requested = requested + 1
-            end
+    for i = #remaining, 1, -1 do
+        local notification = remaining[i]
+        local user_id = trim(notification.user_id)
+        local sent, send_err = send(enrichment_consts.PROCESS, enrichment_consts.TOPIC, {
+            store_id = store_id,
+            component_id = kb_id,
+            document_node_id = notification.document_node_id,
+            user_id = user_id ~= "" and user_id or nil,
+            execution_identity = identity_row,
+        })
+        if send_err or sent == false then
+            return nil, "graph placement request failed: " .. tostring(send_err or "process.send failed")
         end
     end
 
-    if requested > 0 then
-        logger:info("graph placement requested", {
-            kb_id = kb_id,
-            store_id = store_id,
-            documents = requested,
-        })
-    end
+    logger:info("graph placement requested", {
+        kb_id = kb_id,
+        store_id = store_id,
+        documents = #remaining,
+    })
     return true, nil
 end
 
@@ -758,10 +770,7 @@ type IngestMetrics = {
     documents_removed: number, items_failed: number,
 }
 
-local function build_digest_request_writes(input: any, thread_id: string, projection_id: string, target_kb_ids: { string }, metrics: IngestMetrics, from_seq: number?, to_seq: number?): { table }?
-    if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
-        return nil
-    end
+local function build_digest_request_writes(input: any, thread_id: string, projection_id: string, target_kb_ids: { string }, from_seq: number?, to_seq: number?): { table }?
     local range = type(input.range) == "table" and input.range or {}
     local target_seq = tonumber(range.target_seq)
     local range_to_seq = tonumber(to_seq)
@@ -862,15 +871,9 @@ local function result_deltas(kb_id: string, results: { any }): table
     return delta
 end
 
-local function build_source_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, results: { any }, status: string, last_error: string?, from_seq: number?, to_seq: number?): { table }?
+local function build_source_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, results: { any }, status: string, last_error: string?, from_seq: number?, to_seq: number?, processed_delta: number): { table }?
     local events = {}
     local seq_key = tostring(math.floor(tonumber(to_seq) or 0))
-    local processed_delta = 0
-    local from_n = tonumber(from_seq)
-    local to_n = tonumber(to_seq)
-    if from_n and to_n and to_n >= from_n then
-        processed_delta = math.floor(to_n - from_n + 1)
-    end
     for _, kb_id in ipairs(target_kb_ids) do
         local delta = result_deltas(kb_id, results)
         local body = {
@@ -903,15 +906,9 @@ local function build_source_meta_writes(thread_id: string, projection_id: string
     return { { thread_id = thread_id, events = events } }
 end
 
-local function build_dead_letter_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, error_message: string, from_seq: number?, to_seq: number?): { table }?
+local function build_dead_letter_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, error_message: string, from_seq: number?, to_seq: number?, processed_delta: number): { table }?
     local events = {}
     local seq_key = tostring(math.floor(tonumber(to_seq) or 0))
-    local processed_delta = 0
-    local from_n = tonumber(from_seq)
-    local to_n = tonumber(to_seq)
-    if from_n and to_n and to_n >= from_n then
-        processed_delta = math.floor(to_n - from_n + 1)
-    end
     for _, kb_id in ipairs(target_kb_ids) do
         events[#events + 1] = {
             type = GRAPH_CHANGED_EVENT_TYPE,
@@ -974,7 +971,6 @@ local function run_with_deps(input_raw, deps)
         return nil, (errors.new({message = "projection.id is required", kind = errors.INVALID}) :: error)
     end
     local body = decode_object(projection.body)
-    body.last_failed_batch = nil
 
     local worker_config = resolve_worker_config(input.worker_config, projection)
     local max_pending_documents = configured_pending_cap(
@@ -1021,12 +1017,30 @@ local function run_with_deps(input_raw, deps)
         items_failed = 0,
     }
 
+    local kb_results, post_materialization_errors = {}, {}
+    local range = type(input.range) == "table" and input.range or {}
+    local from_seq
+    local function finalize_writes(last_seq: number?, changed: boolean)
+        if not changed and body.digest_pending ~= true then return nil end
+        -- The finalizers read the entire store. An outstanding request also
+        -- covers changes from earlier pages whose start is no longer in range.
+        local request_from = body.digest_pending == true and 1 or from_seq
+        return build_digest_request_writes(input, thread_id, projection_id, clean_targets, request_from, last_seq)
+    end
+
     if #raw_events == 0 then
-        body.last_run_at = time.now():utc():format(time.RFC3339)
-        body.last_status = "skipped_no_events"
+        local last_seq = tonumber(range.to_seq)
+        local append_events = finalize_writes(last_seq, false)
+        local patch = {
+            last_run_at = time.now():utc():format(time.RFC3339),
+            last_status = "skipped_no_events",
+        }
+        if append_events then patch.digest_pending = false end
         return {
-            body = body,
+            patch = patch,
             metrics = metrics,
+            append_events = append_events,
+            last_seq = last_seq,
         }, nil
     end
 
@@ -1034,11 +1048,7 @@ local function run_with_deps(input_raw, deps)
         return default_dispatcher(event, deps)
     end
 
-    local kb_results, post_materialization_errors = {}, {}
-    local range = type(input.range) == "table" and input.range or {}
-    local from_seq
-
-    local function dead_letter_event(seq: number, event_error: any)
+    local function dead_letter_event(seq: number, event_error: any, processed: number, final_seq: number?)
         local message = tostring(event_error)
         logger:error("source event dead-lettered", {
             projection_id = projection_id, seq = seq, error = message,
@@ -1057,10 +1067,16 @@ local function run_with_deps(input_raw, deps)
         body.last_error = message
         body.dead_lettered_batches = dead_lettered_batches(body, entry)
         body.kb_results = kb_results
+        body.last_failed_batch = nil
+        local requests = finalize_writes(final_seq, false)
+        if requests then body.digest_pending = nil end
         return {
             body = body,
             metrics = metrics,
-            append_events = build_dead_letter_meta_writes(thread_id, projection_id, clean_targets, message, seq, seq),
+            append_events = merge_append_writes(
+                build_dead_letter_meta_writes(thread_id, projection_id, clean_targets, message, seq, seq, processed),
+                requests
+            ),
             last_seq = seq,
         }, nil
     end
@@ -1133,8 +1149,10 @@ local function run_with_deps(input_raw, deps)
     end
 
     local consumed_seq, stopped_seq, failure, retryable
-    local target_results = {}
-    local function apply_results(results)
+    local processed, failed_processed = 0, 0
+    local failed_final_seq
+    local target_results: { [string]: any } = {}
+    local function apply_results(results: { any })
         for _, result in ipairs(results) do
             local kb_id = result.component_id
             local state = kb_state(body, kb_id)
@@ -1146,11 +1164,12 @@ local function run_with_deps(input_raw, deps)
                 metrics.documents_replaced = metrics.documents_replaced + (tonumber(result.replaced) or 0)
                 metrics.items_failed = metrics.items_failed + (tonumber(result.failed) or 0)
                 apply_document_result(state, result)
+                result.consumed = nil
             end
             local by_kind = target_results[kb_id] or {}
             local aggregate = by_kind[result.kind]
             if aggregate then
-                for _, field in ipairs({ "removed", "missing", "inserted", "replaced", "summary_count", "chunk_count", "failed", "consumed" }) do
+                for _, field in ipairs({ "removed", "missing", "inserted", "replaced", "summary_count", "chunk_count", "failed", "system_failed" }) do
                     if result[field] ~= nil then aggregate[field] = aggregate[field] + result[field] end
                 end
                 for _, notification in ipairs(result.notifications) do
@@ -1163,7 +1182,7 @@ local function run_with_deps(input_raw, deps)
         end
     end
 
-    for _, raw in ipairs(raw_events) do
+    for index, raw in ipairs(raw_events) do
         if type(raw) == "table" then
             local event = {
                 id = tostring(raw.id or ""),
@@ -1179,11 +1198,14 @@ local function run_with_deps(input_raw, deps)
                 },
             }
             from_seq = from_seq or event.seq
+            failed_processed = is_knowledge_content_event(event.type) and 1 or 0
+            -- Core can advance over a filtered tail without another worker call.
+            failed_final_seq = index == #raw_events and (tonumber(range.to_seq) or event.seq) or nil
             local items, dispatch_err, dispatch_retryable = dispatcher(event)
             if dispatch_err then
                 logger:warn("dispatcher error", { event_id = event.id, type = event.type, error = dispatch_err })
-                if dispatch_retryable == true then
-                    stopped_seq, failure, retryable = event.seq, dispatch_err, true
+                if dispatch_retryable == true or failed_processed == 1 then
+                    stopped_seq, failure, retryable = event.seq, dispatch_err, dispatch_retryable
                     break
                 end
                 items = nil
@@ -1218,6 +1240,7 @@ local function run_with_deps(input_raw, deps)
                 metrics.deletes_emitted = metrics.deletes_emitted + #deletes
             end
             consumed_seq = event.seq
+            processed = processed + failed_processed
         end
     end
 
@@ -1226,7 +1249,7 @@ local function run_with_deps(input_raw, deps)
         if retryable then
             return nil, errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = tostring(failure) })
         end
-        return dead_letter_event(stopped_seq, failure)
+        return dead_letter_event(stopped_seq, failure, failed_processed, failed_final_seq)
     end
     local last_seq = consumed_seq
     if not stopped_seq then last_seq = tonumber(range.to_seq) or consumed_seq end
@@ -1237,7 +1260,7 @@ local function run_with_deps(input_raw, deps)
             if results.delete then kb_results[#kb_results + 1] = results.delete end
             if results.document then
                 kb_results[#kb_results + 1] = results.document
-                local placed, placement_err = request_graph_placement(deps, kb_id, targets[kb_id], results.document)
+                local placed, placement_err = request_graph_placement(deps, kb_id, targets[kb_id], results.document, body.kbs[kb_id].sources)
                 if not placed then
                     logger:warn("graph placement request failed", { kb = kb_id, error = placement_err })
                     post_materialization_errors[#post_materialization_errors + 1] = {
@@ -1247,14 +1270,26 @@ local function run_with_deps(input_raw, deps)
             end
         end
     end
-    if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
-        body.last_run_at = time.now():utc():format(time.RFC3339)
-        body.last_status = "skipped_no_items"
-        body.last_from_seq = from_seq or body.last_from_seq
-        body.last_to_seq = to_seq or body.last_to_seq
+    local changed = metrics.documents_emitted > 0 or metrics.deletes_emitted > 0
+    local requests = finalize_writes(last_seq, changed)
+    if not changed then
+        local patch = {
+            last_run_at = time.now():utc():format(time.RFC3339),
+            last_status = "skipped_no_items",
+            last_from_seq = from_seq,
+            last_to_seq = to_seq,
+        }
+        if requests then patch.digest_pending = false end
+        local meta_writes
+        if processed > 0 then
+            meta_writes = build_source_meta_writes(
+                thread_id, projection_id, clean_targets, kb_results, "ready", "", from_seq, to_seq, processed
+            )
+        end
         return {
-            body = body,
+            patch = patch,
             metrics = metrics,
+            append_events = merge_append_writes(meta_writes, requests),
             last_seq = last_seq,
         }, nil
     end
@@ -1291,8 +1326,10 @@ local function run_with_deps(input_raw, deps)
         source_status = "error"
     end
     local append_events = merge_append_writes(
-        build_source_meta_writes(thread_id, projection_id, clean_targets, kb_results, source_status, last_error, from_seq, to_seq),
-        build_digest_request_writes(input, thread_id, projection_id, clean_targets, metrics, from_seq, last_seq)
+        build_source_meta_writes(
+            thread_id, projection_id, clean_targets, kb_results, source_status, last_error, from_seq, to_seq, processed
+        ),
+        requests
     )
 
     body.last_run_at = time.now():utc():format(time.RFC3339)
@@ -1307,6 +1344,8 @@ local function run_with_deps(input_raw, deps)
     body.last_to_seq = to_seq
     body.last_error = last_error
     body.kb_results = kb_results
+    body.digest_pending = requests == nil or nil
+    body.last_failed_batch = nil
     body.post_materialization_errors = #post_materialization_errors > 0 and post_materialization_errors or nil
 
     return {

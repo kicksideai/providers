@@ -3,6 +3,10 @@ local test = require("test")
 local sql = require("sql")
 local json = require("json")
 local uuid = require("uuid")
+local time = require("time")
+local uploads = require("uploads")
+local artifacts = require("artifacts")
+local artifact_cleanup = require("artifact_cleanup")
 local store = require("store")
 local meta_projection = require("meta_projection")
 local models = require("models")
@@ -14,8 +18,8 @@ local jobs = require("jobs")
 local job_types = require("job_types")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
+local DELETE = "kickside.knowledge.events:content.deleted"
 local EXTRACTED = "fixture.source.extracted"
-local JOB_TYPE = "kickside.core.projections:advance"
 local SOURCE_WORKER = "proc://kickside.kb10.injection:source_worker_proc"
 
 type SourceFixture = {
@@ -49,8 +53,8 @@ local function append(fixture: SourceFixture, contents)
         local body = assert(json.encode(event.body))
         assert(tx:execute([[INSERT INTO kickside_event
             (id,thread_id,type,role,body,seq,external_source,external_id,external_version)
-            VALUES ($1,$2,$3,'user',$4,$5,'upload',$6,'1')]],
-            { uuid.v7(), fixture.thread, event.type or UPSERT, body, seq, "document-" .. tostring(seq) }))
+            VALUES ($1,$2,$3,'user',$4,$5,$6,$7,$8)]],
+            { uuid.v7(), fixture.thread, event.type or UPSERT, body, seq, event.source or (event.type == EXTRACTED and "fixture" or "knowledge.kb"), event.external_id or ("document-" .. tostring(seq)), tostring(seq) }))
     end
     assert(tx:execute("UPDATE kickside_thread SET event_count=$1 WHERE id=$2", { head + #contents, fixture.thread }))
     assert(jobs.wake_tx(tx, "thread:" .. fixture.thread))
@@ -62,15 +66,24 @@ end
 local function attempt(fixture: SourceFixture)
     local db = assert(sql.get("app:db"))
     local dbtype = tostring(db:type())
-    assert(db:execute("UPDATE kickside_job SET scheduled_at=created_at WHERE id=$1 AND status='pending'",
-        { fixture.job_id }))
-    local claimed = assert(claim.claim_batch(db, dbtype, 16, nil, nil, nil, { JOB_TYPE }))
-    assert(select(2, db:release()) == nil)
-    local job
-    for _, entry in ipairs(claimed) do
-        if entry.id == fixture.job_id then job = entry end
+    local statement = "SELECT *, CASE WHEN scheduled_at <= CURRENT_TIMESTAMP THEN 1 ELSE 0 END AS due"
+        .. " FROM kickside_job WHERE id=$1 AND status='pending'"
+    local job = assert(assert(db:query(statement, { fixture.job_id }))[1])
+    while tonumber(job.due) ~= 1 do
+        assert(job.scheduled_at, "source projection fixture slot has no scheduled time")
+        time.sleep("50ms")
+        job = assert(assert(db:query(statement, { fixture.job_id }))[1])
     end
-    assert(job, "source projection slot was not claimed")
+    local tx = assert(db:begin())
+    local token = uuid.v7()
+    local lease_until = lifecycle.future_string(dbtype, 60)
+    local leased = assert(claim.lease_row(tx, dbtype, fixture.job_id, token, lease_until, lifecycle.now_string(dbtype)))
+    assert(select(2, tx:commit()) == nil)
+    assert(select(2, db:release()) == nil)
+    job.lease_token = token
+    job.lease_until = lease_until
+    job.attempts = leased.attempts
+    job.execution_seq = leased.execution_seq
     local output, err = invoke.run({ job = job, payload = { cursor_id = fixture.cursor_id } })
     if err then
         db = assert(sql.get("app:db"))
@@ -103,9 +116,9 @@ local function with_source(modes, config, check)
     assert(db:execute("INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test',$2)", { thread, thread }))
     config.target_kb_ids = targets
     local registered = assert(projections.register_projection(db, thread, {
-        kind = "knowledge.injection.source", worker_ref = SOURCE_WORKER,
+        kind = "knowledge.injection.source", worker_ref = config.store_fault and "proc://app:source_cursor_store_fault" or SOURCE_WORKER,
         worker_input_mode = "prefetch_events", worker_config = config, system_identity = true,
-        events = { input = { { type = UPSERT }, { type = EXTRACTED } } },
+        events = { input = { { type = UPSERT }, { type = DELETE }, { type = EXTRACTED } } },
     }))
     assert(select(2, db:release()) == nil)
     local fixture: SourceFixture = {
@@ -128,20 +141,24 @@ local function with_source(modes, config, check)
 end
 
 local function documents(kb_id)
-    return query("SELECT id,content FROM kb10_nodes WHERE store_id=$1 AND node_type='document' ORDER BY content", { kb_id })
+    return query("SELECT id,content,metadata FROM kb10_nodes WHERE store_id=$1 AND node_type='document' ORDER BY content", { kb_id })
 end
 
-local function source_count(fixture: SourceFixture, kb_id)
+local function source_counts(fixture: SourceFixture, kb_id)
     local events = query("SELECT seq,type,body,created_at FROM kickside_event WHERE thread_id=$1 ORDER BY seq", { fixture.thread })
-    local count
+    local public_status
     local result, err = meta_projection.run({
         worker_config = { target_kb_ids = { kb_id } },
         events = events,
-        component = { set_meta = function(_, meta) count = meta.document_count; return true end },
+        component = { set_meta = function(_, meta) public_status = meta.status; return true end },
     })
     test.is_nil(err)
     test.not_nil(result)
-    return count
+    return result.body.counts, public_status
+end
+
+local function source_count(fixture: SourceFixture, kb_id: string)
+    return source_counts(fixture, kb_id).document_count
 end
 
 local function recover(fixture: SourceFixture, targets, head: number, expected: number)
@@ -174,7 +191,7 @@ local function advance_to(fixture: SourceFixture, seq: number)
     return assert(json.decode(row.body))
 end
 
-local function assert_dead_letter(fixture: SourceFixture, body, seq: number, message: string)
+local function assert_dead_letter(fixture: SourceFixture, body, seq: number, message: string, processed: number?)
     test.eq(body.last_status, "dead_lettered")
     test.eq(#body.dead_lettered_batches, 1)
     local entry = body.dead_lettered_batches[1]
@@ -191,7 +208,35 @@ local function assert_dead_letter(fixture: SourceFixture, body, seq: number, mes
     test.eq(#notices, 1)
     test.eq(notices[1].source_from_seq, seq)
     test.eq(notices[1].source_to_seq, seq)
-    test.eq(notices[1].source_processed_delta, 1)
+    test.eq(notices[1].source_processed_delta, processed == nil and 1 or processed)
+end
+
+local function extracted(documents, deletes)
+    return { type = EXTRACTED, body = { result = { documents = documents, deletes = deletes } } }
+end
+
+local function document(id, content)
+    return { external_id = id, content = content }
+end
+
+local function deletion(id)
+    return { type = DELETE, external_id = id, body = {} }
+end
+
+local function assert_unavailable(fixture: SourceFixture, seq: number, message: string)
+    local output, err = attempt(fixture)
+    test.is_nil(output)
+    test.eq(err:kind(), errors.UNAVAILABLE)
+    test.is_true(err:retryable())
+    local row = cursor(fixture)
+    test.eq(tonumber(row.last_seq), seq)
+    test.eq(row.status, "active")
+    test.contains(tostring(row.last_error), message)
+end
+
+local function requests(fixture: SourceFixture, name: string)
+    return query("SELECT body FROM kickside_event WHERE thread_id=$1 AND type=$2 ORDER BY seq",
+        { fixture.thread, "kickside.knowledge.events:" .. name .. ".requested" })
 end
 
 local function define_tests()
@@ -199,6 +244,7 @@ local function define_tests()
         test.it("holds the cursor through four failures and materializes the same events on recovery", function()
             with_source({ "source-unavailable" }, {}, function(fixture, targets, names)
                 local head = append(fixture, { "First document", "Second document", "Third document" })
+                local previous_schedule
                 for _ = 1, 4 do
                     local output, err = attempt(fixture)
                     local row = cursor(fixture)
@@ -209,9 +255,13 @@ local function define_tests()
                     test.is_nil(output)
                     test.eq(err:kind(), errors.UNAVAILABLE)
                     test.is_true(err:retryable())
-                    local job = query("SELECT status,scheduled_at FROM kickside_job WHERE id=$1", { fixture.job_id })[1]
+                    local job = query([[SELECT status, CAST(scheduled_at AS TEXT) AS scheduled_at,
+                        CASE WHEN scheduled_at > CURRENT_TIMESTAMP THEN 1 ELSE 0 END AS future
+                        FROM kickside_job WHERE id=$1]], { fixture.job_id })[1]
                     test.eq(job.status, "pending")
-                    test.not_nil(job.scheduled_at)
+                    test.eq(tonumber(job.future), 1)
+                    if previous_schedule then test.is_true(job.scheduled_at >= previous_schedule) end
+                    previous_schedule = job.scheduled_at
                 end
                 set_model(names[1], "available")
                 recover(fixture, targets, head, 3)
@@ -291,29 +341,32 @@ local function define_tests()
                     } } } },
                     "Later document",
                 })
-                assert_dead_letter(fixture, advance_to(fixture, 1), 1, "document cap exceeded")
+                assert_dead_letter(fixture, advance_to(fixture, 1), 1, "document cap exceeded", 0)
                 test.eq(#documents(targets[1]), 0)
                 recover(fixture, targets, head, 1)
                 test.eq(#assert(json.decode(cursor(fixture).body)).dead_lettered_batches, 1)
             end)
         end)
 
-        test.it("skips invalid extractor returns and accepts normalized document results", function()
+        test.it("dead-letters a malformed content extractor return and keeps normalized results", function()
             with_source({ "available" }, {}, function(fixture, targets)
                 local head = append(fixture, {
-                    { type = EXTRACTED, body = { result = "invalid extractor result" } },
+                    { type = EXTRACTED, body = { result = "unsupported extractor result" } },
+                    { type = UPSERT, source = "fixture", body = { result = "invalid extractor result" } },
                     { type = EXTRACTED, body = { result = { documents = "invalid documents", deletes = false } } },
                     { type = EXTRACTED, body = { result = {
                         documents = { { content = "Valid document" } }, deletes = "invalid deletes",
                     } } },
                 })
+                advance_to(fixture, 1)
+                assert_dead_letter(fixture, advance_to(fixture, 2), 2, "invalid result")
                 recover(fixture, targets, head, 1)
                 test.eq(documents(targets[1])[1].content, "Valid document")
-                test.is_nil(assert(json.decode(cursor(fixture).body)).dead_lettered_batches)
+                test.eq(source_counts(fixture, targets[1]).pending_source_count, 0)
             end)
         end)
 
-        test.it("removes the retired batch attempt state when a run commits", function()
+        test.it("keeps the retired batch field through a small patch and clears it on a full commit", function()
             with_source({ "available" }, {}, function(fixture)
                 local body = assert(json.decode(cursor(fixture).body))
                 body.last_failed_batch = { from_seq = 1, to_seq = 1, attempts = 2, error = "prior failure" }
@@ -325,8 +378,172 @@ local function define_tests()
                 local head = append(fixture, { { type = EXTRACTED, body = { result = {} } } })
                 local committed = advance_to(fixture, head)
                 test.eq(committed.last_status, "skipped_no_items")
-                test.is_nil(committed.last_failed_batch)
+                test.eq(committed.last_failed_batch.attempts, 2)
                 test.eq(committed.unrelated_state, "preserved")
+                advance_to(fixture, append(fixture, { "Normal document" }))
+                local updated = assert(json.decode(cursor(fixture).body))
+                test.is_nil(updated.last_failed_batch)
+                test.eq(updated.unrelated_state, "preserved")
+            end)
+        end)
+
+        for _, fault in ipairs({ "digest", "byte length" }) do
+            test.it("dead-letters an upload with a mismatched artifact " .. fault, function()
+                local upload_id = uuid.v7()
+                local content = "Artifact document"
+                assert(uploads.create(upload_id, "test-user", #content,
+                    "text/plain", "app:uploads", "source.txt", "document", {}, "completed", "test-checksum"))
+                local artifact = assert(artifacts.create_artifact({
+                    upload_id = upload_id, kind = "markdown", role = "primary", mime_type = "text/plain",
+                    content = content, storage_id = "app:uploads",
+                }))
+                local ok, err = pcall(function()
+                    with_source({ "available" }, {}, function(fixture, targets)
+                        local head = append(fixture, {
+                            { body = {
+                                kb_id = fixture.thread, content_omitted = true,
+                                content_bytes = fault == "digest" and #content or #content + 1,
+                                content_sha256 = string.rep("0", 64),
+                                source_ref = { kind = "upload", upload_id = upload_id, artifact_id = artifact.artifact_id },
+                            } },
+                            "Valid document",
+                        })
+                        assert_dead_letter(fixture, advance_to(fixture, 1), 1, "artifact " .. fault .. " changed")
+                        recover(fixture, targets, head, 1)
+                        test.eq(documents(targets[1])[1].content, "Valid document")
+                    end)
+                end)
+                assert(select(2, artifact_cleanup.delete_for_upload(upload_id)) == nil)
+                local db = assert(sql.get("app:db"))
+                assert(db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", { upload_id }))
+                assert(select(2, db:release()) == nil)
+                if not ok then error(err) end
+            end)
+        end
+
+        test.it("isolates a provider INVALID and indexes later documents", function()
+            with_source({ "source-content-invalid" }, {}, function(fixture, targets)
+                local head = append(fixture, { "Over limit document", "Valid document" })
+                local body = advance_to(fixture, head)
+                local rows = documents(targets[1])
+                test.eq(#rows, 2)
+                local metadata = assert(json.decode(rows[1].metadata))
+                test.eq(metadata.status, "failed")
+                test.contains(metadata.error, "input exceeds model token limit")
+                test.eq(assert(json.decode(rows[2].metadata)).status, "completed")
+                test.eq(body.kb_results[1].system_failed, 0)
+                test.is_nil(body.kb_results[1].consumed)
+                test.is_nil(body.dead_lettered_batches)
+            end)
+        end)
+
+        test.it("holds for an INTERNAL store write error without writing a failed row", function()
+            local config = { store_fault = "replace" }
+            with_source({ "available" }, config, function(fixture, targets)
+                local head = append(fixture, { "Recoverable document" })
+                assert_unavailable(fixture, 0, "store fixture failure")
+                test.eq(#documents(targets[1]), 0)
+                query("UPDATE kb10_stores SET config=$1 WHERE component_id=$2 RETURNING id",
+                    { '{"fixture_recovered":true}', targets[1] })
+                recover(fixture, targets, head, 1)
+            end)
+        end)
+
+        test.it("keeps unrelated sequence gaps out of the pending event delta", function()
+            with_source({ "source-prefix" }, {}, function(fixture, targets, names)
+                local head = append(fixture, {
+                    "First document", { type = "fixture.unrelated", body = {} }, "Second document", "Blocked document",
+                })
+                advance_to(fixture, 3)
+                local pending, pending_status = source_counts(fixture, targets[1])
+                test.eq(pending.pending_source_count, 1)
+                test.eq(pending_status, "syncing")
+                assert_unavailable(fixture, 3, "embedding backend unavailable")
+                set_model(names[1], "available")
+                recover(fixture, targets, head, 3)
+                local ready, ready_status = source_counts(fixture, targets[1])
+                test.eq(ready.pending_source_count, 0)
+                test.eq(ready_status, "ready")
+            end)
+        end)
+
+        for _, fault in ipairs({ "lineage conflict", "extractor timeout" }) do
+            test.it("publishes one digest and treatment after a prefix and " .. fault, function()
+                with_source({ "available" }, {}, function(fixture)
+                    local final_event = fault == "lineage conflict"
+                        and { body = { content = "Poison document", source_ref = { thread_id = "different-thread" } } }
+                        or { source = "fixture", body = { kb_id = fixture.thread, timeout_until_event_type = "fixture.recovered" } }
+                    local head = append(fixture, { "First document", final_event })
+                    advance_to(fixture, 1)
+                    test.eq(#requests(fixture, "digest"), 0)
+                    if fault == "extractor timeout" then
+                        assert_unavailable(fixture, 1, "extractor timeout")
+                        append(fixture, { { type = "fixture.recovered", body = {} } })
+                    else
+                        advance_to(fixture, head)
+                    end
+                    recover(fixture, {}, head, 0)
+                    for _, name in ipairs({ "digest", "treatment" }) do
+                        local events = requests(fixture, name)
+                        test.eq(#events, 1)
+                        local body = assert(json.decode(events[1].body))
+                        test.eq(body.source_from_seq, 1)
+                        test.is_true(body.source_to_seq >= head)
+                    end
+                end)
+            end)
+        end
+
+        for _, first in ipairs({ "Available document", "Over limit document" }) do
+            test.it("replays a multi-document event after writing " .. first, function()
+                with_source({ "source-content-invalid" }, {}, function(fixture, targets, names)
+                    local head = append(fixture, { extracted({
+                        document("first", first), document("second", "Blocked document"),
+                    }) })
+                    assert_unavailable(fixture, 0, "embedding backend unavailable")
+                    local partial = documents(targets[1])
+                    test.eq(#partial, 1)
+                    test.eq(assert(json.decode(partial[1].metadata)).status,
+                        first == "Available document" and "completed" or "failed")
+                    set_model(names[1], "available")
+                    advance_to(fixture, head)
+                    local recovered = documents(targets[1])
+                    test.eq(#recovered, 2)
+                    for _, row in ipairs(recovered) do test.eq(assert(json.decode(row.metadata)).status, "completed") end
+                end)
+            end)
+        end
+
+        test.it("replays a delete partially applied across two targets", function()
+            with_source({ "available", "available" }, { store_fault = "delete" }, function(fixture, targets)
+                advance_to(fixture, append(fixture, { "Document to delete" }))
+                test.eq(#documents(targets[1]), 1, "first target starts with the document")
+                test.eq(#documents(targets[2]), 1, "second target starts with the document")
+                local head = append(fixture, { deletion("document-1") })
+                assert_unavailable(fixture, 1, "store fixture failure")
+                test.eq(#documents(targets[1]), 0)
+                test.eq(#documents(targets[2]), 1)
+                query("UPDATE kb10_stores SET config=$1 WHERE component_id=$2 RETURNING id",
+                    { '{"fixture_recovered":true}', targets[2] })
+                recover(fixture, targets, head, 0)
+            end)
+        end)
+
+        test.it("bounds a delete page and dead-letters only an oversized delete event", function()
+            with_source({ "available" }, { max_pending_deletes = 1 }, function(fixture, targets)
+                advance_to(fixture, append(fixture, { "First document", "Second document", "Third document" }))
+                local start = append(fixture, {})
+                local head = append(fixture, {
+                    deletion("document-1"), deletion("document-2"),
+                    extracted(nil, { { external_id = "document-3" }, { external_id = "other" } }),
+                    deletion("document-3"),
+                })
+                advance_to(fixture, start + 1)
+                test.eq(#documents(targets[1]), 2)
+                advance_to(fixture, start + 2)
+                test.eq(#documents(targets[1]), 1)
+                assert_dead_letter(fixture, advance_to(fixture, start + 3), start + 3, "delete cap exceeded", 0)
+                recover(fixture, targets, head, 0)
             end)
         end)
     end)
