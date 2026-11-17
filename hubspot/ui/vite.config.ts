@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import vue from "@vitejs/plugin-vue";
 import { wippyComponentPlugin } from "@wippy-fe/vite-plugin";
 import { defineConfig } from "vite";
+import { hostExternals, wcRuntimeChunk } from "../../wc-build";
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -15,6 +16,7 @@ export default defineConfig(({ mode }) => ({
   define: {
     "process.env": JSON.stringify({ NODE_ENV: mode }),
   },
+  esbuild: { supported: { 'template-literal': false } },
   build: {
     target: "esnext",
     emptyOutDir: true,
@@ -26,12 +28,13 @@ export default defineConfig(({ mode }) => ({
       formats: ["es"],
     },
     rollupOptions: {
-      preserveEntrySignatures: false,
+      preserveEntrySignatures: "strict",
       input: {
         picker: resolve(__dirname, "src/picker.ts"),
       },
-      external: ["vue", "@iconify/vue", "@wippy-fe/proxy"],
+      external: hostExternals,
       output: {
+        manualChunks: wcRuntimeChunk,
         entryFileNames: "[name].js",
         chunkFileNames: "[name]-[hash].js",
         assetFileNames: "[name]-[hash][extname]",

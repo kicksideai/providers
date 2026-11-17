@@ -1,8 +1,14 @@
-import { WippyVueElement, define } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import Root from './app/Connect.vue'
+import { lazyControl } from './lazy'
 import stylesText from './styles.css?inline'
 import pkg from '../package.json'
+
+const Root = lazyControl(
+  () => import('./app/Connect.vue'),
+  { loading: 'Loading GitHub connection…', failed: 'Could not load the GitHub connection form. Reload the page to try again.' },
+  useEvents,
+)
 
 interface P { providerId?: string; componentId?: string }
 interface E {

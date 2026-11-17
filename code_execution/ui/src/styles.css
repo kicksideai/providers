@@ -118,3 +118,6 @@
 
 .spin { animation: kx-spin 1s linear infinite; }
 @keyframes kx-spin { to { transform: rotate(360deg); } }
+
+/* The loaded height, reserved while the implementation loads or fails. Width is never reserved. */
+:host > div:empty, :host > div:has(> [data-lazy-state]) { min-height: 729px; }
