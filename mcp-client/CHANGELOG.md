@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.5...mcp-client-v0.2.6) (2026-11-17)
+
+
+### Bug Fixes
+
+* preserve web component host contracts and eager bundles ([#73](https://github.com/kicksideai/providers/issues/73)) ([1a81d7c](https://github.com/kicksideai/providers/commit/1a81d7cfc40dc9b85e44705f3cf0e5ae4acde29a))
+
 ## [0.2.5](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.4...mcp-client-v0.2.5) (2026-11-06)
 
 
