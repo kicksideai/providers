@@ -62,10 +62,10 @@ local function define_tests()
 
             test.is_nil(err)
             test.not_nil(result)
-            test.eq(result.patch.last_status, "dead_lettered")
-            test.contains(result.patch.last_error, "source_ref.thread_id mismatch")
+            test.eq(result.body.last_status, "dead_lettered")
+            test.contains(result.body.last_error, "source_ref.thread_id mismatch")
             test.eq(result.last_seq, 1)
-            test.eq(#result.patch.dead_lettered_batches, 1)
+            test.eq(#result.body.dead_lettered_batches, 1)
 
             local nodes = fetch_kb10_nodes(db, cid)
             test.eq(#nodes, 0)

@@ -371,6 +371,16 @@ local function define_tests()
             test.eq(plans_nil[1].summary_text, plans_none[1].summary_text)
             test.is_true(#plans_nil[1].summary_text > 0)
         end)
+
+        test.it("keeps the deterministic summary when the summary model is unavailable", function()
+            local doc = { title = "Overview", content = "The source text remains indexable." }
+            local opts = { chunk_size = 400, chunk_overlap = 0, summary_max_chars = 200 }
+            local plans, _, err = source_materializer.plan_document_writes({ doc }, opts, function()
+                return nil, "summary model unavailable"
+            end)
+            test.is_nil(err)
+            test.eq((plans :: {any})[1].summary_text, source_materializer.build_summary_text(doc, opts))
+        end)
     end)
 
     test.describe("chunk enrichment (contextual retrieval)", function()
@@ -699,7 +709,7 @@ local function define_tests()
         test.it("isolates a document whose store write throws, materializing the rest in order", function()
             local target, replaced, rows = make_target("poison")
             local result, err = source_materializer.ingest_documents_into_store(
-                "kb-1", target, docs(), embedder, nil, nil, nil, {}, nil
+                "kb-1", target, docs(), embedder, nil, nil, nil, assert(source_materializer.prepare_document_ingest(target, {})), nil
             )
             -- the batch as a whole succeeds (no hard error); the poison doc is counted failed
             test.is_nil(err)
@@ -744,6 +754,13 @@ local function define_tests()
             test.is_false(source_materializer.is_system_failure("replace document failed: insert child failed: pq: invalid byte sequence for encoding \"UTF8\": 0xe2"))
             test.is_false(source_materializer.is_system_failure("document chunk count exceeds KB policy: produced 5294 chunks (max 1500); full content preserved for replay"))
             test.is_false(source_materializer.is_system_failure("no materialized summary or chunks"))
+            test.is_false(source_materializer.is_system_failure("invalid content at byte 503"))
+            test.is_false(source_materializer.is_system_failure(errors.new({
+                kind = errors.INVALID, message = "unavailable source field",
+            })))
+            test.is_true(source_materializer.is_system_failure(errors.new({
+                kind = errors.UNAVAILABLE, message = "document content too large",
+            })))
         end)
 
         test.it("stops at the first system embedding failure without writing failed rows", function()
@@ -754,7 +771,7 @@ local function define_tests()
                 return nil, "provider down"
             end
             local result, err = source_materializer.ingest_documents_into_store(
-                "kb-1", target, docs(), down_embedder, nil, nil, nil, {}, nil
+                "kb-1", target, docs(), down_embedder, nil, nil, nil, assert(source_materializer.prepare_document_ingest(target, {})), nil
             )
 
             test.not_nil(err)
@@ -791,7 +808,7 @@ local function define_tests()
                 nil,
                 nil,
                 nil,
-                {},
+                assert(source_materializer.prepare_document_ingest(target, {})),
                 nil
             )
 
@@ -866,7 +883,7 @@ local function define_tests()
                 nil,
                 nil,
                 nil,
-                {},
+                assert(source_materializer.prepare_document_ingest(target, {})),
                 nil
             )
 
@@ -942,7 +959,7 @@ local function define_tests()
                 nil,
                 nil,
                 nil,
-                {},
+                assert(source_materializer.prepare_document_ingest(target, {})),
                 nil
             )
 

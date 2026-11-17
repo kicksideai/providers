@@ -143,19 +143,22 @@ local SYSTEM_FAILURE_PATTERNS: {string} = {
 }
 
 local function is_system_failure(message: any): boolean
-    local lowered = tostring(message):lower()
-    for _, pat in ipairs(CONTENT_FAILURE_PATTERNS) do
-        if lowered:find(pat, 1, true) then return false end
-    end
     if errors.is(message, errors.UNAVAILABLE) or errors.is(message, errors.TIMEOUT)
         or errors.is(message, errors.RATE_LIMITED) then
         return true
     end
+    if type(message) ~= "string" and not errors.is(message, errors.INTERNAL)
+        and not errors.is(message, errors.UNKNOWN) then
+        return false
+    end
+    local lowered = tostring(message):lower()
+    for _, pat in ipairs(CONTENT_FAILURE_PATTERNS) do
+        if lowered:find(pat, 1, true) then return false end
+    end
     for _, pat in ipairs(SYSTEM_FAILURE_PATTERNS) do
         if lowered:find(pat, 1, true) then return true end
     end
-    local status = lowered:match("%f[%d]([45]%d%d)%f[%D]")
-    return status == "429" or status == "502" or status == "503" or status == "504"
+    return false
 end
 
 M.is_system_failure = is_system_failure
@@ -666,8 +669,6 @@ function M.plan_document_writes(documents: any, opts: MaterializationOptions, su
             local compressed, summary_err = summarize(doc)
             if type(compressed) == "string" and trim(compressed) ~= "" then
                 summary_text = compressed
-            elseif is_system_failure(summary_err) then
-                return nil, nil, tostring(summary_err)
             elseif summary_err then
                 -- The document still gets the deterministic head summary below;
                 -- the model's own cause would otherwise be lost.
@@ -826,7 +827,7 @@ function M.delete_documents_from_store(target, deletes): (any, string?, boolean?
         logger:warn(message, {
             component_id = store_row.component_id,
         })
-        return result, message
+        return result, message, true
     end
 
     for _, d in ipairs(deletes or {}) do
@@ -973,11 +974,23 @@ local function validate_vector(vec: any, dims: any, label: string): string?
     return nil
 end
 
-function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, worker_config, batch_enricher): (DocIngestResult, string?)
+function M.prepare_document_ingest(target, worker_config): (any?, string?, boolean?)
+    local options, err = M.materialization_options(target, worker_config)
+    if not options then return nil, err or "source materializer returned no options" end
+    if not target.store then return nil, "materializer store unavailable", true end
+    local dims, dim_err = target.store:vector_dimensions({})
+    if dim_err or type(dims) ~= "number" then
+        return nil, "vector_dimensions unavailable: " .. tostring(dim_err), true
+    end
+    return { options = options, dimensions = dims }, nil
+end
+
+function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, prepared, batch_enricher): (DocIngestResult, string?, boolean?)
     local store_row = target.store_row or target
     local store_id = store_row.id
     local store = target.store
-    local materialization, materialization_err = M.materialization_options(target, worker_config)
+    local materialization_opts: MaterializationOptions = prepared.options
+    local dims = prepared.dimensions
     local result: DocIngestResult = {
         component_id = component_id,
         kind = "document",
@@ -987,15 +1000,9 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         chunk_count = 0,
         failed = 0,
         consumed = 0,
-        materialization = materialization,
+        materialization = materialization_opts,
         notifications = {},
     }
-
-    if materialization_err then return result, materialization_err end
-    if not materialization then return result, "source materializer returned no options" end
-    local materialization_opts: MaterializationOptions = materialization
-    if not store then return result, "materializer store unavailable" end
-    if #documents == 0 then return result, nil end
 
     -- LLM-compress each document into its summary with the KB's summary model;
     -- without a summarizer or model the plan falls back to head-truncation.
@@ -1044,11 +1051,9 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         end
     end
 
-    local dims, dim_err = store:vector_dimensions({})
-    if dim_err or type(dims) ~= "number" then
-        return result, "vector_dimensions unavailable: " .. tostring(dim_err)
-    end
-
+    -- Each document plans, embeds and replaces its own tree. Content failures
+    -- stay isolated while the summary, chunks and images of one document keep
+    -- their embedding order and node associations.
     local function materialize_one(doc: any): (boolean, string?, string?)
         local content = type(doc.content) == "string" and doc.content or ""
         local max_doc_chars = tonumber(materialization_opts.max_document_content_chars)
@@ -1242,6 +1247,8 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         return true, nil
     end
 
+    -- Record a content failure as a childless document node at its canonical
+    -- source identity. The failed row is queryable and re-ingestion replaces it.
     local function dead_letter(doc: any, failure: string): (any, any)
         local meta = {}
         for k, v in pairs(doc.metadata or {}) do meta[k] = v end
@@ -1332,7 +1339,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             }
             if system_level then
                 result.system_failed = 1
-                return result, tostring(persist_err or failure)
+                return result, tostring(persist_err or failure), true
             end
             if persist_err then return result, tostring(persist_err) end
         end

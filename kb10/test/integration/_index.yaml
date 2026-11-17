@@ -108,6 +108,14 @@ entries:
       jobs: kickside.core.jobs:jobs
       job_types: kickside.core.jobs:types
 
+  - name: source_cursor_extractor
+    kind: function.lua
+    meta:
+      type: projection.extractor
+      event_types: [fixture.source.extracted]
+    source: file://source_cursor_extractor.lua
+    method: run
+
   # Node methods are not bound as contract functions, lifecycle binding present, graph engine declares query_binding.
   - name: contract_split_test
     kind: function.lua

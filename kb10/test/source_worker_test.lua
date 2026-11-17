@@ -50,7 +50,7 @@ local function define_tests()
                     test.contains(tostring(err), "artifact unavailable")
                 else
                     test.is_nil(err)
-                    test.eq(result.patch.last_status, "skipped_no_items")
+                    test.eq(result.body.last_status, "skipped_no_items")
                 end
             end)
         end
@@ -108,8 +108,19 @@ local function define_tests()
             }, worker_deps({ embedder = fake_embedder, dispatcher = doc_dispatcher,
                  resolve_materialized_store = resolver }))
             test.is_nil(err)
-            test.eq(result.patch.last_status, "skipped_no_events")
+            test.eq(result.body.last_status, "skipped_no_events")
             teardown_kb10_store(db, cid)
+        end)
+
+        test.it("skips non-table rows in the prefetched range", function()
+            local result, err = source_worker.run_with_deps({
+                thread_id = uuid(), projection = { id = uuid() },
+                range = { from_seq = 1, to_seq = 2 },
+                events = { false, build_event({ seq = 2, type = "fixture.unknown", body = {} }) },
+            }, worker_deps({ dispatcher = doc_dispatcher }))
+            test.is_nil(err, tostring(err))
+            test.eq(result.last_seq, 2)
+            test.eq(result.body.last_status, "skipped_no_items")
         end)
 
         test.it("uses only the flat external identity emitted by projections", function()
@@ -189,7 +200,7 @@ local function define_tests()
             end)
         end
 
-        test.it("dead-letters a batch when a target KB has no source materializer", function()
+        test.it("dead-letters the event when a target KB has no source materializer", function()
             local missing_kb_id = uuid()
             local result, err = source_worker.run_with_deps({
                 thread_id = uuid(),
@@ -206,10 +217,10 @@ local function define_tests()
 
             test.is_nil(err)
             test.not_nil(result)
-            test.eq(result.patch.last_status, "dead_lettered")
-            test.contains(result.patch.last_error, "no source materializer")
+            test.eq(result.body.last_status, "dead_lettered")
+            test.contains(result.body.last_error, "no source materializer")
             test.eq(result.last_seq, 1)
-            test.eq(#result.patch.dead_lettered_batches, 1)
+            test.eq(#result.body.dead_lettered_batches, 1)
         end)
 
         test.it("inserts a document into a kb10 KB", function()
@@ -342,7 +353,7 @@ local function define_tests()
 
             test.is_nil(err)
             test.not_nil(result)
-            test.eq(result.patch.last_status, "skipped_no_items")
+            test.eq(result.body.last_status, "skipped_no_items")
             test.is_nil(result.append_events)
 
             teardown_kb10_store(db, cid)

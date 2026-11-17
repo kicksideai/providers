@@ -220,8 +220,10 @@ local function define_tests()
                 end
                 return { result = result }, nil
             end
-            local result, ingest_err = source_materializer.ingest_documents_into_store(id,
-                { store_row = store_row, store = materializer_store }, { doc }, embed, nil, nil, nil, {}, nil)
+            local target = { store_row = store_row, store = materializer_store }
+            local prepared = assert(source_materializer.prepare_document_ingest(target, {}))
+            local result, ingest_err = source_materializer.ingest_documents_into_store(
+                id, target, { doc }, embed, nil, nil, nil, prepared, nil)
             test.is_nil(ingest_err)
             test.eq(result.failed, 0)
             test.eq(result.chunk_count, 4)

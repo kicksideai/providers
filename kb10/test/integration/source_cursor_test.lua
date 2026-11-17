@@ -14,8 +14,16 @@ local jobs = require("jobs")
 local job_types = require("job_types")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
+local EXTRACTED = "fixture.source.extracted"
 local JOB_TYPE = "kickside.core.projections:advance"
 local SOURCE_WORKER = "proc://kickside.kb10.injection:source_worker_proc"
+
+type SourceFixture = {
+    cursor_id: string,
+    job_id: string,
+    projection_id: string,
+    thread: string,
+}
 
 local function query(statement, args)
     local db = assert(sql.get("app:db"))
@@ -25,23 +33,24 @@ local function query(statement, args)
     return rows
 end
 
-local function cursor(fixture)
+local function cursor(fixture: SourceFixture)
     return query([[SELECT c.last_seq,c.status,c.last_error,p.body FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id WHERE c.id=$1]], { fixture.cursor_id })[1]
 end
 
-local function append(fixture, contents)
+local function append(fixture: SourceFixture, contents)
     local db = assert(sql.get("app:db"))
     local tx = assert(db:begin())
     local rows = assert(tx:query("SELECT event_count FROM kickside_thread WHERE id=$1", { fixture.thread }))
     local head = assert(tonumber(rows[1].event_count))
-    for i, content in ipairs(contents) do
+    for i, input in ipairs(contents) do
         local seq = head + i
-        local body = assert(json.encode({ kb_id = fixture.thread, content = content }))
+        local event = type(input) == "table" and input or { body = { kb_id = fixture.thread, content = input } }
+        local body = assert(json.encode(event.body))
         assert(tx:execute([[INSERT INTO kickside_event
             (id,thread_id,type,role,body,seq,external_source,external_id,external_version)
             VALUES ($1,$2,$3,'user',$4,$5,'upload',$6,'1')]],
-            { uuid.v7(), fixture.thread, UPSERT, body, seq, "document-" .. tostring(seq) }))
+            { uuid.v7(), fixture.thread, event.type or UPSERT, body, seq, "document-" .. tostring(seq) }))
     end
     assert(tx:execute("UPDATE kickside_thread SET event_count=$1 WHERE id=$2", { head + #contents, fixture.thread }))
     assert(jobs.wake_tx(tx, "thread:" .. fixture.thread))
@@ -50,7 +59,7 @@ local function append(fixture, contents)
     return head + #contents
 end
 
-local function attempt(fixture)
+local function attempt(fixture: SourceFixture)
     local db = assert(sql.get("app:db"))
     local dbtype = tostring(db:type())
     assert(db:execute("UPDATE kickside_job SET scheduled_at=created_at WHERE id=$1 AND status='pending'",
@@ -80,7 +89,8 @@ local function set_model(name, provider_model)
 end
 
 local function with_source(modes, config, check)
-    local targets, model_names = {}, {}
+    local targets: {string} = {}
+    local model_names: {string} = {}
     for i, mode in ipairs(modes) do
         targets[i] = uuid.v7()
         model_names[i] = "source-cursor-" .. targets[i]
@@ -89,17 +99,22 @@ local function with_source(modes, config, check)
     end
 
     local db = assert(sql.get("app:db"))
-    local thread = targets[1]
+    local thread = assert(targets[1], "source fixture requires a target")
     assert(db:execute("INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test',$2)", { thread, thread }))
     config.target_kb_ids = targets
     local registered = assert(projections.register_projection(db, thread, {
         kind = "knowledge.injection.source", worker_ref = SOURCE_WORKER,
         worker_input_mode = "prefetch_events", worker_config = config, system_identity = true,
-        events = { input = { { type = UPSERT } } },
+        events = { input = { { type = UPSERT }, { type = EXTRACTED } } },
     }))
     assert(select(2, db:release()) == nil)
-    registered.thread = thread
-    local ok, failure = pcall(check, registered, targets, model_names)
+    local fixture: SourceFixture = {
+        cursor_id = registered.cursor_id,
+        job_id = registered.job_id,
+        projection_id = registered.projection_id,
+        thread = thread,
+    }
+    local ok, failure = pcall(check, fixture, targets, model_names)
     db = assert(sql.get("app:db"))
     assert(projections.remove_projection(db, thread, { projection_id = registered.projection_id }))
     assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", { thread }))
@@ -116,7 +131,7 @@ local function documents(kb_id)
     return query("SELECT id,content FROM kb10_nodes WHERE store_id=$1 AND node_type='document' ORDER BY content", { kb_id })
 end
 
-local function source_count(fixture, kb_id)
+local function source_count(fixture: SourceFixture, kb_id)
     local events = query("SELECT seq,type,body,created_at FROM kickside_event WHERE thread_id=$1 ORDER BY seq", { fixture.thread })
     local count
     local result, err = meta_projection.run({
@@ -129,7 +144,7 @@ local function source_count(fixture, kb_id)
     return count
 end
 
-local function recover(fixture, targets, head, expected)
+local function recover(fixture: SourceFixture, targets, head: number, expected: number)
     local initial = query("SELECT event_count FROM kickside_thread WHERE id=$1", { fixture.thread })[1]
     local target_seq = tonumber(initial.event_count)
     test.is_true(target_seq >= head)
@@ -147,6 +162,36 @@ local function recover(fixture, targets, head, expected)
         test.is_nil(drain_err, tostring(drain_err))
     end
     test.eq(tonumber(cursor(fixture).last_seq), tonumber(thread.event_count))
+end
+
+local function advance_to(fixture: SourceFixture, seq: number)
+    local _, err = attempt(fixture)
+    test.is_nil(err, tostring(err))
+    local row = cursor(fixture)
+    test.eq(tonumber(row.last_seq), seq)
+    test.eq(row.status, "active")
+    test.is_nil(row.last_error)
+    return assert(json.decode(row.body))
+end
+
+local function assert_dead_letter(fixture: SourceFixture, body, seq: number, message: string)
+    test.eq(body.last_status, "dead_lettered")
+    test.eq(#body.dead_lettered_batches, 1)
+    local entry = body.dead_lettered_batches[1]
+    test.eq(entry.from_seq, seq)
+    test.eq(entry.to_seq, seq)
+    test.contains(entry.error, message)
+
+    local notices = {}
+    for _, event in ipairs(query("SELECT body FROM kickside_event WHERE thread_id=$1 AND type=$2",
+        { fixture.thread, "kickside.knowledge.events:graph.changed" })) do
+        local meta = assert(json.decode(event.body))
+        if meta.reason == "source.dead_lettered" then notices[#notices + 1] = meta end
+    end
+    test.eq(#notices, 1)
+    test.eq(notices[1].source_from_seq, seq)
+    test.eq(notices[1].source_to_seq, seq)
+    test.eq(notices[1].source_processed_delta, 1)
 end
 
 local function define_tests()
@@ -202,19 +247,86 @@ local function define_tests()
             end)
         end
 
-        test.it("dead-letters a deterministic batch once and ingests later events", function()
-            with_source({ "available" }, { max_pending_documents = 1 }, function(fixture, targets)
-                local head = append(fixture, { "First document", "Second document" })
-                local _, err = attempt(fixture)
-                test.is_nil(err, tostring(err))
-                local row = cursor(fixture)
-                test.eq(tonumber(row.last_seq), head)
-                local body = assert(json.decode(row.body))
-                test.eq(body.last_status, "dead_lettered")
-                test.eq(#body.dead_lettered_batches, 1)
-                test.eq(#documents(targets[1]), 0)
-                recover(fixture, targets, append(fixture, { "Later document" }), 1)
+        test.it("commits the prefix before a poison event and dead-letters only that event", function()
+            with_source({ "available" }, {}, function(fixture, targets)
+                local head = append(fixture, {
+                    "First document",
+                    { body = { content = "Poison document", source_ref = { thread_id = "different-thread" } } },
+                    "Third document",
+                })
+                local body = advance_to(fixture, 1)
+                test.is_nil(body.dead_lettered_batches)
+                test.eq(#documents(targets[1]), 1)
+                assert_dead_letter(fixture, advance_to(fixture, 2), 2, "source_ref.thread_id mismatch")
+                recover(fixture, targets, head, 2)
+                local stored = documents(targets[1])
+                test.eq(stored[1].content, "First document")
+                test.eq(stored[2].content, "Third document")
                 test.eq(#assert(json.decode(cursor(fixture).body)).dead_lettered_batches, 1)
+            end)
+        end)
+
+        test.it("consumes five events in pages bounded by the document cap", function()
+            with_source({ "available" }, { max_pending_documents = 2 }, function(fixture, targets)
+                local head = append(fixture, {
+                    "First document", "Second document", "Third document", "Fourth document", "Fifth document",
+                })
+                for _, seq in ipairs({ 2, 4 }) do
+                    local body = advance_to(fixture, seq)
+                    test.is_nil(body.dead_lettered_batches)
+                    test.eq(#documents(targets[1]), seq)
+                    test.eq(source_count(fixture, targets[1]), seq)
+                end
+                recover(fixture, targets, head, 5)
+                test.is_nil(assert(json.decode(cursor(fixture).body)).dead_lettered_batches)
+            end)
+        end)
+
+        test.it("dead-letters an event that alone exceeds the document cap and ingests later events", function()
+            with_source({ "available" }, { max_pending_documents = 1 }, function(fixture, targets)
+                local head = append(fixture, {
+                    { type = EXTRACTED, body = { result = { documents = {
+                        { external_id = "overflow-first", content = "First document" },
+                        { external_id = "overflow-second", content = "Second document" },
+                    } } } },
+                    "Later document",
+                })
+                assert_dead_letter(fixture, advance_to(fixture, 1), 1, "document cap exceeded")
+                test.eq(#documents(targets[1]), 0)
+                recover(fixture, targets, head, 1)
+                test.eq(#assert(json.decode(cursor(fixture).body)).dead_lettered_batches, 1)
+            end)
+        end)
+
+        test.it("skips invalid extractor returns and accepts normalized document results", function()
+            with_source({ "available" }, {}, function(fixture, targets)
+                local head = append(fixture, {
+                    { type = EXTRACTED, body = { result = "invalid extractor result" } },
+                    { type = EXTRACTED, body = { result = { documents = "invalid documents", deletes = false } } },
+                    { type = EXTRACTED, body = { result = {
+                        documents = { { content = "Valid document" } }, deletes = "invalid deletes",
+                    } } },
+                })
+                recover(fixture, targets, head, 1)
+                test.eq(documents(targets[1])[1].content, "Valid document")
+                test.is_nil(assert(json.decode(cursor(fixture).body)).dead_lettered_batches)
+            end)
+        end)
+
+        test.it("removes the retired batch attempt state when a run commits", function()
+            with_source({ "available" }, {}, function(fixture)
+                local body = assert(json.decode(cursor(fixture).body))
+                body.last_failed_batch = { from_seq = 1, to_seq = 1, attempts = 2, error = "prior failure" }
+                body.unrelated_state = "preserved"
+                local db = assert(sql.get("app:db"))
+                assert(db:execute("UPDATE kickside_projection SET body=$1 WHERE id=$2",
+                    { assert(json.encode(body)), fixture.projection_id }))
+                assert(select(2, db:release()) == nil)
+                local head = append(fixture, { { type = EXTRACTED, body = { result = {} } } })
+                local committed = advance_to(fixture, head)
+                test.eq(committed.last_status, "skipped_no_items")
+                test.is_nil(committed.last_failed_batch)
+                test.eq(committed.unrelated_state, "preserved")
             end)
         end)
     end)
