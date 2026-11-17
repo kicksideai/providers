@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/kicksideai/providers/compare/memory-v0.1.21...memory-v0.1.22) (2026-11-17)
+
+
+### Bug Fixes
+
+* preserve web component host contracts and eager bundles ([#73](https://github.com/kicksideai/providers/issues/73)) ([1a81d7c](https://github.com/kicksideai/providers/commit/1a81d7cfc40dc9b85e44705f3cf0e5ae4acde29a))
+
 ## [0.1.21](https://github.com/kicksideai/providers/compare/memory-v0.1.20...memory-v0.1.21) (2026-11-15)
 
 
