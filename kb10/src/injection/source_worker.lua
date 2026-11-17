@@ -1152,7 +1152,7 @@ local function run_with_deps(input_raw, deps)
     local processed, failed_processed = 0, 0
     local failed_final_seq
     local target_results: { [string]: any } = {}
-    local function apply_results(results: { any })
+    local function apply_results(results: any)
         for _, result in ipairs(results) do
             local kb_id = result.component_id
             local state = kb_state(body, kb_id)
