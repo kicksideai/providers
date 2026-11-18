@@ -59,6 +59,15 @@ function ops.source_key(metadata: any): (string?, string?)
     return source, id
 end
 
+function ops.source_thread(metadata: any): string?
+    local ref = type(metadata) == "table" and metadata.source_ref
+    local thread = type(ref) == "table" and ref.thread_id
+    if type(thread) ~= "string" or thread == "" then return nil end
+    if metadata.thread_id ~= nil and metadata.thread_id ~= thread then return nil end
+    if ref.external_source ~= metadata.external_source or ref.external_id ~= metadata.external_id then return nil end
+    return thread
+end
+
 function ops.source_key_expression(db_type: any, store: string, source: string, id: string): string
     if db_type == sql.type.POSTGRES then
         return "ROW(" .. store .. ", " .. source .. ", " .. id .. ")::kb10_source_key"
@@ -66,11 +75,30 @@ function ops.source_key_expression(db_type: any, store: string, source: string, 
     return "(" .. store .. ", " .. source .. ", " .. id .. ")"
 end
 
-function ops.source_metadata_columns(db_type: any): (string, string)
+function ops.source_metadata_columns(db_type: any, column: string?): (string, string)
+    local metadata = column or "metadata"
     if db_type == sql.type.POSTGRES then
-        return "(metadata->>'external_source')", "(metadata->>'external_id')"
+        return "(" .. metadata .. "->>'external_source')", "(" .. metadata .. "->>'external_id')"
     end
-    return "json_extract(metadata, '$.external_source')", "json_extract(metadata, '$.external_id')"
+    return "json_extract(" .. metadata .. ", '$.external_source')", "json_extract(" .. metadata .. ", '$.external_id')"
+end
+
+function ops.source_thread_column(db_type: any, metadata: string): string
+    local function value(path: string, postgres_path: string, type_only: boolean?): string
+        if db_type == sql.type.POSTGRES then
+            local extract = metadata .. (type_only and "#>" or "#>>") .. "'{" .. postgres_path .. "}'"
+            return type_only and "jsonb_typeof(" .. extract .. ")" or "(" .. extract .. ') COLLATE "C"'
+        end
+        return (type_only and "json_type(" or "json_extract(") .. metadata .. ", '$." .. path .. "')"
+    end
+    local thread = value("source_ref.thread_id", "source_ref,thread_id")
+    local declared_thread = value("thread_id", "thread_id")
+    local source, id = ops.source_metadata_columns(db_type, metadata)
+    local strings = db_type == sql.type.POSTGRES and "'string'" or "'text'"
+    return "CASE WHEN " .. value("source_ref.thread_id", "source_ref,thread_id", true) .. " = " .. strings ..
+        " AND " .. thread .. " <> '' AND (" .. declared_thread .. " IS NULL OR " .. declared_thread .. " = " .. thread ..
+        ") AND " .. value("source_ref.external_source", "source_ref,external_source") .. " = " .. source ..
+        " AND " .. value("source_ref.external_id", "source_ref,external_id") .. " = " .. id .. " THEN " .. thread .. " END"
 end
 
 local function source_filter(db_type: any, source: string, id: string): string
@@ -79,23 +107,35 @@ local function source_filter(db_type: any, source: string, id: string): string
         ops.source_key_expression(db_type, "$1", "$2", "$3")
 end
 
-function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, source: any, id: any)
-    local rows, err = tx:query("SELECT id FROM kb10_nodes WHERE " ..
-        source_filter(db_type, "external_source", "external_id"), { store_id, source, id })
-    if err then return nil, err end
-    return rows[1] and tostring(rows[1].id), nil
-end
-
 function ops.find_source_nodes_tx(tx: any, db_type: any, store_id: any, source: any, id: any, documents_only: boolean?)
     local columns = "id, store_id, parent_id, node_type, content, content_type, metadata"
     local member_filter = "external_source IS NULL AND " .. source_filter(db_type, ops.source_metadata_columns(db_type))
     if documents_only then
-        columns = "id"
-        member_filter = member_filter .. " AND node_type = 'document'"
+        columns = "id, external_source, " .. ops.source_thread_column(db_type, "metadata") .. " AS lineage"
+        member_filter = member_filter .. " AND node_type = 'document' AND parent_id IS NULL"
     end
     local select = "SELECT " .. columns .. " FROM kb10_nodes WHERE "
     return tx:query(select .. source_filter(db_type, "external_source", "external_id") .. " UNION ALL " ..
         select .. member_filter, { store_id, source, id })
+end
+
+function ops.source_lineage_conflict()
+    return errors.new({kind = errors.CONFLICT, message = "source identity belongs to a different or ambiguous lineage"})
+end
+
+function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, source: any, id: any, lineage: string?)
+    local roots, err = ops.find_source_nodes_tx(tx, db_type, store_id, source, id, true)
+    if err then return nil, errors.wrap(err, "failed to find prior document") end
+    local historical_id: string? = nil
+    for _, root in ipairs(roots) do
+        local address = tostring(root.id)
+        if root.external_source and (#roots == 1 or lineage == root.lineage) then return address, nil end
+        if lineage and lineage == root.lineage and (not historical_id or address < historical_id) then
+            historical_id = address
+        end
+    end
+    if not historical_id and #roots > 0 then return nil, ops.source_lineage_conflict() end
+    return historical_id, nil
 end
 
 -- Decode each row's metadata json blob into a table, in place.

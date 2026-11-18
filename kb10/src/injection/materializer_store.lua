@@ -197,7 +197,9 @@ function M.delete_documents_by_external_id(_self: any, args: any): (any, string?
     local a = arg_table(args)
     local ok, lineage_err = require_source_lineage("delete_documents_by_external_id", a, a.metadata)
     if not ok then return nil, lineage_err end
-    return kb10_store.delete_documents_by_external_id(a.store_id, a.external_source, a.external_id)
+    local ref = source_ref_from(a, a.metadata)
+    local thread = trim(ref.thread_id)
+    return kb10_store.delete_documents_by_external_id(a.store_id, a.external_source, a.external_id, thread ~= "" and thread or nil)
 end
 
 return M

@@ -218,9 +218,10 @@ entries:
       suite: knowledge_injection
     source: file://source_worker_test.lua
     method: run
-    modules: [json, logger, sql, process, channel, time]
+    modules: [json, logger, sql, process, channel, time, funcs]
     imports:
       kb10_writer: kickside.kb10.persist:writer
+      materializer_store: kickside.kb10.injection:materializer_store
       test: wippy.test:test
       source_worker_lib: kickside.kb10.injection:source_worker_lib
       kb10_store: kickside.kb10.persist:store

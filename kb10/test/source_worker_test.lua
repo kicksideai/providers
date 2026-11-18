@@ -1287,6 +1287,100 @@ local function define_tests()
             end)
         end)
 
+        test.it("preserves public roots and graph links belonging to another source lineage", function()
+            local store_id = bootstrap_kb10_store(db)
+            local source_key = "shared:source"
+            local function metadata(thread_id)
+                local ref = {
+                    thread_id = thread_id, thread_event_id = "event:" .. thread_id, thread_event_seq = 1,
+                    external_source = "fixture", external_id = source_key, external_version = "v1",
+                }
+                return {
+                    thread_id = thread_id, thread_event_id = ref.thread_event_id, thread_event_seq = 1,
+                    external_source = "fixture", external_id = source_key, external_version = "v1",
+                    source_ref = ref,
+                }
+            end
+            local left, duplicate, right, concept = uuid(), uuid(), uuid(), uuid()
+            local first_lineage, other_lineage = metadata("first-thread"), metadata("other-thread")
+            assert(kb10_store.insert_nodes(store_id, {
+                {id = left, node_type = "document", content = "first lineage", metadata = first_lineage},
+                {id = duplicate, node_type = "document", content = "same lineage", metadata = first_lineage},
+                {id = right, node_type = "document", content = "other lineage", metadata = other_lineage},
+                {id = concept, node_type = "concept", content = "shared concept"},
+            }, {[left] = true}))
+            for _, node_id in ipairs({left, right}) do
+                assert(kb10_store.insert_edge(store_id, {
+                    from_node_id = node_id, to_node_id = concept, edge_type = "categorized_as",
+                }))
+            end
+
+            local materializer_store = require("materializer_store")
+            local _, ambiguous_err = kb10_store.delete_documents_by_external_id(store_id, "fixture", source_key)
+            test.is_true(errors.is(ambiguous_err, errors.CONFLICT), tostring(ambiguous_err))
+            local delete = {
+                store_id = store_id, external_source = "fixture", external_id = source_key,
+                source_ref = first_lineage.source_ref,
+            }
+            local removed, delete_err = materializer_store.delete_documents_by_external_id(materializer_store, delete)
+            test.is_nil(delete_err)
+            test.eq(removed.removed, 2)
+            local replay = assert(materializer_store.delete_documents_by_external_id(materializer_store, delete))
+            test.eq(replay.removed, 0)
+            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", source_key)), 1)
+            test.eq(assert(kb10_store.get_node(store_id, right)).content, "other lineage")
+            test.eq(#assert(kb10_store.get_edges(store_id, right, {direction = "out"})), 1)
+
+            local replacement = assert(materializer_store.replace_document(materializer_store, {
+                store_id = store_id, document = {
+                    node_type = "document", content = "other lineage updated", metadata = other_lineage,
+                },
+            }))
+            test.eq(replacement.document_node_id, right)
+            local _, replace_err = materializer_store.replace_document(materializer_store, {
+                store_id = store_id, document = {
+                    node_type = "document", content = "unrelated", metadata = metadata("third-thread"),
+                },
+            })
+            test.is_true(errors.is(replace_err, errors.CONFLICT), tostring(replace_err))
+            test.eq(assert(kb10_store.get_node(store_id, right)).content, "other lineage updated")
+            teardown_kb10_store(db, store_id)
+        end)
+
+        test.it("removes unowned vectors during search ownership migration before ranking", function()
+            local store_id = bootstrap_kb10_store(db)
+            local owner_store_id = bootstrap_kb10_store(db)
+            local node_id = assert(kb10_store.insert_node(store_id, {node_type = "chunk", content = "owned chunk"}))
+            local orphan_node_id = uuid()
+            if db:type() == sql.type.POSTGRES then
+                orphan_node_id = assert(kb10_store.insert_node(owner_store_id, {
+                    node_type = "chunk", content = "chunk in another store",
+                }))
+            end
+            local vector, query = {}, {}
+            for i = 1, DIMS do vector[i], query[i] = 0, 0 end
+            vector[1], query[2] = 1, 1
+            assert(kb10_store.insert_embedding(store_id, node_id, "chunk", nil, vector))
+            local orphan_id = uuid()
+            local _, seed_err = db:execute([[INSERT INTO kb10_embeddings (id, node_id, store_id, node_type, parent_id, embedding)
+                VALUES ($1, $2, $3, 'chunk', $4, $5)]], {orphan_id, orphan_node_id, store_id, node_id, json.encode(query)})
+            test.is_nil(seed_err, tostring(seed_err))
+
+            local migration_id = uuid()
+            local result, migrate_err = require("funcs").call("kickside.kb10.migrations:11_sqlite_search_row_backfill",
+                {database_id = APP_DB, id = migration_id, direction = "up"})
+            test.is_nil(migrate_err, tostring(migrate_err))
+            test.eq(result.failed, 0, tostring(result.error))
+            test.eq(#assert(db:query("SELECT id FROM kb10_embeddings WHERE id = $1", {orphan_id})), 0)
+            local rows = assert(kb10_store.vector_search(store_id, query, {limit = 1}))
+            test.eq(#rows, 1)
+            test.eq(tostring(rows[1].id), node_id)
+            local _, ledger_err = db:execute("DELETE FROM _migrations WHERE id = $1", {migration_id})
+            test.is_nil(ledger_err, tostring(ledger_err))
+            teardown_kb10_store(db, owner_store_id)
+            teardown_kb10_store(db, store_id)
+        end)
+
         test.describe("replace_document", function()
             local function lineage(external_id)
                 local source_ref = {
@@ -1486,6 +1580,62 @@ local function define_tests()
                 test.eq(#roots, 1)
                 test.eq(ids[1], ids[2])
                 test.eq(tostring(roots[1].id), ids[1])
+            end)
+
+            test.it("orders store teardown before node locks during concurrent replacement", function()
+                if db:type() ~= sql.type.POSTGRES then return end
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local root = assert(kb10_store.replace_document(store_id, {document = {
+                    node_type = "document", content = "original",
+                    metadata = {external_source = "fixture", external_id = "concurrent:document"},
+                }}))
+                local guard = assert(db:begin())
+                local _, lock_err = guard:query("SELECT id FROM kb10_nodes WHERE id = $1 FOR UPDATE",
+                    {root.document_node_id})
+                if lock_err then error(lock_err) end
+
+                local function waits_for_lock(statement, alternate)
+                    local deadline = time.now():add("5s")
+                    repeat
+                        local rows = assert(db:query([[SELECT 1 FROM pg_stat_activity
+                            WHERE datname = current_database() AND wait_event_type = 'Lock'
+                                AND (query LIKE $1 OR query LIKE $2)]], {statement, alternate or statement}))
+                        if #rows > 0 then return true end
+                        time.sleep("10ms")
+                    until time.now():after(deadline)
+                    return false
+                end
+
+                local events = process.events()
+                local teardown = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "teardown"))
+                local teardown_waits = waits_for_lock("DELETE FROM kb10_nodes WHERE store_id%")
+                local replacement = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "replace_after_teardown"))
+                local replacement_waits = waits_for_lock("SELECT id FROM kb10_stores%FOR NO KEY UPDATE%", "UPDATE kb10_nodes SET content%")
+                local _, commit_err = guard:commit()
+                if commit_err then error(commit_err) end
+
+                local pending = {[tostring(teardown)] = true, [tostring(replacement)] = "store removed"}
+                local overdue = time.after("10s")
+                while next(pending) do
+                    local selected = channel.select({events:case_receive(), overdue:case_receive()})
+                    test.eq(selected.channel, events)
+                    local event = selected.value
+                    local pid = tostring(event.from)
+                    if pending[pid] then
+                        test.eq(event.kind, process.event.EXIT)
+                        test.is_nil(event.result.error)
+                        test.eq(event.result.value, pending[pid])
+                        pending[pid] = nil
+                    end
+                end
+                test.is_true(teardown_waits, "teardown reaches the node lock")
+                test.is_true(replacement_waits, "replacement waits at the store lock")
+                test.eq(#assert(db:query("SELECT id FROM kb10_stores WHERE id = $1", {store_id})), 0)
             end)
 
             test.it("carries the new generation's children under the kept document id", function()
