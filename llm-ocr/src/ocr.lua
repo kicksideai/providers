@@ -15,6 +15,9 @@ local OCR_SYSTEM = "You are an OCR engine. Transcribe ALL text visible in the im
 
 local DEFAULT_USER = "Transcribe the text in this page."
 local DEFAULT_MAX_TOKENS = 4000
+-- The bytes of a length-cut generation kept in its error, enough to read a
+-- repetition loop at the end of the output.
+local LENGTH_TAIL_BYTES = 2048
 -- A call's latency on a shared provider is admission wait plus generation, and
 -- a non-streamed request cannot tell them apart. Without an explicit timeout the
 -- model provider's configured request timeout governs the call; an explicit
@@ -89,6 +92,17 @@ local function request_profile(card: any): (table?, string?)
     return {system = system, prompt = prompt, image_first = image_first == true, output_limit = output_limit}, nil
 end
 
+-- The last `limit` bytes of text, starting on a UTF-8 character boundary.
+local function utf8_tail(text: string, limit: integer): string
+    local start = math.max(1, #text - limit + 1)
+    while start <= #text do
+        local byte = text:byte(start)
+        if byte < 0x80 or byte >= 0xC0 then break end
+        start = start + 1
+    end
+    return text:sub(start)
+end
+
 local function new(runtime: any): any
     local deps = runtime or {}
     local llm = deps.llm or require("llm")
@@ -154,12 +168,14 @@ local function new(runtime: any): any
                     message = "ocr: generate failed: " .. gen_err:message()})
             end
             if not response then return nil, "ocr: generate failed: no response" end
+            local out = (response :: any).result
             -- A generation cut at max_tokens is an incomplete transcription of the page.
             if (response :: any).finish_reason == llm.FINISH_REASON.LENGTH then
-                return nil, "ocr: generation stopped at the token limit"
+                local cut = type(out) == "string" and out or ""
+                return nil, errors.new({kind = errors.INTERNAL, retryable = false,
+                    message = "ocr: generation stopped at the token limit after " .. #cut .. " bytes",
+                    details = {output_bytes = #cut, output_tail = utf8_tail(cut, LENGTH_TAIL_BYTES)}})
             end
-
-            local out = (response :: any).result
             if type(out) ~= "string" then
                 return nil, "ocr: unexpected model result"
             end
@@ -184,6 +200,7 @@ return {
     new = new,
     system_prompt = OCR_SYSTEM,
     NO_TEXT_REPLY = NO_TEXT_REPLY,
+    LENGTH_TAIL_BYTES = LENGTH_TAIL_BYTES,
     clamp_timeout_ms = clamp_timeout_ms,
     to_ms = to_ms,
     PROVIDER_TIMEOUT_CAP_MS = PROVIDER_TIMEOUT_CAP_MS,

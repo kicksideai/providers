@@ -576,6 +576,31 @@ local function define_tests()
             test.is_true(tostring(err):find("token limit", 1, true) ~= nil, tostring(err))
         end)
 
+        test.it("reports the output length and tail of a generation stopped at the token limit", function()
+            local reply = "PAGE HEADER\n" .. string.rep("| 12 | Lot 4 |\n", 400)
+            local text, err = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe("img", { model = "class:fast" })
+            test.is_nil(text)
+            test.contains(tostring(err), "token limit")
+            test.contains(tostring(err), tostring(#reply) .. " bytes")
+            local details = (err :: any):details()
+            test.eq(details.output_bytes, #reply)
+            test.eq(details.output_tail, reply:sub(-ocr.LENGTH_TAIL_BYTES))
+            test.eq(ocr.LENGTH_TAIL_BYTES, 2048)
+            test.eq(#details.output_tail, 2048)
+        end)
+
+        test.it("starts the reported tail of a cut generation on a character boundary", function()
+            -- Each repeated unit is 3 bytes, so the tail boundary lands inside a character.
+            local reply = string.rep("\226\148\128", 1000)
+            local _, err = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe("img", { model = "class:fast" })
+            local tail = (err :: any):details().output_tail
+            local lead = tail:byte(1)
+            test.is_true(lead < 0x80 or lead >= 0xC0, "tail starts with a continuation byte")
+            test.is_true(#tail <= ocr.LENGTH_TAIL_BYTES)
+            test.eq(#tail, 2046)
+            test.eq(tail, reply:sub(-2046))
+        end)
+
         test.it("asks the model for an explicit no-text reply and returns empty text for it", function()
             test.is_true(type(ocr.NO_TEXT_REPLY) == "string" and ocr.NO_TEXT_REPLY ~= "")
             test.contains(ocr.system_prompt, ocr.NO_TEXT_REPLY)
@@ -715,6 +740,44 @@ local function define_tests()
             test.is_true(retry.success)
             test.eq(calls, 1)
             test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nFirst transcription\n\n<!-- page 2 -->\n\nSecond transcription")
+        end)
+
+        test.it("keeps the tail of a length-cut transcription in the stage error detail", function()
+            local upload_id = seed("", {1})
+            local reply = "PAGE HEADER\n" .. string.rep("N 89 12 E 100.00\n", 300)
+            local cut = stage.run({upload_id = upload_id, storage_id = STORAGE_ID},
+                {transcribe = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe})
+            test.is_false(cut.success)
+            local detail = cut.metadata._ocr_error_detail
+            test.contains(detail, "Page 1: ocr: generation stopped at the token limit after " .. #reply .. " bytes")
+            test.contains(detail, string.rep("N 89 12 E 100.00\n", 20))
+            test.eq(detail:sub(-#reply:sub(-100)), reply:sub(-100))
+        end)
+
+        test.it("keeps a checkpoint failure whole when page tails fill the error detail", function()
+            local upload_id = seed("", {1, 2})
+            local reply = "HEAD\n" .. string.rep("N 89 12 E 100.00\n", 300)
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {
+                transcribe = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe,
+                persist = function() return false, "transcript storage unavailable" end,
+            })
+            test.eq(result.metadata.ocr_error, "persist_failed")
+            local detail = result.metadata._ocr_error_detail
+            test.is_true(#detail <= 4096)
+            test.eq(detail:sub(-#"Transcript checkpoint: transcript storage unavailable"),
+                "Transcript checkpoint: transcript storage unavailable")
+        end)
+
+        test.it("cuts the stage error detail on a character boundary", function()
+            local upload_id = seed("", {1})
+            local lead = "Transcript checkpoint: "
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {
+                transcribe = function() return "text", nil end,
+                persist = function() return false, string.rep("a", 4095 - #lead) .. "\226\148\128" end,
+            })
+            local detail = result.metadata._ocr_error_detail
+            test.eq(#detail, 4095)
+            test.eq(detail:sub(-1), "a")
         end)
 
         test.it("records a length-cut transcription as a failed page and retries it", function()
