@@ -6,6 +6,7 @@ import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import { type BrowseNode, nodeLabel } from './types'
 import { docIcon, docBadge, relativeTime } from './docMeta'
 import { useKbBrowse } from './useKbBrowse'
+import { useKbIndexing } from './useKbIndexing'
 import {
   KbShell, RailHeader, IconButton, SearchField, KbNotice, KbDrawer, KbConfirm, KbSearch,
 } from './shared'
@@ -28,13 +29,14 @@ const emit = useEvents<E>()
 const kbId = computed(() => props.value.config?.kb_id || '')
 const routeParam = computed(() => props.value.config?.route || '')
 let applyingRoute = false
+const { indexingNotice, onMeta } = useKbIndexing(() => kbId.value)
 
 // Browse + delete + realtime reconciliation come from the shared composable.
 // Pagination is server-side: documents holds only the current page, total is the
 // real match count, and the pager walks pages.
 const { loading, notice, documents, deleting, reload, remove, findDoc,
   page, pageSize, total, hasPrev, hasNext, next, prev } =
-  useKbBrowse(() => kbId.value)
+  useKbBrowse(() => kbId.value, { onMeta })
 
 // The filter is page-local: it narrows the documents already loaded for the
 // current page, not the whole KB. Server-side search is out of scope, so this is
@@ -126,6 +128,7 @@ watch(routeParam, (r) => {
 <template>
   <div class="kb-page kd">
     <KbNotice v-if="notice" class="kd-notice">{{ notice }}</KbNotice>
+    <KbNotice v-if="indexingNotice" class="kd-notice" role="status">{{ indexingNotice }}</KbNotice>
 
     <KbShell>
       <template #rail>

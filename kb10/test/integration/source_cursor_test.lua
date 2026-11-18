@@ -166,7 +166,7 @@ local function source_counts(fixture: SourceFixture, kb_id)
     test.is_nil(err)
     test.not_nil(result)
     test.not_nil(public_meta)
-    return result.body.counts, public_meta.status, public_meta.document_count
+    return result.body.counts, public_meta.status, public_meta.document_count, public_meta.pending_source_count
 end
 
 local function source_count(fixture: SourceFixture, kb_id: string)
@@ -478,6 +478,20 @@ local function define_tests()
                 test.eq(#documents(targets[1]), 0)
                 set_model(names[1], "available")
                 recover(fixture, targets, head, 1)
+            end)
+        end)
+
+        test.it("publishes the pending source count while an outage holds the cursor and after recovery", function()
+            with_source({ "source-unavailable" }, {}, function(fixture, targets, names)
+                local head = append(fixture, { "First document", "Second document" })
+                assert_unavailable(fixture, 0, "embedding backend unavailable")
+                local _, _, _, pending = source_counts(fixture, targets[1])
+                test.eq(pending, 2)
+
+                set_model(names[1], "available")
+                recover(fixture, targets, head, 2)
+                local _, _, _, caught_up = source_counts(fixture, targets[1])
+                test.eq(caught_up, 0)
             end)
         end)
 

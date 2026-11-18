@@ -15,7 +15,7 @@ class r extends e {
   static get vueConfig() {
     return {
       lazyConfig: t(
-        () => import("./document-mount-CET_kbEX.js").then((o) => o.mountConfig),
+        () => import("./document-mount-Bak2Qv3n.js").then((o) => o.mountConfig),
         "Could not load the document knowledge base. Reload the page to try again.",
         i
       )

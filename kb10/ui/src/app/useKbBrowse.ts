@@ -7,7 +7,7 @@ import {
   contentDeletePayload,
   canonicalSourceKey,
 } from './types'
-import { subscribeComponentMeta } from './componentMeta'
+import { subscribeComponentMeta, type ComponentMetaEvent } from './componentMeta'
 
 // Browse + delete for a KB's content nodes, factored out of the document library
 // and the graph's source list so both share one fetch, one delete-through-the-
@@ -15,7 +15,10 @@ import { subscribeComponentMeta } from './componentMeta'
 // node disappears only after the engine materializes the delete and the component
 // meta refresh tells us to reconcile. A queued row stays visible (spinner) until
 // the browse read model no longer contains its durable external id.
-export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void } = {}) {
+export function useKbBrowse(kbId: () => string, opts: {
+  onChanged?: () => void
+  onMeta?: (event: ComponentMetaEvent) => void
+} = {}) {
   const loading = ref(false)
   const notice = ref('')
   const nodes = ref<BrowseNode[]>([])
@@ -214,7 +217,10 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
     const run = ++realtimeRun
     if (unbind) { unbind(); unbind = null }
     if (!id) return
-    const off = subscribeComponentMeta(id, () => { void reconcileAfterMeta() })
+    const off = subscribeComponentMeta(id, (event) => {
+      opts.onMeta?.(event)
+      void reconcileAfterMeta()
+    })
     if (run !== realtimeRun) {
       if (off) off()
       return

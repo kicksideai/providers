@@ -90,12 +90,14 @@ end
 local function sync_public_meta(input: any, kb_id: string, counts: any, updated_at: string): (boolean, string?)
     local component_api = (type(input.component) == "table" and input.component) or component
     local status = trim(counts.status) ~= "" and trim(counts.status) or "ready"
-    if clamp_count(counts.pending_source_count) > 0 then
+    local pending_source_count = clamp_count(counts.pending_source_count)
+    if pending_source_count > 0 then
         status = "syncing"
     end
     local ok, err = component_api.set_meta(kb_id, {
         status = status,
         last_error = counts.last_error ~= nil and tostring(counts.last_error or "") or "",
+        pending_source_count = pending_source_count,
         document_count = clamp_count(counts.document_count),
         chunk_count = clamp_count(counts.chunk_count),
         summary_count = clamp_count(counts.summary_count),

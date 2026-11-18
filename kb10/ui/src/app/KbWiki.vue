@@ -13,6 +13,7 @@ import { KbNotice, KbLoading } from './shared'
 import WikiView from './WikiView.vue'
 import GraphView from './GraphView.vue'
 import { subscribeComponentMeta } from './componentMeta'
+import { useKbIndexing } from './useKbIndexing'
 import { canGenerateAnswer } from './queryMode'
 
 // kx-kb-wiki — the kb10 concept-graph KB detail. This root owns everything the two
@@ -29,6 +30,7 @@ interface E {
 const props = useProps<P>()
 const emit = useEvents<E>()
 const kbId = computed(() => props.value.config?.kb_id || '')
+const { indexingNotice, onMeta } = useKbIndexing(() => kbId.value)
 const routeParam = computed(() => props.value.config?.route || '')
 // Guards the selection→navigate sync while a route / default / post-edit selection
 // is being applied, so reflecting the URL doesn't echo a navigate back out.
@@ -169,7 +171,10 @@ function syncRealtime(id: string) {
   const run = ++realtimeRun
   if (unbindRealtime) { unbindRealtime(); unbindRealtime = null }
   if (!id) return
-  const off = subscribeComponentMeta(id, () => scheduleRefresh())
+  const off = subscribeComponentMeta(id, (event) => {
+    onMeta(event)
+    scheduleRefresh()
+  })
   if (run !== realtimeRun) {
     if (off) off()
     return
@@ -204,6 +209,7 @@ function onReload() { load() }
 <template>
   <div class="kb-page">
     <KbNotice v-if="notice" tone="info">{{ notice }}</KbNotice>
+    <KbNotice v-if="indexingNotice" role="status">{{ indexingNotice }}</KbNotice>
 
     <KbNotice v-if="attention" tone="warn">
       {{ attention }}
