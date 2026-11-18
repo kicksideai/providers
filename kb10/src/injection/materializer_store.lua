@@ -103,6 +103,11 @@ local function validate_replace_document(args: { [string]: any }): string?
     if not ok then return lineage_err end
 
     local doc_metadata = type(document.metadata) == "table" and document.metadata or {}
+    local doc_thread = doc_metadata.source_ref.thread_id
+    if type(doc_thread) ~= "string" or doc_thread == "" then
+        local _, err = reject_missing_lineage("replace_document", "source_ref.thread_id")
+        return err
+    end
     local doc_source = trim(doc_metadata.external_source)
     local doc_external_id = trim(doc_metadata.external_id)
     local doc_external_version = trim(doc_metadata.external_version)
@@ -117,6 +122,10 @@ local function validate_replace_document(args: { [string]: any }): string?
         local child_ok, child_lineage_err = require_source_lineage("replace_document", {}, node.metadata)
         if not child_ok then return child_lineage_err end
         local child_metadata = type(node.metadata) == "table" and node.metadata or {}
+        if child_metadata.source_ref.thread_id ~= doc_thread then
+            local _, err = reject_mismatched_lineage("replace_document", "child.source_ref.thread_id")
+            return err
+        end
         if trim(child_metadata.external_source) ~= doc_source then
             local _, err = reject_mismatched_lineage("replace_document", "child.external_source")
             return err
@@ -183,7 +192,7 @@ function M.insert_embedding(_self: any, args: any): (any, string?)
     return kb10_store.insert_embedding(a.store_id, a.node_id, a.node_type, a.parent_id, a.embedding)
 end
 
-function M.replace_document(_self: any, args: any): (any, string?)
+function M.replace_document(_self: any, args: any): (any, any?)
     local a = arg_table(args)
     local validation_err = validate_replace_document(a)
     if validation_err then return nil, validation_err end
@@ -193,13 +202,15 @@ function M.replace_document(_self: any, args: any): (any, string?)
     })
 end
 
-function M.delete_documents_by_external_id(_self: any, args: any): (any, string?)
+function M.delete_documents_by_external_id(_self: any, args: any): (any, any?)
     local a = arg_table(args)
     local ok, lineage_err = require_source_lineage("delete_documents_by_external_id", a, a.metadata)
     if not ok then return nil, lineage_err end
     local ref = source_ref_from(a, a.metadata)
-    local thread = trim(ref.thread_id)
-    return kb10_store.delete_documents_by_external_id(a.store_id, a.external_source, a.external_id, thread ~= "" and thread or nil)
+    if type(ref.thread_id) ~= "string" or ref.thread_id == "" then
+        return reject_missing_lineage("delete_documents_by_external_id", "source_ref.thread_id")
+    end
+    return kb10_store.delete_documents_by_external_id(a.store_id, a.external_source, a.external_id, ref.thread_id)
 end
 
 return M

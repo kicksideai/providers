@@ -21,16 +21,19 @@ return require("migration").define(function()
                             external_source IS NOT NULL AND external_source <> '' AND
                             external_id IS NOT NULL AND external_id <> '' AND
                             node_type = 'document' AND parent_id IS NULL))]])
+                    execute(tx, "ALTER TABLE kb10_nodes ADD COLUMN source_lineage TEXT COLLATE " .. collation)
+                    local root_key = ops.source_root_key(db_type)
                     if postgres then
-                        execute(tx, [[CREATE TYPE kb10_source_key AS
+                        execute(tx, [[CREATE TYPE kb10_source_pair AS
                             (store_id text COLLATE "C", external_source text COLLATE "C", external_id text COLLATE "C")]])
-                        execute(tx, [[ALTER TABLE kb10_nodes ADD CONSTRAINT kb10_nodes_source_root
-                            EXCLUDE USING hash ((ROW(store_id, external_source, external_id)::kb10_source_key) WITH =)
-                            WHERE (external_source IS NOT NULL AND external_id IS NOT NULL)]])
+                        execute(tx, [[CREATE TYPE kb10_source_key AS
+                            (store_id text COLLATE "C", external_source text COLLATE "C",
+                             external_id text COLLATE "C", source_lineage text COLLATE "C")]])
+                        execute(tx, "ALTER TABLE kb10_nodes ADD CONSTRAINT kb10_nodes_source_root " ..
+                            "EXCLUDE USING hash ((" .. root_key .. ") WITH =) WHERE (" .. ops.SOURCE_BOUND .. ")")
                     else
-                        execute(tx, [[CREATE UNIQUE INDEX kb10_nodes_source_root
-                            ON kb10_nodes (store_id, external_source, external_id)
-                            WHERE external_source IS NOT NULL AND external_id IS NOT NULL]])
+                        execute(tx, "CREATE UNIQUE INDEX kb10_nodes_source_root ON kb10_nodes " ..
+                            root_key .. " WHERE " .. ops.SOURCE_BOUND)
                     end
 
                     -- Foreign-key checks address the node columns without a store filter.
@@ -44,13 +47,11 @@ return require("migration").define(function()
                             " (" .. index[3] .. ", store_id)")
                     end
 
-                    -- The published lookup also addresses nodes that carry source metadata
-                    -- independently of their parent, including imported and historical nodes.
-                    local source, id = ops.source_metadata_columns(db_type)
-                    local key = ops.source_key_expression(db_type, "store_id", source, id)
-                    local index = postgres and " USING hash ((" .. key .. "))" or key
-                    execute(tx, "CREATE INDEX kb10_nodes_source_members ON kb10_nodes " .. index ..
-                        " WHERE external_source IS NULL AND " .. source .. " IS NOT NULL AND " .. id .. " IS NOT NULL")
+                    for _, roots in ipairs({true, false}) do
+                        local index, predicate = ops.source_lookup_index(db_type, roots)
+                        local name = roots and "kb10_nodes_source_root_lookup" or "kb10_nodes_source_members"
+                        execute(tx, "CREATE INDEX " .. name .. " ON kb10_nodes " .. index .. " WHERE " .. predicate)
+                    end
                 end)
             end)
         end

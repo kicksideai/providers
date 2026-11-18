@@ -73,7 +73,7 @@ function M.handler(args: any): any
     -- 2. Pass one: a fresh id per node, recording old -> new. Only the id map is held
     --    in memory (the node bodies are never buffered), so a multi-GB KB imports fine.
     local node_map: { [string]: string } = {}
-    local roots_by_source: { [string]: { [string]: string } } = {}
+    local roots_by_lineage: { [string]: { [string]: { [string]: string } } } = {}
     local source_roots: { [string]: boolean } = {}
     local _, scan_err = pio.scan_jsonl(storage, nodes_path, function(n: any)
         if type(n.id) ~= "string" then return end
@@ -82,6 +82,12 @@ function M.handler(args: any): any
         if n.node_type ~= "document" or type(n.parent_id) == "string" then return end
         local source, external_id = ops.source_key(n.metadata)
         if not source or not external_id then return end
+        local lineage = ops.source_thread(n.metadata) or ""
+        local roots_by_source = roots_by_lineage[lineage]
+        if not roots_by_source then
+            roots_by_source = {}
+            roots_by_lineage[lineage] = roots_by_source
+        end
         local roots = roots_by_source[source]
         if not roots then
             roots = {}

@@ -112,6 +112,91 @@ local function define_tests()
             teardown_kb10_store(db, cid)
         end)
 
+        for _, operation in ipairs({"replace_document", "delete_documents_by_external_id"}) do
+            test.it("returns a " .. operation .. " conflict without acknowledging the event", function()
+                local writes = 0
+                local conflict = errors.new({kind = errors.CONFLICT, message = "document revision changed"})
+                local result, err = source_worker.run_with_deps({
+                    thread_id = uuid(),
+                    projection = {id = uuid()},
+                    events = {build_event({seq = 41, body = {page_id = "conflict", title = "Document", text = "Text"}})},
+                    worker_config = {target_kb_ids = {uuid()}},
+                }, worker_deps({
+                    dispatcher = operation == "replace_document" and doc_dispatcher or function()
+                        return {deletes = {{external_source = "fixture", external_id = "conflict"}}}
+                    end,
+                    embedder = fake_embedder,
+                    resolve_materialized_store = function(id)
+                        return {
+                            store = {
+                                vector_dimensions = function() return DIMS end,
+                                [operation] = function()
+                                    writes = writes + 1
+                                    if writes == 1 then return nil, conflict end
+                                    return {document_node_id = uuid(), chunk_count = 1}
+                                end,
+                            },
+                            store_row = {id = id, component_id = id, embedding_model = "class:embed", kb_type = "document"},
+                            engine = {default_config = MATERIALIZATION_CONFIG},
+                        }
+                    end,
+                }))
+                test.eq(writes, 1)
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.CONFLICT), tostring(err))
+            end)
+        end
+
+        test.it("keeps the Core cursor at its committed position after a writer conflict", function()
+            local projections = require("projections")
+            local invoke = require("invoke")
+            local claim = require("claim")
+            local thread_id = uuid()
+            local conn = assert(sql.get(APP_DB))
+            assert(conn:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
+                VALUES ($1,'test',$2,2)]], {thread_id, thread_id}))
+            for seq = 1, 2 do
+                assert(conn:execute([[INSERT INTO kickside_event (id,thread_id,type,role,body,seq)
+                    VALUES ($1,$2,'fixture.page','user',$3,$4)]],
+                    {uuid(), thread_id, '{"page_id":"conflict","title":"Document","text":"Text"}', seq}))
+            end
+            local registered = assert(projections.register_projection(conn, thread_id, {
+                kind = "writer-conflict", worker_ref = "proc://app:source_conflict_worker",
+                worker_input_mode = "prefetch_events", system_identity = true, start_seq = 1,
+            }))
+            assert(conn:execute("UPDATE kickside_job SET scheduled_at=created_at WHERE id=$1", {registered.job_id}))
+            local claimed = assert(claim.claim_batch(conn, tostring(conn:type()), 16, nil, nil, nil,
+                {"kickside.core.projections:advance"}))
+            conn:release()
+            local job
+            for _, row in ipairs(claimed) do
+                if row.id == registered.job_id then job = row end
+            end
+            assert(job, "projection slot was not claimed")
+
+            local result, run_err = invoke.run({
+                job = {id = job.id, lease_token = job.lease_token, execution_seq = tonumber(job.execution_seq),
+                    attempts = tonumber(job.attempts)},
+                payload = {cursor_id = registered.cursor_id},
+            })
+
+            conn = assert(sql.get(APP_DB))
+            local cursors = assert(conn:query("SELECT last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1",
+                {registered.cursor_id}))
+            local runs = assert(conn:query("SELECT status FROM kickside_job_run WHERE job_id=$1", {registered.job_id}))
+            assert(projections.remove_projection(conn, thread_id, {projection_id = registered.projection_id}))
+            assert(conn:execute("DELETE FROM kickside_event WHERE thread_id=$1", {thread_id}))
+            assert(conn:execute("DELETE FROM kickside_thread WHERE id=$1", {thread_id}))
+            conn:release()
+
+            test.is_nil(result)
+            test.is_true(errors.is(run_err, errors.CONFLICT), tostring(run_err))
+            test.eq(tonumber(cursors[1].last_seq), 1)
+            test.eq(cursors[1].status, "active")
+            test.contains(cursors[1].last_error, "document revision changed")
+            test.eq(#runs, 0)
+        end)
+
         test.it("uses only the flat external identity emitted by projections", function()
             local observed = nil
             local result, err = source_worker.run_with_deps({
@@ -510,10 +595,11 @@ local function define_tests()
 
         test.it("replaces a document on re-ingest with the same external_id", function()
             local cid = bootstrap_kb10_store(db)
+            local thread_id = uuid()
             local resolver = materialized_store_resolver_for({ [cid] = true })
 
             source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({
@@ -538,7 +624,7 @@ local function define_tests()
             test.not_nil(v1_document_id)
 
             local result = source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({
@@ -649,6 +735,7 @@ local function define_tests()
 
             test.it("removes prior nodes when extractor emits a delete", function()
                 local cid = bootstrap_kb10_store(db)
+                local thread_id = uuid()
                 local resolver = materialized_store_resolver_for({ [cid] = true })
                 local mixed_dispatcher = delete_dispatcher_for({
                     ["fixture.page"] = doc_handler,
@@ -657,7 +744,7 @@ local function define_tests()
 
                 -- Seed: insert a document.
                 source_worker.run_with_deps({
-                    thread_id = uuid(),
+                    thread_id = thread_id,
                     projection = { id = uuid() },
                     events = {
                         build_event({
@@ -674,7 +761,7 @@ local function define_tests()
 
                 -- Now delete it.
                 local result = source_worker.run_with_deps({
-                    thread_id = uuid(),
+                    thread_id = thread_id,
                     projection = { id = uuid() },
                     events = {
                         build_event({
@@ -977,6 +1064,7 @@ local function define_tests()
 
             test.it("replaces image nodes on re-ingest of the same document", function()
                 local cid = bootstrap_kb10_store(db)
+                local thread_id = uuid()
                 local resolver = materialized_store_resolver_for({ [cid] = true })
                 local image_loader, captioner = recording_caption_deps()
                 local deps = worker_deps({
@@ -992,14 +1080,14 @@ local function define_tests()
                 }
 
                 source_worker.run_with_deps({
-                    thread_id = uuid(), projection = { id = uuid() },
+                    thread_id = thread_id, projection = { id = uuid() },
                     events = { build_event({ id = "re-1", seq = 1, type = "fixture.image_page", body = { page_id = "img-re" } }) },
                     worker_config = cfg,
                 }, deps)
                 test.eq(#image_nodes(db, cid), 2, "first ingest materializes the unique images")
 
                 source_worker.run_with_deps({
-                    thread_id = uuid(), projection = { id = uuid() },
+                    thread_id = thread_id, projection = { id = uuid() },
                     events = { build_event({ id = "re-2", seq = 2, type = "fixture.image_page", body = { page_id = "img-re" } }) },
                     worker_config = cfg,
                 }, deps)
@@ -1301,21 +1389,36 @@ local function define_tests()
                     source_ref = ref,
                 }
             end
-            local left, duplicate, right, concept = uuid(), uuid(), uuid(), uuid()
+            local left, duplicate, concept = uuid(), uuid(), uuid()
             local first_lineage, other_lineage = metadata("first-thread"), metadata("other-thread")
+            assert(kb10_store.insert_node(store_id, {
+                id = left, node_type = "document", content = "first lineage", metadata = first_lineage,
+            }))
+            local materializer_store = require("materializer_store")
+            local other = assert(materializer_store.replace_document(materializer_store, {
+                store_id = store_id, document = {
+                    node_type = "document", content = "other lineage", metadata = other_lineage,
+                },
+            }))
+            local right = other.document_node_id
+            test.is_true(right ~= left)
+            test.eq(assert(kb10_store.get_node(store_id, left)).content, "first lineage")
+
+            local duplicate_id, duplicate_err = kb10_store.insert_node(store_id, {
+                node_type = "document", metadata = other_lineage,
+            })
+            test.is_nil(duplicate_id)
+            test.not_nil(duplicate_err)
             assert(kb10_store.insert_nodes(store_id, {
-                {id = left, node_type = "document", content = "first lineage", metadata = first_lineage},
                 {id = duplicate, node_type = "document", content = "same lineage", metadata = first_lineage},
-                {id = right, node_type = "document", content = "other lineage", metadata = other_lineage},
                 {id = concept, node_type = "concept", content = "shared concept"},
-            }, {[left] = true}))
+            }, {}))
             for _, node_id in ipairs({left, right}) do
                 assert(kb10_store.insert_edge(store_id, {
                     from_node_id = node_id, to_node_id = concept, edge_type = "categorized_as",
                 }))
             end
 
-            local materializer_store = require("materializer_store")
             local _, ambiguous_err = kb10_store.delete_documents_by_external_id(store_id, "fixture", source_key)
             test.is_true(errors.is(ambiguous_err, errors.CONFLICT), tostring(ambiguous_err))
             local delete = {
@@ -1337,12 +1440,6 @@ local function define_tests()
                 },
             }))
             test.eq(replacement.document_node_id, right)
-            local _, replace_err = materializer_store.replace_document(materializer_store, {
-                store_id = store_id, document = {
-                    node_type = "document", content = "unrelated", metadata = metadata("third-thread"),
-                },
-            })
-            test.is_true(errors.is(replace_err, errors.CONFLICT), tostring(replace_err))
             test.eq(assert(kb10_store.get_node(store_id, right)).content, "other lineage updated")
             teardown_kb10_store(db, store_id)
         end)
@@ -1525,6 +1622,27 @@ local function define_tests()
                 test.eq(tostring(remaining[1].id), second.document_node_id)
             end)
 
+            test.it("looks up a SQLite source root without visiting chunk index entries", function()
+                if db:type() ~= sql.type.SQLITE then return end
+                local ops = require("ops")
+                local store_id = bootstrap_kb10_store(db)
+                local metadata = {external_source = "fixture", external_id = "root-key",
+                    source_ref = {thread_id = "source-thread"}}
+                local root_id = assert(kb10_store.insert_node(store_id, {node_type = "document", metadata = metadata}))
+                assert(kb10_store.insert_node(store_id, {node_type = "chunk", parent_id = root_id, metadata = metadata}))
+                local plan
+                local explained = {query = function(_, statement, params)
+                    plan = assert(db:query("EXPLAIN QUERY PLAN " .. statement, params))
+                    return db:query(statement, params)
+                end}
+                local found = assert(ops.find_source_root_tx(explained, db:type(), store_id,
+                    "fixture", "root-key", "source-thread"))
+                teardown_kb10_store(db, store_id)
+                test.eq(found, root_id)
+                test.eq(#plan, 1)
+                test.contains(plan[1].detail, "SEARCH kb10_nodes USING INDEX kb10_nodes_source_root ")
+            end)
+
             test.it("keeps one root when two writers replace a missing source concurrently", function()
                 local process = require("process")
                 local channel = require("channel")
@@ -1590,7 +1708,8 @@ local function define_tests()
                 local store_id = bootstrap_kb10_store(db)
                 local root = assert(kb10_store.replace_document(store_id, {document = {
                     node_type = "document", content = "original",
-                    metadata = {external_source = "fixture", external_id = "concurrent:document"},
+                    metadata = {external_source = "fixture", external_id = "concurrent:document",
+                        source_ref = {thread_id = "source-thread"}},
                 }}))
                 local guard = assert(db:begin())
                 local _, lock_err = guard:query("SELECT id FROM kb10_nodes WHERE id = $1 FOR UPDATE",
@@ -1636,6 +1755,32 @@ local function define_tests()
                 test.is_true(teardown_waits, "teardown reaches the node lock")
                 test.is_true(replacement_waits, "replacement waits at the store lock")
                 test.eq(#assert(db:query("SELECT id FROM kb10_stores WHERE id = $1", {store_id})), 0)
+            end)
+
+            test.it("rejects a prepared SQLite replacement when teardown removes the store", function()
+                if db:type() ~= sql.type.SQLITE then return end
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local tx = assert(db:begin())
+                assert(tx:execute("DELETE FROM kb10_stores WHERE id = $1", {store_id}))
+
+                local events = process.events()
+                local inbox = process.inbox()
+                local replacement = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "replace_after_teardown", process.pid()))
+                local overdue = time.after("10s")
+                local ready = channel.select({inbox:case_receive(), overdue:case_receive()})
+                assert(tx:commit())
+                test.eq(ready.channel, inbox)
+                test.eq(ready.value:topic(), "prepared")
+                local exit = channel.select({events:case_receive(), overdue:case_receive()})
+                test.eq(exit.channel, events)
+                test.eq(tostring(exit.value.from), tostring(replacement))
+                test.is_nil(exit.value.result.error)
+                test.eq(exit.value.result.value, "store removed")
+                test.eq(#fetch_kb10_nodes(db, store_id), 0)
             end)
 
             test.it("carries the new generation's children under the kept document id", function()

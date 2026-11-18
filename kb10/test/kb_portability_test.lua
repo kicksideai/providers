@@ -112,7 +112,7 @@ local function define_tests()
     end)
 
     test.describe("kb10 portability round-trip", function()
-        test.it("imports duplicate public addresses while binding their tuple to the first root", function()
+        test.it("imports duplicate public addresses and binds one root per lineage", function()
             local dst = uuid.v7()
             local path = "portability/duplicates-" .. dst
             local storage = assert(fs.get(SCRATCH))
@@ -123,12 +123,19 @@ local function define_tests()
             local first = "00000000-0000-7000-8000-000000000001"
             local other = "00000000-0000-7000-8000-000000000002"
             local child = "00000000-0000-7000-8000-000000000003"
+            local foreign = "00000000-0000-7000-8000-000000000004"
             local metadata = { external_source = "feed:é", external_id = string.rep("a:bñ", 2048) }
+            local foreign_metadata = {
+                external_source = metadata.external_source,
+                external_id = metadata.external_id,
+                source_ref = {thread_id = "source:thread"},
+            }
             local document = { id = first, node_type = "document", content = "first", metadata = metadata }
             local rows = {
                 json.encode(document),
                 json.encode({ id = other, node_type = "document", content = "second", metadata = metadata }),
-                (json.encode({ id = child, node_type = "chunk", parent_id = other, content = "public child", metadata = metadata })),
+                json.encode({ id = child, node_type = "chunk", parent_id = other, content = "public child", metadata = metadata }),
+                (json.encode({ id = foreign, node_type = "document", content = "another source", metadata = foreign_metadata })),
             }
             local _, store_err = storage:writefile(base .. "store.jsonl", '{"embedding_model":"class:embed"}\n')
             test.is_nil(store_err)
@@ -148,7 +155,11 @@ local function define_tests()
             test.eq(replaced.document_node_id, ids[first])
             test.eq(assert(kb10_store.get_node(dst, ids[other])).content, "second")
             test.eq(tostring(assert(kb10_store.get_node(dst, ids[child])).parent_id), ids[other])
-            test.eq(#assert(kb10_store.find_by_external_id(dst, metadata.external_source, metadata.external_id)), 3)
+            local other_replaced = assert(kb10_store.replace_document(dst, {document = {
+                node_type = "document", content = "another generation", metadata = foreign_metadata,
+            }}))
+            test.eq(other_replaced.document_node_id, ids[foreign])
+            test.eq(#assert(kb10_store.find_by_external_id(dst, metadata.external_source, metadata.external_id)), 4)
 
             assert(kb10_store.delete_store(dst))
             storage:remove(base .. "store.jsonl")

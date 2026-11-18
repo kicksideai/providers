@@ -62,17 +62,32 @@ end
 function ops.source_thread(metadata: any): string?
     local ref = type(metadata) == "table" and metadata.source_ref
     local thread = type(ref) == "table" and ref.thread_id
-    if type(thread) ~= "string" or thread == "" then return nil end
-    if metadata.thread_id ~= nil and metadata.thread_id ~= thread then return nil end
-    if ref.external_source ~= metadata.external_source or ref.external_id ~= metadata.external_id then return nil end
-    return thread
+    if type(thread) == "string" and thread ~= "" then return thread end
+    thread = type(metadata) == "table" and metadata.thread_id
+    if type(thread) == "string" and thread ~= "" then return thread end
+    return nil
 end
 
-function ops.source_key_expression(db_type: any, store: string, source: string, id: string): string
+local function source_key_expression(db_type: any, store: string, source: string, id: string, lineage: string?): string
+    local fields = store .. ", " .. source .. ", " .. id
+    if lineage then fields = fields .. ", " .. lineage end
     if db_type == sql.type.POSTGRES then
-        return "ROW(" .. store .. ", " .. source .. ", " .. id .. ")::kb10_source_key"
+        return "ROW(" .. fields .. ")::" .. (lineage and "kb10_source_key" or "kb10_source_pair")
     end
-    return "(" .. store .. ", " .. source .. ", " .. id .. ")"
+    return "(" .. fields .. ")"
+end
+
+ops.SOURCE_ROOT = "node_type = 'document' AND parent_id IS NULL"
+ops.SOURCE_BOUND = "external_source IS NOT NULL AND external_id IS NOT NULL"
+
+function ops.source_root_key(db_type: any, alias: string?): string
+    local prefix = alias and alias .. "." or ""
+    return source_key_expression(db_type, prefix .. "store_id", prefix .. "external_source", prefix .. "external_id",
+        "COALESCE(" .. prefix .. "source_lineage, '')")
+end
+
+function ops.source_root_value(db_type: any, store: string, source: string, id: string, lineage: string): string
+    return source_key_expression(db_type, store, source, id, "COALESCE(" .. lineage .. ", '')")
 end
 
 function ops.source_metadata_columns(db_type: any, column: string?): (string, string)
@@ -91,51 +106,86 @@ function ops.source_thread_column(db_type: any, metadata: string): string
         end
         return (type_only and "json_type(" or "json_extract(") .. metadata .. ", '$." .. path .. "')"
     end
-    local thread = value("source_ref.thread_id", "source_ref,thread_id")
-    local declared_thread = value("thread_id", "thread_id")
-    local source, id = ops.source_metadata_columns(db_type, metadata)
-    local strings = db_type == sql.type.POSTGRES and "'string'" or "'text'"
-    return "CASE WHEN " .. value("source_ref.thread_id", "source_ref,thread_id", true) .. " = " .. strings ..
-        " AND " .. thread .. " <> '' AND (" .. declared_thread .. " IS NULL OR " .. declared_thread .. " = " .. thread ..
-        ") AND " .. value("source_ref.external_source", "source_ref,external_source") .. " = " .. source ..
-        " AND " .. value("source_ref.external_id", "source_ref,external_id") .. " = " .. id .. " THEN " .. thread .. " END"
-end
-
-local function source_filter(db_type: any, source: string, id: string): string
-    return source .. " IS NOT NULL AND " .. id .. " IS NOT NULL AND " ..
-        ops.source_key_expression(db_type, "store_id", source, id) .. " = " ..
-        ops.source_key_expression(db_type, "$1", "$2", "$3")
-end
-
-function ops.find_source_nodes_tx(tx: any, db_type: any, store_id: any, source: any, id: any, documents_only: boolean?)
-    local columns = "id, store_id, parent_id, node_type, content, content_type, metadata"
-    local member_filter = "external_source IS NULL AND " .. source_filter(db_type, ops.source_metadata_columns(db_type))
-    if documents_only then
-        columns = "id, external_source, " .. ops.source_thread_column(db_type, "metadata") .. " AS lineage"
-        member_filter = member_filter .. " AND node_type = 'document' AND parent_id IS NULL"
+    local function thread(path: string, postgres_path: string): string
+        local id = value(path, postgres_path)
+        local strings = db_type == sql.type.POSTGRES and "'string'" or "'text'"
+        return "CASE WHEN " .. value(path, postgres_path, true) .. " = " .. strings ..
+            " THEN NULLIF(" .. id .. ", '') END"
     end
-    local select = "SELECT " .. columns .. " FROM kb10_nodes WHERE "
-    return tx:query(select .. source_filter(db_type, "external_source", "external_id") .. " UNION ALL " ..
-        select .. member_filter, { store_id, source, id })
+    return "COALESCE(" .. thread("source_ref.thread_id", "source_ref,thread_id") ..
+        ", " .. thread("thread_id", "thread_id") .. ")"
+end
+
+local function source_lookup(db_type: any, roots: boolean)
+    local source, id = ops.source_metadata_columns(db_type)
+    local lineage
+    local predicate = "NOT (" .. ops.SOURCE_ROOT .. ") AND "
+    if roots then
+        source = "COALESCE(external_source, " .. source .. ")"
+        id = "COALESCE(external_id, " .. id .. ")"
+        lineage = "COALESCE(CASE WHEN external_source IS NULL THEN " ..
+            ops.source_thread_column(db_type, "metadata") .. " ELSE source_lineage END, '')"
+        predicate = ops.SOURCE_ROOT .. " AND "
+    end
+    predicate = predicate .. source .. " IS NOT NULL AND " .. id .. " IS NOT NULL"
+    return source, id, lineage, predicate
+end
+
+function ops.source_lookup_index(db_type: any, roots: boolean): (string, string)
+    local source, id, lineage, predicate = source_lookup(db_type, roots)
+    if db_type == sql.type.POSTGRES then
+        local key = source_key_expression(db_type, "store_id", source, id)
+        if not lineage then return "USING hash ((" .. key .. "))", predicate end
+        -- Fixed-width index keys admit long external IDs. The lookup also compares
+        -- the original values, so hash collisions do not change membership.
+        return "(hash_record(" .. key .. '), hashtext((' .. lineage .. ') COLLATE "C"))', predicate
+    end
+    local columns = "store_id, " .. source .. ", " .. id
+    if lineage then columns = columns .. ", " .. lineage end
+    return "(" .. columns .. ")", predicate
+end
+
+local function source_filter(db_type: any, roots: boolean, scoped: boolean?): (string, string?)
+    local source, id, lineage, predicate = source_lookup(db_type, roots)
+    local key = source_key_expression(db_type, "store_id", source, id)
+    local value = source_key_expression(db_type, "$1", "$2", "$3")
+    local filter = predicate .. " AND " .. key .. " = " .. value
+    if roots and db_type == sql.type.POSTGRES then
+        filter = filter .. " AND hash_record(" .. key .. ") = hash_record(" .. value .. ")"
+    end
+    if scoped and lineage then
+        if db_type == sql.type.POSTGRES then
+            lineage = "(" .. lineage .. ') COLLATE "C"'
+            filter = filter .. " AND hashtext(" .. lineage .. ') = hashtext($4::text COLLATE "C")'
+        end
+        filter = filter .. " AND " .. lineage .. " = $4"
+    end
+    return filter, lineage
+end
+
+function ops.find_source_nodes_tx(tx: any, db_type: any, store_id: any, source: any, id: any)
+    local select = "SELECT id, store_id, parent_id, node_type, content, content_type, metadata FROM kb10_nodes WHERE "
+    local roots = source_filter(db_type, true)
+    return tx:query(select .. roots .. " UNION ALL " .. select .. source_filter(db_type, false),
+        {store_id, source, id})
 end
 
 function ops.source_lineage_conflict()
-    return errors.new({kind = errors.CONFLICT, message = "source identity belongs to a different or ambiguous lineage"})
+    return errors.new({kind = errors.CONFLICT, message = "source identity belongs to more than one lineage"})
+end
+
+function ops.find_source_roots_tx(tx: any, db_type: any, store_id: any, source: any, id: any, lineage: string?)
+    local filter, owner = source_filter(db_type, true, lineage ~= nil)
+    return tx:query("SELECT id, " .. owner .. " AS lineage FROM kb10_nodes WHERE " .. filter,
+        {store_id, source, id, lineage})
 end
 
 function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, source: any, id: any, lineage: string?)
-    local roots, err = ops.find_source_nodes_tx(tx, db_type, store_id, source, id, true)
+    local rows, err = tx:query("SELECT id FROM kb10_nodes WHERE " .. ops.SOURCE_BOUND ..
+        " AND " .. ops.source_root_key(db_type) .. " = " .. ops.source_root_value(db_type, "$1", "$2", "$3", "$4"),
+        {store_id, source, id, lineage or ""})
     if err then return nil, errors.wrap(err, "failed to find prior document") end
-    local historical_id: string? = nil
-    for _, root in ipairs(roots) do
-        local address = tostring(root.id)
-        if root.external_source and (#roots == 1 or lineage == root.lineage) then return address, nil end
-        if lineage and lineage == root.lineage and (not historical_id or address < historical_id) then
-            historical_id = address
-        end
-    end
-    if not historical_id and #roots > 0 then return nil, ops.source_lineage_conflict() end
-    return historical_id, nil
+    return rows[1] and tostring(rows[1].id), nil
 end
 
 -- Decode each row's metadata json blob into a table, in place.

@@ -70,6 +70,11 @@ end
 local insert_rows_tx = search_index.insert_rows_tx
 
 function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}, source_roots: any?): ({string}?, any?)
+    local sqlite = db_type == sql.type.SQLITE
+    local columns = { "id", "store_id", "parent_id", "node_type", "content", "content_type",
+        "external_source", "external_id", "source_lineage" }
+    if sqlite then columns[#columns + 1] = "fts_rowid" end
+    columns[#columns + 1] = "metadata"
     local ids: {string} = {}
     local rows: {any} = {}
     local fts: {any} = {}
@@ -78,13 +83,14 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
         local input = node :: kb10.NodeInput
         local id = input.id or uuid.v7()
         ids[i] = id
-        local source, external_id
+        local source, external_id, lineage
         if input.node_type == kb10.NODE_TYPE.DOCUMENT and input.parent_id == nil and
             (source_roots == nil or source_roots[id]) then
             source, external_id = ops.source_key(input.metadata)
+            if source then lineage = ops.source_thread(input.metadata) end
         end
         local fts_rowid: number? = nil
-        if db_type == sql.type.SQLITE and input.content then
+        if sqlite and input.content then
             if last_fts_rowid == nil then
                 local tail, tail_err = tx:query("SELECT rowid FROM kb10_nodes_fts ORDER BY rowid DESC LIMIT 1")
                 if tail_err then return nil, errors.wrap(tail_err, "fts rowid allocation failed") end
@@ -94,14 +100,14 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
             last_fts_rowid = fts_rowid
             fts[#fts + 1] = { fts_rowid, id, input.content, input.node_type }
         end
-        rows[i] = { id, store_id, input.parent_id, input.node_type, input.content,
-            input.content_type, source, external_id, json.encode(input.metadata or {}), fts_rowid }
+        local row = { id, store_id, input.parent_id, input.node_type, input.content,
+            input.content_type, source, external_id, lineage }
+        if sqlite then row[#columns - 1] = fts_rowid end
+        row[#columns] = json.encode(input.metadata or {})
+        rows[i] = row
     end
-    local columns = { "id", "store_id", "parent_id", "node_type", "content", "content_type",
-        "external_source", "external_id", "metadata" }
-    if db_type == sql.type.SQLITE then columns[#columns + 1] = "fts_rowid" end
     local err = insert_rows_tx(tx, "kb10_nodes", columns, rows)
-    if err then return nil, tostring(err) end
+    if err then return nil, err end
     local fts_err = insert_rows_tx(tx, "kb10_nodes_fts", { "rowid", "node_id", "content", "node_type" }, fts)
     if fts_err then return nil, errors.wrap(fts_err, "fts insert failed") end
     return ids, nil
@@ -350,7 +356,7 @@ local function delete_node_tx(tx: any, db_type: any, store_id: any, node_id: any
         "DELETE FROM kb10_nodes WHERE id = $1 AND store_id = $2",
         { node_id, store_id }
     )
-    if exec_err then return false, tostring(exec_err) end
+    if exec_err then return false, exec_err end
     return true, nil, removed_counts
 end
 
@@ -405,7 +411,7 @@ local function overwrite_document_tx(tx: any, db_type: any, store_id: any, node_
         "UPDATE kb10_nodes SET content = $1, content_type = $2, metadata = $3, parent_id = $4, updated_at = CURRENT_TIMESTAMP WHERE store_id = $5 AND id = $6",
         { node_input.content, node_input.content_type, metadata_json, node_input.parent_id, store_id, node_id }
     )
-    if exec_err then return tostring(exec_err) end
+    if exec_err then return exec_err end
 
     if db_type == sql.type.SQLITE then
         return write_sqlite_fts_tx(tx, node_id, node_input.content, node_input.node_type)
@@ -414,14 +420,15 @@ local function overwrite_document_tx(tx: any, db_type: any, store_id: any, node_
     return nil
 end
 
--- PostgreSQL store mutations acquire the store before changing its nodes or search rows.
-local function lock_store_tx(tx: any, db_type: any, store_id: any): (any?, any?)
-    if db_type == sql.type.POSTGRES then
-        local rows, err = tx:query("SELECT id FROM kb10_stores WHERE id = $1 FOR NO KEY UPDATE", { store_id })
-        if err then return nil, errors.wrap(err, "failed to lock document store") end
-        return rows[1], nil
-    end
-    return nil, nil
+-- PostgreSQL serializes mutations on the store before taking node locks.
+-- SQLite checks existence in the same transaction as source replacement.
+local function lock_store_tx(tx: any, db_type: any, store_id: any, check_exists: boolean?): (any?, any?)
+    local postgres = db_type == sql.type.POSTGRES
+    if not postgres and not check_exists then return nil, nil end
+    local lock = postgres and " FOR NO KEY UPDATE" or ""
+    local rows, err = tx:query("SELECT id FROM kb10_stores WHERE id = $1" .. lock, {store_id})
+    if err then return nil, errors.wrap(err, "failed to lock document store") end
+    return rows[1], nil
 end
 
 -- Atomically replace the materialized tree for one canonical source document.
@@ -430,7 +437,7 @@ end
 --
 -- The document node's id is the document's identity, not the generation's:
 -- consumers fold it into their own rows and resolve the document by it long
--- after this write. So a replacement of the same (external_source, external_id)
+-- after this write. So a replacement of the same source in the same lineage
 -- keeps the node that already carries that identity and swaps the generation
 -- underneath it — content, children, vectors. Children re-mint their ids; they
 -- are content. A caller-supplied document.id only seeds a first
@@ -448,9 +455,9 @@ function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replac
     if not external_source then
         return nil, errors.new({ message = "document metadata.external_source and external_id are required", kind = errors.INVALID })
     end
-    local locked, lock_err = lock_store_tx(tx, db_type, store_id)
+    local locked, lock_err = lock_store_tx(tx, db_type, store_id, true)
     if lock_err then return nil, lock_err end
-    if db_type == sql.type.POSTGRES and not locked then
+    if not locked then
         return nil, errors.new({kind = errors.NOT_FOUND, message = "document store not found"})
     end
     local reused_id, ownership_err = ops.find_source_root_tx(
@@ -898,24 +905,13 @@ function writer.delete_documents_by_external_id_tx(tx: any, db_type: any, store_
     end
     local _, lock_err = lock_store_tx(tx, db_type, store_id)
     if lock_err then return nil, lock_err end
-    local rows, query_err = ops.find_source_nodes_tx(tx, db_type, store_id, external_source or "", external_id, true)
+    local rows, query_err = ops.find_source_roots_tx(tx, db_type, store_id, external_source or "", external_id, source_thread)
     if query_err then return nil, errors.wrap(query_err, "failed to find documents by external id") end
-
-    local owned = {}
-    local unowned = false
-    local has_canonical = false
-    local thread = source_thread or (rows[1] and rows[1].lineage)
-    for _, row in ipairs(rows) do
-        local row_thread = row.lineage
-        has_canonical = has_canonical or row.external_source ~= nil
-        if (thread and thread == row_thread) or (#rows == 1 and row.external_source and not row_thread) then
-            owned[#owned + 1] = row
-        else
-            unowned = true
+    if not source_thread and #rows > 1 then
+        local lineage = rows[1].lineage
+        for _, row in ipairs(rows) do
+            if row.lineage ~= lineage then return nil, ops.source_lineage_conflict() end
         end
-    end
-    if not source_thread and #rows > 0 and (unowned or not has_canonical) then
-        return nil, ops.source_lineage_conflict()
     end
 
     local removed = 0
@@ -923,7 +919,7 @@ function writer.delete_documents_by_external_id_tx(tx: any, db_type: any, store_
     local removed_failed_documents = 0
     local removed_summaries = 0
     local removed_chunks = 0
-    for _, row in ipairs(owned) do
+    for _, row in ipairs(rows) do
         local ok, del_err, removed_counts = delete_node_tx(tx, db_type, store_id, tostring(row.id))
         if not ok then return nil, errors.wrap(del_err, "delete document failed") end
         removed = removed + 1

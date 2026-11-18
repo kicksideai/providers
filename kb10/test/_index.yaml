@@ -222,13 +222,28 @@ entries:
     imports:
       kb10_writer: kickside.kb10.persist:writer
       materializer_store: kickside.kb10.injection:materializer_store
+      ops: kickside.kb10.persist:ops
+      projections: kickside.core.projections.persist:writer
+      invoke: kickside.core.projections:invoke
+      claim: kickside.core.jobs.persist:claim
       test: wippy.test:test
       source_worker_lib: kickside.kb10.injection:source_worker_lib
       kb10_store: kickside.kb10.persist:store
       source_worker_fixtures: app:source_worker_fixtures
 
+  - name: source_conflict_worker
+    kind: process.lua
+    meta: {type: projection.worker, kind: writer-conflict}
+    source: file://source_conflict_worker.lua
+    method: run
+    imports:
+      source_worker: kickside.kb10.injection:source_worker_lib
+      fixtures: app:source_worker_fixtures
+      job_types: kickside.core.jobs:types
+
   - name: replace_race_writer
     kind: process.lua
+    modules: [process]
     source: file://replace_race_writer.lua
     method: run
     imports:

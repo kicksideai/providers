@@ -91,7 +91,8 @@ local function kb10_materializer_adapter()
             return kb10_store.delete_documents_by_external_id(
                 args.store_id,
                 args.external_source,
-                args.external_id
+                args.external_id,
+                args.source_ref.thread_id
             )
         end,
     }

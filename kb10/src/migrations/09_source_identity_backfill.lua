@@ -1,7 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
 local ops = require("ops")
-local logger = require("logger"):named("kb10.source_identity")
 local batch_size = 200
 
 return require("migration").define(function()
@@ -25,48 +24,25 @@ return require("migration").define(function()
                         or [[json_type(metadata, '$.external_source') = 'text'
                             AND json_type(metadata, '$.external_id') = 'text']]
                     local collation = postgres and ' COLLATE "C"' or " COLLATE BINARY"
-                    local existing = ops.source_key_expression(db_type, "owner.store_id", "owner.external_source", "owner.external_id")
-                    local candidate = ops.source_key_expression(db_type, "candidate.store_id", "candidate.source", "candidate.external")
-                    local member_source, member_id = ops.source_metadata_columns(db_type, "member.metadata")
-                    local member = ops.source_key_expression(db_type, "member.store_id", member_source, member_id)
-                    local same_key = "member.external_source IS NULL AND " .. member_source .. " IS NOT NULL AND " ..
-                        member_id .. " IS NOT NULL AND " .. member .. " = " .. candidate ..
-                        " AND member.node_type = 'document' AND member.parent_id IS NULL"
-
-                    -- Probe both indexes before binding any root. The first address
-                    -- reports collisions even when the other root is in a later page.
-                    local candidates, err = tx:query("WITH candidates AS (SELECT id, store_id, " .. source ..
-                        " AS source, " .. id .. " AS external, " .. ops.source_thread_column(db_type, "metadata") ..
-                        " AS lineage, row_number() OVER (PARTITION BY store_id" .. collation ..
-                        ", " .. source .. collation .. ", " .. id .. collation .. " ORDER BY id) AS pick" ..
-                        " FROM kb10_nodes WHERE id IN (" .. ops.placeholders(#ids) .. ") AND node_type = 'document' " ..
-                        " AND parent_id IS NULL AND " .. strings .. " AND " .. source .. " <> '' AND " .. id .. " <> '')" ..
-                        " SELECT candidate.id, (SELECT member.id FROM kb10_nodes AS member WHERE " .. same_key ..
-                        " AND member.id <> candidate.id AND (candidate.lineage IS NULL OR " ..
-                        ops.source_thread_column(db_type, "member.metadata") .. " IS DISTINCT FROM candidate.lineage)" ..
-                        " LIMIT 1) AS collision_id FROM candidates AS candidate WHERE candidate.pick = 1" ..
+                    local lineage = ops.source_thread_column(db_type, "metadata")
+                    local existing = ops.source_root_key(db_type, "owner")
+                    local key = ops.source_root_value(db_type, "candidate.store_id", "candidate.source",
+                        "candidate.external", "candidate.lineage")
+                    -- The first address in each lineage owns the tuple. Later
+                    -- addresses retain their full tree and graph references.
+                    local statement = "WITH candidates AS (SELECT id, store_id, " .. source ..
+                        " AS source, " .. id .. " AS external, " .. lineage .. " AS lineage, " ..
+                        "row_number() OVER (PARTITION BY store_id" .. collation .. ", " .. source .. collation ..
+                        ", " .. id .. collation .. ", " .. lineage .. collation .. " ORDER BY id) AS pick" ..
+                        " FROM kb10_nodes WHERE id IN (" .. ops.placeholders(#ids) .. ") AND " .. ops.SOURCE_ROOT ..
+                        " AND " .. strings .. " AND " .. source .. " <> '' AND " .. id .. " <> '')" ..
+                        " UPDATE kb10_nodes SET external_source = candidate.source, external_id = candidate.external," ..
+                        " source_lineage = candidate.lineage FROM candidates AS candidate" ..
+                        " WHERE kb10_nodes.id = candidate.id AND candidate.pick = 1" ..
                         " AND NOT EXISTS (SELECT 1 FROM kb10_nodes AS owner WHERE owner.external_source IS NOT NULL" ..
-                        " AND owner.external_id IS NOT NULL AND " .. existing .. " = " .. candidate .. ")" ..
-                        " AND NOT EXISTS (SELECT 1 FROM kb10_nodes AS member WHERE " .. same_key ..
-                        " AND member.id < candidate.id)", ids)
+                        " AND owner.external_id IS NOT NULL AND " .. existing .. " = " .. key .. ")"
+                    local _, err = tx:execute(statement, ids)
                     if err then error(err) end
-
-                    local bind, collisions = {}, {}
-                    for _, row in ipairs(candidates) do
-                        if row.collision_id then
-                            collisions[#collisions + 1] = {root = tostring(row.id), other_root = tostring(row.collision_id)}
-                        else
-                            bind[#bind + 1] = tostring(row.id)
-                        end
-                    end
-                    if #bind > 0 then
-                        local _, bind_err = tx:execute("UPDATE kb10_nodes SET external_source = " .. source ..
-                            ", external_id = " .. id .. " WHERE id IN (" .. ops.placeholders(#bind) .. ")", bind)
-                        if bind_err then error(bind_err) end
-                    end
-                    if #collisions > 0 then
-                        logger:warn("source identity collisions retain separate public roots", {roots = collisions})
-                    end
 
                     if #page == batch_size then return ids[#page] end
                     return nil

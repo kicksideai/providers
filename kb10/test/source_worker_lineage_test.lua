@@ -74,6 +74,7 @@ local function define_tests()
 
         test.it("promotes delete canonical key from source_ref", function()
             local cid = bootstrap_kb10_store(db)
+            local thread_id = uuid()
             local resolver = materialized_store_resolver_for({ [cid] = true })
             local ref_delete_handler = function(event)
                 local body = event.body or {}
@@ -94,7 +95,7 @@ local function define_tests()
             })
 
             source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({
@@ -113,7 +114,7 @@ local function define_tests()
             test.is_true(#before >= 1)
 
             local result, err = source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({

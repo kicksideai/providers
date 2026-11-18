@@ -1296,6 +1296,7 @@ local function run_with_deps(input_raw, deps)
         else
             if #deletes > 0 then
                 local del, del_err = source_materializer.delete_documents_from_store(target, deletes)
+                if del_err and errors.is(del_err, errors.CONFLICT) then return nil, del_err end
                 local delete_result, shape_err = checked_result(del, kb_id, "delete")
                 if shape_err then
                     logger:error("source materialization delete returned invalid result", { kb = kb_id, error = shape_err })
@@ -1327,6 +1328,7 @@ local function run_with_deps(input_raw, deps)
                     local docs = {}
                     for _, p in ipairs(pending_documents) do docs[#docs + 1] = p.doc end
                     local r, kb_err = source_materializer.ingest_documents_into_store(kb_id, target, docs, embedder, summarizer, enricher, captioner, worker_config, batch_enricher)
+                    if kb_err and errors.is(kb_err, errors.CONFLICT) then return nil, kb_err end
                     local ingest_result, shape_err = checked_result(r, kb_id, "document")
                     if shape_err then
                         logger:error("source materialization returned invalid result", { kb = kb_id, error = shape_err })
