@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.17](https://github.com/kicksideai/providers/compare/kb10-v0.2.16...kb10-v0.2.17) (2026-11-18)
+
+
+### Bug Fixes
+
+* **kb10:** admit owning secret operations without caller key access ([#110](https://github.com/kicksideai/providers/issues/110)) ([b46393b](https://github.com/kicksideai/providers/commit/b46393b1b03500aad9b1f886fe42b5dbc60bc107))
+
 ## [0.2.16](https://github.com/kicksideai/providers/compare/kb10-v0.2.15...kb10-v0.2.16) (2026-11-17)
 
 
