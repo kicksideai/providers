@@ -757,7 +757,15 @@ local function apply_delete_result(state: table, result: any): ()
     local sources = state.sources :: table
     for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
         local key = source_key(n.external_source, n.external_id)
-        if key and (tonumber(n.removed) or 0) > 0 then
+        local previous = key and sources[key]
+        if previous then
+            -- The source projection consumes the delete once. A store may have
+            -- committed it before another target prevented the cursor advancing.
+            n.document_delta = previous.status == "completed" and -1 or 0
+            n.failed_delta = previous.status == "failed" and -1 or 0
+            n.summary_delta = -(tonumber(previous.summary_count) or 0)
+            n.chunk_delta = -(tonumber(previous.chunk_count) or 0)
+            n.embedding_delta = n.summary_delta + n.chunk_delta
             sources[key] = nil
         end
     end
