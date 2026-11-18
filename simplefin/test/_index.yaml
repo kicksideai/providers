@@ -338,3 +338,48 @@ entries:
     - uuid
     imports:
       test: wippy.test:test
+
+  - name: privacy_fixture
+    kind: library.lua
+    source: file://privacy_fixture.lua
+    modules: [json]
+  - name: privacy_client
+    kind: library.lua
+    source: file://privacy_client.lua
+    modules: [json]
+    imports:
+      http_client: app:privacy_fixture
+      protocol: kickside.simplefin.client:protocol
+      types: kickside.simplefin.client:types
+      capacity_http: kickside.connection:capacity_http
+  - name: privacy_transport
+    kind: library.lua
+    source: file://privacy_transport.lua
+    imports:
+      api: app:privacy_client
+      fixture: app:privacy_fixture
+  - name: privacy_rotate
+    kind: library.lua
+    source: file://privacy_rotate.lua
+    modules: [json]
+    imports:
+      http: app:privacy_fixture
+      component: app:privacy_component
+      transport: app:privacy_transport
+  - name: secret_error_test
+    kind: function.lua
+    meta: {type: test, suite: simplefin}
+    source: file://secret_error_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      client: app:privacy_client
+      fixture: app:privacy_fixture
+      rotation: app:privacy_rotate
+
+  - name: privacy_component
+    kind: library.lua
+    source: file://privacy_component.lua
+    imports:
+      fixture: app:privacy_fixture

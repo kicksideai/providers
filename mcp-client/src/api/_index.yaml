@@ -4,6 +4,8 @@ namespace: kickside.mcp_client.api
 entries:
   - name: reconnect
     kind: function.lua
+    security:
+      policies: [kickside.mcp_client.security:secret_context_dispatch, kickside.mcp_client.security:secret_context_read]
     source: file://reconnect.lua
     method: handler
     modules: [http, json]

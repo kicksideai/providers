@@ -25,6 +25,19 @@ end
 
 local function define_tests()
     test.describe("SimpleFIN provider intent", function()
+        test.it("never includes bridge response bodies in external errors", function()
+            local secret = "https://account:access-url-error-sentinel@bridge.example/simplefin"
+            for _, status in ipairs({0, 400, 401, 402, 403, 429, 500, 503}) do
+                local message, code = protocol.http_error(status, secret)
+                test.is_nil(message:find(secret, 1, true))
+                test.is_nil(message:find("access-url-error-sentinel", 1, true))
+                local other, other_code = protocol.http_error(status, string.rep("x", 8192))
+                test.eq(message, other)
+                test.eq(code, other_code)
+            end
+        end)
+
+
         test.it("accepts a setup token and derives Basic credentials from the claimed access URL", function()
             local claim_url = "https://bridge.example.invalid/simplefin/claim/northwind"
             local token, encode_err = base64.encode(claim_url)

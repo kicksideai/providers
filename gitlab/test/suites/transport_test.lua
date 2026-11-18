@@ -13,14 +13,28 @@ local function fake_component(overrides: any?): any
     local fake = {
         ACCESS = { READ = "read" },
         get_private_context = function(): (any?, any?) return nil, "no private context" end,
-        get_context = function(): (any?, any?) return nil, errors.new({ kind = errors.NOT_FOUND, message = "no context" }) end,
+        get_runtime_context = function(): (any?, any?) return nil, errors.new({ kind = errors.NOT_FOUND, message = "no context" }) end,
     }
     for k, v in pairs(overrides or {}) do fake[k] = v end
+    if overrides and overrides.get_private_context and not overrides.get_runtime_context then
+        fake.get_runtime_context = overrides.get_private_context
+    end
     return fake
 end
 
 local function define_tests()
     test.describe("gitlab transport", function()
+        test.it("refuses credentials when component READ is denied", function()
+            local private_reads = 0
+            with_component(fake_component({
+                get_runtime_context = function() return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "denied"}) end,
+                get_private_context = function() private_reads = private_reads + 1; return {token = "private-key"}, nil end}), function()
+                local result, err = transport.connect("denied-component")
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.PERMISSION_DENIED))
+                test.eq(private_reads, 0)
+            end)
+        end)
         test.it("resolves a gitlab.com credential connection from the private context", function()
             with_component(fake_component({
                 get_private_context = function(id: string): (any?, any?)
@@ -53,7 +67,7 @@ local function define_tests()
             local seen: any = {}
             with_component(fake_component({
                 get_private_context = function(): (any?, any?) return {}, nil end,
-                get_context = function(id: string, access: any): (any?, any?)
+                get_runtime_context = function(id: string, access: any): (any?, any?)
                     seen.id, seen.access = id, access
                     return { token = "glpat-3", base_url = "" }, nil
                 end,
@@ -92,7 +106,7 @@ local function define_tests()
 
             with_component(fake_component({
                 get_private_context = function(): (any?, any?) return { token = "" }, nil end,
-                get_context = function(): (any?, any?) return { token = "" }, nil end,
+                get_runtime_context = function(): (any?, any?) return { token = "" }, nil end,
             }), function()
                 local conn, err = transport.connect("c6")
                 test.is_nil(conn)
@@ -103,7 +117,7 @@ local function define_tests()
 
         test.it("surfaces an unreadable connection component", function()
             with_component(fake_component({
-                get_context = function(): (any?, any?) return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "access denied" }) end,
+                get_runtime_context = function(): (any?, any?) return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "access denied" }) end,
             }), function()
                 local conn, err = transport.connect("c7")
                 test.is_nil(conn)
