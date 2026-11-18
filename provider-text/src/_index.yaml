@@ -1,0 +1,14 @@
+version: "1.0"
+namespace: kickside.provider_text
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: KickSide Provider Text
+      comment: Text normalization shared by KickSide providers.
+
+  - name: trim
+    kind: library.lua
+    source: file://trim.lua
