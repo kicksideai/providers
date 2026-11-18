@@ -599,14 +599,15 @@ local function define_tests()
             test.is_true(stored.config.extraction_model ~= model)
         end)
 
-        test.it("creates memory and extracts without a configured model output limit", function()
-            local user = fixture.user()
-            for _, model in ipairs({ "test-no-output", "test-no-limits" }) do
+        for _, model in ipairs({ "test-no-output", "test-no-limits" }) do
+            test.it("creates memory and extracts without a configured output limit for " .. model, function()
+                local user = fixture.user()
                 local id, create_err = fixture.try_memory(user, { extraction_model = model })
                 test.is_nil(create_err, tostring(create_err))
                 test.not_nil(id)
-                local _, capacity_err = fixture.op(user, "extraction_capacity", { model = model })
+                local capacity, capacity_err = fixture.op(user, "extraction_capacity", { model = model })
                 test.is_nil(capacity_err, tostring(capacity_err))
+                test.is_nil(capacity, model)
                 fixture.script.respond(user, "structured_output", { items = {}, lessons = {}, plans = {} })
                 local result, err = fixture.op(user, "model_step", { model = model, step = "extract", span = {
                     { id = "event", role = "user", author = {kind = "user", id = user}, text = "I live in Oslo." },
@@ -615,7 +616,34 @@ local function define_tests()
                 test.eq(#result.items, 0)
                 local requests = fixture.script.requests(user, "structured_options")
                 test.is_nil(requests[#requests].max_tokens)
-            end
+            end)
+        end
+
+        test.it("requests 512 dimensions from a model without a declared width and rejects a mismatched response", function()
+            local user = fixture.user()
+            local id = fixture.memory(user, { extraction_model = "test-no-limits" }, "test-embed-no-dimensions")
+            test.eq(#fixture.script.requests(user, "embed"), 0)
+
+            local request = { request = { query = "Observatory" } }
+            local context = { component_id = id }
+            local result, err = fixture.op(user, "query", request, context)
+            test.is_nil(err, tostring(err))
+            test.eq(result.count, 0)
+            local requests = fixture.script.requests(user, "embed")
+            test.eq(#requests, 1)
+            test.eq(requests[1].options.dimensions, 512)
+
+            local vector = {}
+            for i = 1, 768 do vector[i] = 1 end
+            fixture.script.respond(user, "embed", { vector })
+            result, err = fixture.op(user, "query", request, context)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(err:kind(), errors.UNAVAILABLE)
+            test.contains(err:message(), "512-dimensional")
+            requests = fixture.script.requests(user, "embed")
+            test.eq(#requests, 2)
+            test.eq(requests[2].options.dimensions, 512)
         end)
 
         test.it("admits a 4096-token extraction model on creation and update", function()

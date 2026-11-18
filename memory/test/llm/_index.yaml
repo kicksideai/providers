@@ -83,6 +83,17 @@ entries:
       - id: app.llm:provider
         provider_model: test-embed
 
+  - name: test-embed-no-dimensions
+    kind: registry.entry
+    meta:
+      type: llm.model
+      name: test-embed-no-dimensions
+      title: Test embed without dimensions
+      capabilities: [embed]
+    providers:
+      - id: app.llm:provider
+        provider_model: test-embed-no-dimensions
+
   - name: test-small
     kind: registry.entry
     meta:
