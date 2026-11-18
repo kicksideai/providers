@@ -27,20 +27,21 @@ return require("migration").define(function()
                         execute(tx, [[ALTER TABLE kb10_nodes ADD CONSTRAINT kb10_nodes_source_root
                             EXCLUDE USING hash ((ROW(store_id, external_source, external_id)::kb10_source_key) WITH =)
                             WHERE (external_source IS NOT NULL AND external_id IS NOT NULL)]])
-                        -- Cascades address the foreign-key columns without a store filter.
-                        for _, index in ipairs({
-                            {"idx_kb10_nodes_parent", "kb10_nodes", "parent_id"},
-                            {"idx_kb10_edges_from", "kb10_edges", "from_node_id"},
-                            {"idx_kb10_edges_to", "kb10_edges", "to_node_id"},
-                        }) do
-                            execute(tx, "DROP INDEX " .. index[1])
-                            execute(tx, "CREATE INDEX " .. index[1] .. " ON " .. index[2] ..
-                                " (" .. index[3] .. ", store_id)")
-                        end
                     else
                         execute(tx, [[CREATE UNIQUE INDEX kb10_nodes_source_root
                             ON kb10_nodes (store_id, external_source, external_id)
                             WHERE external_source IS NOT NULL AND external_id IS NOT NULL]])
+                    end
+
+                    -- Foreign-key checks address the node columns without a store filter.
+                    for _, index in ipairs({
+                        {"idx_kb10_nodes_parent", "kb10_nodes", "parent_id"},
+                        {"idx_kb10_edges_from", "kb10_edges", "from_node_id"},
+                        {"idx_kb10_edges_to", "kb10_edges", "to_node_id"},
+                    }) do
+                        execute(tx, "DROP INDEX " .. index[1])
+                        execute(tx, "CREATE INDEX " .. index[1] .. " ON " .. index[2] ..
+                            " (" .. index[3] .. ", store_id)")
                     end
 
                     -- The published lookup also addresses nodes that carry source metadata

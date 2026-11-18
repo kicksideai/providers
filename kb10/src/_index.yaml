@@ -184,6 +184,10 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:09_source_identity_backfill
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:10_sqlite_search_row_keys
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:11_sqlite_search_row_backfill
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 

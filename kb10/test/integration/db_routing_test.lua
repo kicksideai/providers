@@ -17,6 +17,8 @@ local function define_tests()
                 "kickside.kb10.migrations:04_maintenance_runs",
                 "kickside.kb10.migrations:08_source_identity_schema",
                 "kickside.kb10.migrations:09_source_identity_backfill",
+                "kickside.kb10.migrations:10_sqlite_search_row_keys",
+                "kickside.kb10.migrations:11_sqlite_search_row_backfill",
             }) do test.eq(targets[id], ".meta.target_db") end
             test.eq(targets["kickside.kb10:db_config"], ".meta.db_id")
         end)

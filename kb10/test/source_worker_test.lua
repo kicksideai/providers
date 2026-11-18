@@ -10,6 +10,7 @@ local json = require("json")
 
 local source_worker = require("source_worker_lib")
 local kb10_store = require("kb10_store")
+local kb10_writer = require("kb10_writer")
 
 local fixtures = require("source_worker_fixtures")
 
@@ -1524,6 +1525,85 @@ local function define_tests()
                     test.eq(0, #stale_fts, "the prior generation's fts row is gone")
                 end
 
+                teardown_kb10_store(db, store_id)
+            end)
+
+            test.it("keeps search rows owned by the current document generation", function()
+                local store_id = bootstrap_kb10_store(db)
+                local first = assert(replace(store_id, "side-rows", "old root", {"old passage"}))
+                local root = first.document_node_id
+                local function chunk()
+                    local rows = assert(db:query("SELECT id FROM kb10_nodes WHERE parent_id = $1", {root}))
+                    test.eq(#rows, 1)
+                    return tostring(rows[1].id)
+                end
+                local old_chunk = chunk()
+                local function search_rows(node_id)
+                    if db:type() ~= sql.type.SQLITE then
+                        return assert(db:query("SELECT id FROM kb10_embeddings WHERE node_id = $1", {node_id}))
+                    end
+                    local rows = assert(db:query([[SELECT f.node_id, f.content, e.id
+                        FROM kb10_nodes n
+                        JOIN kb10_nodes_fts f ON f.rowid = n.fts_rowid
+                        CROSS JOIN json_each(n.embedding_ids) k
+                        JOIN kb10_embeddings e ON e.id = k.value AND e.node_id = n.id
+                        WHERE n.id = $1]], {node_id}))
+                    return rows
+                end
+                local old_rows = search_rows(old_chunk)
+                test.eq(#old_rows, 1)
+                test.not_nil(old_rows[1].id)
+
+                if db:type() == sql.type.SQLITE then
+                    local tx = assert(db:begin())
+                    local plans = {}
+                    local observed_tx = {
+                        query = function(_, statement, params) return tx:query(statement, params) end,
+                        execute = function(_, statement, params)
+                            if statement:find("DELETE FROM kb10_embeddings", 1, true)
+                                or statement:find("DELETE FROM kb10_nodes_fts", 1, true) then
+                                local plan = assert(tx:query("EXPLAIN QUERY PLAN " .. statement, params))
+                                for _, step in ipairs(plan) do plans[#plans + 1] = step.detail end
+                            end
+                            return tx:execute(statement, params)
+                        end,
+                    }
+                    local _, delete_err = kb10_writer.delete_documents_by_external_id_tx(
+                        observed_tx, sql.type.SQLITE, store_id, "fixture", "side-rows")
+                    local _, rollback_err = tx:rollback()
+                    test.is_nil(rollback_err)
+                    test.is_nil(delete_err)
+                    local plan = table.concat(plans, "\n")
+                    test.contains(plan, "kb10_embeddings VIRTUAL TABLE INDEX 1:")
+                    test.contains(plan, "kb10_nodes_fts VIRTUAL TABLE INDEX 0:=")
+                end
+
+                local replaced = assert(replace(store_id, "side-rows", "new root", {"new passage"}))
+                test.eq(replaced.document_node_id, root)
+                local current = chunk()
+                test.is_true(current ~= old_chunk)
+                test.eq(#assert(db:query("SELECT id FROM kb10_embeddings WHERE id = $1", {old_rows[1].id})), 0)
+
+                local edited, edit_err = kb10_store.write_node_with_embedding(store_id, {
+                    id = current, content = "edited passage",
+                }, vector(2))
+                test.is_nil(edit_err)
+                test.eq(edited, current)
+                local current_rows = search_rows(current)
+                test.eq(#current_rows, 1)
+                if db:type() == sql.type.SQLITE then
+                    test.eq(current_rows[1].content, "edited passage")
+                    test.eq(current_rows[1].node_id, current)
+                end
+
+                local removal = assert(kb10_store.delete_documents_by_external_id(store_id, "fixture", "side-rows"))
+                test.eq(type(removal) == "table" and removal.removed_chunk_count, 1)
+                test.eq(#assert(db:query("SELECT id FROM kb10_embeddings WHERE id = $1", {current_rows[1].id})), 0)
+                if db:type() == sql.type.SQLITE then
+                    test.eq(#assert(db:query(
+                        "SELECT rowid FROM kb10_nodes_fts WHERE node_id IN ($1, $2, $3)",
+                        {root, old_chunk, current})), 0)
+                end
                 teardown_kb10_store(db, store_id)
             end)
 

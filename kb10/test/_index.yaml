@@ -220,6 +220,7 @@ entries:
     method: run
     modules: [json, logger, sql, process, channel, time]
     imports:
+      kb10_writer: kickside.kb10.persist:writer
       test: wippy.test:test
       source_worker_lib: kickside.kb10.injection:source_worker_lib
       kb10_store: kickside.kb10.persist:store

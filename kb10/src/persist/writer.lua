@@ -73,6 +73,7 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
     local ids: {string} = {}
     local rows: {any} = {}
     local fts: {any} = {}
+    local last_fts_rowid: number? = nil
     for i, node in ipairs(nodes) do
         local input = node :: kb10.NodeInput
         local id = input.id or uuid.v7()
@@ -82,16 +83,26 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
             (source_roots == nil or source_roots[id]) then
             source, external_id = ops.source_key(input.metadata)
         end
-        rows[i] = { id, store_id, input.parent_id, input.node_type, input.content,
-            input.content_type, source, external_id, json.encode(input.metadata or {}) }
+        local fts_rowid: number? = nil
         if db_type == sql.type.SQLITE and input.content then
-            fts[#fts + 1] = { id, input.content, input.node_type }
+            if last_fts_rowid == nil then
+                local tail, tail_err = tx:query("SELECT rowid FROM kb10_nodes_fts ORDER BY rowid DESC LIMIT 1")
+                if tail_err then return nil, errors.wrap(tail_err, "fts rowid allocation failed") end
+                last_fts_rowid = #tail > 0 and tail[1].rowid or 0
+            end
+            fts_rowid = (last_fts_rowid :: number) + 1
+            last_fts_rowid = fts_rowid
+            fts[#fts + 1] = { fts_rowid, id, input.content, input.node_type }
         end
+        rows[i] = { id, store_id, input.parent_id, input.node_type, input.content,
+            input.content_type, source, external_id, json.encode(input.metadata or {}), fts_rowid }
     end
-    local err = insert_rows_tx(tx, "kb10_nodes", { "id", "store_id", "parent_id", "node_type", "content", "content_type",
-        "external_source", "external_id", "metadata" }, rows)
+    local columns = { "id", "store_id", "parent_id", "node_type", "content", "content_type",
+        "external_source", "external_id", "metadata" }
+    if db_type == sql.type.SQLITE then columns[#columns + 1] = "fts_rowid" end
+    local err = insert_rows_tx(tx, "kb10_nodes", columns, rows)
     if err then return nil, tostring(err) end
-    local fts_err = insert_rows_tx(tx, "kb10_nodes_fts", { "node_id", "content", "node_type" }, fts)
+    local fts_err = insert_rows_tx(tx, "kb10_nodes_fts", { "rowid", "node_id", "content", "node_type" }, fts)
     if fts_err then return nil, errors.wrap(fts_err, "fts insert failed") end
     return ids, nil
 end
@@ -102,31 +113,78 @@ local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any): 
     return ids[1], nil
 end
 
-local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}): ({string}?, any?)
+local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}, replace: boolean?): ({string}?, any?)
+    local sqlite = db_type == sql.type.SQLITE
     local ids: {string} = {}
     local rows: {any} = {}
+    local owners: {any} = {}
+    local owner_count = 0
     for i, input in ipairs(embeddings) do
         if type(input.embedding) ~= "table" then
             return nil, errors.new({ message = "embedding is required", kind = errors.INVALID })
         end
         local parent_id = input.parent_id
-        if db_type == sql.type.SQLITE and not parent_id then parent_id = "" end
         ids[i] = uuid.v7()
+        if sqlite then
+            if not is_str(input.node_id) then
+                return nil, errors.new({ message = "node_id is required", kind = errors.INVALID })
+            end
+            parent_id = parent_id or ""
+            local owner = owners[input.node_id]
+            if not owner then
+                owner = {}
+                owners[input.node_id] = owner
+                owner_count = owner_count + 1
+            end
+            owner[#owner + 1] = ids[i]
+        end
         rows[i] = { ids[i], input.node_id, store_id, input.node_type, parent_id, ops.vector_to_string(input.embedding) }
     end
     local err = insert_rows_tx(tx, "kb10_embeddings", { "id", "node_id", "store_id", "node_type", "parent_id", "embedding" }, rows)
-    if err then return nil, tostring(err) end
+    if err then return nil, err end
+    if owner_count > 0 then
+        local assignment = "owner.value"
+        if not replace then
+            assignment = [[CASE WHEN n.embedding_ids IS NULL THEN owner.value ELSE (
+                SELECT json_group_array(value) FROM (
+                    SELECT value FROM json_each(n.embedding_ids)
+                    UNION ALL SELECT value FROM json_each(owner.value)
+                )
+            ) END]]
+        end
+        local encoded, encode_err = json.encode(owners)
+        if encode_err then return nil, errors.wrap(encode_err, "embedding ownership encoding failed") end
+        local links, link_err = tx:execute("UPDATE kb10_nodes AS n SET embedding_ids = " .. assignment ..
+            " FROM json_each($1) AS owner WHERE n.id = owner.key AND n.store_id = $2",
+            { encoded, store_id })
+        if link_err then return nil, errors.wrap(link_err, "embedding ownership update failed") end
+        if tonumber(links and links.rows_affected) ~= owner_count then
+            return nil, errors.new({ message = "embedding node not found in store", kind = errors.NOT_FOUND })
+        end
+    end
     return ids, nil
+end
+
+local function delete_sqlite_embeddings_tx(tx: any, owners: string, params: {any}): any?
+    local _, err = tx:execute("DELETE FROM kb10_embeddings WHERE id IN (" ..
+        "SELECT key.value FROM (" .. owners .. ") n CROSS JOIN json_each(n.embedding_ids) key)", params)
+    return err
 end
 
 local function insert_embedding_tx(tx: any, db_type: any, store_id: any, node_id: any, node_type: any, parent_id: any, embedding: any): (string?, any?)
     if type(embedding) ~= "table" then return nil, errors.new({ message = "embedding is required", kind = errors.INVALID }) end
-    local _, clear_err = tx:execute(
-        "DELETE FROM kb10_embeddings WHERE store_id = $1 AND node_id = $2", { store_id, node_id })
-    if clear_err then return nil, tostring(clear_err) end
+    local clear_err
+    if db_type == sql.type.SQLITE then
+        clear_err = delete_sqlite_embeddings_tx(tx,
+            "SELECT embedding_ids FROM kb10_nodes WHERE store_id = $1 AND id = $2", { store_id, node_id })
+    else
+        _, clear_err = tx:execute(
+            "DELETE FROM kb10_embeddings WHERE store_id = $1 AND node_id = $2", { store_id, node_id })
+    end
+    if clear_err then return nil, clear_err end
     local ids, err = insert_embeddings_tx(tx, db_type, store_id, {
         { node_id = node_id, node_type = node_type, parent_id = parent_id, embedding = embedding },
-    })
+    }, true)
     if err or not ids then return nil, err end
     return ids[1], nil
 end
@@ -203,11 +261,41 @@ end
 local function descendants_cte(db_type: any, include_root: boolean): string
     local seed = "SELECT id FROM kb10_nodes WHERE parent_id = $1 AND store_id = $2"
     if include_root then
-        seed = db_type == sql.type.POSTGRES and "SELECT $1::uuid" or "SELECT $1"
+        seed = db_type == sql.type.POSTGRES and "SELECT $1::uuid"
+            or "SELECT id FROM kb10_nodes WHERE id = $1 AND store_id = $2"
     end
     -- SQLite drives each parent-index lookup from the current recursive row.
     return "WITH RECURSIVE descendants(id) AS (" .. seed .. " UNION ALL " ..
         "SELECT n.id FROM descendants d CROSS JOIN kb10_nodes n WHERE n.store_id = $2 AND n.parent_id = d.id) "
+end
+
+local function delete_sqlite_fts_tx(tx: any, owners: string, params: {any}): any?
+    local _, fts_err = tx:execute(
+        "DELETE FROM kb10_nodes_fts WHERE rowid IN (SELECT fts_rowid FROM (" .. owners ..
+        ") WHERE fts_rowid IS NOT NULL)", params)
+    if fts_err then return errors.wrap(fts_err, "failed to delete fts") end
+    return nil
+end
+
+local function delete_sqlite_subtree_tx(tx: any, store_id: any, node_id: any, include_root: boolean): any?
+    local cte = descendants_cte(sql.type.SQLITE, include_root)
+    local params = { node_id, store_id }
+    local _, edge_err = tx:execute(cte .. [[DELETE FROM kb10_edges WHERE id IN (
+        SELECT e.id FROM descendants d CROSS JOIN kb10_edges e INDEXED BY idx_kb10_edges_from
+            WHERE e.from_node_id = d.id AND e.store_id = $2
+        UNION ALL
+        SELECT e.id FROM descendants d CROSS JOIN kb10_edges e INDEXED BY idx_kb10_edges_to
+            WHERE e.to_node_id = d.id AND e.store_id = $2)]], params)
+    if edge_err then return errors.wrap(edge_err, "failed to delete edges") end
+    local owners = cte .. [[SELECT n.fts_rowid, n.embedding_ids
+        FROM descendants d CROSS JOIN kb10_nodes n WHERE n.id = d.id]]
+    local emb_err = delete_sqlite_embeddings_tx(tx, owners, params)
+    if emb_err then return errors.wrap(emb_err, "failed to delete embeddings") end
+    local fts_err = delete_sqlite_fts_tx(tx, owners, params)
+    if fts_err then return fts_err end
+    local _, node_err = tx:execute(cte .. "DELETE FROM kb10_nodes WHERE id IN (SELECT id FROM descendants)", params)
+    if node_err then return errors.wrap(node_err, "failed to delete nodes") end
+    return nil
 end
 
 local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, node_id: any): (kb10.Map?, any?)
@@ -248,27 +336,8 @@ local function delete_node_tx(tx: any, db_type: any, store_id: any, node_id: any
     end
 
     if db_type == sql.type.SQLITE then
-        local cte = descendants_cte(db_type, true)
-        local _, edge_err = tx:execute(
-            cte .. "DELETE FROM kb10_edges WHERE store_id = $3 AND (from_node_id IN (SELECT id FROM descendants) OR to_node_id IN (SELECT id FROM descendants))",
-            { node_id, store_id, store_id }
-        )
-        if edge_err then return false, errors.wrap(edge_err, "failed to delete edges") end
-        local _, emb_err = tx:execute(
-            cte .. "DELETE FROM kb10_embeddings WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if emb_err then return false, errors.wrap(emb_err, "failed to delete embeddings") end
-        local _, fts_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes_fts WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if fts_err then return false, errors.wrap(fts_err, "failed to delete fts") end
-        local _, node_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
-            { node_id, store_id, store_id }
-        )
-        if node_err then return false, errors.wrap(node_err, "failed to delete nodes") end
+        local err = delete_sqlite_subtree_tx(tx, store_id, node_id, true)
+        if err then return false, err end
         return true, nil, removed_counts
     end
 
@@ -293,28 +362,7 @@ end
 -- their descendants, embeddings and edges.
 local function delete_children_tx(tx: any, db_type: any, store_id: any, node_id: any): any?
     if db_type == sql.type.SQLITE then
-        local cte = descendants_cte(db_type, false)
-        local _, edge_err = tx:execute(
-            cte .. "DELETE FROM kb10_edges WHERE store_id = $3 AND (from_node_id IN (SELECT id FROM descendants) OR to_node_id IN (SELECT id FROM descendants))",
-            { node_id, store_id, store_id }
-        )
-        if edge_err then return errors.wrap(edge_err, "failed to delete child edges") end
-        local _, emb_err = tx:execute(
-            cte .. "DELETE FROM kb10_embeddings WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if emb_err then return errors.wrap(emb_err, "failed to delete child embeddings") end
-        local _, fts_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes_fts WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if fts_err then return errors.wrap(fts_err, "failed to delete child fts") end
-        local _, node_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
-            { node_id, store_id, store_id }
-        )
-        if node_err then return errors.wrap(node_err, "failed to delete child nodes") end
-        return nil
+        return delete_sqlite_subtree_tx(tx, store_id, node_id, false)
     end
 
     local _, exec_err = tx:execute(
@@ -322,6 +370,25 @@ local function delete_children_tx(tx: any, db_type: any, store_id: any, node_id:
         { store_id, node_id }
     )
     if exec_err then return errors.wrap(exec_err, "failed to delete child nodes") end
+    return nil
+end
+
+local function write_sqlite_fts_tx(tx: any, node_id: any, content: any, node_type: any): any?
+    if content == nil then
+        local _, del_err = tx:execute(
+            "DELETE FROM kb10_nodes_fts WHERE rowid = (SELECT fts_rowid FROM kb10_nodes WHERE id = $1)", { node_id })
+        if del_err then return errors.wrap(del_err, "fts delete failed") end
+        local _, link_err = tx:execute(
+            "UPDATE kb10_nodes SET fts_rowid = NULL WHERE id = $1 AND fts_rowid IS NOT NULL", { node_id })
+        if link_err then return errors.wrap(link_err, "fts ownership update failed") end
+    else
+        local _, write_err = tx:execute([[INSERT OR REPLACE INTO kb10_nodes_fts (rowid, node_id, content, node_type)
+            VALUES ((SELECT fts_rowid FROM kb10_nodes WHERE id = $1), $1, $2, $3)]], { node_id, content, node_type })
+        if write_err then return errors.wrap(write_err, "fts insert failed") end
+        local _, link_err = tx:execute([[UPDATE kb10_nodes SET fts_rowid = last_insert_rowid()
+            WHERE id = $1 AND fts_rowid IS NULL]], { node_id })
+        if link_err then return errors.wrap(link_err, "fts ownership update failed") end
+    end
     return nil
 end
 
@@ -341,15 +408,7 @@ local function overwrite_document_tx(tx: any, db_type: any, store_id: any, node_
     if exec_err then return tostring(exec_err) end
 
     if db_type == sql.type.SQLITE then
-        local _, del_err = tx:execute("DELETE FROM kb10_nodes_fts WHERE node_id = $1", { node_id })
-        if del_err then return errors.wrap(del_err, "fts delete failed") end
-        if node_input.content then
-            local _, fts_err = tx:execute(
-                "INSERT INTO kb10_nodes_fts (node_id, content, node_type) VALUES ($1, $2, $3)",
-                { node_id, node_input.content, node_input.node_type }
-            )
-            if fts_err then return errors.wrap(fts_err, "fts insert failed") end
-        end
+        return write_sqlite_fts_tx(tx, node_id, node_input.content, node_input.node_type)
     end
 
     return nil
@@ -562,10 +621,9 @@ function writer.delete_store(component_id: any)
     if dt_err then return fail_tx(tx, db, dt_err) end
 
     local cascade = {}
-    -- kb10_nodes_fts is a SQLite fts5 virtual table; PostgreSQL uses the
-    -- search_vector tsvector column on kb10_nodes, so it only exists on SQLite.
     if db_type == sql.type.SQLITE then
-        cascade[#cascade + 1] = { sql = "DELETE FROM kb10_nodes_fts WHERE node_id IN (SELECT id FROM kb10_nodes WHERE store_id = $1)", name = "kb10_nodes_fts" }
+        local fts_err = delete_sqlite_fts_tx(tx, "SELECT fts_rowid FROM kb10_nodes WHERE store_id = $1", { store_id })
+        if fts_err then return fail_tx(tx, db, fts_err) end
     end
     cascade[#cascade + 1] = { sql = "DELETE FROM kb10_query_log WHERE store_id = $1", name = "kb10_query_log" }
     cascade[#cascade + 1] = { sql = "DELETE FROM kb10_tuning_state WHERE store_id = $1", name = "kb10_tuning_state" }
@@ -702,13 +760,8 @@ local function update_node_tx(tx: any, db_type: any, store_id: any, node_id: any
     if exec_err then return nil, tostring(exec_err) end
 
     if db_type == sql.type.SQLITE and node_patch.content ~= nil then
-        local _, del_err = tx:execute("DELETE FROM kb10_nodes_fts WHERE node_id = $1", { node_id })
-        if del_err then return nil, errors.wrap(del_err, "fts delete failed") end
-        local _, fts_err = tx:execute(
-            "INSERT INTO kb10_nodes_fts (node_id, content, node_type) VALUES ($1, $2, $3)",
-            { node_id, node_patch.content, node.node_type }
-        )
-        if fts_err then return nil, errors.wrap(fts_err, "fts insert failed") end
+        local fts_err = write_sqlite_fts_tx(tx, node_id, node_patch.content, node.node_type)
+        if fts_err then return nil, fts_err end
     end
 
     return node, nil
@@ -786,42 +839,14 @@ function writer.insert_embedding(store_id: any, node_id: any, node_type: any, pa
     local db, err = ops.get_db()
     if err then return nil, err end
 
-    local db_type = ops.get_db_type(db)
-    local id = uuid.v7()
-
-    -- SQLite vec0 metadata columns require TEXT, cannot be NULL
-    local safe_parent_id = parent_id
-    if db_type == sql.type.SQLITE and not safe_parent_id then
-        safe_parent_id = ""
-    end
-
-    -- One current vector per node: clear the node's existing rows before
-    -- inserting, or a re-embed leaves the stale vector behind to compete with
-    -- the fresh one in every search.
-    local _, clear_err = db:execute(
-        "DELETE FROM kb10_embeddings WHERE store_id = $1 AND node_id = $2",
-        { store_id, node_id }
-    )
-    if clear_err then
-        db:release()
-        return nil, clear_err
-    end
-
-    local exec_err
-    if db_type == sql.type.SQLITE then
-        _, exec_err = db:execute(
-            "INSERT INTO kb10_embeddings (id, node_id, store_id, node_type, parent_id, embedding) VALUES ($1, $2, $3, $4, $5, $6)",
-            { id, node_id, store_id, node_type, safe_parent_id, ops.vector_to_string(embedding) }
-        )
-    else
-        _, exec_err = db:execute(
-            "INSERT INTO kb10_embeddings (id, node_id, store_id, node_type, parent_id, embedding) VALUES ($1, $2, $3, $4, $5, $6)",
-            { id, node_id, store_id, node_type, parent_id, ops.vector_to_string(embedding) }
-        )
-    end
-
-    db:release()
-    if exec_err then return nil, exec_err end
+    local db_type, dt_err = ops.get_db_type(db)
+    if dt_err then db:release(); return nil, dt_err end
+    local tx, tx_err = db:begin()
+    if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local id, insert_err = insert_embedding_tx(tx, db_type, store_id, node_id, node_type, parent_id, embedding)
+    if insert_err then return fail_tx(tx, db, insert_err) end
+    local ok, commit_err = commit_tx(tx, db, "embedding insert")
+    if not ok then return nil, commit_err end
     return id
 end
 
@@ -966,9 +991,7 @@ function writer.insert_nodes(store_id: any, nodes: any, source_roots: any?): (bo
     return commit_tx(tx, db, "node batch insert")
 end
 
--- Insert embeddings for newly imported nodes. Replacement writes use the
--- single-row path; probing vec0 for every absent row makes a large import
--- quadratic on SQLite. rows: { { node_id, node_type, parent_id, embedding }, ... }.
+-- Insert embeddings for newly imported nodes in one transaction.
 function writer.insert_embeddings(store_id: any, rows: any): (boolean?, any?)
     local list = (type(rows) == "table" and rows or {}) :: { any }
     if #list == 0 then return true end
