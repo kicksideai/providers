@@ -213,18 +213,17 @@ function M.output_limit(model: string): (integer?, error?)
     local card, err = llm.resolve_model(model)
     if err then return nil, err end
     local limit = tonumber(card and card.output_tokens)
-    if not limit or limit ~= limit or limit < 1 then
-        return nil, types.invalid("memory model " .. model .. " requires a positive output limit")
-    end
+    if not limit or limit ~= limit or limit < 1 then return nil, nil end
     return math.floor(limit), nil
 end
 
 function M.output_budget(schema: any, model: string): (integer?, error?)
     local limit, limit_err = M.output_limit(model)
     if limit_err then return nil, limit_err end
+    if not limit then return nil, nil end
     local size, size_err = M.schema_bytes(schema, 4)
     if size_err then return nil, size_err end
-    return math.min(limit :: integer, size :: integer), nil
+    return math.min(limit, size :: integer), nil
 end
 
 return M

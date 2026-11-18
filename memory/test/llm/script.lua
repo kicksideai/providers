@@ -80,12 +80,16 @@ function M.await_release(scope: string, method: string): string?
     end
 end
 
-function M.take(scope: string, method: string): (any, string?, string?, boolean?, string?, any?)
+function M.take(scope: string, method: string, optional: boolean?): (any, string?, string?, boolean?, string?, any?)
     M.ensure()
     local conn = db()
     local rows, err = conn:query("SELECT seq, response, failure FROM app_llm_script WHERE scope = $1 AND method = $2 ORDER BY seq LIMIT 1", { scope, method })
     if err then conn:release(); error(tostring(err)) end
-    if not rows or #rows == 0 then conn:release(); return nil, "no scripted " .. method .. " response in scope " .. scope, nil, nil end
+    if not rows or #rows == 0 then
+        conn:release()
+        if optional then return nil, nil end
+        return nil, "no scripted " .. method .. " response in scope " .. scope, nil, nil
+    end
     local _, delete_err = conn:execute("DELETE FROM app_llm_script WHERE scope = $1 AND method = $2 AND seq = $3", { scope, method, rows[1].seq })
     conn:release()
     if delete_err then error(tostring(delete_err)) end
