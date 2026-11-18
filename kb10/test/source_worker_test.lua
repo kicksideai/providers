@@ -786,7 +786,7 @@ local function define_tests()
                     return {
                         store = {
                             delete_documents_by_external_id = function()
-                                return nil, "delete backend unavailable"
+                                return nil, errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = "delete backend unavailable" })
                             end,
                         },
                         store_row = {

@@ -747,10 +747,14 @@ local function define_tests()
             test.eq(found_failed.document_node_id, "node:poison")
         end)
 
-        test.it("classifies a registry/resource exhaustion as a system-level failure", function()
-            test.is_true(source_materializer.is_system_failure("kickside...:203: registry overflow"))
-            test.is_true(source_materializer.is_system_failure("embed failed: provider down"))
-            test.is_true(source_materializer.is_system_failure("chunk 1 vector dimension mismatch"))
+        test.it("classifies native infrastructure failures without matching message strings", function()
+            test.is_true(source_materializer.is_system_failure(errors.new({
+                kind = errors.INTERNAL, message = "registry overflow",
+            })))
+            test.is_false(source_materializer.is_system_failure("embed failed: a document is invalid"))
+            test.is_true(source_materializer.is_system_failure(errors.new({
+                kind = errors.UNAVAILABLE, message = "chunk 1 vector dimension mismatch",
+            })))
             test.is_false(source_materializer.is_system_failure("replace document failed: insert child failed: pq: invalid byte sequence for encoding \"UTF8\": 0xe2"))
             test.is_false(source_materializer.is_system_failure("document chunk count exceeds KB policy: produced 5294 chunks (max 1500); full content preserved for replay"))
             test.is_false(source_materializer.is_system_failure("no materialized summary or chunks"))
@@ -760,6 +764,18 @@ local function define_tests()
             })))
             test.is_true(source_materializer.is_system_failure(errors.new({
                 kind = errors.UNAVAILABLE, message = "document content too large",
+            })))
+        end)
+
+        test.it("honors native retryability before classifying the error kind", function()
+            test.is_true(source_materializer.is_system_failure(errors.new({
+                kind = errors.INVALID, retryable = true, message = "document content too large",
+            })))
+            test.is_true(source_materializer.is_system_failure(errors.new({
+                kind = errors.CONFLICT, retryable = true, message = "deadlock",
+            })))
+            test.is_false(source_materializer.is_system_failure(errors.new({
+                kind = errors.CONFLICT, retryable = false, message = "source revision conflicts",
             })))
         end)
 

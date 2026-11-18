@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local function embed(args: any): (any, any)
+    if args.model == "source-slow" then require("time").sleep("1s") end
     local vectors = {}
     for _, input in ipairs(args.input) do
         if args.model == "source-unavailable"

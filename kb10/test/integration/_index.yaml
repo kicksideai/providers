@@ -95,7 +95,7 @@ entries:
     meta: { type: test, suite: knowledge_injection }
     source: file://source_cursor_test.lua
     method: run
-    modules: [sql, json, uuid, time]
+    modules: [sql, json, uuid, time, registry]
     imports:
       test: wippy.test:test
       uploads: kickside.uploads.persist:upload_record_repo

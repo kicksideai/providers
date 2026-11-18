@@ -33,6 +33,7 @@ local job_types = require("job_types")
 local registry = require("registry")
 local funcs = require("funcs")
 
+local component = require("component")
 local llm = require("llm")
 local prompt = require("prompt")
 local artifact_content_repo = require("artifact_content_repo")
@@ -659,11 +660,27 @@ local function kb_state(body: table, kb_id: string): table
     return state
 end
 
-local function apply_document_result(state: table, result: any): ()
+-- The source body and its graph notice commit with the cursor. When a store
+-- mutation writes ahead, only the committed body describes the published baseline.
+local function set_source_delta(n: table, prior: any, status: string)
+    n.document_delta = (status == "completed" and 1 or 0) - (prior.status == "completed" and 1 or 0)
+    n.failed_delta = (status == "failed" and 1 or 0) - (prior.status == "failed" and 1 or 0)
+    n.summary_delta = (tonumber(n.summary_count) or 0) - (tonumber(prior.summary_count) or 0)
+    n.chunk_delta = (tonumber(n.chunk_count) or 0) - (tonumber(prior.chunk_count) or 0)
+    n.embedding_delta = n.summary_delta + n.chunk_delta
+end
+
+local function apply_document_result(state: table, result: any, last_seq: number): ()
     local sources = state.sources :: table
     for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
         local key = source_key(n.external_source, n.external_id)
+        local prior_seq = tonumber(n.prior_source_seq)
+        n.prior_source_seq = nil
         if key then
+            local prior = sources[key]
+            if n.persisted ~= false and (prior or (prior_seq and prior_seq > last_seq)) then
+                set_source_delta(n, prior or {}, trim(n.status))
+            end
             if trim(n.status) == "completed" then
                 sources[key] = {
                     external_source = trim(n.external_source) ~= "" and trim(n.external_source) or "knowledge.kb",
@@ -757,15 +774,8 @@ local function apply_delete_result(state: table, result: any): ()
     local sources = state.sources :: table
     for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
         local key = source_key(n.external_source, n.external_id)
-        local previous = key and sources[key]
-        if previous then
-            -- The source projection consumes the delete once. A store may have
-            -- committed it before another target prevented the cursor advancing.
-            n.document_delta = previous.status == "completed" and -1 or 0
-            n.failed_delta = previous.status == "failed" and -1 or 0
-            n.summary_delta = -(tonumber(previous.summary_count) or 0)
-            n.chunk_delta = -(tonumber(previous.chunk_count) or 0)
-            n.embedding_delta = n.summary_delta + n.chunk_delta
+        if key and sources[key] then
+            set_source_delta(n, sources[key], "")
             sources[key] = nil
         end
     end
@@ -1156,6 +1166,11 @@ local function run_with_deps(input_raw, deps)
         return results, nil
     end
 
+    local cursor = type(input.cursor) == "table" and input.cursor or {}
+    local prior_seq = tonumber(cursor.last_seq) or 0
+    local deadline = tonumber(input.execution_deadline_ns)
+    local started_ns = deadline and time.now():unix_nano() or 0
+    local longest_event_ns = 0
     local consumed_seq, stopped_seq, failure, retryable
     local processed, failed_processed = 0, 0
     local failed_final_seq
@@ -1171,7 +1186,7 @@ local function run_with_deps(input_raw, deps)
                 metrics.documents_inserted = metrics.documents_inserted + (tonumber(result.inserted) or 0)
                 metrics.documents_replaced = metrics.documents_replaced + (tonumber(result.replaced) or 0)
                 metrics.items_failed = metrics.items_failed + (tonumber(result.failed) or 0)
-                apply_document_result(state, result)
+                apply_document_result(state, result, prior_seq)
                 result.consumed = nil
             end
             local by_kind = target_results[kb_id] or {}
@@ -1192,6 +1207,11 @@ local function run_with_deps(input_raw, deps)
 
     for index, raw in ipairs(raw_events) do
         if type(raw) == "table" then
+            -- Keep time to finalize the prefix and return the proc result.
+            if consumed_seq and deadline and deadline - started_ns <= longest_event_ns + time.SECOND then
+                stopped_seq = tonumber(raw.seq)
+                break
+            end
             local event = {
                 id = tostring(raw.id or ""),
                 seq = tonumber(raw.seq) or 0,
@@ -1223,14 +1243,11 @@ local function run_with_deps(input_raw, deps)
 
             local docs = type(items) == "table" and type(items.documents) == "table" and items.documents or {}
             local deletes = type(items) == "table" and type(items.deletes) == "table" and items.deletes or {}
-            if #docs > max_pending_documents then
-                stopped_seq, failure = event.seq, "source worker document cap exceeded: " .. tostring(max_pending_documents)
-                break
-            elseif #deletes > max_pending_deletes then
-                stopped_seq, failure = event.seq, "source worker delete cap exceeded: " .. tostring(max_pending_deletes)
-                break
-            elseif metrics.documents_emitted + #docs > max_pending_documents
-                or metrics.deletes_emitted + #deletes > max_pending_deletes then
+            -- Individual source events are the indivisible unit of cursor progress.
+            if metrics.events_extracted > 0 and (
+                metrics.documents_emitted + #docs > max_pending_documents
+                or metrics.deletes_emitted + #deletes > max_pending_deletes
+            ) then
                 stopped_seq = event.seq
                 break
             end
@@ -1249,15 +1266,27 @@ local function run_with_deps(input_raw, deps)
             end
             consumed_seq = event.seq
             processed = processed + failed_processed
+            if deadline then
+                local finished_ns = time.now():unix_nano()
+                longest_event_ns = math.max(longest_event_ns, finished_ns - started_ns)
+                started_ns = finished_ns
+            end
         end
     end
 
-    local cursor = type(input.cursor) == "table" and input.cursor or {}
-    if failure and (not consumed_seq or consumed_seq <= (tonumber(cursor.last_seq) or 0)) then
+    if failure and (not consumed_seq or consumed_seq <= prior_seq) then
         if retryable then
-            return nil, errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = tostring(failure) })
+            local message = tostring(failure)
+            local unavailable = errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = message })
+            if message ~= cursor.last_error then
+                local updated, metadata_err = component.set_meta(thread_id, { status = "error", last_error = message })
+                if not updated then
+                    logger:warn("source status update failed", { thread_id = thread_id, error = tostring(metadata_err) })
+                end
+            end
+            return nil, unavailable
         end
-        return dead_letter_event(stopped_seq, failure, failed_processed, failed_final_seq)
+        return dead_letter_event(stopped_seq :: number, failure, failed_processed, failed_final_seq)
     end
     local last_seq = consumed_seq
     if not stopped_seq then last_seq = tonumber(range.to_seq) or consumed_seq end
