@@ -284,6 +284,7 @@ entries:
       request: kickside.kb10.api:request
       maintenance_runs: kickside.kb10.persist:maintenance_runs
       store: kickside.kb10.persist:store
+      model_settings: kickside.kb10:model_settings
 
   # The same start and status behaviour as libraries, for a caller that has no
   # HTTP request behind it: the Knowledge Manager tool's maintenance actions

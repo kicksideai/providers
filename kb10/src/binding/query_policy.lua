@@ -1,3 +1,5 @@
+local model_settings = require("model_settings")
+
 local M = {}
 
 -- Interactive retrieval must never inherit the provider's very large generation
@@ -9,15 +11,8 @@ M.RERANK_MAX_TOKENS = 1024
 M.RERANK_TIMEOUT_SECONDS = 20
 M.QUERY_EMBED_TIMEOUT_SECONDS = 30
 
--- Query analysis is configured independently of document summarization.
--- An omitted or disabled analysis model selects raw vector retrieval.
-function M.resolve_analysis_model(config: table?): string?
-    local cfg = config or {}
-    local configured = cfg.analysis_model
-    if type(configured) ~= "string" or configured == "" then
-        return nil
-    end
-    return configured
+function M.resolve_analysis_model(config: table?, engine: any?): (string?, any?)
+    return model_settings.resolve(config, engine, "analysis_model")
 end
 
 function M.document_analysis_options(model: string): table
@@ -46,12 +41,13 @@ function M.query_embed_options(model: string?, dimensions: number): table
     }
 end
 
-function M.resolve_hyde_model(config: table): (string?, any?)
+function M.resolve_hyde_model(config: table, engine: any?): (string?, any?)
     if config.query_strategy == nil or config.query_strategy == "plain" then return nil, nil end
     if config.query_strategy ~= "hyde" then
         return nil, errors.new({ kind = errors.INVALID, message = "query_strategy must be plain or hyde" })
     end
-    local model = M.resolve_analysis_model(config)
+    local model, err = M.resolve_analysis_model(config, engine)
+    if err then return nil, err end
     if not model then
         return nil, errors.new({ kind = errors.INVALID, message = "HyDE requires the KB analysis_model" })
     end

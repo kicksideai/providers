@@ -352,7 +352,7 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
     if type(materialization) ~= "table" then return nil, "materialization options unavailable" end
 
     local summary_model = (materialization :: any).summary_model
-    if type(summary_model) ~= "string" or summary_model == "" then
+    if not summary_model then
         return nil, "kb has no summary_model configured -- nothing to regenerate with"
     end
     local summary_max_chars = (materialization :: any).summary_max_chars
@@ -364,7 +364,7 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
     -- exactly as ingest_documents_into_store binds it.
     local enrich: any? = nil
     local enrich_batch: any? = nil
-    if type(chunk_enrichment_model) == "string" and chunk_enrichment_model ~= "" then
+    if chunk_enrichment_model then
         if batch_enricher then
             enrich_batch = function(doc: any, summary_text: any, chunks: any): (any?, string?)
                 local prefixes, err = batch_enricher((doc :: any).content or "", summary_text or "",

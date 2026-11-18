@@ -193,6 +193,12 @@ entries:
     kind: library.lua
     source: file://types.lua
 
+  - name: model_settings
+    kind: library.lua
+    source: file://model_settings.lua
+    imports:
+      engines: kickside.knowledge:engines
+
   # ─── kb_store binding (default engine for knowledge's control plane) ──
   # kb10 implements ONLY the model-agnostic store lifecycle toward knowledge. Node,
   # edge, embedding, summary and graph operations are kb10-internal (persist:node_store
@@ -428,8 +434,8 @@ entries:
         chunk_overlap: 150
         summary_max_chars: 2400
         summary_prompt: ""
-        summary_model: "class:fast"
-        chunk_enrichment_model: "class:fast"
+        summary_model: &document_summary_model "class:fast"
+        chunk_enrichment_model: &document_chunk_model "class:fast"
         # Images: when on, diagrams/figures from the source become retrievable image
         # nodes -- described in context by image_caption_model, contextually embedded
         # alongside text, and placed in the graph so agentic search returns the diagram.
@@ -448,7 +454,7 @@ entries:
         digest_context_tokens: 48000
         digest_chars_per_token: 4
         # Ask: how a grounded answer is produced (built-in synthesis | agentic agent).
-        analysis_model: "class:fast"
+        analysis_model: &document_analysis_model "class:fast"
         extra_prompt: ""
         enable_reranking: false
         query_strategy: plain
@@ -459,11 +465,17 @@ entries:
       config_schema:
         type: object
         properties:
+          summary_model:
+            type: [string, boolean]
+            default: *document_summary_model
+          chunk_enrichment_model:
+            type: [string, boolean]
+            default: *document_chunk_model
           analysis_model:
             type: [string, boolean]
-            default: "class:fast"
+            default: *document_analysis_model
             label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables analysis and answering.
+            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses the engine default. False disables analysis and answering.
           extra_prompt:
             type: string
             default: ""
@@ -604,8 +616,8 @@ entries:
         chunk_overlap: 150
         summary_max_chars: 2400
         summary_prompt: ""
-        summary_model: "class:fast"
-        chunk_enrichment_model: "class:fast"
+        summary_model: &wiki_summary_model "class:fast"
+        chunk_enrichment_model: &wiki_chunk_model "class:fast"
         # Images: when on, diagrams/figures from the source become retrievable image
         # nodes -- described in context by image_caption_model, contextually embedded
         # alongside text, and placed in the graph so agentic search returns the diagram.
@@ -626,7 +638,7 @@ entries:
         extraction_model: "class:nano"
         retrieval_model: "class:nano"
         max_retrieval_iterations: 3
-        analysis_model: "class:fast"
+        analysis_model: &wiki_analysis_model "class:fast"
         extra_prompt: ""
         enable_reranking: false
         query_strategy: plain
@@ -643,11 +655,17 @@ entries:
       config_schema:
         type: object
         properties:
+          summary_model:
+            type: [string, boolean]
+            default: *wiki_summary_model
+          chunk_enrichment_model:
+            type: [string, boolean]
+            default: *wiki_chunk_model
           analysis_model:
             type: [string, boolean]
-            default: "class:fast"
+            default: *wiki_analysis_model
             label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables analysis and answering.
+            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses the engine default. False disables analysis and answering.
           extra_prompt:
             type: string
             default: ""

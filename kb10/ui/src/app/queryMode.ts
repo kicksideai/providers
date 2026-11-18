@@ -1,3 +1,5 @@
+import { resolveModel } from './modelSettings'
+
 export type QueryConfig = Record<string, unknown>
 
 function model(value: unknown): string {
@@ -6,7 +8,7 @@ function model(value: unknown): string {
 
 // Query analysis has its own explicit model; summaries do not select it.
 export function analysisModel(config: QueryConfig): string {
-  return model(config.analysis_model)
+  return resolveModel(config.analysis_model)
 }
 
 export function canGenerateAnswer(config: QueryConfig): boolean {

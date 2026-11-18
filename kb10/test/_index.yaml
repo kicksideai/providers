@@ -318,6 +318,7 @@ entries:
       resummarize: kickside.kb10.engine:resummarize
       kb10_store: kickside.kb10.persist:store
       source_worker_fixtures: app:source_worker_fixtures
+      maintenance_fixture: app:maintenance_fixture
 
   - name: knowledge_api_test
     kind: function.lua
@@ -475,6 +476,7 @@ entries:
       suite: kb10_query
     source: file://query_policy_test.lua
     method: run
+    modules: [registry]
     imports:
       test: wippy.test:test
       policy: kickside.kb10.binding:query_policy

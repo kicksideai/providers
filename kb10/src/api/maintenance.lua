@@ -35,6 +35,7 @@ local job_types = require("job_types")
 local request = require("request")
 local runs = require("maintenance_runs")
 local store = require("store")
+local model_settings = require("model_settings")
 
 local M = {}
 
@@ -192,7 +193,11 @@ function M.start(kb_id: string, run_type: string): (any?, string?, number?)
             return nil, "read knowledge base settings: " .. tostring(store_err or "store not found"),
                 http.STATUS.INTERNAL_ERROR
         end
-        if type(row.config) == "table" and row.config.summary_model == false then
+        local summary_model, model_err = model_settings.resolve(row.config, row.kb_type, "summary_model")
+        if model_err then
+            return nil, tostring(model_err), http.STATUS.INTERNAL_ERROR
+        end
+        if not summary_model then
             return { success = true, kb_id = kb_id, scheduled = false }, nil, http.STATUS.OK
         end
     end
