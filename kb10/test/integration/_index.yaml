@@ -110,6 +110,8 @@ entries:
       lifecycle: kickside.core.jobs.persist:lifecycle
       jobs: kickside.core.jobs:jobs
       job_types: kickside.core.jobs:types
+      job_clock: kickside.core.jobs:clock
+      job_config: kickside.core.jobs:config
 
   - name: source_cursor_extractor
     kind: function.lua

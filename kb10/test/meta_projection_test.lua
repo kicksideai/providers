@@ -14,7 +14,7 @@ local function define_tests()
                         id = "ev-1",
                         type = "kickside.knowledge.events:graph.changed",
                         created_at = "2026-01-01T00:00:01Z",
-                        body = { kb_id = "kb-1", reason = "concept.created", concept_delta = 1 },
+                        body = { reason = "concept.created", concept_delta = 1 },
                     },
                     {
                         id = "ev-2",
@@ -46,6 +46,35 @@ local function define_tests()
             test.eq(0, first.fields.failed_count)
             test.eq(3, first.fields.concept_count)
             test.eq("2026-01-01T00:00:02Z", first.fields.graph_updated_at)
+        end)
+
+        test.it("uses the projection thread when a page starts with another knowledge base's notice", function()
+            local published_id
+            local result, err = worker.run({
+                thread_id = "kb-1",
+                range = { to_seq = 2 },
+                events = {
+                    {
+                        type = "kickside.knowledge.events:graph.changed",
+                        body = { kb_id = "kb-2", document_delta = 4, status = "ready" },
+                    },
+                    {
+                        type = "kickside.knowledge.events:graph.changed",
+                        body = { kb_id = "kb-1", document_delta = 1 },
+                    },
+                },
+                component = {
+                    set_meta = function(id)
+                        published_id = id
+                        return true, nil
+                    end,
+                },
+            })
+
+            test.is_nil(err)
+            test.eq(published_id, "kb-1")
+            test.eq(result.body.counts.document_count, 1)
+            test.eq(result.last_seq, 2)
         end)
 
         test.it("folds source queue and materialization deltas into the same public meta snapshot", function()

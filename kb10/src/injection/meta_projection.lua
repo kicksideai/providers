@@ -50,6 +50,8 @@ local function target_kb_id(input: any, projection: any, events: { any }): strin
     local cfg = worker_config(input, projection)
     local ids = type(cfg.target_kb_ids) == "table" and cfg.target_kb_ids or {}
     if type(ids[1]) == "string" and ids[1] ~= "" then return ids[1] end
+    local thread_id = trim(input.thread_id)
+    if thread_id ~= "" then return thread_id end
     for _, ev in ipairs(events) do
         local body = decode_object(type(ev) == "table" and (ev :: any).body or nil)
         local kb_id = trim(body.kb_id)
@@ -58,7 +60,7 @@ local function target_kb_id(input: any, projection: any, events: { any }): strin
     return nil
 end
 
-local function apply_change(counts: any, ev: any): string?
+local function apply_change(counts: any, ev: any, kb_id: string): string?
     if type(ev) ~= "table" then return nil end
     local event_type = tostring((ev :: any).type or "")
     if event_type == EVENT_CONTENT_UPSERTED or event_type == EVENT_CONTENT_DELETED then
@@ -69,6 +71,7 @@ local function apply_change(counts: any, ev: any): string?
     end
     if event_type ~= EVENT_GRAPH_CHANGED then return nil end
     local body = decode_object((ev :: any).body)
+    if body.kb_id ~= nil and trim(body.kb_id) ~= kb_id then return nil end
     counts.pending_source_count = add_count(counts.pending_source_count, -int_delta(body.source_processed_delta))
     counts.document_count = add_count(counts.document_count, body.document_delta)
     counts.chunk_count = add_count(counts.chunk_count, body.chunk_delta)
@@ -132,7 +135,7 @@ function M.run(input: any): any
 
     local updated_at = trim(body.graph_updated_at)
     for _, ev in ipairs(events :: { any }) do
-        local event_time = apply_change(body.counts, ev)
+        local event_time = apply_change(body.counts, ev, kb_id)
         if event_time and event_time ~= "" then
             updated_at = event_time
         end

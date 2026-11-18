@@ -16,6 +16,8 @@ local claim = require("claim")
 local lifecycle = require("lifecycle")
 local jobs = require("jobs")
 local job_types = require("job_types")
+local job_clock = require("job_clock")
+local job_config = require("job_config")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
 local DELETE = "kickside.knowledge.events:content.deleted"
@@ -88,9 +90,12 @@ local function attempt(fixture: SourceFixture)
     if err then
         db = assert(sql.get("app:db"))
         local failure_class = job_types.is_deterministic_kind(err:kind()) and "deterministic" or "infrastructure"
+        local failure_started = time.now():unix_nano()
         local persist_err = lifecycle.fail_job(db, job, dbtype, tostring(err), failure_class)
+        local failure_finished = time.now():unix_nano()
         assert(select(2, db:release()) == nil)
         assert(persist_err == nil, tostring(persist_err))
+        return output, err, failure_started, failure_finished
     end
     return output, err
 end
@@ -146,15 +151,22 @@ end
 
 local function source_counts(fixture: SourceFixture, kb_id)
     local events = query("SELECT seq,type,body,created_at FROM kickside_event WHERE thread_id=$1 ORDER BY seq", { fixture.thread })
-    local public_status
+    local public_meta
     local result, err = meta_projection.run({
-        worker_config = { target_kb_ids = { kb_id } },
+        thread_id = fixture.thread,
         events = events,
-        component = { set_meta = function(_, meta) public_status = meta.status; return true end },
+        component = {
+            set_meta = function(id, meta)
+                test.eq(id, kb_id)
+                public_meta = meta
+                return true
+            end,
+        },
     })
     test.is_nil(err)
     test.not_nil(result)
-    return result.body.counts, public_status
+    test.not_nil(public_meta)
+    return result.body.counts, public_meta.status, public_meta.document_count
 end
 
 local function source_count(fixture: SourceFixture, kb_id: string)
@@ -245,8 +257,11 @@ local function define_tests()
             with_source({ "source-unavailable" }, {}, function(fixture, targets, names)
                 local head = append(fixture, { "First document", "Second document", "Third document" })
                 local previous_schedule
-                for _ = 1, 4 do
-                    local output, err = attempt(fixture)
+                local policy = assert(job_config.policy())
+                local base_seconds = math.max(1, math.ceil(policy.slot_retry_after_ms / 1000))
+                local cap_seconds = math.floor(policy.slot_retry_max_delay_ms / 1000)
+                for failure = 1, 4 do
+                    local output, err, failure_started, failure_finished = attempt(fixture)
                     local row = cursor(fixture)
                     test.eq(#documents(targets[1]), 0)
                     test.eq(tonumber(row.last_seq), 0, "unavailable embedding must hold the cursor")
@@ -255,13 +270,20 @@ local function define_tests()
                     test.is_nil(output)
                     test.eq(err:kind(), errors.UNAVAILABLE)
                     test.is_true(err:retryable())
-                    local job = query([[SELECT status, CAST(scheduled_at AS TEXT) AS scheduled_at,
+                    local job = query([[SELECT status, attempts, CAST(scheduled_at AS TEXT) AS scheduled_at,
                         CASE WHEN scheduled_at > CURRENT_TIMESTAMP THEN 1 ELSE 0 END AS future
                         FROM kickside_job WHERE id=$1]], { fixture.job_id })[1]
                     test.eq(job.status, "pending")
+                    test.eq(tonumber(job.attempts), failure)
                     test.eq(tonumber(job.future), 1)
-                    if previous_schedule then test.is_true(job.scheduled_at >= previous_schedule) end
-                    previous_schedule = job.scheduled_at
+                    local timestamp = job.scheduled_at:gsub("([+-]%d%d)$", "%1:00")
+                    local scheduled = assert(job_clock.parse(timestamp)):unix_nano()
+                    if previous_schedule then test.is_true(scheduled > previous_schedule) end
+                    previous_schedule = scheduled
+                    -- The configured retry window grows, and Jobs jitters the delay within it.
+                    local ceiling_seconds = math.max(base_seconds, math.min(cap_seconds, base_seconds * 2 ^ (failure - 1)))
+                    test.is_true(scheduled - failure_started >= base_seconds * time.SECOND - time.MICROSECOND)
+                    test.is_true(scheduled - failure_finished <= ceiling_seconds * time.SECOND)
                 end
                 set_model(names[1], "available")
                 recover(fixture, targets, head, 3)
@@ -449,6 +471,16 @@ local function define_tests()
             end)
         end)
 
+        test.it("holds for an untyped embedding provider error and indexes after recovery", function()
+            with_source({ "source-string-error" }, {}, function(fixture, targets, names)
+                local head = append(fixture, { "Recoverable document" })
+                assert_unavailable(fixture, 0, "embedding provider rejected the input")
+                test.eq(#documents(targets[1]), 0)
+                set_model(names[1], "available")
+                recover(fixture, targets, head, 1)
+            end)
+        end)
+
         test.it("keeps unrelated sequence gaps out of the pending event delta", function()
             with_source({ "source-prefix" }, {}, function(fixture, targets, names)
                 local head = append(fixture, {
@@ -461,6 +493,34 @@ local function define_tests()
                 assert_unavailable(fixture, 3, "embedding backend unavailable")
                 set_model(names[1], "available")
                 recover(fixture, targets, head, 3)
+                local ready, ready_status = source_counts(fixture, targets[1])
+                test.eq(ready.pending_source_count, 0)
+                test.eq(ready_status, "ready")
+            end)
+        end)
+
+        test.it("publishes only the knowledge base's own counts after healthy ingestion across two targets", function()
+            with_source({ "available", "available" }, {}, function(fixture, targets)
+                local head = append(fixture, { "First document", "Second document" })
+                recover(fixture, targets, head, 2)
+                local counts, status, public_documents = source_counts(fixture, targets[1])
+                test.eq(counts.document_count, 2)
+                test.eq(public_documents, 2)
+                test.eq(counts.pending_source_count, 0)
+                test.eq(status, "ready")
+            end)
+        end)
+
+        test.it("keeps a content event pending when the second of two targets is unavailable", function()
+            with_source({ "available", "source-prefix" }, {}, function(fixture, targets, names)
+                local head = append(fixture, { "First document", "Blocked document" })
+                advance_to(fixture, 1)
+                local pending, status = source_counts(fixture, targets[1])
+                test.eq(pending.pending_source_count, 1)
+                test.eq(status, "syncing")
+                assert_unavailable(fixture, 1, "embedding backend unavailable")
+                set_model(names[2], "available")
+                recover(fixture, targets, head, 2)
                 local ready, ready_status = source_counts(fixture, targets[1])
                 test.eq(ready.pending_source_count, 0)
                 test.eq(ready_status, "ready")
@@ -483,6 +543,8 @@ local function define_tests()
                         advance_to(fixture, head)
                     end
                     recover(fixture, {}, head, 0)
+                    local state = assert(json.decode(cursor(fixture).body))
+                    test.is_true(state.digest_pending == nil or state.digest_pending == false)
                     for _, name in ipairs({ "digest", "treatment" }) do
                         local events = requests(fixture, name)
                         test.eq(#events, 1)
@@ -490,6 +552,10 @@ local function define_tests()
                         test.eq(body.source_from_seq, 1)
                         test.is_true(body.source_to_seq >= head)
                     end
+                    local next_head = append(fixture, { { source = "fixture", body = { result = {} } } })
+                    advance_to(fixture, next_head)
+                    test.eq(#requests(fixture, "digest"), 1)
+                    test.eq(#requests(fixture, "treatment"), 1)
                 end)
             end)
         end

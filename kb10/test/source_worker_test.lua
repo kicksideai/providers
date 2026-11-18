@@ -337,13 +337,14 @@ local function define_tests()
         test.it("does not request placement for a document deleted in the same prefix", function()
             local cid = bootstrap_kb10_store(db)
             local resolver = materialized_store_resolver_for({ [cid] = true })
-            local sent = 0
+            local sent = {}
             local result, err = source_worker.run_with_deps({
                 thread_id = uuid(),
                 projection = { id = uuid() },
                 events = {
                     build_event({ seq = 1, type = "fixture.page", body = { page_id = "same", text = "Document" } }),
                     build_event({ seq = 2, type = "fixture.delete" }),
+                    build_event({ seq = 3, type = "fixture.page", body = { page_id = "surviving", text = "Surviving document" } }),
                 },
                 worker_config = { target_kb_ids = { cid } },
             }, worker_deps({
@@ -355,8 +356,8 @@ local function define_tests()
                 }),
                 embedder = fake_embedder,
                 execution_identity_row = {},
-                send = function()
-                    sent = sent + 1
+                send = function(_, _, message)
+                    sent[#sent + 1] = message
                     return true
                 end,
                 resolve_materialized_store = function(id)
@@ -367,7 +368,8 @@ local function define_tests()
             }))
             test.is_nil(err, tostring(err))
             test.eq(result.metrics.documents_removed, 1)
-            test.eq(sent, 0)
+            test.eq(#sent, 1)
+            test.eq(sent[1].document_node_id, result.body.kbs[cid].sources["fixture:surviving"].document_node_id)
             teardown_kb10_store(db, cid)
         end)
 
