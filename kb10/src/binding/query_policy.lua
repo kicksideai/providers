@@ -9,17 +9,6 @@ M.RERANK_MAX_TOKENS = 1024
 M.RERANK_TIMEOUT_SECONDS = 20
 M.QUERY_EMBED_TIMEOUT_SECONDS = 30
 
--- Query analysis is configured independently of document summarization.
--- An omitted or disabled analysis model selects raw vector retrieval.
-function M.resolve_analysis_model(config: table?): string?
-    local cfg = config or {}
-    local configured = cfg.analysis_model
-    if type(configured) ~= "string" or configured == "" then
-        return nil
-    end
-    return configured
-end
-
 function M.document_analysis_options(model: string): table
     return {
         model = model,
@@ -46,16 +35,13 @@ function M.query_embed_options(model: string?, dimensions: number): table
     }
 end
 
-function M.resolve_hyde_model(config: table): (string?, any?)
-    if config.query_strategy == nil or config.query_strategy == "plain" then return nil, nil end
-    if config.query_strategy ~= "hyde" then
+function M.query_strategy(config: table): (string?, any?)
+    local strategy = config.query_strategy
+    if strategy == nil then return "plain", nil end
+    if strategy ~= "plain" and strategy ~= "hyde" then
         return nil, errors.new({ kind = errors.INVALID, message = "query_strategy must be plain or hyde" })
     end
-    local model = M.resolve_analysis_model(config)
-    if not model then
-        return nil, errors.new({ kind = errors.INVALID, message = "HyDE requires the KB analysis_model" })
-    end
-    return model, nil
+    return strategy, nil
 end
 
 function M.hyde_options(model: string): table

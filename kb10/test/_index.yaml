@@ -478,6 +478,7 @@ entries:
     imports:
       test: wippy.test:test
       policy: kickside.kb10.binding:query_policy
+      analysis_model: kickside.knowledge.retrieval:analysis_model
 
   - name: query_service_test
     kind: function.lua

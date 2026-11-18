@@ -463,7 +463,7 @@ entries:
             type: [string, boolean]
             default: "class:fast"
             label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses class:fast for Ask. Use false to disable answers and retrieval analysis.
+            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses class:fast. Use false to disable answers and retrieval analysis.
           extra_prompt:
             type: string
             default: ""
@@ -647,7 +647,7 @@ entries:
             type: [string, boolean]
             default: "class:fast"
             label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses class:fast for Ask. Use false to disable answers and retrieval analysis.
+            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses class:fast. Use false to disable answers and retrieval analysis.
           extra_prompt:
             type: string
             default: ""

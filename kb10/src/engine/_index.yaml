@@ -97,6 +97,6 @@ entries:
       llm: wippy.llm:llm
       kb10_store: kickside.kb10.persist:store
       component: kickside.component:component
-      query_policy: kickside.kb10.binding:query_policy
+      analysis_model: kickside.knowledge.retrieval:analysis_model
       query_log: kickside.kb10.persist:query_log
       text_limits: kickside.kb10:text_limits
