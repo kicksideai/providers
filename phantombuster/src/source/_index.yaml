@@ -20,6 +20,8 @@ entries:
 
   - name: pull_candidates
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     meta: { comment: kickside.data:pullable.pull for PhantomBuster actor candidates. }
     source: file://pull_candidates.lua
     method: pull
@@ -28,6 +30,8 @@ entries:
 
   - name: pull_activities
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     meta: { comment: kickside.data:pullable.pull for raw LinkedIn post/activity rows. Policy belongs to the consuming composition. }
     source: file://pull_activities.lua
     method: pull_activities
@@ -36,12 +40,16 @@ entries:
 
   - name: pull_candidate_keys
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     source: file://pull_keys.lua
     method: pull_candidate_keys
     imports: { implementation: kickside.phantombuster.source:pull_core }
 
   - name: pull_activity_keys
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     source: file://pull_keys.lua
     method: pull_activity_keys
     imports: { implementation: kickside.phantombuster.source:pull_core }

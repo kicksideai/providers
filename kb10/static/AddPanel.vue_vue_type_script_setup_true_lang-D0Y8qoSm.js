@@ -1,11 +1,11 @@
-import { defineComponent as W, openBlock as c, createElementBlock as d, createElementVNode as r, renderSlot as he, normalizeClass as V, createVNode as g, unref as l, withKeys as Pe, createCommentVNode as T, Fragment as te, renderList as ae, createBlock as be, createTextVNode as P, toDisplayString as y, watch as de, onBeforeUnmount as ke, Transition as Me, withCtx as Ae, withModifiers as ye, ref as U, computed as z, isRef as Se, nextTick as qe, onMounted as Ie, withDirectives as pe, vModelText as xe, vModelSelect as Ve } from "vue";
-import { Icon as E } from "@iconify/vue";
-import { on as Oe, api as Q, host as ue } from "@wippy-fe/proxy";
+import { defineComponent as H, openBlock as c, createElementBlock as d, createElementVNode as r, renderSlot as he, normalizeClass as q, createVNode as x, unref as l, withKeys as Pe, createCommentVNode as A, Fragment as te, renderList as oe, createBlock as be, createTextVNode as R, toDisplayString as y, watch as de, onBeforeUnmount as ke, Transition as Me, withCtx as Ae, withModifiers as ye, ref as U, computed as z, isRef as Se, nextTick as qe, onMounted as Ie, withDirectives as pe, vModelText as xe, vModelSelect as Ve } from "vue";
+import { Icon as C } from "@iconify/vue";
+import { on as Oe, api as Y, host as ue } from "@wippy-fe/proxy";
 function Ue(e, o = "") {
   const t = e || {};
   return t.label || t.title || t.source_ref?.title || t.filename || t.original_filename || t.source_url || o;
 }
-function ao(e) {
+function so(e) {
   return Ue(e.metadata, e.id);
 }
 function fe(e) {
@@ -14,18 +14,18 @@ function fe(e) {
 function J(e) {
   return e && typeof e == "object" && !Array.isArray(e) ? e : {};
 }
-function q(e) {
+function P(e) {
   return typeof e == "string" ? e.trim() : "";
 }
 function ze(e) {
   const o = J(e.metadata), t = J(o.source_ref);
-  let a = q(t.external_id) || q(o.external_id);
-  const n = q(t.external_version) || q(o.external_version);
-  let s = q(t.upload_id) || q(o.upload_id), p = q(t.source_url) || q(t.url) || q(o.source_url);
-  const k = q(t.reference_component_id) || q(t.component_id) || q(o.reference_component_id), I = Object.keys(J(t.reference_context)).length ? J(t.reference_context) : Object.keys(J(t.context)).length ? J(t.context) : J(o.reference_context);
+  let a = P(t.external_id) || P(o.external_id);
+  const n = P(t.external_version) || P(o.external_version);
+  let s = P(t.upload_id) || P(o.upload_id), p = P(t.source_url) || P(t.url) || P(o.source_url);
+  const b = P(t.reference_component_id) || P(t.component_id) || P(o.reference_component_id), O = Object.keys(J(t.reference_context)).length ? J(t.reference_context) : Object.keys(J(t.context)).length ? J(t.context) : J(o.reference_context);
   if (!s && a.startsWith("upload:") && (s = a.slice(7)), !p && a.startsWith("url:") && (p = a.slice(4)), !a && s && (a = `upload:${s}`), !a && p && (a = `url:${p}`), !a) return null;
   const m = { ...t };
-  delete m.thread_id, delete m.thread_event_id, delete m.thread_event_seq, k && !q(m.reference_component_id) && (m.reference_component_id = k), Object.keys(I).length && Object.keys(J(m.reference_context)).length === 0 && (m.reference_context = I), a && Object.keys(m).length && !q(m.external_id) && (m.external_id = a);
+  delete m.thread_id, delete m.thread_event_id, delete m.thread_event_seq, b && !P(m.reference_component_id) && (m.reference_component_id = b), Object.keys(O).length && Object.keys(J(m.reference_context)).length === 0 && (m.reference_context = O), a && Object.keys(m).length && !P(m.external_id) && (m.external_id = a);
   const v = Object.keys(m).length > 0;
   return {
     external_id: a,
@@ -40,20 +40,20 @@ function ze(e) {
     source_ref: v ? m : void 0
   };
 }
-function lo(e) {
-  const o = ze(e), t = o ? q(o.external_id) : "";
+function ao(e) {
+  const o = ze(e), t = o ? P(o.external_id) : "";
   if (!t) return null;
   const a = J(e.metadata), n = J(a.source_ref);
-  return `${q(n.external_source) || q(a.external_source)}\0${t}`;
+  return `${P(n.external_source) || P(a.external_source)}\0${t}`;
 }
 function we(e, o) {
   return e ? e.length > o ? e.slice(0, o).trimEnd() + "…" : e : "";
 }
 const je = /engine .*not installed|no .*engine|unavailable/i;
-function io(e) {
+function lo(e) {
   return je.test(e || "");
 }
-const ro = "This knowledge base's engine is not installed; its contents are unavailable.", le = {
+const io = "This knowledge base's engine is not installed; its contents are unavailable.", le = {
   root: { fill: "#6366f1", stroke: "#4f46e5" },
   topic: { fill: "#8b5cf6", stroke: "#7c3aed" },
   technology: { fill: "#06b6d4", stroke: "#0891b2" },
@@ -65,7 +65,7 @@ const ro = "This knowledge base's engine is not installed; its contents are unav
   product: { fill: "#f97316", stroke: "#ea580c" },
   document: { fill: "#94a3b8", stroke: "#64748b" }
 };
-function co(e) {
+function ro(e) {
   if (e.node_type === "document") return le.document;
   if (e.is_root) return le.root;
   const o = (e.concept_type || "").toLowerCase();
@@ -82,87 +82,87 @@ function ve(e, o, t) {
   return `hsl(${e} ${o}% ${t}%)`;
 }
 const Ce = 34, Ee = 88, We = 78, He = 38;
-function uo(e, o) {
+function co(e, o) {
   const t = new Map(e.map((u) => [u.id, u])), a = /* @__PURE__ */ new Map();
   for (const u of o)
     u.edge_type !== "subtopic_of" && u.edge_type !== "categorized_as" || t.has(u.from_node_id) && t.has(u.to_node_id) && a.set(u.from_node_id, u.to_node_id);
   const n = (u) => !!t.get(u)?.is_root;
   function s(u) {
-    const C = /* @__PURE__ */ new Set();
-    let O = u, N = 0;
-    for (; !C.has(O); ) {
-      C.add(O);
-      const L = a.get(O);
-      if (L === void 0 || n(L)) return { branch: O, depth: N };
-      O = L, N++;
+    const S = /* @__PURE__ */ new Set();
+    let I = u, N = 0;
+    for (; !S.has(I); ) {
+      S.add(I);
+      const L = a.get(I);
+      if (L === void 0 || n(L)) return { branch: I, depth: N };
+      I = L, N++;
     }
-    return { branch: O, depth: N };
+    return { branch: I, depth: N };
   }
-  const p = /* @__PURE__ */ new Map(), k = /* @__PURE__ */ new Map();
+  const p = /* @__PURE__ */ new Map(), b = /* @__PURE__ */ new Map();
   for (const u of e) {
     if (u.is_root) continue;
-    const C = s(u.id);
-    p.set(u.id, C), k.set(C.branch, Math.max(k.get(C.branch) ?? 0, C.depth));
+    const S = s(u.id);
+    p.set(u.id, S), b.set(S.branch, Math.max(b.get(S.branch) ?? 0, S.depth));
   }
-  const I = [...new Set([...p.values()].map((u) => u.branch))].sort((u, C) => (t.get(u)?.label || "").localeCompare(t.get(C)?.label || "")), m = /* @__PURE__ */ new Map();
-  I.forEach((u, C) => m.set(u, Ge(C)));
-  const v = (u, C, O) => u + (C - u) * O, M = /* @__PURE__ */ new Map();
+  const O = [...new Set([...p.values()].map((u) => u.branch))].sort((u, S) => (t.get(u)?.label || "").localeCompare(t.get(S)?.label || "")), m = /* @__PURE__ */ new Map();
+  O.forEach((u, S) => m.set(u, Ge(S)));
+  const v = (u, S, I) => u + (S - u) * I, T = /* @__PURE__ */ new Map();
   for (const u of e) {
     if (u.is_root) {
-      M.set(u.id, { ...le.root });
+      T.set(u.id, { ...le.root });
       continue;
     }
-    const C = p.get(u.id);
-    if (!C) {
-      M.set(u.id, { ...le.topic });
+    const S = p.get(u.id);
+    if (!S) {
+      T.set(u.id, { ...le.topic });
       continue;
     }
-    const O = m.get(C.branch) ?? 220, N = Math.min(Math.max(k.get(C.branch) ?? 0, 1), 4), L = Math.min(1, C.depth / N);
+    const I = m.get(S.branch) ?? 220, N = Math.min(Math.max(b.get(S.branch) ?? 0, 1), 4), L = Math.min(1, S.depth / N);
     if (u.node_type === "document") {
-      const b = Math.min(84, v(Ce, Ee, L) + 6);
-      M.set(u.id, { fill: ve(O, 32, b), stroke: ve(O, 32, Math.max(50, b - 14)) });
+      const k = Math.min(84, v(Ce, Ee, L) + 6);
+      T.set(u.id, { fill: ve(I, 32, k), stroke: ve(I, 32, Math.max(50, k - 14)) });
     } else {
-      const b = v(Ce, Ee, L), F = v(We, He, L);
-      M.set(u.id, { fill: ve(O, F, b), stroke: ve(O, F, Math.max(28, b - 17)) });
+      const k = v(Ce, Ee, L), D = v(We, He, L);
+      T.set(u.id, { fill: ve(I, D, k), stroke: ve(I, D, Math.max(28, k - 17)) });
     }
   }
-  return M;
+  return T;
 }
 const Xe = /* @__PURE__ */ new Set(["subtopic_of", "categorized_as"]);
-function po(e, o) {
+function uo(e, o) {
   const t = /* @__PURE__ */ new Map();
   for (const v of e) t.set(v.id, v);
   const a = /* @__PURE__ */ new Map(), n = /* @__PURE__ */ new Set();
   for (const v of o) {
     if (!Xe.has(v.edge_type || "") || !t.has(v.from_node_id) || !t.has(v.to_node_id)) continue;
-    const M = a.get(v.to_node_id) || [];
-    M.push(v.from_node_id), a.set(v.to_node_id, M), n.add(v.from_node_id);
+    const T = a.get(v.to_node_id) || [];
+    T.push(v.from_node_id), a.set(v.to_node_id, T), n.add(v.from_node_id);
   }
-  const s = (v, M) => (t.get(v)?.label || "").localeCompare(t.get(M)?.label || "");
-  function p(v, M, u) {
-    const C = t.get(v);
-    if (!C || u.has(v)) return null;
+  const s = (v, T) => (t.get(v)?.label || "").localeCompare(t.get(T)?.label || "");
+  function p(v, T, u) {
+    const S = t.get(v);
+    if (!S || u.has(v)) return null;
     u.add(v);
-    const O = (a.get(v) || []).slice().sort(s), N = [];
-    for (const L of O) {
-      const b = p(L, M + 1, u);
-      b && N.push(b);
+    const I = (a.get(v) || []).slice().sort(s), N = [];
+    for (const L of I) {
+      const k = p(L, T + 1, u);
+      k && N.push(k);
     }
-    return { concept: C, children: N, depth: M };
+    return { concept: S, children: N, depth: T };
   }
-  const k = e.filter((v) => v.is_root || !n.has(v.id)).map((v) => v.id).sort(s), I = /* @__PURE__ */ new Set(), m = [];
-  for (const v of k) {
-    const M = p(v, 0, I);
-    M && m.push(M);
+  const b = e.filter((v) => v.is_root || !n.has(v.id)).map((v) => v.id).sort(s), O = /* @__PURE__ */ new Set(), m = [];
+  for (const v of b) {
+    const T = p(v, 0, O);
+    T && m.push(T);
   }
   for (const v of e)
-    if (!I.has(v.id)) {
-      const M = p(v.id, 0, I);
-      M && m.push(M);
+    if (!O.has(v.id)) {
+      const T = p(v.id, 0, O);
+      T && m.push(T);
     }
   return m;
 }
-function fo(e) {
+function po(e) {
   const o = /* @__PURE__ */ new Map(), t = /* @__PURE__ */ new Map(), a = (n, s) => {
     o.set(n.concept.id, n), s && t.set(n.concept.id, s);
     for (const p of n.children) a(p, n.concept.id);
@@ -170,7 +170,7 @@ function fo(e) {
   for (const n of e) a(n, null);
   return { byId: o, parentOf: t };
 }
-function mo(e) {
+function fo(e) {
   return e ? e.children.map((t) => ({
     concept: t.concept,
     isFolder: t.children.length > 0,
@@ -188,18 +188,18 @@ function Je(e, o, t) {
   }
   return a;
 }
-function vo(e, o, t) {
+function mo(e, o, t) {
   const a = e.trim().toLowerCase();
   if (!a) return [];
   const n = [];
   for (const s of o.values()) {
     if (!(s.concept.label || s.concept.id).toLowerCase().includes(a)) continue;
-    const k = Je(s.concept.id, o, t);
-    n.push({ concept: s.concept, isFolder: s.children.length > 0, path: k.slice(0, -1) });
+    const b = Je(s.concept.id, o, t);
+    n.push({ concept: s.concept, isFolder: s.children.length > 0, path: b.slice(0, -1) });
   }
   return n.sort((s, p) => s.isFolder !== p.isFolder ? s.isFolder ? -1 : 1 : (s.concept.label || s.concept.id).localeCompare(p.concept.label || p.concept.id)).slice(0, 200);
 }
-function ho(e) {
+function vo(e) {
   return e.node_type === "document" ? "tabler:file-text" : e.is_root ? "tabler:hierarchy-2" : "tabler:point-filled";
 }
 const Qe = {
@@ -212,7 +212,7 @@ const Qe = {
   product: "tabler:package",
   topic: "tabler:bookmark"
 };
-function _o(e) {
+function ho(e) {
   return e.node_type === "document" ? "tabler:file-text" : e.is_root ? "tabler:hierarchy-2" : Qe[(e.concept_type || "").toLowerCase()] || "tabler:folder";
 }
 function Ye(e, o) {
@@ -223,13 +223,13 @@ function Ye(e, o) {
     n.edge_type === "categorized_as" && n.to_node_id === e.id && !a.has(n.from_node_id) && (a.add(n.from_node_id), t.push(n.from_node_id));
   return t;
 }
-function bo(e, o) {
+function _o(e, o) {
   const t = [], a = /* @__PURE__ */ new Set();
   for (const n of o)
     n.edge_type === "categorized_as" && n.from_node_id === e && !a.has(n.to_node_id) && (a.add(n.to_node_id), t.push({ id: n.to_node_id, label: n.to_label || "" }));
   return t;
 }
-function ko(e, o, t) {
+function bo(e, o, t) {
   if (!e) return [];
   const a = [], n = /* @__PURE__ */ new Set();
   for (const s of o) {
@@ -239,22 +239,22 @@ function ko(e, o, t) {
   }
   return a.sort((s, p) => (s.label || "").localeCompare(p.label || ""));
 }
-function yo(e, o, t) {
+function ko(e, o, t) {
   if (!e) return [];
   const a = [], n = /* @__PURE__ */ new Set(), s = new Set(Ye(e, o));
   for (const p of o) {
     if (p.edge_type === "subtopic_of" || p.edge_type === "categorized_as") continue;
-    let k = "";
-    if (p.from_node_id === e.id) k = p.to_node_id;
-    else if (p.to_node_id === e.id) k = p.from_node_id;
+    let b = "";
+    if (p.from_node_id === e.id) b = p.to_node_id;
+    else if (p.to_node_id === e.id) b = p.from_node_id;
     else continue;
-    if (!k || n.has(k) || s.has(k)) continue;
-    const I = t.get(k);
-    I && (n.add(k), a.push({ concept: I, label: Ke[p.edge_type || ""] || p.edge_type || "related" }));
+    if (!b || n.has(b) || s.has(b)) continue;
+    const O = t.get(b);
+    O && (n.add(b), a.push({ concept: O, label: Ke[p.edge_type || ""] || p.edge_type || "related" }));
   }
   return a;
 }
-function go(e, o) {
+function yo(e, o) {
   let t = 0;
   for (const a of o)
     a.edge_type === "subtopic_of" && a.to_node_id === e && t++;
@@ -276,11 +276,11 @@ const Ze = ["image/", "audio/", "video/"], et = /* @__PURE__ */ new Set([
   "application/vnd.ms-powerpoint",
   "application/vnd.oasis.opendocument.presentation"
 ]);
-function xo(e) {
+function go(e) {
   const o = (e || "").toLowerCase();
   return Ze.some((t) => o.startsWith(t)) || et.has(o);
 }
-function wo(e) {
+function xo(e) {
   const o = e || {}, t = o.source_ref && typeof o.source_ref == "object" ? o.source_ref : {}, a = t.upload_id || o.upload_id;
   if (typeof a == "string" && a.trim()) return a.trim();
   const n = typeof t.external_id == "string" && t.external_id || typeof o.external_id == "string" && o.external_id || "";
@@ -318,7 +318,7 @@ function nt(e, o) {
   });
   return typeof t == "function" ? t : null;
 }
-const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-main" }, $o = /* @__PURE__ */ W({
+const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-main" }, wo = /* @__PURE__ */ H({
   __name: "KbShell",
   setup(e) {
     return (o, t) => (c(), d("div", ot, [
@@ -330,7 +330,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
       ])
     ]));
   }
-}), lt = ["aria-label", "title", "disabled"], _e = /* @__PURE__ */ W({
+}), lt = ["aria-label", "title", "disabled"], _e = /* @__PURE__ */ H({
   __name: "IconButton",
   props: {
     icon: {},
@@ -345,7 +345,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
   setup(e, { emit: o }) {
     const t = o;
     return (a, n) => (c(), d("button", {
-      class: V(["kx-iconbtn", [
+      class: q(["kx-iconbtn", [
         e.variant === "bordered" && "bordered",
         e.variant === "danger" && "danger",
         e.size === "sm" && "sm",
@@ -357,14 +357,14 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
       disabled: e.disabled,
       onClick: n[0] || (n[0] = (s) => t("click"))
     }, [
-      g(l(E), {
+      x(l(C), {
         icon: e.icon,
-        class: V(e.spin && "spin"),
+        class: q(e.spin && "spin"),
         "aria-hidden": "true"
       }, null, 8, ["icon", "class"])
     ], 10, lt));
   }
-}), it = { class: "kx-search" }, rt = ["value", "placeholder"], Te = /* @__PURE__ */ W({
+}), it = { class: "kx-search" }, rt = ["value", "placeholder"], Te = /* @__PURE__ */ H({
   __name: "SearchField",
   props: {
     modelValue: {},
@@ -374,7 +374,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
   setup(e, { emit: o }) {
     const t = o;
     return (a, n) => (c(), d("div", it, [
-      g(l(E), {
+      x(l(C), {
         class: "kx-search-ico",
         icon: "tabler:search",
         "aria-hidden": "true"
@@ -395,11 +395,11 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
           t("update:modelValue", ""), t("clear");
         })
       }, [
-        g(l(E), {
+        x(l(C), {
           icon: "tabler:x",
           "aria-hidden": "true"
         })
-      ])) : T("", !0)
+      ])) : A("", !0)
     ]));
   }
 }), ct = {
@@ -408,7 +408,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
 }, ut = ["aria-selected", "onClick"], dt = {
   key: 1,
   class: "kx-count"
-}, So = /* @__PURE__ */ W({
+}, $o = /* @__PURE__ */ H({
   __name: "KbTabs",
   props: {
     tabs: {},
@@ -418,24 +418,24 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
   setup(e, { emit: o }) {
     const t = o;
     return (a, n) => (c(), d("div", ct, [
-      (c(!0), d(te, null, ae(e.tabs, (s) => (c(), d("button", {
+      (c(!0), d(te, null, oe(e.tabs, (s) => (c(), d("button", {
         key: s.id,
-        class: V(["tb-tab", { on: e.active === s.id }]),
+        class: q(["tb-tab", { on: e.active === s.id }]),
         role: "tab",
         "aria-selected": e.active === s.id,
         onClick: (p) => t("select", s.id)
       }, [
-        s.icon ? (c(), be(l(E), {
+        s.icon ? (c(), be(l(C), {
           key: 0,
           icon: s.icon,
           "aria-hidden": "true"
-        }, null, 8, ["icon"])) : T("", !0),
-        P(" " + y(s.label) + " ", 1),
-        s.count !== void 0 ? (c(), d("span", dt, y(s.count), 1)) : T("", !0)
+        }, null, 8, ["icon"])) : A("", !0),
+        R(" " + y(s.label) + " ", 1),
+        s.count !== void 0 ? (c(), d("span", dt, y(s.count), 1)) : A("", !0)
       ], 10, ut))), 128))
     ]));
   }
-}), Co = /* @__PURE__ */ W({
+}), So = /* @__PURE__ */ H({
   __name: "KbNotice",
   props: {
     tone: { default: "info" },
@@ -449,9 +449,9 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
       help: "tabler:bulb"
     }[o.tone];
     return (a, n) => (c(), d("div", {
-      class: V(["kx-notice", e.tone])
+      class: q(["kx-notice", e.tone])
     }, [
-      g(l(E), {
+      x(l(C), {
         icon: l(t),
         "aria-hidden": "true"
       }, null, 8, ["icon"]),
@@ -460,7 +460,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
       ])
     ], 2));
   }
-}), pt = ["aria-label"], ft = { class: "kx-drawer-h" }, mt = { class: "kx-drawer-title" }, vt = { class: "kx-drawer-b" }, Eo = /* @__PURE__ */ W({
+}), pt = ["aria-label"], ft = { class: "kx-drawer-h" }, mt = { class: "kx-drawer-title" }, vt = { class: "kx-drawer-b" }, Co = /* @__PURE__ */ H({
   __name: "KbDrawer",
   props: {
     open: { type: Boolean },
@@ -480,7 +480,7 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
         e.open ? (c(), d("div", {
           key: 0,
           class: "kx-drawer-mask",
-          onClick: p[1] || (p[1] = ye((k) => a("close"), ["self"]))
+          onClick: p[1] || (p[1] = ye((b) => a("close"), ["self"]))
         }, [
           r("aside", {
             class: "kx-drawer",
@@ -489,77 +489,77 @@ const ot = { class: "kx-shell" }, st = { class: "kx-rail" }, at = { class: "kx-m
           }, [
             r("div", ft, [
               r("span", mt, [
-                g(l(E), {
+                x(l(C), {
                   icon: e.icon,
                   "aria-hidden": "true"
                 }, null, 8, ["icon"]),
-                P(y(e.title), 1)
+                R(y(e.title), 1)
               ]),
-              g(_e, {
+              x(_e, {
                 icon: "tabler:x",
                 label: "Close",
-                onClick: p[0] || (p[0] = (k) => a("close"))
+                onClick: p[0] || (p[0] = (b) => a("close"))
               })
             ]),
             r("div", vt, [
               he(s.$slots, "default")
             ])
           ], 8, pt)
-        ])) : T("", !0)
+        ])) : A("", !0)
       ]),
       _: 3
     }));
   }
 });
 function ht(e) {
-  const o = U(""), t = U([]), a = U(""), n = U(""), s = U(null), p = U(!1), k = U(""), I = U(!1);
+  const o = U(""), t = U([]), a = U(""), n = U(""), s = U(null), p = U(!1), b = U(""), O = U(!1);
   let m = null;
   function v() {
-    m && (clearTimeout(m), m = null), o.value = "", t.value = [], a.value = "", n.value = "", s.value = null, I.value = !1, k.value = "";
+    m && (clearTimeout(m), m = null), o.value = "", t.value = [], a.value = "", n.value = "", s.value = null, O.value = !1, b.value = "";
   }
-  async function M(O = 20) {
+  async function T(I = 20) {
     const N = e(), L = o.value.trim();
     if (!L || !N) {
-      t.value = [], I.value = !1;
+      t.value = [], O.value = !1;
       return;
     }
-    p.value = !0, k.value = "", s.value = null, n.value = "", I.value = !0;
+    p.value = !0, b.value = "", s.value = null, n.value = "", O.value = !0;
     try {
-      const { data: b } = await Q.get(`/api/v1/kb10/${N}/search?q=${encodeURIComponent(L)}&limit=${O}`);
-      b?.success ? (t.value = b.results || [], a.value = "", s.value = b.retrieval?.analysis?.status === "unavailable" ? b.retrieval.analysis : null) : k.value = b?.error || "search failed";
-    } catch (b) {
-      k.value = b?.response?.data?.error || b?.message || "search error", ue.handleError(b?.response?.status === 401 ? "auth-expired" : "other", b);
+      const { data: k } = await Y.get(`/api/v1/kb10/${N}/search?q=${encodeURIComponent(L)}&limit=${I}`);
+      k?.success ? (t.value = k.results || [], a.value = "", s.value = k.retrieval?.analysis?.status === "unavailable" ? k.retrieval.analysis : null) : b.value = k?.error || "search failed";
+    } catch (k) {
+      b.value = k?.response?.data?.error || k?.message || "search error", ue.handleError(k?.response?.status === 401 ? "auth-expired" : "other", k);
     } finally {
       p.value = !1;
     }
   }
-  async function u(O = 8) {
+  async function u(I = 8) {
     const N = e(), L = o.value.trim();
     if (!L || !N) {
-      t.value = [], a.value = "", I.value = !1;
+      t.value = [], a.value = "", O.value = !1;
       return;
     }
-    p.value = !0, k.value = "", s.value = null, a.value = "", n.value = "", I.value = !0;
+    p.value = !0, b.value = "", s.value = null, a.value = "", n.value = "", O.value = !0;
     try {
-      const { data: b } = await Q.post(`/api/v1/knowledge/${N}/ask`, { query: L, limit: O });
-      b?.success ? (t.value = b.results || [], b.mode === "query" ? n.value = b.answer : a.value = String(b.answer || "")) : (s.value = b?.retrieval?.analysis?.status === "unavailable" ? b.retrieval.analysis : null, k.value = b?.error || "ask failed");
-    } catch (b) {
-      const F = b?.response?.data;
-      s.value = F?.retrieval?.analysis?.status === "unavailable" ? F.retrieval.analysis : null, k.value = F?.error || b?.message || "ask error", ue.handleError(b?.response?.status === 401 ? "auth-expired" : "other", b);
+      const { data: k } = await Y.post(`/api/v1/knowledge/${N}/ask`, { query: L, limit: I });
+      k?.success ? (t.value = k.results || [], k.mode === "query" ? n.value = k.answer : a.value = String(k.answer || "")) : b.value = k?.error || "ask failed";
+    } catch (k) {
+      const D = k?.response?.data;
+      b.value = D?.error || k?.message || "ask error", ue.handleError(k?.response?.status === 401 ? "auth-expired" : "other", k);
     } finally {
       p.value = !1;
     }
   }
-  function C(O = 300) {
+  function S(I = 300) {
     if (m && clearTimeout(m), !o.value.trim()) {
-      t.value = [], I.value = !1;
+      t.value = [], O.value = !1;
       return;
     }
-    m = setTimeout(() => M(), O);
+    m = setTimeout(() => T(), I);
   }
   return ke(() => {
     m && clearTimeout(m);
-  }), { query: o, results: t, answer: a, queryNotice: n, analysisUnavailable: s, loading: p, error: k, performed: I, run: M, ask: u, runDebounced: C, clear: v };
+  }), { query: o, results: t, answer: a, queryNotice: n, analysisUnavailable: s, loading: p, error: b, performed: O, run: T, ask: u, runDebounced: S, clear: v };
 }
 function $e(e) {
   return e == null ? "" : `${Math.round(e * 100)}%`;
@@ -597,49 +597,46 @@ const _t = {
   class: "kc-search-modes"
 }, Ot = { class: "kc-search-field" }, Ut = {
   key: 0,
-  class: "kc-search-state"
+  class: "kc-search-state",
+  role: "status"
 }, Lt = {
   key: 1,
   class: "kc-search-state",
   role: "status"
 }, Nt = {
   key: 2,
-  class: "kc-search-state",
-  role: "status"
+  class: "kc-search-err"
 }, Ft = {
   key: 3,
-  class: "kc-search-err"
-}, Dt = {
-  key: 4,
   class: "kc-search-skel"
-}, Bt = {
+}, Dt = {
   key: 0,
   class: "kc-ans"
-}, Rt = { class: "kc-ans-h" }, Pt = { class: "kc-ans-body" }, qt = {
+}, Bt = { class: "kc-ans-h" }, Rt = { class: "kc-ans-body" }, Pt = {
   key: 0,
   class: "kc-ans-sim"
-}, Vt = { class: "kc-search-results" }, zt = {
+}, qt = { class: "kc-search-results" }, Vt = {
   key: 0,
   class: "kc-search-results-h"
-}, jt = ["onClick"], Kt = { class: "kc-search-r-h" }, Gt = {
+}, zt = ["onClick"], jt = { class: "kc-search-r-h" }, Kt = {
   key: 0,
   class: "kc-search-r-doc"
-}, Wt = { class: "kc-search-hit-kind" }, Ht = {
+}, Gt = { class: "kc-search-hit-kind" }, Wt = {
   key: 1,
   class: "kc-search-r-llm"
-}, Xt = {
+}, Ht = {
   key: 2,
   class: "kc-search-hit-score"
-}, Jt = { class: "kc-search-r-body" }, Qt = {
+}, Xt = { class: "kc-search-r-body" }, Jt = {
   key: 0,
   class: "kc-search-r-open"
+}, Qt = {
+  key: 5,
+  class: "kc-search-zero"
 }, Yt = {
   key: 6,
   class: "kc-search-zero"
-}, Zt = {
-  key: 7,
-  class: "kc-search-zero"
-}, en = { class: "kc-search-zero-t" }, To = /* @__PURE__ */ W({
+}, Zt = { class: "kc-search-zero-t" }, Eo = /* @__PURE__ */ H({
   __name: "KbSearch",
   props: {
     kbId: {},
@@ -649,207 +646,206 @@ const _t = {
   },
   emits: ["open", "close"],
   setup(e, { emit: o }) {
-    const t = e, a = o, { query: n, results: s, answer: p, queryNotice: k, analysisUnavailable: I, loading: m, error: v, performed: M, run: u, ask: C, runDebounced: O, clear: N } = ht(() => t.kbId), L = U("search"), b = U(!1), F = U(""), Y = z(() => t.ask && !I.value), R = z(() => t.layout === "panel" && Y.value && L.value === "ask"), Z = z(() => R.value && !k.value), ie = z(() => m.value ? "tabler:hourglass" : R.value ? "tabler:sparkles" : "tabler:arrow-right"), H = z(() => s.value[0]), ne = z(() => Z.value ? s.value.slice(1) : s.value), ee = z(() => t.layout === "rail" && b.value && n.value.trim() !== "" && (m.value || M.value || !!v.value));
-    function j() {
-      n.value.trim() && (F.value = n.value.trim(), R.value ? C(8) : u(20));
+    const t = e, a = o, { query: n, results: s, answer: p, queryNotice: b, analysisUnavailable: O, loading: m, error: v, performed: T, run: u, ask: S, runDebounced: I, clear: N } = ht(() => t.kbId), L = U("search"), k = U(!1), D = U(""), j = z(() => t.layout === "panel" && t.ask && L.value === "ask"), V = z(() => j.value && !b.value), se = z(() => m.value ? "tabler:hourglass" : j.value ? "tabler:sparkles" : "tabler:arrow-right"), Q = z(() => s.value[0]), ne = z(() => V.value ? s.value.slice(1) : s.value), ae = z(() => t.layout === "rail" && k.value && n.value.trim() !== "" && (m.value || T.value || !!v.value));
+    function X() {
+      n.value.trim() && (D.value = n.value.trim(), j.value ? S(8) : u(20));
     }
-    function oe() {
-      t.layout === "rail" && O(300);
+    function W() {
+      t.layout === "rail" && I(300);
     }
-    function se(X) {
-      L.value = X, M.value && n.value.trim() && j();
+    function Z(K) {
+      L.value = K, T.value && n.value.trim() && X();
     }
-    function G(X) {
-      a("open", X), t.layout === "rail" && (N(), b.value = !1);
+    function ee(K) {
+      a("open", K), t.layout === "rail" && (N(), k.value = !1);
     }
-    return (X, x) => e.layout === "rail" ? (c(), d("div", {
+    return (K, g) => e.layout === "rail" ? (c(), d("div", {
       key: 0,
       class: "kc-search-rail",
-      onFocusin: x[2] || (x[2] = (w) => b.value = !0),
-      onFocusout: x[3] || (x[3] = (w) => b.value = !1)
+      onFocusin: g[2] || (g[2] = (w) => k.value = !0),
+      onFocusout: g[3] || (g[3] = (w) => k.value = !1)
     }, [
-      g(Te, {
+      x(Te, {
         modelValue: l(n),
         "onUpdate:modelValue": [
-          x[0] || (x[0] = (w) => Se(n) ? n.value = w : null),
-          oe
+          g[0] || (g[0] = (w) => Se(n) ? n.value = w : null),
+          W
         ],
         placeholder: e.placeholder || "Search…",
-        onEnter: x[1] || (x[1] = (w) => l(u)(20)),
+        onEnter: g[1] || (g[1] = (w) => l(u)(20)),
         onClear: l(N)
       }, null, 8, ["modelValue", "placeholder", "onClear"]),
-      ee.value ? (c(), d("div", _t, [
-        l(I) ? (c(), d("p", bt, "Showing direct matches. No model is assigned to " + y(l(I).model) + ".", 1)) : T("", !0),
+      ae.value ? (c(), d("div", _t, [
+        l(O) ? (c(), d("p", bt, "Showing direct matches. No model is assigned to " + y(l(O).model) + ".", 1)) : A("", !0),
         l(v) ? (c(), d("div", kt, [
-          g(l(E), {
+          x(l(C), {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
           r("span", null, y(l(v)), 1)
         ])) : l(s).length ? (c(), d("div", yt, [
-          (c(!0), d(te, null, ae(l(s), (w) => (c(), d("button", {
+          (c(!0), d(te, null, oe(l(s), (w) => (c(), d("button", {
             key: w.id,
             class: "kc-search-hit",
-            onMousedown: ye((S) => G(w), ["prevent"])
+            onMousedown: ye((ie) => ee(w), ["prevent"])
           }, [
             r("span", xt, [
               l(fe)(w) ? (c(), d("span", wt, [
-                g(l(E), {
+                x(l(C), {
                   icon: "tabler:file-text",
                   "aria-hidden": "true"
                 }),
-                P(y(l(fe)(w)), 1)
-              ])) : T("", !0),
+                R(y(l(fe)(w)), 1)
+              ])) : A("", !0),
               r("span", $t, y(w.node_type || "result"), 1),
-              w.similarity != null ? (c(), d("span", St, y(l($e)(w.similarity)), 1)) : T("", !0)
+              w.similarity != null ? (c(), d("span", St, y(l($e)(w.similarity)), 1)) : A("", !0)
             ]),
             r("span", Ct, y(l(we)(w.content, 160)), 1)
           ], 40, gt))), 128))
-        ])) : l(M) && !l(m) ? (c(), d("div", Et, [
-          g(l(E), {
+        ])) : l(T) && !l(m) ? (c(), d("div", Et, [
+          x(l(C), {
             icon: "tabler:search-off",
             "aria-hidden": "true"
           }),
-          x[9] || (x[9] = r("span", null, "No passages matched.", -1))
+          g[9] || (g[9] = r("span", null, "No passages matched.", -1))
         ])) : l(m) ? (c(), d("div", Tt, [
-          g(l(E), {
+          x(l(C), {
             icon: "tabler:hourglass",
             class: "kc-search-busy-ico",
             "aria-hidden": "true"
           }),
-          x[10] || (x[10] = r("span", null, "Searching…", -1))
-        ])) : T("", !0)
-      ])) : T("", !0)
+          g[10] || (g[10] = r("span", null, "Searching…", -1))
+        ])) : A("", !0)
+      ])) : A("", !0)
     ], 32)) : (c(), d("div", Mt, [
       r("div", At, [
-        Y.value ? (c(), d("div", It, [
+        e.ask ? (c(), d("div", It, [
           r("button", {
-            class: V(["kc-search-mode", { on: L.value === "search" }]),
-            onClick: x[4] || (x[4] = (w) => se("search"))
+            class: q(["kc-search-mode", { on: L.value === "search" }]),
+            onClick: g[4] || (g[4] = (w) => Z("search"))
           }, [
-            g(l(E), {
+            x(l(C), {
               icon: "tabler:search",
               "aria-hidden": "true"
             }),
-            x[11] || (x[11] = P(" Search ", -1))
+            g[11] || (g[11] = R(" Search ", -1))
           ], 2),
           r("button", {
-            class: V(["kc-search-mode", { on: L.value === "ask" }]),
-            onClick: x[5] || (x[5] = (w) => se("ask"))
+            class: q(["kc-search-mode", { on: L.value === "ask" }]),
+            onClick: g[5] || (g[5] = (w) => Z("ask"))
           }, [
-            g(l(E), {
+            x(l(C), {
               icon: "tabler:message-question",
               "aria-hidden": "true"
             }),
-            x[12] || (x[12] = P(" Ask ", -1))
+            g[12] || (g[12] = R(" Ask ", -1))
           ], 2)
-        ])) : T("", !0),
+        ])) : A("", !0),
         r("div", Ot, [
-          g(Te, {
+          x(Te, {
             modelValue: l(n),
-            "onUpdate:modelValue": x[6] || (x[6] = (w) => Se(n) ? n.value = w : null),
-            placeholder: R.value ? "Ask this knowledge base a question…" : "Search every indexed passage…",
-            onEnter: j
+            "onUpdate:modelValue": g[6] || (g[6] = (w) => Se(n) ? n.value = w : null),
+            placeholder: j.value ? "Ask this knowledge base a question…" : "Search every indexed passage…",
+            onEnter: X
           }, null, 8, ["modelValue", "placeholder"])
         ]),
-        g(_e, {
-          icon: ie.value,
-          label: R.value ? "Ask" : "Search",
+        x(_e, {
+          icon: se.value,
+          label: j.value ? "Ask" : "Search",
           variant: "bordered",
           active: l(m),
           disabled: !l(n).trim() || l(m),
-          onClick: j
+          onClick: X
         }, null, 8, ["icon", "label", "active", "disabled"]),
-        g(_e, {
+        x(_e, {
           icon: "tabler:x",
           label: "Close search",
-          onClick: x[7] || (x[7] = (w) => a("close"))
+          onClick: g[7] || (g[7] = (w) => a("close"))
         })
       ]),
-      t.ask ? T("", !0) : (c(), d("p", Ut, "Select an Answer model in knowledge base settings to enable Ask.")),
-      l(I) ? (c(), d("p", Lt, "Showing direct matches. No model is assigned to " + y(l(I).model) + ".", 1)) : T("", !0),
-      l(k) ? (c(), d("p", Nt, y(l(k)), 1)) : T("", !0),
-      l(v) ? (c(), d("div", Ft, [
-        g(l(E), {
+      l(O) ? (c(), d("p", Ut, "Showing direct matches. No model is assigned to " + y(l(O).model) + ".", 1)) : A("", !0),
+      l(b) ? (c(), d("p", Lt, y(l(b)), 1)) : A("", !0),
+      l(v) ? (c(), d("div", Nt, [
+        x(l(C), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
         }),
         r("span", null, y(l(v)), 1)
-      ])) : T("", !0),
-      l(m) ? (c(), d("div", Dt, [
-        (c(), d(te, null, ae(3, (w) => r("div", {
+      ])) : A("", !0),
+      l(m) ? (c(), d("div", Ft, [
+        (c(), d(te, null, oe(3, (w) => r("div", {
           key: w,
           class: "kc-search-skel-row"
         })), 64))
-      ])) : l(s).length ? (c(), d(te, { key: 5 }, [
-        Z.value ? (c(), d("div", Bt, [
-          r("div", Rt, [
-            g(l(E), {
+      ])) : l(s).length ? (c(), d(te, { key: 4 }, [
+        V.value ? (c(), d("div", Dt, [
+          r("div", Bt, [
+            x(l(C), {
               icon: "tabler:sparkles",
               "aria-hidden": "true"
             }),
-            P(" " + y(l(p) ? "Answer" : "Best match") + ' for "' + y(F.value) + '"', 1)
+            R(" " + y(l(p) ? "Answer" : "Best match") + ' for "' + y(D.value) + '"', 1)
           ]),
-          r("p", Pt, y(l(p) || l(we)(H.value?.content, 700)), 1),
-          H.value?.parent_id ? (c(), d("button", {
+          r("p", Rt, y(l(p) || l(we)(Q.value?.content, 700)), 1),
+          Q.value?.parent_id ? (c(), d("button", {
             key: 0,
             class: "kc-ans-src",
-            onClick: x[8] || (x[8] = (w) => G(H.value))
+            onClick: g[8] || (g[8] = (w) => ee(Q.value))
           }, [
-            g(l(E), {
+            x(l(C), {
               icon: "tabler:file-text",
               "aria-hidden": "true"
             }),
-            x[13] || (x[13] = P(" Open source document ", -1)),
-            H.value?.similarity != null ? (c(), d("span", qt, y(l($e)(H.value?.similarity)), 1)) : T("", !0)
-          ])) : T("", !0)
-        ])) : T("", !0),
-        r("div", Vt, [
-          Z.value && ne.value.length ? (c(), d("div", zt, "Sources")) : T("", !0),
-          (c(!0), d(te, null, ae(ne.value, (w) => (c(), d("button", {
+            g[13] || (g[13] = R(" Open source document ", -1)),
+            Q.value?.similarity != null ? (c(), d("span", Pt, y(l($e)(Q.value?.similarity)), 1)) : A("", !0)
+          ])) : A("", !0)
+        ])) : A("", !0),
+        r("div", qt, [
+          V.value && ne.value.length ? (c(), d("div", Vt, "Sources")) : A("", !0),
+          (c(!0), d(te, null, oe(ne.value, (w) => (c(), d("button", {
             key: w.id,
-            class: V(["kc-search-result", { link: !!w.parent_id }]),
-            onClick: (S) => G(w)
+            class: q(["kc-search-result", { link: !!w.parent_id }]),
+            onClick: (ie) => ee(w)
           }, [
-            r("div", Kt, [
-              l(fe)(w) ? (c(), d("span", Gt, [
-                g(l(E), {
+            r("div", jt, [
+              l(fe)(w) ? (c(), d("span", Kt, [
+                x(l(C), {
                   icon: "tabler:file-text",
                   "aria-hidden": "true"
                 }),
-                P(y(l(fe)(w)), 1)
-              ])) : T("", !0),
-              r("span", Wt, y(w.node_type || "passage"), 1),
-              w.llm_score != null ? (c(), d("span", Ht, "Relevance " + y(Math.round(w.llm_score)), 1)) : T("", !0),
-              w.similarity != null ? (c(), d("span", Xt, y(l($e)(w.similarity)), 1)) : T("", !0)
+                R(y(l(fe)(w)), 1)
+              ])) : A("", !0),
+              r("span", Gt, y(w.node_type || "passage"), 1),
+              w.llm_score != null ? (c(), d("span", Wt, "Relevance " + y(Math.round(w.llm_score)), 1)) : A("", !0),
+              w.similarity != null ? (c(), d("span", Ht, y(l($e)(w.similarity)), 1)) : A("", !0)
             ]),
-            r("p", Jt, y(l(we)(w.content, 360)), 1),
-            w.parent_id ? (c(), d("span", Qt, [
-              g(l(E), {
+            r("p", Xt, y(l(we)(w.content, 360)), 1),
+            w.parent_id ? (c(), d("span", Jt, [
+              x(l(C), {
                 icon: "tabler:arrow-up-right",
                 "aria-hidden": "true"
               }),
-              x[14] || (x[14] = P(" Open document", -1))
-            ])) : T("", !0)
-          ], 10, jt))), 128))
+              g[14] || (g[14] = R(" Open document", -1))
+            ])) : A("", !0)
+          ], 10, zt))), 128))
         ])
-      ], 64)) : l(M) ? (c(), d("div", Yt, [
-        g(l(E), {
+      ], 64)) : l(T) ? (c(), d("div", Qt, [
+        x(l(C), {
           icon: "tabler:search-off",
           "aria-hidden": "true"
         }),
-        x[15] || (x[15] = r("div", { class: "kc-search-zero-t" }, "No matches", -1)),
-        x[16] || (x[16] = r("div", { class: "kc-search-zero-s" }, "Try different terms or rephrase your question.", -1))
-      ])) : (c(), d("div", Zt, [
-        g(l(E), {
-          icon: R.value ? "tabler:message-question" : "tabler:search",
+        g[15] || (g[15] = r("div", { class: "kc-search-zero-t" }, "No matches", -1)),
+        g[16] || (g[16] = r("div", { class: "kc-search-zero-s" }, "Try different terms or rephrase your question.", -1))
+      ])) : (c(), d("div", Yt, [
+        x(l(C), {
+          icon: j.value ? "tabler:message-question" : "tabler:search",
           "aria-hidden": "true"
         }, null, 8, ["icon"]),
-        r("div", en, y(R.value ? "Ask your knowledge base" : "Search your knowledge base"), 1)
+        r("div", Zt, y(j.value ? "Ask your knowledge base" : "Search your knowledge base"), 1)
       ]))
     ]));
   }
-}), tn = ["aria-label"], nn = { class: "kc-orig-h" }, on = { class: "kc-orig-title" }, sn = { class: "kc-orig-title-t" }, an = { class: "kc-orig-b" }, ln = ["content-type", "source-url", "filename"], Mo = /* @__PURE__ */ W({
+}), en = ["aria-label"], tn = { class: "kc-orig-h" }, nn = { class: "kc-orig-title" }, on = { class: "kc-orig-title-t" }, sn = { class: "kc-orig-b" }, an = ["content-type", "source-url", "filename"], To = /* @__PURE__ */ H({
   __name: "OriginalOverlay",
   props: {
     open: { type: Boolean },
@@ -872,72 +868,72 @@ const _t = {
       document.fullscreenElement && document.exitFullscreen().catch(() => {
       });
     }
-    function k(u) {
+    function b(u) {
       u.key === "Escape" && a("close");
     }
-    function I() {
+    function O() {
       t.open && !document.fullscreenElement && a("close");
     }
     de(() => t.open, (u) => {
-      u ? (window.addEventListener("keydown", k), qe(s)) : (window.removeEventListener("keydown", k), p());
+      u ? (window.addEventListener("keydown", b), qe(s)) : (window.removeEventListener("keydown", b), p());
     });
     const m = U(""), v = U("");
-    async function M() {
+    async function T() {
       if (m.value = "", v.value = "", !(!t.open || !t.sourceUrl))
         try {
-          const { data: u } = await Q.get(t.sourceUrl);
+          const { data: u } = await Y.get(t.sourceUrl);
           u?.success && typeof u.url == "string" && (m.value = u.url, v.value = typeof u.content_type == "string" ? u.content_type : "");
         } catch {
         }
     }
-    return de(() => [t.open, t.sourceUrl], M, { immediate: !0 }), Ie(() => {
-      t.contained || document.addEventListener("fullscreenchange", I);
+    return de(() => [t.open, t.sourceUrl], T, { immediate: !0 }), Ie(() => {
+      t.contained || document.addEventListener("fullscreenchange", O);
     }), ke(() => {
-      document.removeEventListener("fullscreenchange", I), window.removeEventListener("keydown", k), p();
-    }), (u, C) => (c(), be(Me, { name: "kc-orig" }, {
+      document.removeEventListener("fullscreenchange", O), window.removeEventListener("keydown", b), p();
+    }), (u, S) => (c(), be(Me, { name: "kc-orig" }, {
       default: Ae(() => [
         e.open ? (c(), d("div", {
           key: 0,
           ref_key: "maskRef",
           ref: n,
-          class: V(["kc-orig-mask", { "kc-orig-contained": e.contained }]),
-          onClick: C[1] || (C[1] = ye((O) => a("close"), ["self"]))
+          class: q(["kc-orig-mask", { "kc-orig-contained": e.contained }]),
+          onClick: S[1] || (S[1] = ye((I) => a("close"), ["self"]))
         }, [
           r("section", {
             class: "kc-orig",
             role: "dialog",
             "aria-label": e.title
           }, [
-            r("header", nn, [
-              r("span", on, [
-                g(l(E), {
+            r("header", tn, [
+              r("span", nn, [
+                x(l(C), {
                   icon: "tabler:file-search",
                   "aria-hidden": "true"
                 }),
-                r("span", sn, y(e.title), 1)
+                r("span", on, y(e.title), 1)
               ]),
-              g(_e, {
+              x(_e, {
                 icon: "tabler:x",
                 label: "Close",
-                onClick: C[0] || (C[0] = (O) => a("close"))
+                onClick: S[0] || (S[0] = (I) => a("close"))
               })
             ]),
-            r("div", an, [
+            r("div", sn, [
               m.value ? (c(), d("wc-resource-view", {
                 key: m.value,
                 class: "kc-orig-rv",
                 "content-type": v.value || e.contentType,
                 "source-url": m.value,
                 filename: e.filename
-              }, null, 8, ln)) : T("", !0)
+              }, null, 8, an)) : A("", !0)
             ])
-          ], 8, tn)
-        ], 2)) : T("", !0)
+          ], 8, en)
+        ], 2)) : A("", !0)
       ]),
       _: 1
     }));
   }
-}), Ao = /* @__PURE__ */ W({
+}), Mo = /* @__PURE__ */ H({
   __name: "ViewOriginalButton",
   props: {
     label: {}
@@ -950,14 +946,14 @@ const _t = {
       class: "kx-btn kx-btn-ghost sm",
       onClick: n[0] || (n[0] = (s) => t("open"))
     }, [
-      g(l(E), {
+      x(l(C), {
         icon: "tabler:file-search",
         "aria-hidden": "true"
       }),
       r("span", null, y(e.label || "View original"), 1)
     ]));
   }
-}), rn = { class: "kc-docsum" }, cn = { class: "kc-docsum-h" }, Io = /* @__PURE__ */ W({
+}), ln = { class: "kc-docsum" }, rn = { class: "kc-docsum-h" }, Ao = /* @__PURE__ */ H({
   __name: "KbSummary",
   props: {
     text: {},
@@ -967,29 +963,29 @@ const _t = {
   },
   setup(e) {
     const o = e, t = U(!1), a = z(() => o.collapsible === !0 && o.text.length > 320);
-    return (n, s) => (c(), d("section", rn, [
-      r("div", cn, [
-        g(l(E), {
+    return (n, s) => (c(), d("section", ln, [
+      r("div", rn, [
+        x(l(C), {
           icon: e.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"]),
-        P(" " + y(e.label), 1)
+        R(" " + y(e.label), 1)
       ]),
       r("p", {
-        class: V(["kc-docsum-b", { clamp: a.value && !t.value }])
+        class: q(["kc-docsum-b", { clamp: a.value && !t.value }])
       }, y(e.text), 3),
       a.value ? (c(), d("button", {
         key: 0,
         class: "kc-docsum-more",
         type: "button",
         onClick: s[0] || (s[0] = (p) => t.value = !t.value)
-      }, y(t.value ? "Show less" : "Show more"), 1)) : T("", !0)
+      }, y(t.value ? "Show less" : "Show more"), 1)) : A("", !0)
     ]));
   }
-}), un = { class: "kx-empty kx-empty-spacious" }, dn = { class: "kx-empty-title" }, pn = {
+}), cn = { class: "kx-empty kx-empty-spacious" }, un = { class: "kx-empty-title" }, dn = {
   key: 0,
   class: "kx-empty-sub"
-}, Oo = /* @__PURE__ */ W({
+}, Io = /* @__PURE__ */ H({
   __name: "EmptyState",
   props: {
     icon: {},
@@ -1002,29 +998,29 @@ const _t = {
   emits: ["cta"],
   setup(e, { emit: o }) {
     const t = o;
-    return (a, n) => (c(), d("div", un, [
+    return (a, n) => (c(), d("div", cn, [
       r("div", {
-        class: V(["kx-empty-ico", e.tone === "muted" ? "muted" : "primary"])
+        class: q(["kx-empty-ico", e.tone === "muted" ? "muted" : "primary"])
       }, [
-        g(l(E), {
+        x(l(C), {
           icon: e.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"])
       ], 2),
-      r("div", dn, y(e.title), 1),
-      e.hint ? (c(), d("div", pn, y(e.hint), 1)) : T("", !0),
+      r("div", un, y(e.title), 1),
+      e.hint ? (c(), d("div", dn, y(e.hint), 1)) : A("", !0),
       e.cta ? (c(), d("button", {
         key: 1,
         class: "kx-btn kx-btn-primary kx-empty-cta",
         onClick: n[0] || (n[0] = (s) => t("cta"))
       }, [
-        e.ctaIcon ? (c(), be(l(E), {
+        e.ctaIcon ? (c(), be(l(C), {
           key: 0,
           icon: e.ctaIcon,
           "aria-hidden": "true"
-        }, null, 8, ["icon"])) : T("", !0),
-        P(" " + y(e.cta), 1)
-      ])) : T("", !0)
+        }, null, 8, ["icon"])) : A("", !0),
+        R(" " + y(e.cta), 1)
+      ])) : A("", !0)
     ]));
   }
 }), Le = /* @__PURE__ */ new Set([
@@ -1085,184 +1081,184 @@ const _t = {
   "application/json",
   "application/javascript",
   "application/xml"
-]), fn = [
+]), pn = [
   ...Array.from(Le),
   ...Array.from(Ne)
-].map((e) => `.${e}`), mn = [
-  ...fn,
+].map((e) => `.${e}`), fn = [
+  ...pn,
   "text/*",
   ...Array.from(De),
   ...Array.from(Fe)
-].join(","), vn = "This file type is not supported for knowledge ingestion. Use text, Markdown, CSV, JSON, HTML, PDF, or Office documents.";
-function hn(e) {
+].join(","), mn = "This file type is not supported for knowledge ingestion. Use text, Markdown, CSV, JSON, HTML, PDF, or Office documents.";
+function vn(e) {
   const o = String(e || "").toLowerCase().split("/").pop() || "", t = o.lastIndexOf(".");
   return t >= 0 ? o.slice(t + 1) : "";
 }
-function _n(e) {
+function hn(e) {
   const o = String(e.type || "").toLowerCase();
   if (o.startsWith("text/") || Fe.has(o) || De.has(o)) return !0;
-  const t = hn(e.name);
+  const t = vn(e.name);
   return Le.has(t) || Ne.has(t);
 }
 const ce = ["uploading", "processing"];
-function bn(e, o) {
+function _n(e, o) {
   const t = U([]), a = U(!1), n = U(""), s = U("");
   let p = 0;
-  const k = (i) => `${i}${++p}`, I = z(() => a.value || t.value.some((i) => ce.includes(i.status)));
+  const b = (i) => `${i}${++p}`, O = z(() => a.value || t.value.some((i) => ce.includes(i.status)));
   function m() {
     n.value = "", s.value = "";
   }
   function v() {
     t.value = t.value.filter((i) => ce.includes(i.status));
   }
-  function M(i) {
+  function T(i) {
     t.value = t.value.filter((f) => f.key !== i);
   }
   function u(i, f) {
     t.value = t.value.map((_) => _.key === i ? { ..._, ...f } : _);
   }
-  const C = [];
-  function O() {
-    for (const i of C.splice(0)) clearTimeout(i);
-    for (const i of [2500, 8e3, 2e4]) C.push(setTimeout(() => o(), i));
+  const S = [];
+  function I() {
+    for (const i of S.splice(0)) clearTimeout(i);
+    for (const i of [2500, 8e3, 2e4]) S.push(setTimeout(() => o(), i));
   }
   function N() {
     const i = t.value.filter((f) => f.status === "done").length;
-    n.value = i > 1 ? `Added ${i} items to the library.` : "Added to the library.", o(), O();
+    n.value = i > 1 ? `Added ${i} items to the library.` : "Added to the library.", o(), I();
   }
   function L(i) {
     const f = t.value.find((_) => _.key === i);
     !f || f.status === "done" || (u(i, { status: "done" }), N());
   }
-  function b(i, f) {
-    t.value = [...t.value, { key: k("q"), name: i, uuid: f, status: "done" }], N();
+  function k(i, f) {
+    t.value = [...t.value, { key: b("q"), name: i, uuid: f, status: "done" }], N();
   }
-  const F = /* @__PURE__ */ new Map(), Y = [];
-  function R(i) {
+  const D = /* @__PURE__ */ new Map(), j = [];
+  function V(i) {
     return !!i && typeof i == "object" && !Array.isArray(i);
   }
-  function Z(i) {
-    const f = R(i) ? i : {};
+  function se(i) {
+    const f = V(i) ? i : {};
     return String(f.topic || "");
   }
-  function ie(i) {
-    const f = R(i) ? i : {}, _ = [
+  function Q(i) {
+    const f = V(i) ? i : {}, _ = [
       f,
-      R(f.data) ? f.data : null,
-      R(f.payload) ? f.payload : null,
-      R(f.detail) ? f.detail : null
+      V(f.data) ? f.data : null,
+      V(f.payload) ? f.payload : null,
+      V(f.detail) ? f.detail : null
     ].filter(Boolean);
-    for (const A of _)
-      if (typeof A.uuid == "string" && typeof A.status == "string") return A;
+    for (const M of _)
+      if (typeof M.uuid == "string" && typeof M.status == "string") return M;
     return {};
   }
-  function H(i, f, _) {
-    const A = t.value.find((D) => D.uuid === i && ce.includes(D.status));
-    if (!A) return;
+  function ne(i, f, _) {
+    const M = t.value.find((F) => F.uuid === i && ce.includes(F.status));
+    if (!M) return;
     const B = String(f || "");
-    B === "error" || B === "failed" ? u(A.key, { status: "error", error: String(_ || "File processing failed") }) : B === "completed" ? L(A.key) : ["pending", "uploaded", "queued", "processing"].includes(B) && u(A.key, { status: "processing" });
+    B === "error" || B === "failed" ? u(M.key, { status: "error", error: String(_ || "File processing failed") }) : B === "completed" ? L(M.key) : ["pending", "uploaded", "queued", "processing"].includes(B) && u(M.key, { status: "processing" });
   }
-  function ne(i, f) {
-    const _ = ie(f);
-    _.uuid === i && H(i, _.status, _.error);
+  function ae(i, f) {
+    const _ = Q(f);
+    _.uuid === i && ne(i, _.status, _.error);
   }
-  function ee(i) {
+  function X(i) {
     const f = `upload:${i}`;
-    if (F.has(f)) return;
-    const _ = Oe("@message", (A) => {
-      Z(A) === f && ne(i, A);
+    if (D.has(f)) return;
+    const _ = Oe("@message", (M) => {
+      se(M) === f && ae(i, M);
     });
-    typeof _ == "function" && F.set(f, _);
+    typeof _ == "function" && D.set(f, _);
   }
-  async function j(i) {
+  async function W(i) {
     if (!(!i || !t.value.some((f) => f.uuid === i && ce.includes(f.status))))
       try {
-        const { data: f } = await Q.get(`/api/v1/uploads/${encodeURIComponent(i)}`), _ = R(f?.upload) ? f.upload : R(f) ? f : {};
-        H(i, _.status, _.error || _.error_details);
+        const { data: f } = await Y.get(`/api/v1/uploads/${encodeURIComponent(i)}`), _ = V(f?.upload) ? f.upload : V(f) ? f : {};
+        ne(i, _.status, _.error || _.error_details);
       } catch {
       }
   }
-  function oe(i) {
-    j(i);
+  function Z(i) {
+    W(i);
     for (const f of [1500, 5e3, 15e3])
-      Y.push(setTimeout(() => {
-        j(i);
+      j.push(setTimeout(() => {
+        W(i);
       }, f));
   }
-  function se(i) {
+  function ee(i) {
     const f = i.meta || {};
     if (String(f.status || "") === "error") {
       const _ = String(f.last_error || "Embedding failed");
-      for (const A of t.value) ce.includes(A.status) && u(A.key, { status: "error", error: _ });
+      for (const M of t.value) ce.includes(M.status) && u(M.key, { status: "error", error: _ });
       s.value = _;
     }
   }
-  let G = null, X = 0;
-  function x(i) {
-    const f = ++X;
-    if (G && (G(), G = null), !i) return;
-    const _ = nt(i, se);
-    if (f !== X) {
+  let K = null, g = 0;
+  function w(i) {
+    const f = ++g;
+    if (K && (K(), K = null), !i) return;
+    const _ = nt(i, ee);
+    if (f !== g) {
       _ && _();
       return;
     }
-    G = _;
+    K = _;
   }
   de(() => e(), (i) => {
-    x(i);
+    w(i);
   }, { immediate: !0 }), ke(() => {
-    for (const i of C.splice(0)) clearTimeout(i);
-    for (const i of Y.splice(0)) clearTimeout(i);
-    X++, G && G();
-    for (const i of F.values()) i();
-    F.clear();
+    for (const i of S.splice(0)) clearTimeout(i);
+    for (const i of j.splice(0)) clearTimeout(i);
+    g++, K && K();
+    for (const i of D.values()) i();
+    D.clear();
   });
-  async function w(i, f, _) {
+  async function ie(i, f, _) {
     try {
-      const { data: A } = await Q.post(`/api/v1/knowledge/${_}/upload-token`);
-      if (!A?.success || !A.upload_token) {
-        u(i, { status: "error", error: A?.error || "Could not get an upload token" });
+      const { data: M } = await Y.post(`/api/v1/knowledge/${_}/upload-token`);
+      if (!M?.success || !M.upload_token) {
+        u(i, { status: "error", error: M?.error || "Could not get an upload token" });
         return;
       }
       const B = new FormData();
-      B.append("file", f), B.append("upload_token", A.upload_token);
-      const { data: D } = await Q.post("/api/v1/uploads", B, {
+      B.append("file", f), B.append("upload_token", M.upload_token);
+      const { data: F } = await Y.post("/api/v1/uploads", B, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      if (D?.success && D.uuid) {
-        const K = String(D.uuid);
-        u(i, { uuid: K, externalId: `upload:${K}`, status: "processing" }), ee(K), oe(K);
+      if (F?.success && F.uuid) {
+        const G = String(F.uuid);
+        u(i, { uuid: G, externalId: `upload:${G}`, status: "processing" }), X(G), Z(G);
       } else
-        u(i, { status: "error", error: D?.error || "Upload failed" });
-    } catch (A) {
-      u(i, { status: "error", error: A?.response?.data?.error || A?.message || "Upload error" }), ue.handleError(A?.response?.status === 401 ? "auth-expired" : "other", A);
+        u(i, { status: "error", error: F?.error || "Upload failed" });
+    } catch (M) {
+      u(i, { status: "error", error: M?.response?.data?.error || M?.message || "Upload error" }), ue.handleError(M?.response?.status === 401 ? "auth-expired" : "other", M);
     }
   }
-  function S(i) {
+  function E(i) {
     const f = e();
     if (f) {
       m();
       for (const _ of Array.from(i)) {
-        if (!_n(_)) {
-          s.value = vn;
+        if (!hn(_)) {
+          s.value = mn;
           continue;
         }
-        const A = k("f");
-        t.value = [...t.value, { key: A, name: _.name, status: "uploading" }], w(A, _, f);
+        const M = b("f");
+        t.value = [...t.value, { key: M, name: _.name, status: "uploading" }], ie(M, _, f);
       }
     }
   }
   function h(i) {
-    S([i]);
+    E([i]);
   }
   async function $(i = 100, f = 0) {
-    const { data: _ } = await Q.get(`/api/v1/uploads/list?limit=${i}&offset=${f}`), B = (Array.isArray(_?.uploads) ? _.uploads : []).map((D) => ({
-      uuid: String(D.uuid),
-      filename: String(D.filename || D.meta && D.meta.filename || D.uuid),
-      mime_type: D.mime_type,
-      size: D.size,
-      status: D.status,
-      created_at: D.created_at
+    const { data: _ } = await Y.get(`/api/v1/uploads/list?limit=${i}&offset=${f}`), B = (Array.isArray(_?.uploads) ? _.uploads : []).map((F) => ({
+      uuid: String(F.uuid),
+      filename: String(F.filename || F.meta && F.meta.filename || F.uuid),
+      mime_type: F.mime_type,
+      size: F.size,
+      status: F.status,
+      created_at: F.created_at
     }));
     return { uploads: B, total: Number(_?.meta?.total ?? B.length) };
   }
@@ -1271,13 +1267,13 @@ function bn(e, o) {
     if (!(!f || !i.length)) {
       m(), a.value = !0;
       try {
-        const { data: _ } = await Q.post(`/api/v1/knowledge/${f}/ingest-upload`, {
-          upload_ids: i.map((K) => K.uuid)
-        }), A = Array.isArray(_?.results) ? _.results : [], B = (K) => i.find((Re) => Re.uuid === K)?.name || K;
-        let D = !1;
-        for (const K of A)
-          K?.success && (D = !0, b(B(String(K.upload_id)), String(K.upload_id)));
-        D || (s.value = _?.error || "Could not ingest the selected uploads");
+        const { data: _ } = await Y.post(`/api/v1/knowledge/${f}/ingest-upload`, {
+          upload_ids: i.map((G) => G.uuid)
+        }), M = Array.isArray(_?.results) ? _.results : [], B = (G) => i.find((Re) => Re.uuid === G)?.name || G;
+        let F = !1;
+        for (const G of M)
+          G?.success && (F = !0, k(B(String(G.upload_id)), String(G.upload_id)));
+        F || (s.value = _?.error || "Could not ingest the selected uploads");
       } catch (_) {
         s.value = _?.response?.data?.error || _?.message || "Ingest error", ue.handleError(_?.response?.status === 401 ? "auth-expired" : "other", _);
       } finally {
@@ -1286,12 +1282,12 @@ function bn(e, o) {
     }
   }
   async function Be(i, f, _) {
-    const A = e();
-    if (!(!i.trim() || !A)) {
+    const M = e();
+    if (!(!i.trim() || !M)) {
       m(), a.value = !0;
       try {
-        const B = f.trim() ? { title: f.trim() } : void 0, { data: D } = await Q.post(`/api/v1/knowledge/${A}/ingest`, { content: i, content_type: _, metadata: B });
-        D?.success ? b(f.trim() || "Pasted text") : s.value = D?.error || "Ingestion failed";
+        const B = f.trim() ? { title: f.trim() } : void 0, { data: F } = await Y.post(`/api/v1/knowledge/${M}/ingest`, { content: i, content_type: _, metadata: B });
+        F?.success ? k(f.trim() || "Pasted text") : s.value = F?.error || "Ingestion failed";
       } catch (B) {
         s.value = B?.response?.data?.error || B?.message || "Ingestion error", ue.handleError(B?.response?.status === 401 ? "auth-expired" : "other", B);
       } finally {
@@ -1301,56 +1297,56 @@ function bn(e, o) {
   }
   return {
     items: t,
-    busy: I,
+    busy: O,
     okMsg: z(() => n.value),
     errMsg: z(() => s.value),
     reset: m,
     clearItems: v,
-    removeItem: M,
+    removeItem: T,
     uploadFile: h,
-    uploadFiles: S,
+    uploadFiles: E,
     listMyUploads: $,
     ingestExistingUploads: ge,
     ingestText: Be
   };
 }
-const kn = { class: "ap" }, yn = {
+const bn = { class: "ap" }, kn = {
   class: "ap-modes",
   role: "tablist"
-}, gn = ["aria-selected", "onClick"], xn = {
+}, yn = ["aria-selected", "onClick"], gn = {
   key: 0,
   class: "ap-msg err"
-}, wn = {
+}, xn = {
   key: 1,
   class: "ap-pane"
-}, $n = ["accept"], Sn = {
+}, wn = ["accept"], $n = {
   key: 2,
   class: "ap-pane"
-}, Cn = { class: "ap-uploads-bar" }, En = ["disabled"], Tn = {
+}, Sn = { class: "ap-uploads-bar" }, Cn = ["disabled"], En = {
   key: 0,
   class: "ap-uploads-state"
-}, Mn = {
+}, Tn = {
   key: 1,
   class: "ap-uploads-state err"
-}, An = {
+}, Mn = {
   key: 2,
   class: "ap-uploads-state"
-}, In = {
+}, An = {
   key: 3,
   class: "ap-uploads"
-}, On = ["aria-pressed", "onClick"], Un = { class: "ap-upload-main" }, Ln = { class: "ap-upload-name" }, Nn = { class: "ap-upload-meta" }, Fn = {
+}, In = ["aria-pressed", "onClick"], On = { class: "ap-upload-main" }, Un = { class: "ap-upload-name" }, Ln = { class: "ap-upload-meta" }, Nn = {
   key: 0,
   class: "mono"
-}, Dn = { key: 1 }, Bn = {
+}, Fn = { key: 1 }, Dn = {
   key: 3,
   class: "ap-pane"
-}, Rn = { class: "ap-form" }, Pn = { class: "ap-grid2" }, qn = { class: "ap-field" }, Vn = ["placeholder"], zn = { class: "ap-field" }, jn = { class: "ap-field" }, Kn = { class: "ap-label-row" }, Gn = {
+}, Bn = { class: "ap-form" }, Rn = { class: "ap-grid2" }, Pn = { class: "ap-field" }, qn = ["placeholder"], Vn = { class: "ap-field" }, zn = { class: "ap-field" }, jn = { class: "ap-label-row" }, Kn = {
   key: 0,
   class: "ap-count"
-}, Wn = ["placeholder"], Hn = { class: "ap-actions" }, Xn = { class: "ap-hint" }, Jn = ["disabled"], Qn = {
+}, Gn = ["placeholder"], Wn = { class: "ap-actions" }, Hn = { class: "ap-hint" }, Xn = ["disabled"], Jn = {
   key: 4,
   class: "ap-items"
-}, Yn = { class: "ap-items-h" }, Zn = { class: "ap-items-list" }, eo = { class: "ap-item-name" }, to = { class: "ap-item-status" }, Uo = /* @__PURE__ */ W({
+}, Qn = { class: "ap-items-h" }, Yn = { class: "ap-items-list" }, Zn = { class: "ap-item-name" }, eo = { class: "ap-item-status" }, Oo = /* @__PURE__ */ H({
   __name: "AddPanel",
   props: {
     kbId: {},
@@ -1358,109 +1354,109 @@ const kn = { class: "ap" }, yn = {
   },
   emits: ["changed"],
   setup(e, { emit: o }) {
-    const t = e, a = o, n = bn(() => t.kbId, () => a("changed")), s = U("file"), p = [
+    const t = e, a = o, n = _n(() => t.kbId, () => a("changed")), s = U("file"), p = [
       { id: "file", label: "Upload files", icon: "tabler:cloud-upload" },
       { id: "text", label: "Paste text", icon: "tabler:text-plus" },
       { id: "uploads", label: "My uploads", icon: "tabler:folder" }
-    ], k = z(() => t.noun || "content");
-    function I(S) {
-      n.reset(), s.value = S, S === "uploads" && Z();
+    ], b = z(() => t.noun || "content");
+    function O(E) {
+      n.reset(), s.value = E, E === "uploads" && se();
     }
     const m = U(null), v = U(!1);
-    function M() {
+    function T() {
       m.value?.click();
     }
-    function u(S) {
-      const h = S.target.files;
+    function u(E) {
+      const h = E.target.files;
       h?.length && n.uploadFiles(h), m.value && (m.value.value = "");
     }
-    function C(S) {
-      S.preventDefault(), v.value = !1;
-      const h = S.dataTransfer?.files;
+    function S(E) {
+      E.preventDefault(), v.value = !1;
+      const h = E.dataTransfer?.files;
       h?.length && n.uploadFiles(h);
     }
-    const O = U([]), N = U(!1), L = U(""), b = U(""), F = U({}), Y = z(() => {
-      const S = b.value.trim().toLowerCase();
-      return S ? O.value.filter((h) => h.filename.toLowerCase().includes(S)) : O.value;
-    }), R = z(() => Object.values(F.value).filter(Boolean).length);
-    async function Z() {
+    const I = U([]), N = U(!1), L = U(""), k = U(""), D = U({}), j = z(() => {
+      const E = k.value.trim().toLowerCase();
+      return E ? I.value.filter((h) => h.filename.toLowerCase().includes(E)) : I.value;
+    }), V = z(() => Object.values(D.value).filter(Boolean).length);
+    async function se() {
       N.value = !0, L.value = "";
       try {
-        const { uploads: S } = await n.listMyUploads(200, 0);
-        O.value = S;
-      } catch (S) {
-        L.value = S?.message || "Could not load your uploads";
+        const { uploads: E } = await n.listMyUploads(200, 0);
+        I.value = E;
+      } catch (E) {
+        L.value = E?.message || "Could not load your uploads";
       } finally {
         N.value = !1;
       }
     }
-    function ie(S) {
-      F.value = { ...F.value, [S]: !F.value[S] };
+    function Q(E) {
+      D.value = { ...D.value, [E]: !D.value[E] };
     }
-    async function H() {
-      const S = O.value.filter((h) => F.value[h.uuid]).map((h) => ({ uuid: h.uuid, name: h.filename }));
-      S.length && (await n.ingestExistingUploads(S), n.errMsg.value || (F.value = {}));
+    async function ne() {
+      const E = I.value.filter((h) => D.value[h.uuid]).map((h) => ({ uuid: h.uuid, name: h.filename }));
+      E.length && (await n.ingestExistingUploads(E), n.errMsg.value || (D.value = {}));
     }
-    function ne(S) {
-      return !S || S <= 0 ? "" : S < 1024 ? `${S} B` : S < 1024 * 1024 ? `${(S / 1024).toFixed(0)} KB` : `${(S / 1024 / 1024).toFixed(1)} MB`;
+    function ae(E) {
+      return !E || E <= 0 ? "" : E < 1024 ? `${E} B` : E < 1024 * 1024 ? `${(E / 1024).toFixed(0)} KB` : `${(E / 1024 / 1024).toFixed(1)} MB`;
     }
-    const ee = U(""), j = U(""), oe = U("text/plain"), se = z(() => j.value.length);
-    async function G() {
-      j.value.trim() && (await n.ingestText(j.value, ee.value, oe.value), n.errMsg.value || (j.value = "", ee.value = ""));
+    const X = U(""), W = U(""), Z = U("text/plain"), ee = z(() => W.value.length);
+    async function K() {
+      W.value.trim() && (await n.ingestText(W.value, X.value, Z.value), n.errMsg.value || (W.value = "", X.value = ""));
     }
-    const X = {
+    const g = {
       uploading: "Uploading…",
       processing: "Processing…",
       done: "Added",
       error: "Failed"
     };
-    function x(S) {
-      return S === "done" ? "tabler:circle-check" : S === "error" ? "tabler:alert-circle" : "tabler:loader-2";
+    function w(E) {
+      return E === "done" ? "tabler:circle-check" : E === "error" ? "tabler:alert-circle" : "tabler:loader-2";
     }
-    const w = z(() => n.items.value.length > 0);
+    const ie = z(() => n.items.value.length > 0);
     return Ie(() => {
-      s.value === "uploads" && Z();
+      s.value === "uploads" && se();
     }), de(() => t.kbId, () => {
       n.clearItems(), n.reset();
-    }), (S, h) => (c(), d("div", kn, [
-      r("div", yn, [
-        (c(), d(te, null, ae(p, ($) => r("button", {
+    }), (E, h) => (c(), d("div", bn, [
+      r("div", kn, [
+        (c(), d(te, null, oe(p, ($) => r("button", {
           key: $.id,
-          class: V(["ap-mode", { on: s.value === $.id }]),
+          class: q(["ap-mode", { on: s.value === $.id }]),
           role: "tab",
           "aria-selected": s.value === $.id,
-          onClick: (ge) => I($.id)
+          onClick: (ge) => O($.id)
         }, [
-          g(l(E), {
+          x(l(C), {
             icon: $.icon,
             "aria-hidden": "true"
           }, null, 8, ["icon"]),
           r("span", null, y($.label), 1)
-        ], 10, gn)), 64))
+        ], 10, yn)), 64))
       ]),
-      l(n).errMsg.value ? (c(), d("div", xn, [
-        g(l(E), { icon: "tabler:alert-circle" }),
-        P(y(l(n).errMsg.value), 1)
-      ])) : T("", !0),
-      s.value === "file" ? (c(), d("section", wn, [
+      l(n).errMsg.value ? (c(), d("div", gn, [
+        x(l(C), { icon: "tabler:alert-circle" }),
+        R(y(l(n).errMsg.value), 1)
+      ])) : A("", !0),
+      s.value === "file" ? (c(), d("section", xn, [
         r("input", {
           ref_key: "fileInput",
           ref: m,
           type: "file",
           class: "ap-file",
           multiple: "",
-          accept: l(mn),
+          accept: l(fn),
           onChange: u
-        }, null, 40, $n),
+        }, null, 40, wn),
         r("button", {
           type: "button",
-          class: V(["ap-drop", { over: v.value }]),
-          onClick: M,
+          class: q(["ap-drop", { over: v.value }]),
+          onClick: T,
           onDragover: h[0] || (h[0] = ye(($) => v.value = !0, ["prevent"])),
           onDragleave: h[1] || (h[1] = ($) => v.value = !1),
-          onDrop: C
+          onDrop: S
         }, [
-          g(l(E), {
+          x(l(C), {
             icon: "tabler:cloud-upload",
             class: "ap-drop-ico",
             "aria-hidden": "true"
@@ -1468,224 +1464,224 @@ const kn = { class: "ap" }, yn = {
           h[7] || (h[7] = r("span", { class: "ap-drop-t" }, "Drop files or click to browse", -1)),
           h[8] || (h[8] = r("span", { class: "ap-drop-s" }, "Upload several at once — PDF, Word, Excel, PowerPoint, and plain text.", -1))
         ], 34)
-      ])) : s.value === "uploads" ? (c(), d("section", Sn, [
-        r("div", Cn, [
+      ])) : s.value === "uploads" ? (c(), d("section", $n, [
+        r("div", Sn, [
           pe(r("input", {
-            "onUpdate:modelValue": h[2] || (h[2] = ($) => b.value = $),
+            "onUpdate:modelValue": h[2] || (h[2] = ($) => k.value = $),
             class: "ap-input",
             type: "text",
             placeholder: "Filter your uploads…",
             autocomplete: "off"
           }, null, 512), [
-            [xe, b.value]
+            [xe, k.value]
           ]),
           r("button", {
             class: "ap-submit",
-            disabled: !R.value || l(n).busy.value,
-            onClick: H
+            disabled: !V.value || l(n).busy.value,
+            onClick: ne
           }, [
-            g(l(E), {
+            x(l(C), {
               icon: l(n).busy.value ? "tabler:loader-2" : "tabler:plus",
-              class: V(l(n).busy.value && "spin"),
+              class: q(l(n).busy.value && "spin"),
               "aria-hidden": "true"
             }, null, 8, ["icon", "class"]),
-            P(" " + y(R.value ? `Add ${R.value} selected` : "Add selected"), 1)
-          ], 8, En)
+            R(" " + y(V.value ? `Add ${V.value} selected` : "Add selected"), 1)
+          ], 8, Cn)
         ]),
-        N.value ? (c(), d("div", Tn, [
-          g(l(E), {
+        N.value ? (c(), d("div", En, [
+          x(l(C), {
             icon: "tabler:loader-2",
             class: "spin",
             "aria-hidden": "true"
           }),
-          h[9] || (h[9] = P(" Loading your uploads…", -1))
-        ])) : L.value ? (c(), d("div", Mn, [
-          g(l(E), {
+          h[9] || (h[9] = R(" Loading your uploads…", -1))
+        ])) : L.value ? (c(), d("div", Tn, [
+          x(l(C), {
             icon: "tabler:alert-circle",
             "aria-hidden": "true"
           }),
-          P(" " + y(L.value), 1)
-        ])) : Y.value.length ? (c(), d("ul", In, [
-          (c(!0), d(te, null, ae(Y.value, ($) => (c(), d("li", {
+          R(" " + y(L.value), 1)
+        ])) : j.value.length ? (c(), d("ul", An, [
+          (c(!0), d(te, null, oe(j.value, ($) => (c(), d("li", {
             key: $.uuid
           }, [
             r("button", {
               type: "button",
-              class: V(["ap-upload", { on: F.value[$.uuid] }]),
-              "aria-pressed": !!F.value[$.uuid],
-              onClick: (ge) => ie($.uuid)
+              class: q(["ap-upload", { on: D.value[$.uuid] }]),
+              "aria-pressed": !!D.value[$.uuid],
+              onClick: (ge) => Q($.uuid)
             }, [
-              g(l(E), {
+              x(l(C), {
                 class: "ap-upload-check",
-                icon: F.value[$.uuid] ? "tabler:square-check" : "tabler:square",
+                icon: D.value[$.uuid] ? "tabler:square-check" : "tabler:square",
                 "aria-hidden": "true"
               }, null, 8, ["icon"]),
-              g(l(E), {
+              x(l(C), {
                 class: "ap-upload-ico",
                 icon: "tabler:file-text",
                 "aria-hidden": "true"
               }),
-              r("span", Un, [
-                r("span", Ln, y($.filename), 1),
-                r("span", Nn, [
-                  $.mime_type ? (c(), d("span", Fn, y($.mime_type), 1)) : T("", !0),
-                  ne($.size) ? (c(), d("span", Dn, y(ne($.size)), 1)) : T("", !0)
+              r("span", On, [
+                r("span", Un, y($.filename), 1),
+                r("span", Ln, [
+                  $.mime_type ? (c(), d("span", Nn, y($.mime_type), 1)) : A("", !0),
+                  ae($.size) ? (c(), d("span", Fn, y(ae($.size)), 1)) : A("", !0)
                 ])
               ])
-            ], 10, On)
+            ], 10, In)
           ]))), 128))
-        ])) : (c(), d("div", An, [
-          g(l(E), {
+        ])) : (c(), d("div", Mn, [
+          x(l(C), {
             icon: "tabler:folder-off",
             "aria-hidden": "true"
           }),
-          h[10] || (h[10] = P(" No uploads found.", -1))
+          h[10] || (h[10] = R(" No uploads found.", -1))
         ]))
-      ])) : (c(), d("section", Bn, [
-        r("div", Rn, [
-          r("div", Pn, [
-            r("div", qn, [
+      ])) : (c(), d("section", Dn, [
+        r("div", Bn, [
+          r("div", Rn, [
+            r("div", Pn, [
               h[11] || (h[11] = r("label", {
                 class: "ap-label",
                 for: "ap-title"
               }, [
-                P("Title "),
+                R("Title "),
                 r("span", { class: "ap-opt" }, "optional")
               ], -1)),
               pe(r("input", {
                 id: "ap-title",
-                "onUpdate:modelValue": h[3] || (h[3] = ($) => ee.value = $),
+                "onUpdate:modelValue": h[3] || (h[3] = ($) => X.value = $),
                 class: "ap-input",
                 type: "text",
-                placeholder: `Give this ${k.value} a title`,
+                placeholder: `Give this ${b.value} a title`,
                 autocomplete: "off"
-              }, null, 8, Vn), [
-                [xe, ee.value]
+              }, null, 8, qn), [
+                [xe, X.value]
               ])
             ]),
-            r("div", zn, [
+            r("div", Vn, [
               h[13] || (h[13] = r("label", {
                 class: "ap-label",
                 for: "ap-format"
               }, "Format", -1)),
               pe(r("select", {
                 id: "ap-format",
-                "onUpdate:modelValue": h[4] || (h[4] = ($) => oe.value = $),
+                "onUpdate:modelValue": h[4] || (h[4] = ($) => Z.value = $),
                 class: "ap-input"
               }, [...h[12] || (h[12] = [
                 r("option", { value: "text/plain" }, "Plain text", -1),
                 r("option", { value: "text/markdown" }, "Markdown", -1),
                 r("option", { value: "text/html" }, "HTML", -1)
               ])], 512), [
-                [Ve, oe.value]
+                [Ve, Z.value]
               ])
             ])
           ]),
-          r("div", jn, [
-            r("div", Kn, [
+          r("div", zn, [
+            r("div", jn, [
               h[14] || (h[14] = r("label", {
                 class: "ap-label",
                 for: "ap-content"
               }, "Content", -1)),
-              se.value ? (c(), d("span", Gn, y(se.value.toLocaleString()) + " chars", 1)) : T("", !0)
+              ee.value ? (c(), d("span", Kn, y(ee.value.toLocaleString()) + " chars", 1)) : A("", !0)
             ]),
             pe(r("textarea", {
               id: "ap-content",
-              "onUpdate:modelValue": h[5] || (h[5] = ($) => j.value = $),
+              "onUpdate:modelValue": h[5] || (h[5] = ($) => W.value = $),
               class: "ap-textarea",
               rows: "12",
-              placeholder: `Paste or write the ${k.value} to add to this knowledge base…`
-            }, null, 8, Wn), [
-              [xe, j.value]
+              placeholder: `Paste or write the ${b.value} to add to this knowledge base…`
+            }, null, 8, Gn), [
+              [xe, W.value]
             ])
           ]),
-          r("div", Hn, [
-            r("span", Xn, [
-              g(l(E), {
+          r("div", Wn, [
+            r("span", Hn, [
+              x(l(C), {
                 icon: "tabler:sparkles",
                 "aria-hidden": "true"
               }),
-              h[15] || (h[15] = P(" Content is chunked and embedded automatically.", -1))
+              h[15] || (h[15] = R(" Content is chunked and embedded automatically.", -1))
             ]),
             r("button", {
               class: "ap-submit",
-              disabled: !j.value.trim() || l(n).busy.value,
-              onClick: G
+              disabled: !W.value.trim() || l(n).busy.value,
+              onClick: K
             }, [
-              g(l(E), {
+              x(l(C), {
                 icon: l(n).busy.value ? "tabler:loader-2" : "tabler:upload",
-                class: V(l(n).busy.value && "spin"),
+                class: q(l(n).busy.value && "spin"),
                 "aria-hidden": "true"
               }, null, 8, ["icon", "class"]),
-              P(" " + y(l(n).busy.value ? "Adding…" : "Add to knowledge base"), 1)
-            ], 8, Jn)
+              R(" " + y(l(n).busy.value ? "Adding…" : "Add to knowledge base"), 1)
+            ], 8, Xn)
           ])
         ])
       ])),
-      w.value ? (c(), d("div", Qn, [
-        r("div", Yn, [
+      ie.value ? (c(), d("div", Jn, [
+        r("div", Qn, [
           h[16] || (h[16] = r("span", null, "Progress", -1)),
-          l(n).busy.value ? T("", !0) : (c(), d("button", {
+          l(n).busy.value ? A("", !0) : (c(), d("button", {
             key: 0,
             class: "ap-items-clear",
             onClick: h[6] || (h[6] = ($) => l(n).clearItems())
           }, "Clear done"))
         ]),
-        r("ul", Zn, [
-          (c(!0), d(te, null, ae(l(n).items.value, ($) => (c(), d("li", {
+        r("ul", Yn, [
+          (c(!0), d(te, null, oe(l(n).items.value, ($) => (c(), d("li", {
             key: $.key,
-            class: V(["ap-item", $.status])
+            class: q(["ap-item", $.status])
           }, [
-            g(l(E), {
-              class: V(["ap-item-ic", ["uploading", "processing", "embedding"].includes($.status) && "spin"]),
-              icon: x($.status),
+            x(l(C), {
+              class: q(["ap-item-ic", ["uploading", "processing", "embedding"].includes($.status) && "spin"]),
+              icon: w($.status),
               "aria-hidden": "true"
             }, null, 8, ["class", "icon"]),
-            r("span", eo, y($.name), 1),
-            r("span", to, y($.error || X[$.status]), 1)
+            r("span", Zn, y($.name), 1),
+            r("span", eo, y($.error || g[$.status]), 1)
           ], 2))), 128))
         ])
-      ])) : T("", !0)
+      ])) : A("", !0)
     ]));
   }
 });
 export {
-  fo as A,
+  po as A,
   Je as B,
-  mo as C,
-  vo as D,
-  ro as E,
+  fo as C,
+  mo as D,
+  io as E,
   we as F,
   Ke as G,
-  bo as H,
-  uo as I,
+  _o as H,
+  co as I,
   le as N,
   _e as _,
   ze as a,
-  xo as b,
-  lo as c,
-  Ao as d,
-  So as e,
-  Io as f,
-  Mo as g,
-  Co as h,
-  io as i,
-  $o as j,
-  To as k,
-  Oo as l,
+  go as b,
+  ao as c,
+  Mo as d,
+  $o as e,
+  Ao as f,
+  To as g,
+  So as h,
+  lo as i,
+  wo as j,
+  Eo as k,
+  Io as l,
   Te as m,
-  ao as n,
-  Eo as o,
-  Uo as p,
+  so as n,
+  Co as o,
+  Oo as p,
   Ye as q,
-  ko as r,
+  bo as r,
   nt as s,
-  yo as t,
-  wo as u,
-  co as v,
-  _o as w,
-  go as x,
-  ho as y,
-  po as z
+  ko as t,
+  xo as u,
+  ro as v,
+  ho as w,
+  yo as x,
+  vo as y,
+  uo as z
 };
-//# sourceMappingURL=AddPanel.vue_vue_type_script_setup_true_lang-DU8MEpGo.js.map
+//# sourceMappingURL=AddPanel.vue_vue_type_script_setup_true_lang-D0Y8qoSm.js.map

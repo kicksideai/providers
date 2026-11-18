@@ -112,16 +112,16 @@ local function define_tests()
             end
         end)
 
-        test.it("declares every foreign package unpinned", function()
+        test.it("declares compatible versions for foreign packages", function()
             for _, expected in ipairs({
-                { "component", "kickside/component" },
-                { "connection", "kickside/connection" },
-                { "contract", "kickside/contract" },
+                { "component", "kickside/component", ">=0.3.21" },
+                { "connection", "kickside/connection", "*" },
+                { "contract", "kickside/contract", ">=0.3.8" },
             }) do
                 local dep = get("kickside.gitlab:dep.kickside." .. expected[1])
                 test.eq(dep.kind, "ns.dependency")
                 test.eq(value(dep, "component"), expected[2])
-                test.eq(tostring(value(dep, "version") or ""), "*", expected[2] .. " must stay unpinned")
+                test.eq(tostring(value(dep, "version") or ""), expected[3], expected[2] .. " compatibility bound")
             end
         end)
     end)

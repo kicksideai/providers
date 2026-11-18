@@ -5,6 +5,8 @@ entries:
   - name: gitlab_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [token], type: string}
       title: GitLab
       comment: Connect gitlab.com or a self-managed GitLab instance with an access token to discover projects.
       icon: tabler:brand-gitlab
@@ -56,6 +58,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.gitlab.security:secret_context_dispatch, kickside.gitlab.security:secret_context_read]
     meta: { comment: "gitlab connection - test_connection" }
     source: file://test_connection.lua
     method: test_connection
@@ -64,6 +68,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.gitlab.security:secret_context_dispatch, kickside.gitlab.security:secret_context_read]
     meta: { comment: "gitlab connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources

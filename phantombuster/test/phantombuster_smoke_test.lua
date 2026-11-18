@@ -161,9 +161,9 @@ local function define_tests()
 
         test.it("declares direct package dependencies in production", function()
             for _, expected in ipairs({
-                { "component", "kickside/component" },
+                { "component", "kickside/component", ">=0.3.21" },
                 { "connection", "kickside/connection", ">=0.3.0" },
-                { "contract", "kickside/contract" },
+                { "contract", "kickside/contract", ">=0.3.8" },
                 { "uploads", "kickside/uploads" },
             }) do
                 local dep = get("kickside.phantombuster:dep.kickside." .. expected[1])

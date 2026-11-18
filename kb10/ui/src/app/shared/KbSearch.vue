@@ -8,8 +8,7 @@ import IconButton from './IconButton.vue'
 
 // The one KB search surface, in two layouts:
 //   rail  — a compact field with an as-you-type results popover (the wiki nav).
-//   panel — a full surface with Search / Ask modes; Ask shows a synthesized,
-//           grounded answer over the same retrieval, with its sources.
+//   panel — Search and Ask show ranked passages. Ask adds an answer or a query notice.
 // Choosing a result emits the hit; the host maps it to a navigation target
 // (a concept in the wiki, the owning document in the library).
 const props = withDefaults(defineProps<{
@@ -27,8 +26,7 @@ const mode = ref<Mode>('search')
 const focused = ref(false)
 const queryRan = ref('')
 
-const canAsk = computed(() => props.ask && !analysisUnavailable.value)
-const isAsk = computed(() => props.layout === 'panel' && canAsk.value && mode.value === 'ask')
+const isAsk = computed(() => props.layout === 'panel' && props.ask && mode.value === 'ask')
 const showAnswer = computed(() => isAsk.value && !queryNotice.value)
 const submitIcon = computed(() => (
   loading.value ? 'tabler:hourglass' : (isAsk.value ? 'tabler:sparkles' : 'tabler:arrow-right')
@@ -89,7 +87,7 @@ function pick(hit: SearchHit) {
   <!-- Panel: modes + field + results / answer -->
   <div v-else class="kc-search-panel">
     <div class="kc-search-bar">
-      <div v-if="canAsk" class="kc-search-modes">
+      <div v-if="ask" class="kc-search-modes">
         <button class="kc-search-mode" :class="{ on: mode === 'search' }" @click="pickMode('search')">
           <Icon icon="tabler:search" aria-hidden="true" /> Search
         </button>
@@ -107,8 +105,6 @@ function pick(hit: SearchHit) {
       <IconButton :icon="submitIcon" :label="isAsk ? 'Ask' : 'Search'" variant="bordered" :active="loading" :disabled="!query.trim() || loading" @click="submit" />
       <IconButton icon="tabler:x" label="Close search" @click="emit('close')" />
     </div>
-
-    <p v-if="!props.ask" class="kc-search-state">Select an Answer model in knowledge base settings to enable Ask.</p>
 
     <p v-if="analysisUnavailable" class="kc-search-state" role="status">Showing direct matches. No model is assigned to {{ analysisUnavailable.model }}.</p>
     <p v-if="queryNotice" class="kc-search-state" role="status">{{ queryNotice }}</p>

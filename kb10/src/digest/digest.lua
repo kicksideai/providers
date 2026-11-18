@@ -3,6 +3,7 @@ local logger = require("logger")
 local llm = require("llm")
 local prompt = require("prompt")
 local engines = require("engines")
+local model_settings = require("model_settings")
 local node_store = require("node_store")
 
 -- KB digest: regenerate a knowledge base's auto_summary / auto_description from
@@ -41,7 +42,9 @@ local function store_for_component(component_id: string): (any, any, any, string
     if component_id == "" then return nil, nil, nil, "component_id is required" end
     local row, err = node_store:get_store({ component_id = component_id })
     if err or not row then return nil, nil, nil, tostring(err or "knowledge base not found") end
-    return node_store, row, engines.resolve(row.kb_type), nil
+    local engine, engine_err = engines.resolve(row.kb_type)
+    if engine_err then return nil, nil, nil, tostring(engine_err) end
+    return node_store, row, engine, nil
 end
 
 local function parse_llm_json(result_text)
@@ -69,13 +72,13 @@ local function run_store_digest(kb_store_svc: any, store_row: any, engine: any, 
     if type(config) == "string" then
         config = json.decode(config) or {}
     end
-    config = engines.apply_default_config(config, engine)
-
-    local summary_model = config.summary_model
+    local summary_model, model_err = model_settings.resolve(config, engine, "summary_model")
+    if model_err then return nil, tostring(model_err) end
     if not summary_model then
         log:warn("no summary_model configured, skipping digest", { store_id = store_id })
         return
     end
+    config = engines.apply_default_config(config, engine)
     local digest_temperature = tonumber(config.digest_temperature)
     local digest_max_tokens = positive_int_config(config, "digest_max_tokens")
     local digest_context_tokens = positive_int_config(config, "digest_context_tokens")

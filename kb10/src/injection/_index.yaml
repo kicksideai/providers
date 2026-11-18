@@ -48,6 +48,7 @@ entries:
     imports:
       kb_types: kickside.kb10:types
       engines: kickside.knowledge:engines
+      model_settings: kickside.kb10:model_settings
       tabular_chunker: kickside.kb10.injection:tabular_chunker
       doc2md: kickside.convert.doc2md:doc2md
 

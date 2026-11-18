@@ -29,6 +29,7 @@ local LIVE = {
     job_status = maintenance._job_status,
     runs = maintenance._runs,
     validate_access = maintenance._validate_access,
+    get_store = maintenance._get_store,
     worker_component = worker._component,
     worker_identity = worker._identity,
     verbs = worker._verbs,
@@ -107,6 +108,9 @@ local function install(jobs_stub: any): ()
     maintenance._jobs = jobs_stub
     maintenance._identity = fake_identity()
     maintenance._job_status = jobs_in_state("pending")
+    maintenance._get_store = function(): (any?, any?)
+        return { config = {} }, nil
+    end
     maintenance._validate_access = function(_id: string, _access: any): (any?, string?, number?)
         return true, nil, nil
     end
@@ -118,6 +122,7 @@ local function restore(): ()
     maintenance._job_status = LIVE.job_status
     maintenance._runs = LIVE.runs
     maintenance._validate_access = LIVE.validate_access
+    maintenance._get_store = LIVE.get_store
     worker._component = LIVE.worker_component
     worker._identity = LIVE.worker_identity
     worker._verbs = LIVE.verbs

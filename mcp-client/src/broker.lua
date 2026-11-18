@@ -51,7 +51,7 @@ end
 function M.request(component_id: string, operation: string, args: any): (any?, error?)
     -- Resolve/renew OAuth in the admitted caller's identity. Resident workers
     -- are service processes and must never impersonate users to mutate tokens.
-    local private, context_err = component.get_private_context(component_id)
+    local private, context_err = component.get_private_runtime_context(component_id)
     if context_err then return nil, context_err end
     local config
     if not private or not private.endpoint_url then

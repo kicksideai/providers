@@ -30,7 +30,7 @@ const { default: KbCreateConfig } = await import('./KbCreateConfig.vue')
 
 const schema = {
   properties: {
-    analysis_model: { type: ['string', 'boolean'], default: '', label: 'Query analysis model' },
+    analysis_model: { type: ['string', 'boolean'], default: 'class:fast', label: 'Query analysis model' },
     extra_prompt: { type: 'string', default: '', label: 'Retrieval instructions', format: 'textarea' },
     enable_reranking: { type: 'boolean', default: false, label: 'Rerank results' },
     query_strategy: { type: 'string', default: 'plain', label: 'Hypothetical answer retrieval' },
@@ -80,12 +80,73 @@ describe('KbCreateConfig engine fields', () => {
       config: { config_schema: schema, analysis_model: 'class:fast', enable_reranking: true },
     })
     await flushPromises()
-    expect(lastPublished().enable_reranking).toBe(true)
+    expect(lastPublished()).toEqual({})
 
     const toggle = wrapper.get('[aria-label="Rerank results"]')
     await toggle.trigger('click')
     await flushPromises()
-    expect(lastPublished().enable_reranking).toBe(false)
+    expect(lastPublished()).toEqual({ enable_reranking: false })
+    wrapper.unmount()
+  })
+
+  it('publishes disabled models instead of omitting them when contextual embedding is switched off', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      id: 'kb-1',
+      config: { summary_model: 'summary-model', chunk_enrichment_model: 'chunk-model' },
+    })
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    expect(lastPublished()).toEqual({ summary_model: false, chunk_enrichment_model: false })
+
+    await toggle.trigger('click')
+    expect(lastPublished()).toEqual({})
+    wrapper.unmount()
+  })
+
+  it.each([
+    { chunk: '', analysis: '', expectedChunk: 'class:fast', expectedAnalysis: 'class:fast' },
+    { chunk: false, analysis: false, expectedChunk: '', expectedAnalysis: '' },
+    { chunk: undefined, analysis: undefined, expectedChunk: 'class:fast', expectedAnalysis: 'class:fast' },
+    { chunk: 'chunk-model', analysis: 'answer-model', expectedChunk: 'chunk-model', expectedAnalysis: 'answer-model' },
+  ])('opens legacy model settings without publishing changes ($chunk, $analysis)', async ({ chunk, analysis, expectedChunk, expectedAnalysis }) => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      config: { summary_model: 'custom-summary', chunk_enrichment_model: chunk, analysis_model: analysis },
+    })
+    await flushPromises()
+    expect(lastPublished()).toEqual({})
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    const pickers = wrapper.findAll('wc-model-picker').map(picker => picker.attributes('value') || '')
+    expect(pickers).toEqual(['custom-summary', expectedChunk, expectedAnalysis])
+    await toggle.trigger('click')
+    expect(lastPublished()).toEqual(expectedChunk ? { summary_model: false, chunk_enrichment_model: false } : { summary_model: false })
+    wrapper.unmount()
+  })
+
+  it('returns to an unchanged disabled configuration after enabling then disabling both models', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      id: 'kb-1',
+      config: { summary_model: false, chunk_enrichment_model: false, analysis_model: 'answer-model' },
+    })
+    await flushPromises()
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(lastPublished()).toEqual({ summary_model: 'class:fast', chunk_enrichment_model: 'class:fast' })
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(lastPublished()).toEqual({})
     wrapper.unmount()
   })
 })

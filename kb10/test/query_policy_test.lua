@@ -1,12 +1,17 @@
 local test = require("test")
 local policy = require("policy")
 local analysis_model = require("analysis_model")
+local registry = require("registry")
 
 local function define_tests()
     test.describe("kb10 query policy", function()
         test.it("uses the default analysis model for omitted and empty settings", function()
-            test.eq(analysis_model.configured({ summary_model = "class:summary" }), "class:fast")
-            test.eq(analysis_model.configured({ analysis_model = "" }), "class:fast")
+            for _, kb_type in ipairs({ "document", "wiki" }) do
+                local engine = registry.get("kickside.kb10:engine_" .. kb_type).meta
+                local default = engine.default_config.analysis_model
+                test.eq(analysis_model.configured({ summary_model = "class:summary" }), default)
+                test.eq(analysis_model.configured({ analysis_model = "" }), default)
+            end
         end)
 
         test.it("uses an explicit analysis model instead of the summary model", function()

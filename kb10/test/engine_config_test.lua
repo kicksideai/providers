@@ -10,7 +10,9 @@ return test.run_cases(function()
                 local defaults = engine.default_config
                 local properties = engine.config_schema.properties
                 test.eq(defaults.analysis_model, "class:fast")
-                test.eq(properties.analysis_model.default, "class:fast")
+                for _, key in ipairs({ "summary_model", "chunk_enrichment_model", "analysis_model" }) do
+                    test.eq(properties[key].default, defaults[key])
+                end
                 test.eq(engines.apply_default_config({ analysis_model = "" }, engine).analysis_model, "")
                 test.eq(defaults.extra_prompt, "")
                 test.eq(defaults.enable_reranking, false)

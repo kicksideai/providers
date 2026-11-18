@@ -6,15 +6,9 @@ local M = {}
 M._component = component
 
 local function credential_context_with(cmp: any, component_id: string): (any?, error?)
-    local allowed, access_err = cmp.get_context(component_id, cmp.ACCESS.READ)
+    local allowed, access_err = cmp.get_runtime_context(component_id, cmp.ACCESS.READ)
     if access_err then return nil, access_err end
     if not allowed then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "connection access denied" }) end
-    if cmp.get_private_context then
-        local ctx, err = cmp.get_private_context(component_id)
-        if err then return nil, err end
-        if type(ctx) ~= "table" then return nil, errors.new({ kind = errors.INVALID, message = "GitHub credential context is invalid" }) end
-        return ctx, nil
-    end
     return allowed, nil
 end
 M._credential_context_with = credential_context_with
@@ -44,7 +38,7 @@ local function connect_with(cmp: any, component_id: string?): (types.Conn?, erro
     if not oerr and oconn then
         return ({ mode = "oauth", oauth_conn = oconn } :: types.Conn), nil
     end
-    local ctx, cerr = cmp.get_context_by_meta({
+    local ctx, cerr = cmp.get_runtime_context_by_meta({
         class = types.CONNECTION_CLASS,
         provider = types.PROVIDER,
     }, cmp.ACCESS.READ)

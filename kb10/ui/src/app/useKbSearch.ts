@@ -73,12 +73,10 @@ export function useKbSearch(kbId: () => string) {
         if (data.mode === 'query') queryNotice.value = data.answer
         else answer.value = String(data.answer || '')
       } else {
-        analysisUnavailable.value = data?.retrieval?.analysis?.status === 'unavailable' ? data.retrieval.analysis : null
         error.value = data?.error || 'ask failed'
       }
     } catch (e: any) {
       const data = e?.response?.data
-      analysisUnavailable.value = data?.retrieval?.analysis?.status === 'unavailable' ? data.retrieval.analysis : null
       error.value = data?.error || e?.message || 'ask error'
       host.handleError(e?.response?.status === 401 ? 'auth-expired' : 'other', e)
     } finally {

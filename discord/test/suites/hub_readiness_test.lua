@@ -19,7 +19,7 @@ local function fixture(options)
             registered = true
             return true
         end},
-        component = {list_system = function()
+        component = {list_runtime_context = function()
             test.is_true(registered, "startup scan precedes wake registration")
             scans = scans + 1
             if scans == options.fail_scan then return nil, options.cause end
