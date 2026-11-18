@@ -343,12 +343,17 @@ entries:
     kind: library.lua
     source: file://privacy_fixture.lua
     modules: [json]
+  - name: privacy_http_client
+    kind: library.lua
+    source: file://privacy_http_client.lua
+    imports:
+      fixture: app:privacy_fixture
   - name: privacy_client
     kind: library.lua
     source: file://privacy_client.lua
     modules: [json]
     imports:
-      http_client: app:privacy_fixture
+      http_client: app:privacy_http_client
       protocol: kickside.simplefin.client:protocol
       types: kickside.simplefin.client:types
       capacity_http: kickside.connection:capacity_http

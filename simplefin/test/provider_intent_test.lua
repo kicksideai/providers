@@ -29,8 +29,8 @@ local function define_tests()
             local secret = "https://account:access-url-error-sentinel@bridge.example/simplefin"
             for _, status in ipairs({0, 400, 401, 402, 403, 429, 500, 503}) do
                 local message, code = protocol.http_error(status, secret)
-                test.is_nil(message:find(secret, 1, true))
-                test.is_nil(message:find("access-url-error-sentinel", 1, true))
+                test.is_true(message:find(secret, 1, true) == nil)
+                test.is_true(message:find("access-url-error-sentinel", 1, true) == nil)
                 local other, other_code = protocol.http_error(status, string.rep("x", 8192))
                 test.eq(message, other)
                 test.eq(code, other_code)
