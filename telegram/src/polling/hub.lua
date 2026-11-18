@@ -30,7 +30,7 @@ local function construct(dependencies: any): any
     local trim = connection.trim
 
     local function list_connections(): ({ any }?, error?)
-        local rows, err = component.list_system({
+        local rows, err = component.list_runtime_context({
             meta = { class = "connection", provider = CONNECTION_PROVIDER },
             include = { private_context = true, meta = true },
         })
