@@ -317,8 +317,8 @@ local function handle(request)
 
     local embedding_model = kb_store.embedding_model :: string?
     local config = (kb_store.config :: table?) or {}
-    local analysis_model, model_err = query_policy.resolve_analysis_model(config, kb_store.kb_type)
-    if model_err then return nil, model_err end
+    local settings = query_policy.effective_settings(config)
+    local analysis_model = settings.analysis_model
     local analysis_unavailable = nil
     local model_class = analysis_model and analysis_model:match("^class:(.+)$")
     if model_class then
@@ -329,7 +329,6 @@ local function handle(request)
         end
     end
     local extra_prompt = config.extra_prompt or ""
-    local enable_reranking = config.enable_reranking
 
     -- The page of ranked rows at [offset + 1, offset + limit], formatted, with
     -- next_offset when the ranking holds a row past the page.
@@ -352,7 +351,7 @@ local function handle(request)
         return result, nil
     end
 
-    local hyde_model, mode_err = query_policy.resolve_hyde_model(config, kb_store.kb_type)
+    local hyde_model, mode_err = query_policy.resolve_hyde_model(config)
     if mode_err then return nil, mode_err end
     local entry_text = query_text
     if hyde_model and not analysis_unavailable then
@@ -492,7 +491,7 @@ local function handle(request)
     end
 
     local final_results = all_results
-    if enable_reranking and analysis_model then
+    if settings.enable_reranking then
         local reranked_results, rerank_err = rerank_results(query_text, all_results, analysis_model)
         if rerank_err then return nil, rerank_err end
         final_results = reranked_results

@@ -1,24 +1,22 @@
 local test = require("test")
 local policy = require("policy")
-local registry = require("registry")
 
 local function define_tests()
     test.describe("kb10 query policy", function()
-        for _, kb_type in ipairs({ "document", "wiki" }) do
-            test.it("resolves the " .. kb_type .. " analysis model independently of its summary model", function()
-                local engine = registry.get("kickside.kb10:engine_" .. kb_type).meta
-                local config = { summary_model = "model:summary", query_strategy = "hyde" }
-                local default = engine.default_config.analysis_model
-                test.eq(policy.resolve_analysis_model(config, engine), default)
-                config.analysis_model = ""
-                test.eq(policy.resolve_analysis_model(config, engine), default)
-                test.eq((policy.resolve_hyde_model(config, engine)), default)
-                config.analysis_model = false
-                test.is_nil(policy.resolve_analysis_model(config, engine))
-                config.analysis_model = "model:query"
-                test.eq(policy.resolve_analysis_model(config, engine), "model:query")
-            end)
-        end
+        test.it("resolves the analysis model independently of its summary model", function()
+            local config = { summary_model = "model:summary", query_strategy = "hyde" }
+            test.is_nil(policy.resolve_analysis_model(config))
+            for _, off in ipairs({ "", false }) do
+                config.analysis_model = off
+                test.is_nil(policy.resolve_analysis_model(config))
+                local hyde_model, err = policy.resolve_hyde_model(config)
+                test.is_nil(hyde_model)
+                test.is_true(errors.is(err, errors.INVALID))
+            end
+            config.analysis_model = "model:query"
+            test.eq(policy.resolve_analysis_model(config), "model:query")
+            test.eq((policy.resolve_hyde_model(config)), "model:query")
+        end)
 
         test.it("fails closed to raw retrieval for malformed model values", function()
             test.is_nil(policy.resolve_analysis_model({ analysis_model = true }))

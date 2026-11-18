@@ -19,8 +19,6 @@ entries:
     meta:
       comment: Query-mode resolution and bounded interactive LLM options.
     source: file://query_policy.lua
-    imports:
-      model_settings: kickside.kb10:model_settings
 
   - name: query_service
     kind: library.lua

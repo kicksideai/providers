@@ -65,6 +65,7 @@ describe('KbCreateConfig engine fields', () => {
     expect(labels.filter(l => l === 'Document size limit')).toHaveLength(1)
     expect(labels.filter(l => l === 'Rerank results')).toHaveLength(1)
     expect(labels.filter(l => l === 'Hypothetical answer retrieval')).toHaveLength(1)
+    expect(labels.filter(l => l === 'Search analysis model')).toHaveLength(1)
     expect(labels).not.toContain('Query analysis model')
     expect(labels).not.toContain('Retrieval instructions')
     expect(wrapper.findAll('input[type="text"]')).toHaveLength(0)
@@ -108,9 +109,9 @@ describe('KbCreateConfig engine fields', () => {
   })
 
   it.each([
-    { chunk: '', analysis: '', expectedChunk: 'class:fast', expectedAnalysis: 'class:fast' },
+    { chunk: '', analysis: '', expectedChunk: 'class:fast', expectedAnalysis: '' },
     { chunk: false, analysis: false, expectedChunk: '', expectedAnalysis: '' },
-    { chunk: undefined, analysis: undefined, expectedChunk: 'class:fast', expectedAnalysis: 'class:fast' },
+    { chunk: undefined, analysis: undefined, expectedChunk: 'class:fast', expectedAnalysis: '' },
     { chunk: 'chunk-model', analysis: 'answer-model', expectedChunk: 'chunk-model', expectedAnalysis: 'answer-model' },
   ])('opens legacy model settings without publishing changes ($chunk, $analysis)', async ({ chunk, analysis, expectedChunk, expectedAnalysis }) => {
     const wrapper = render({

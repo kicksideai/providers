@@ -476,7 +476,6 @@ entries:
       suite: kb10_query
     source: file://query_policy_test.lua
     method: run
-    modules: [registry]
     imports:
       test: wippy.test:test
       policy: kickside.kb10.binding:query_policy
@@ -788,7 +787,9 @@ entries:
       store: kickside.kb10.persist:store
       materializer: kickside.kb10.injection:source_materializer
       query_policy: kickside.kb10.binding:query_policy
+      query_service: kickside.kb10.binding:query_service
       engines: kickside.knowledge:engines
+      models: kickside.models.persist:repo
 
   - name: enrichment_component_fixture
     kind: library.lua

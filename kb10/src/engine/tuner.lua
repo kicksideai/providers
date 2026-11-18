@@ -36,8 +36,7 @@ function M.interval(config: table): (integer?, any?)
 end
 
 function M.propose(evidence: table): (any, any?)
-    local model, model_err = query_policy.resolve_analysis_model(evidence.config, evidence.kb_type)
-    if model_err then return nil, model_err end
+    local model = query_policy.resolve_analysis_model(evidence.config)
     if not model then return nil, errors.new({ kind = errors.INVALID, message = "autonomous tuning requires the KB analysis_model" }) end
     if type(evidence.samples) ~= "table" or #evidence.samples == 0 then
         return nil, errors.new({ kind = errors.INVALID, message = "knowledge base has no document summaries to tune" })
@@ -81,7 +80,7 @@ local function evidence(row: table): (any, any?)
     if stats_err then return nil, stats_err end
     local weak, weak_err = M._query_log.weak_samples(row.id)
     if weak_err then return nil, weak_err end
-    return { config = row.config, kb_type = row.kb_type, samples = samples, weak_queries = weak, stats = stats, document_count = count }, nil
+    return { config = row.config, samples = samples, weak_queries = weak, stats = stats, document_count = count }, nil
 end
 
 local function apply(component_id: string, row: table, token: string): (any, any?)
@@ -94,9 +93,7 @@ local function apply(component_id: string, row: table, token: string): (any, any
     local fresh, read_err = M._store.get_store(component_id)
     if read_err then return nil, errors.wrap(read_err, "re-read tuning configuration") end
     local config = fresh.config or {}
-    local model, model_err = query_policy.resolve_analysis_model(config, fresh.kb_type)
-    if model_err then return nil, model_err end
-    if config.self_tuning ~= true or model ~= proposal.model
+    if config.self_tuning ~= true or query_policy.resolve_analysis_model(config) ~= proposal.model
         or config.summary_prompt ~= row.config.summary_prompt or config.extra_prompt ~= row.config.extra_prompt then
         return nil, errors.new({ kind = errors.CONFLICT, message = "KB tuning settings change during generation" })
     end

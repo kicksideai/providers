@@ -477,7 +477,7 @@ entries:
             type: [string, boolean]
             default: *document_analysis_model
             label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses the engine default. False disables analysis and answering.
+            description: Model for document analysis, HyDE, reranking, and retrieval tuning. An empty or false value disables query analysis.
           extra_prompt:
             type: string
             default: ""
@@ -667,7 +667,7 @@ entries:
             type: [string, boolean]
             default: *wiki_analysis_model
             label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. An empty value uses the engine default. False disables analysis and answering.
+            description: Model for document analysis, HyDE, reranking, and retrieval tuning. An empty or false value disables query analysis.
           extra_prompt:
             type: string
             default: ""
