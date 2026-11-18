@@ -8,6 +8,10 @@ local function fault()
     return nil, errors.new({ kind = errors.INTERNAL, message = "store fixture failure" })
 end
 
+local function deadlock()
+    return nil, errors.new({ kind = errors.CONFLICT, retryable = true, message = "store fixture deadlock" })
+end
+
 local function run(input)
     local config = input.worker_config
     if type(config) ~= "table" then config = input.projection.body.worker_config end
@@ -20,6 +24,7 @@ local function run(input)
                 store = setmetatable({}, { __index = materializer_store })
                 if config.store_fault == "replace" then store.replace_document = fault end
                 if config.store_fault == "delete" then store.delete_documents_by_external_id = fault end
+                if config.store_fault == "deadlock" then store.delete_documents_by_external_id = deadlock end
             end
             return { store = store, store_row = row, engine = assert(source_materializer.resolve_engine(row)) }
         end,

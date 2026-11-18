@@ -370,7 +370,7 @@ local function overwrite_document_tx(tx: any, db_type: any, store_id: any, node_
         "UPDATE kb10_nodes SET content = $1, content_type = $2, metadata = $3, parent_id = $4, updated_at = CURRENT_TIMESTAMP WHERE store_id = $5 AND id = $6",
         { node_input.content, node_input.content_type, metadata_json, node_input.parent_id, store_id, node_id }
     )
-    if exec_err then return tostring(exec_err) end
+    if exec_err then return exec_err end
 
     if db_type == sql.type.SQLITE then
         local _, del_err = tx:execute("DELETE FROM kb10_nodes_fts WHERE node_id = $1", { node_id })
@@ -429,15 +429,22 @@ function writer.replace_document(store_id: any, replacement: any)
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
 
-    local where_external
-    if db_type == sql.type.SQLITE then
-        where_external = "AND json_extract(metadata, '$.external_source') = $2 AND json_extract(metadata, '$.external_id') = $3"
-    else
-        where_external = "AND (metadata::jsonb ->> 'external_source') = $2 AND (metadata::jsonb ->> 'external_id') = $3"
+    local metadata_field = db_type == sql.type.SQLITE
+        and "json_extract(metadata, '$.%s')" or "(metadata::jsonb ->> '%s')"
+    local fields = "id"
+    local args: {any} = { store_id, external_source, external_id }
+    local metadata = document.metadata
+    if is_str(metadata.thread_id) and is_str(metadata.thread_event_id) and is_str(metadata.status) then
+        fields = fields .. ", CASE WHEN " .. metadata_field:format("thread_id") .. " = $4 THEN "
+            .. metadata_field:format("thread_event_seq") .. " END AS prior_source_seq"
+            .. ", CASE WHEN " .. metadata_field:format("thread_event_id") .. " = $5 AND "
+            .. metadata_field:format("status") .. " = $6 THEN 1 ELSE 0 END AS same_event"
+        args[4], args[5], args[6] = metadata.thread_id, metadata.thread_event_id, metadata.status
     end
     local prior_rows, prior_err = tx:query(
-        "SELECT id FROM kb10_nodes WHERE store_id = $1 AND node_type = '" .. kb10.NODE_TYPE.DOCUMENT .. "' " .. where_external .. " ORDER BY id",
-        { store_id, external_source, external_id }
+        "WITH matched AS (SELECT id, metadata FROM kb10_nodes WHERE store_id = $1 AND node_type = '"
+            .. kb10.NODE_TYPE.DOCUMENT .. "' AND " .. metadata_field:format("external_source") .. " = $2 AND "
+            .. metadata_field:format("external_id") .. " = $3) SELECT " .. fields .. " FROM matched ORDER BY id", args
     )
     if prior_err then return fail_tx(tx, db, errors.wrap(prior_err, "failed to find prior documents")) end
 
@@ -468,6 +475,24 @@ function writer.replace_document(store_id: any, replacement: any)
         removed_failed_documents = removed_failed_documents + (tonumber(reused_counts and reused_counts.failed_document_count) or 0)
         removed_summaries = removed_summaries + (tonumber(reused_counts and reused_counts.summary_count) or 0)
         removed_chunks = removed_chunks + (tonumber(reused_counts and reused_counts.chunk_count) or 0)
+
+        -- A source event's generation is immutable. A new outcome for that
+        -- event, such as a completed document replacing a failed one, still writes.
+        if #prior_rows == 1 and tonumber(prior_rows[1].same_event) == 1 then
+            local committed, commit_err = commit_tx(tx, db, "document replay")
+            if not committed then return nil, commit_err end
+            return {
+                document_node_id = reused_id,
+                prior_source_seq = tonumber(prior_rows[1].prior_source_seq),
+                summary_count = removed_summaries,
+                chunk_count = removed_chunks,
+                removed = removed,
+                removed_document_count = removed_completed_documents,
+                removed_failed_document_count = removed_failed_documents,
+                removed_summary_count = removed_summaries,
+                removed_chunk_count = removed_chunks,
+            }, nil
+        end
 
         local children_err = delete_children_tx(tx, db_type, store_id, reused_id)
         if children_err then return fail_tx(tx, db, errors.wrap(children_err, "delete prior generation failed")) end
@@ -523,6 +548,7 @@ function writer.replace_document(store_id: any, replacement: any)
 
     return {
         document_node_id = doc_id,
+        prior_source_seq = prior_rows and prior_rows[1] and tonumber(prior_rows[1].prior_source_seq) or nil,
         removed = removed,
         removed_document_count = removed_completed_documents,
         removed_failed_document_count = removed_failed_documents,

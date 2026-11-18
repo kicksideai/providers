@@ -109,52 +109,13 @@ type DocIngestResult = {
     notifications: {any}?,
 }
 
--- Classify a per-document failure so the worker can flag genuinely system-level
--- causes (resource/registry exhaustion, provider outages, the store being
--- unavailable) distinctly from content errors (a malformed or unembeddable
--- document). A system failure points at the instance, not the document, and is
--- worth retrying; a content failure is the document's own and is not.
-local CONTENT_FAILURE_PATTERNS: {string} = {
-    "document chunk count exceeds kb policy",
-    "document content too large",
-    "invalid byte sequence for encoding",
-    "no materialized summary or chunks",
-}
-
-local SYSTEM_FAILURE_PATTERNS: {string} = {
-    "registry overflow",
-    "stack overflow",
-    "out of memory",
-    "cannot allocate",
-    "vector_dimensions unavailable",
-    "store unavailable",
-    "embed failed",
-    "embed returned",
-    "vector missing",
-    "vector dimension",
-    "vector contains non-number",
-    "timeout",
-    "connection refused",
-    "unavailable",
-    "failed to connect to database",
-    "connection reset",
-    "database is locked",
-    "too many requests",
-    "rate limit",
-}
-
-local function is_system_failure(message: any): boolean
-    local native = job_types.native_error(message)
-    if native then return not job_types.is_deterministic_kind(native:kind()) end
-    if type(message) ~= "string" then return false end
-    local lowered = message:lower()
-    for _, pat in ipairs(CONTENT_FAILURE_PATTERNS) do
-        if lowered:find(pat, 1, true) then return false end
-    end
-    for _, pat in ipairs(SYSTEM_FAILURE_PATTERNS) do
-        if lowered:find(pat, 1, true) then return true end
-    end
-    return false
+local function is_system_failure(cause: any): boolean
+    local native = job_types.native_error(cause)
+    if not native then return false end
+    local kind = native:kind()
+    return native:retryable() == true or kind == errors.UNAVAILABLE or kind == errors.TIMEOUT
+        or kind == errors.RATE_LIMITED or kind == errors.INTERNAL or kind == errors.UNKNOWN
+        or kind == errors.CANCELED
 end
 
 M.is_system_failure = is_system_failure
@@ -933,11 +894,17 @@ local function batch_embed(embedder: any, embed_texts: {string}, model: any, dim
         end
 
         local vectors, emb_err = embedder(batch, model, dims)
-        if emb_err or type(vectors) ~= "table" or type(vectors.result) ~= "table" then
-            return nil, with_context(emb_err, "embed failed")
+        if emb_err then
+            local cause = job_types.native_error(emb_err)
+                or errors.new({ kind = errors.UNKNOWN, message = tostring(emb_err) })
+            return nil, errors.wrap(cause, "embed failed")
+        end
+        if type(vectors) ~= "table" or type(vectors.result) ~= "table" then
+            return nil, errors.new({ kind = errors.UNAVAILABLE, message = "embed returned no vectors" })
         end
         if #vectors.result ~= #batch then
-            return nil, "embed returned " .. tostring(#vectors.result) .. " vectors for " .. tostring(#batch) .. " texts"
+            return nil, errors.new({ kind = errors.UNAVAILABLE,
+                message = "embed returned " .. tostring(#vectors.result) .. " vectors for " .. tostring(#batch) .. " texts" })
         end
         for _, v in ipairs(vectors.result) do all[#all + 1] = v end
     end
@@ -980,9 +947,12 @@ function M.prepare_document_ingest(target, worker_config): (any?, any, boolean?)
     if not options then return nil, err or "source materializer returned no options" end
     if not target.store then return nil, "materializer store unavailable", true end
     local dims, dim_err = target.store:vector_dimensions({})
-    if dim_err or type(dims) ~= "number" then
+    if dim_err then
         local cause = with_context(dim_err, "vector_dimensions unavailable")
         return nil, cause, is_system_failure(cause)
+    end
+    if type(dims) ~= "number" then
+        return nil, "vector_dimensions unavailable", true
     end
     return { options = options, dimensions = dims }, nil
 end
@@ -1074,13 +1044,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         end
 
         local vectors, emb_err = batch_embed(embedder, embed_texts, store_row.embedding_model, dims)
-        if emb_err or type(vectors) ~= "table" or type(vectors.result) ~= "table" then
-            return false, emb_err or "embed failed"
-        end
-        if #vectors.result ~= #embed_texts then
-            return false, "embed returned " .. tostring(#vectors.result) ..
-                " vectors for " .. tostring(#embed_texts) .. " texts"
-        end
+        if emb_err then return false, emb_err end
 
         local meta = {}
         for k, v in pairs(doc.metadata or {}) do meta[k] = v end
@@ -1198,9 +1162,10 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             end
         end
 
-        if invalid_vector or #children == 0 then
-            return false, invalid_vector or "no materialized summary or chunks"
+        if invalid_vector then
+            return false, errors.new({ kind = errors.UNAVAILABLE, message = invalid_vector })
         end
+        if #children == 0 then return false, "no materialized summary or chunks" end
 
         local replacement, replace_err = store:replace_document({
             store_id = store_id,
@@ -1227,6 +1192,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         result.chunk_count = result.chunk_count + chunk_count
         result.notifications[#result.notifications + 1] = {
             document_node_id = replacement.document_node_id,
+            prior_source_seq = replacement.prior_source_seq,
             external_source = meta.external_source,
             external_id = meta.external_id,
             external_version = meta.external_version,
@@ -1328,6 +1294,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
                 error = failure,
                 system_level = system_level,
                 document_node_id = dead_letter_node_id,
+                prior_source_seq = dead_letter_result and dead_letter_result.prior_source_seq,
                 persisted = persisted,
                 removed_document_count = removed_documents,
                 removed_failed_document_count = removed_failed_documents,

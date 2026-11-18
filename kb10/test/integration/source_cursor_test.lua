@@ -4,6 +4,7 @@ local sql = require("sql")
 local json = require("json")
 local uuid = require("uuid")
 local time = require("time")
+local registry = require("registry")
 local uploads = require("uploads")
 local artifacts = require("artifacts")
 local artifact_cleanup = require("artifact_cleanup")
@@ -149,11 +150,22 @@ local function documents(kb_id)
     return query("SELECT id,content,metadata FROM kb10_nodes WHERE store_id=$1 AND node_type='document' ORDER BY content", { kb_id })
 end
 
+local function node_ids(kb_id, content)
+    local rows = query([[SELECT id FROM kb10_nodes WHERE store_id=$1 AND (
+        id IN (SELECT id FROM kb10_nodes WHERE store_id=$1 AND node_type='document' AND content=$2)
+        OR parent_id IN (SELECT id FROM kb10_nodes WHERE store_id=$1 AND node_type='document' AND content=$2)
+    ) ORDER BY id]], { kb_id, content })
+    local ids: {string} = {}
+    for _, row in ipairs(rows) do ids[#ids + 1] = tostring(row.id) end
+    return table.concat(ids, ",")
+end
+
 local function source_counts(fixture: SourceFixture, kb_id)
     local events = query("SELECT seq,type,body,created_at FROM kickside_event WHERE thread_id=$1 ORDER BY seq", { fixture.thread })
     local public_meta
     local result, err = meta_projection.run({
         thread_id = fixture.thread,
+        worker_config = { target_kb_ids = { kb_id } },
         events = events,
         component = {
             set_meta = function(id, meta)
@@ -167,6 +179,17 @@ local function source_counts(fixture: SourceFixture, kb_id)
     test.not_nil(result)
     test.not_nil(public_meta)
     return result.body.counts, public_meta.status, public_meta.document_count
+end
+
+local function assert_projected_counts(fixture: SourceFixture, kb_id: string)
+    local counts = source_counts(fixture, kb_id)
+    local physical = query([[SELECT node_type, COUNT(*) AS count FROM kb10_nodes
+        WHERE store_id=$1 GROUP BY node_type]], { kb_id })
+    local actual = {}
+    for _, row in ipairs(physical) do actual[row.node_type] = tonumber(row.count) end
+    test.eq(counts.document_count, actual.document or 0, "projected document count")
+    test.eq(counts.chunk_count, actual.chunk or 0, "projected chunk count")
+    test.eq(counts.summary_count, actual.summary or 0, "projected summary count")
 end
 
 local function source_count(fixture: SourceFixture, kb_id: string)
@@ -303,13 +326,16 @@ local function define_tests()
                     test.eq(#lagging_documents, 1, "no later document is attempted during the outage")
                     local ahead = #targets > 1 and documents(targets[1]) or nil
                     if ahead then test.eq(#ahead, 2, "the first target can write ahead within one event") end
+                    local before = ahead and node_ids(targets[1], "Blocked document")
                     local retry_output, retry_err = attempt(fixture)
                     test.is_nil(retry_output)
                     test.eq(retry_err:kind(), errors.UNAVAILABLE)
                     test.eq(tonumber(cursor(fixture).last_seq), 1)
                     set_model(names[#names], "available")
                     recover(fixture, targets, head, 3)
+                    for _, target in ipairs(targets) do assert_projected_counts(fixture, target) end
                     if ahead then
+                        test.eq(node_ids(targets[1], "Blocked document"), before)
                         local recovered = documents(targets[1])
                         for i, doc in ipairs(ahead) do
                             test.eq(tostring(recovered[i].id), tostring(doc.id))
@@ -338,6 +364,41 @@ local function define_tests()
             end)
         end)
 
+        test.it("commits progressively when a healthy backlog exceeds the proc deadline", function()
+            local entry_id = "kickside.core.projections:policy"
+            local original = assert(registry.get(entry_id))
+            local changes = assert(registry.snapshot()):changes()
+            changes:update({ id = entry_id, kind = original.kind, meta = {
+                comment = original.meta.comment,
+                apply = original.meta.apply,
+                proc = { max_execution = "6s" },
+            } })
+            assert(changes:apply())
+            local ok, failure = pcall(function()
+                with_source({ "source-slow" }, {}, function(fixture, targets)
+                    local backlog = {}
+                    for i = 1, 9 do backlog[i] = "Document " .. tostring(i) end
+                    local head = append(fixture, backlog)
+                    local seq = 0
+                    repeat
+                        local output, err = attempt(fixture)
+                        test.is_nil(err, tostring(err))
+                        test.not_nil(output)
+                        local next_seq = tonumber(cursor(fixture).last_seq)
+                        test.is_true(next_seq > seq, "every attempt must commit a prefix")
+                        if seq == 0 then test.is_true(next_seq < head, "backlog requires multiple attempts") end
+                        seq = next_seq
+                    until seq >= head
+                    test.eq(#documents(targets[1]), #backlog)
+                    assert_projected_counts(fixture, targets[1])
+                end)
+            end)
+            changes = assert(registry.snapshot()):changes()
+            changes:update({ id = entry_id, kind = original.kind, meta = original.meta })
+            assert(changes:apply())
+            if not ok then error(failure) end
+        end)
+
         test.it("consumes five events in pages bounded by the document cap", function()
             with_source({ "available" }, { max_pending_documents = 2 }, function(fixture, targets)
                 local head = append(fixture, {
@@ -354,7 +415,7 @@ local function define_tests()
             end)
         end)
 
-        test.it("dead-letters an event that alone exceeds the document cap and ingests later events", function()
+        test.it("processes an oversized document event alone and ingests later events", function()
             with_source({ "available" }, { max_pending_documents = 1 }, function(fixture, targets)
                 local head = append(fixture, {
                     { type = EXTRACTED, body = { result = { documents = {
@@ -363,10 +424,10 @@ local function define_tests()
                     } } } },
                     "Later document",
                 })
-                assert_dead_letter(fixture, advance_to(fixture, 1), 1, "document cap exceeded", 0)
-                test.eq(#documents(targets[1]), 0)
-                recover(fixture, targets, head, 1)
-                test.eq(#assert(json.decode(cursor(fixture).body)).dead_lettered_batches, 1)
+                test.is_nil(advance_to(fixture, 1).dead_lettered_batches)
+                test.eq(#documents(targets[1]), 2)
+                recover(fixture, targets, head, 3)
+                test.is_nil(assert(json.decode(cursor(fixture).body)).dead_lettered_batches)
             end)
         end)
 
@@ -468,6 +529,22 @@ local function define_tests()
                 query("UPDATE kb10_stores SET config=$1 WHERE component_id=$2 RETURNING id",
                     { '{"fixture_recovered":true}', targets[1] })
                 recover(fixture, targets, head, 1)
+            end)
+        end)
+
+        test.it("holds a delete after a retryable database conflict", function()
+            with_source({ "available" }, { store_fault = "deadlock" }, function(fixture, targets)
+                local inserted = append(fixture, { "Document to delete" })
+                advance_to(fixture, inserted)
+                local head = append(fixture, {
+                    { type = DELETE, external_id = "document-1", body = { kb_id = fixture.thread } },
+                })
+                assert_unavailable(fixture, inserted, "store fixture deadlock")
+                test.eq(#documents(targets[1]), 1)
+                test.is_nil(assert(json.decode(cursor(fixture).body)).dead_lettered_batches)
+                query("UPDATE kb10_stores SET config=$1 WHERE component_id=$2 RETURNING id",
+                    { '{"fixture_recovered":true}', targets[1] })
+                recover(fixture, targets, head, 0)
             end)
         end)
 
@@ -576,6 +653,7 @@ local function define_tests()
                     local recovered = documents(targets[1])
                     test.eq(#recovered, 2)
                     for _, row in ipairs(recovered) do test.eq(assert(json.decode(row.metadata)).status, "completed") end
+                    assert_projected_counts(fixture, targets[1])
                 end)
             end)
         end
@@ -592,24 +670,30 @@ local function define_tests()
                 query("UPDATE kb10_stores SET config=$1 WHERE component_id=$2 RETURNING id",
                     { '{"fixture_recovered":true}', targets[2] })
                 recover(fixture, targets, head, 0)
+                assert_projected_counts(fixture, targets[1])
             end)
         end)
 
-        test.it("bounds a delete page and dead-letters only an oversized delete event", function()
+        test.it("bounds a delete page and processes an oversized delete event alone", function()
             with_source({ "available" }, { max_pending_deletes = 1 }, function(fixture, targets)
                 advance_to(fixture, append(fixture, { "First document", "Second document", "Third document" }))
                 local start = append(fixture, {})
                 local head = append(fixture, {
                     deletion("document-1"), deletion("document-2"),
-                    extracted(nil, { { external_id = "document-3" }, { external_id = "other" } }),
+                    extracted(nil, {
+                        { external_source = "knowledge.kb", external_id = "document-3" },
+                        { external_source = "knowledge.kb", external_id = "other" },
+                    }),
                     deletion("document-3"),
                 })
                 advance_to(fixture, start + 1)
                 test.eq(#documents(targets[1]), 2)
                 advance_to(fixture, start + 2)
                 test.eq(#documents(targets[1]), 1)
-                assert_dead_letter(fixture, advance_to(fixture, start + 3), start + 3, "delete cap exceeded", 0)
+                test.is_nil(advance_to(fixture, start + 3).dead_lettered_batches)
+                test.eq(#documents(targets[1]), 0)
                 recover(fixture, targets, head, 0)
+                assert_projected_counts(fixture, targets[1])
             end)
         end)
     end)
