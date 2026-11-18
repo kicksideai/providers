@@ -10,6 +10,7 @@ export function useKbSearch(kbId: () => string) {
   const query = ref('')
   const results = ref<SearchHit[]>([])
   const answer = ref('')
+  const queryNotice = ref('')
   const analysisUnavailable = ref<{ status: string; reason: string; model: string } | null>(null)
   const loading = ref(false)
   const error = ref('')
@@ -21,6 +22,7 @@ export function useKbSearch(kbId: () => string) {
     query.value = ''
     results.value = []
     answer.value = ''
+    queryNotice.value = ''
     analysisUnavailable.value = null
     performed.value = false
     error.value = ''
@@ -33,6 +35,7 @@ export function useKbSearch(kbId: () => string) {
     loading.value = true
     error.value = ''
     analysisUnavailable.value = null
+    queryNotice.value = ''
     performed.value = true
     try {
       const { data } = await api.get(`/api/v1/kb10/${id}/search?q=${encodeURIComponent(q)}&limit=${limit}`)
@@ -50,9 +53,7 @@ export function useKbSearch(kbId: () => string) {
     }
   }
 
-  // Grounded question answering: same retrieval plus a synthesized answer from
-  // the engine (null when the KB has no analysis model — the caller then leans
-  // on the ranked passages alone).
+  // Ask returns passages with either a grounded answer or a query-mode notice.
   async function ask(limit = 8) {
     const id = kbId()
     const q = query.value.trim()
@@ -61,6 +62,7 @@ export function useKbSearch(kbId: () => string) {
     error.value = ''
     analysisUnavailable.value = null
     answer.value = ''
+    queryNotice.value = ''
     performed.value = true
     try {
       // Answering lives in the knowledge control plane (the per-KB query driver),
@@ -68,7 +70,8 @@ export function useKbSearch(kbId: () => string) {
       const { data } = await api.post(`/api/v1/knowledge/${id}/ask`, { query: q, limit })
       if (data?.success) {
         results.value = (data.results || []) as SearchHit[]
-        answer.value = String(data.answer || '')
+        if (data.mode === 'query') queryNotice.value = data.answer
+        else answer.value = String(data.answer || '')
       } else {
         analysisUnavailable.value = data?.retrieval?.analysis?.status === 'unavailable' ? data.retrieval.analysis : null
         error.value = data?.error || 'ask failed'
@@ -91,7 +94,7 @@ export function useKbSearch(kbId: () => string) {
 
   onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 
-  return { query, results, answer, analysisUnavailable, loading, error, performed, run, ask, runDebounced, clear }
+  return { query, results, answer, queryNotice, analysisUnavailable, loading, error, performed, run, ask, runDebounced, clear }
 }
 
 export function pct(v?: number): string {
