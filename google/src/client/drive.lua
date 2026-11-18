@@ -29,30 +29,23 @@ function drive.list_files(conn: google_types.Connection, query_str: string?, max
         fields = "nextPageToken,files(" .. (fields or "id,name,mimeType,modifiedTime,webViewLink,owners(displayName,emailAddress)") .. ")",
         pageSize = size,
         orderBy = "modifiedTime desc",
+        supportsAllDrives = true,
+        includeItemsFromAllDrives = true,
     }
     if page_token and page_token ~= "" then query.pageToken = page_token end
     return transport.get(conn, api() .. "/files", query)
 end
 
 function drive.search_files(conn: google_types.Connection, text: string, max_results: number?, page_token: string?, fields: string?): (google_types.Result?, error?)
-    local size, size_err = pagination.page_size(max_results, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, "max_results")
-    if size_err then return { success = false, error = size_err } end
     local safe = (text or ""):gsub("\\", "\\\\"):gsub("'", "\\'")
-    local q = "trashed=false and (name contains '" .. safe .. "' or fullText contains '" .. safe .. "')"
-    local query: { [string]: any } = {
-        q = q,
-        fields = "nextPageToken,files(" .. (fields or "id,name,mimeType,modifiedTime,webViewLink,owners(displayName,emailAddress)") .. ")",
-        pageSize = size,
-        orderBy = "modifiedTime desc",
-    }
-    if page_token and page_token ~= "" then query.pageToken = page_token end
-    return transport.get(conn, api() .. "/files", query)
+    local query = "(name contains '" .. safe .. "' or fullText contains '" .. safe .. "')"
+    return drive.list_files(conn, query, max_results, page_token, fields)
 end
 
 function drive.get_file(conn: google_types.Connection, file_id: string): (google_types.Result?, error?)
     local id, id_err = path_segment(file_id, "file_id")
     if not id then return { success = false, error = id_err } end
-    return transport.get(conn, api() .. "/files/" .. id, { fields = "*" })
+    return transport.get(conn, api() .. "/files/" .. id, { fields = "*", supportsAllDrives = true })
 end
 
 function drive.create_folder(conn: google_types.Connection, name: string, parent_id: string?): (google_types.Result?, error?)
@@ -71,7 +64,7 @@ function drive.read_file(conn: google_types.Connection, file_id: string, mime_ty
         if mime_type == "application/vnd.google-apps.spreadsheet" then export = "text/csv" end
         return transport.get_raw(conn, api() .. "/files/" .. id .. "/export", { mimeType = export })
     end
-    return transport.get_raw(conn, api() .. "/files/" .. id, { alt = "media" })
+    return transport.get_raw(conn, api() .. "/files/" .. id, { alt = "media", supportsAllDrives = true })
 end
 
 return drive
