@@ -130,7 +130,9 @@ local function define_tests()
                 external_id = metadata.external_id,
                 source_ref = {thread_id = "source:thread"},
             }
-            local document = { id = first, node_type = "document", content = "first", metadata = metadata }
+            local padded_metadata = {external_source = " " .. metadata.external_source,
+                external_id = metadata.external_id .. " \t"}
+            local document = { id = first, node_type = "document", content = "first", metadata = padded_metadata }
             local rows = {
                 json.encode(document),
                 json.encode({ id = other, node_type = "document", content = "second", metadata = metadata }),

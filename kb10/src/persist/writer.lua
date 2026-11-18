@@ -431,6 +431,13 @@ local function lock_store_tx(tx: any, db_type: any, store_id: any, check_exists:
     return rows[1], nil
 end
 
+local function require_store_tx(tx: any, db_type: any, store_id: any): any?
+    local locked, err = lock_store_tx(tx, db_type, store_id, true)
+    if err then return err end
+    if not locked then return errors.new({kind = errors.NOT_FOUND, message = "document store not found"}) end
+    return nil
+end
+
 -- Atomically replace the materialized tree for one canonical source document.
 -- The worker computes embeddings outside this transaction; kb10 owns the commit
 -- boundary for doc + children + vectors + prior-version cleanup.
@@ -455,11 +462,8 @@ function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replac
     if not external_source then
         return nil, errors.new({ message = "document metadata.external_source and external_id are required", kind = errors.INVALID })
     end
-    local locked, lock_err = lock_store_tx(tx, db_type, store_id, true)
+    local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return nil, lock_err end
-    if not locked then
-        return nil, errors.new({kind = errors.NOT_FOUND, message = "document store not found"})
-    end
     local reused_id, ownership_err = ops.find_source_root_tx(
         tx, db_type, store_id, external_source, external_id, ops.source_thread(document.metadata))
     if ownership_err then return nil, ownership_err end
@@ -1026,7 +1030,7 @@ function writer.insert_nodes(store_id: any, nodes: any, source_roots: any?): (bo
     if dt_err then db:release(); return nil, dt_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return fail_tx(tx, db, lock_err) end
     local _, insert_err = writer.insert_nodes_tx(tx, db_type, store_id, list, source_roots)
     if insert_err then return fail_tx(tx, db, insert_err) end
@@ -1043,7 +1047,7 @@ function writer.insert_embeddings(store_id: any, rows: any): (boolean?, any?)
     if dt_err then db:release(); return nil, dt_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return fail_tx(tx, db, lock_err) end
     local _, insert_err = insert_embeddings_tx(tx, db_type, store_id, list)
     if insert_err then return fail_tx(tx, db, insert_err) end
@@ -1063,7 +1067,7 @@ function writer.insert_edges(store_id: any, edges: any): (boolean?, any?)
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return fail_tx(tx, db, lock_err) end
     for _, edge in ipairs(list) do
         local _, ierr = insert_edge_tx(tx, store_id, edge)

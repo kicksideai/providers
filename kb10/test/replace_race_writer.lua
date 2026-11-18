@@ -8,6 +8,14 @@ local function run(store_id, operation, parent)
         return ok
     end
     if parent then assert(process.send(parent, "prepared", true)) end
+    if operation == "import_after_teardown" then
+        local _, err = store.insert_nodes(store_id, {{
+            node_type = "document", content = "prepared import document",
+        }})
+        if err and errors.is(err, errors.NOT_FOUND) then return "store removed" end
+        if err then error(err) end
+        return "wrote import"
+    end
     local result, err = store.replace_document(store_id, {
         document = {
             node_type = "document",

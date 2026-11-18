@@ -50,12 +50,25 @@ end
 ops.vector_to_string = search_index.vector_literal
 ops.placeholders = search_index.placeholders
 
+local function trim_source_part(value: any): string
+    if type(value) ~= "string" then return "" end
+    local first = value:find("%S")
+    if not first then return "" end
+    local last = #value
+    while last > first and value:find("%s", last) == last do
+        last = last - 1
+    end
+    return value:sub(first, last)
+end
+
+function ops.normalize_source_key(source: any, id: any): (string, string)
+    return trim_source_part(source), trim_source_part(id)
+end
+
 function ops.source_key(metadata: any): (string?, string?)
     if type(metadata) ~= "table" then return nil, nil end
-    local source, id = metadata.external_source, metadata.external_id
-    if type(source) ~= "string" or source == "" or type(id) ~= "string" or id == "" then
-        return nil, nil
-    end
+    local source, id = ops.normalize_source_key(metadata.external_source, metadata.external_id)
+    if source == "" or id == "" then return nil, nil end
     return source, id
 end
 
@@ -93,9 +106,13 @@ end
 function ops.source_metadata_columns(db_type: any, column: string?): (string, string)
     local metadata = column or "metadata"
     if db_type == sql.type.POSTGRES then
-        return "(" .. metadata .. "->>'external_source')", "(" .. metadata .. "->>'external_id')"
+        local whitespace = [[E'\011\012\013\014\015 ']]
+        return "btrim(" .. metadata .. "->>'external_source', " .. whitespace .. ")",
+            "btrim(" .. metadata .. "->>'external_id', " .. whitespace .. ")"
     end
-    return "json_extract(" .. metadata .. ", '$.external_source')", "json_extract(" .. metadata .. ", '$.external_id')"
+    local whitespace = "char(9,10,11,12,13,32)"
+    return "trim(json_extract(" .. metadata .. ", '$.external_source'), " .. whitespace .. ")",
+        "trim(json_extract(" .. metadata .. ", '$.external_id'), " .. whitespace .. ")"
 end
 
 function ops.source_thread_column(db_type: any, metadata: string): string
@@ -164,6 +181,7 @@ local function source_filter(db_type: any, roots: boolean, scoped: boolean?): (s
 end
 
 function ops.find_source_nodes_tx(tx: any, db_type: any, store_id: any, source: any, id: any)
+    source, id = ops.normalize_source_key(source, id)
     local select = "SELECT id, store_id, parent_id, node_type, content, content_type, metadata FROM kb10_nodes WHERE "
     local roots = source_filter(db_type, true)
     return tx:query(select .. roots .. " UNION ALL " .. select .. source_filter(db_type, false),
@@ -175,12 +193,14 @@ function ops.source_lineage_conflict()
 end
 
 function ops.find_source_roots_tx(tx: any, db_type: any, store_id: any, source: any, id: any, lineage: string?)
+    source, id = ops.normalize_source_key(source, id)
     local filter, owner = source_filter(db_type, true, lineage ~= nil)
     return tx:query("SELECT id, " .. owner .. " AS lineage FROM kb10_nodes WHERE " .. filter,
         {store_id, source, id, lineage})
 end
 
 function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, source: any, id: any, lineage: string?)
+    source, id = ops.normalize_source_key(source, id)
     local rows, err = tx:query("SELECT id FROM kb10_nodes WHERE " .. ops.SOURCE_BOUND ..
         " AND " .. ops.source_root_key(db_type) .. " = " .. ops.source_root_value(db_type, "$1", "$2", "$3", "$4"),
         {store_id, source, id, lineage or ""})

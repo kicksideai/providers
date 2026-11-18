@@ -206,6 +206,16 @@ function M.delete_documents_by_external_id(_self: any, args: any): (any, any?)
     local a = arg_table(args)
     local ok, lineage_err = require_source_lineage("delete_documents_by_external_id", a, a.metadata)
     if not ok then return nil, lineage_err end
+    local identity = a.document_identity
+    if identity ~= nil then
+        if type(identity) ~= "table" or trim(identity.external_source) == "" or trim(identity.external_id) == ""
+            or (identity.lineage ~= nil and type(identity.lineage) ~= "string") then
+            return nil, errors.new({kind = errors.INVALID, message = "invalid document deletion identity"})
+        end
+        -- An explicit identity with no lineage addresses the legacy lineage-null group.
+        return kb10_store.delete_documents_by_external_id(
+            a.store_id, identity.external_source, identity.external_id, identity.lineage or "")
+    end
     local ref = source_ref_from(a, a.metadata)
     if type(ref.thread_id) ~= "string" or ref.thread_id == "" then
         return reject_missing_lineage("delete_documents_by_external_id", "source_ref.thread_id")

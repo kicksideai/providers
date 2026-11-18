@@ -71,6 +71,8 @@ function M.run(input)
                     external_id = external_id,
                     external_version = external_version ~= "" and external_version or nil,
                     source_ref = source_ref,
+                    document_identity = source_ref and source_ref.document_identity,
+                    delete_component_id = body.kb_id,
                     metadata = metadata,
                     thread_event_id = metadata.thread_event_id,
                     thread_event_seq = metadata.thread_event_seq,

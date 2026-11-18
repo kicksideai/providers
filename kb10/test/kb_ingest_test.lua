@@ -803,6 +803,54 @@ local function define_tests()
                 test.eq("knowledge.kb", event.body.metadata.external_source)
             end)
 
+            test.it("deletes the selected document lineage and keeps the other lineage's graph links", function()
+                local external_id = "shared-delete-" .. uuid()
+                local incoming_thread = uuid()
+                local store = assert(kb10_store.get_store(test_kb_id))
+                local function root(lineage, content)
+                    return assert(kb10_store.insert_node(store.id, {
+                        node_type = "document", content = content, metadata = {
+                            external_source = "knowledge.kb", external_id = external_id,
+                            source_ref = lineage and {thread_id = lineage} or nil,
+                        },
+                    }))
+                end
+                local incoming = root(incoming_thread, "incoming root")
+                local local_root = root(test_kb_id, "local root")
+                local unowned = root(nil, "legacy root")
+                local concept = assert(kb10_store.insert_node(store.id, {node_type = "concept", content = "concept"}))
+                for _, id in ipairs({incoming, local_root, unowned}) do
+                    assert(kb10_store.insert_edge(store.id, {
+                        from_node_id = id, to_node_id = concept, edge_type = "categorized_as",
+                    }))
+                end
+                local exec = new_executor(test_user_id):with_context({kb_id = test_kb_id})
+                for _, delete in ipairs({{id = incoming, lineage = incoming_thread}, {id = unowned}}) do
+                    local queued, err = exec:call(DELETE_CONTENT_METHOD, {
+                        external_id = external_id,
+                        source_ref = {
+                            document_identity = {
+                                external_source = "knowledge.kb", external_id = external_id, lineage = delete.lineage,
+                            },
+                        },
+                    })
+                    test.is_nil(err)
+                    test.is_true(queued.success)
+                    local event = assert(event_for_external(test_kb_id, external_id, "kickside.knowledge.events:content.deleted"))
+                    test.eq(event.body.source_ref.document_identity.lineage, delete.lineage)
+                    local materialized, worker_err = source_worker.run_with_deps({
+                        thread_id = test_kb_id, projection = {id = queued.projection_id}, events = {event},
+                        worker_config = {target_kb_ids = {test_kb_id}},
+                    }, worker_fixtures.worker_deps())
+                    test.is_nil(worker_err)
+                    test.eq(materialized.metrics.documents_removed, 1)
+                    test.is_nil(kb10_store.get_node(store.id, delete.id))
+                    test.eq(#assert(kb10_store.get_edges(store.id, delete.id, {direction = "out"})), 0)
+                    test.eq(assert(kb10_store.get_node(store.id, local_root)).content, "local root")
+                    test.eq(#assert(kb10_store.get_edges(store.id, local_root, {direction = "out"})), 1)
+                end
+            end)
+
             test.it("queues content deletes by upload_id as canonical external ids", function()
                 local exec = new_executor(test_user_id):with_context({ kb_id = test_kb_id })
                 local upload_id = "upload-control-" .. uuid()

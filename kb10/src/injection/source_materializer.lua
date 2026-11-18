@@ -775,13 +775,16 @@ function M.delete_documents_from_store(target, deletes): (any, any?)
     end
 
     for _, d in ipairs(deletes or {}) do
-        if d.external_id and d.external_id ~= "" then
+        -- Only the target's managed content thread can address another lineage in that store.
+        if d.external_id and d.external_id ~= "" and (d.document_identity == nil or
+            (d.thread_id == store_row.component_id and d.delete_component_id == store_row.component_id)) then
             local removed, delete_err = store:delete_documents_by_external_id({
                 store_id = store_id,
                 external_source = d.external_source or "",
                 external_id = d.external_id,
                 external_version = d.external_version,
                 source_ref = d.source_ref,
+                document_identity = d.document_identity,
                 metadata = d.metadata,
                 thread_event_id = d.thread_event_id,
                 thread_event_seq = d.thread_event_seq,

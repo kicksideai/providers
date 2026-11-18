@@ -1757,6 +1757,53 @@ local function define_tests()
                 test.eq(#assert(db:query("SELECT id FROM kb10_stores WHERE id = $1", {store_id})), 0)
             end)
 
+            test.it("rejects a prepared import batch when teardown removes the store", function()
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local tx = assert(db:begin())
+                assert(tx:execute("DELETE FROM kb10_stores WHERE id = $1", {store_id}))
+
+                local inbox, events = process.inbox(), process.events()
+                local importer = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "import_after_teardown", process.pid()))
+                local overdue = time.after("10s")
+                local ready = channel.select({inbox:case_receive(), overdue:case_receive()})
+                assert(tx:commit())
+                test.eq(ready.channel, inbox)
+                test.eq(ready.value:topic(), "prepared")
+                local exit = channel.select({events:case_receive(), overdue:case_receive()})
+                test.eq(exit.channel, events)
+                test.eq(tostring(exit.value.from), tostring(importer))
+                test.is_nil(exit.value.result.error)
+                test.eq(exit.value.result.value, "store removed")
+                test.eq(#fetch_kb10_nodes(db, store_id), 0)
+            end)
+
+            test.it("normalizes source keys consistently for replace, lookup and delete", function()
+                local store_id = bootstrap_kb10_store(db)
+                local function write(source, key, content)
+                    return assert(kb10_store.replace_document(store_id, {
+                        document = {node_type = "document", content = content, metadata = {
+                            external_source = source, external_id = key, source_ref = {thread_id = "source-thread"},
+                        }},
+                    }))
+                end
+                local first = write(" fixture ", "\t doc ", "first generation")
+                local second = write("fixture", "doc", "second generation")
+                test.eq(second.document_node_id, first.document_node_id)
+                local found = assert(kb10_store.find_by_external_id(store_id, " fixture\t", " doc "))
+                test.eq(#found, 1)
+                test.eq(found[1].id, first.document_node_id)
+                test.eq(found[1].content, "second generation")
+                local removed = assert(kb10_store.delete_documents_by_external_id(
+                    store_id, " fixture ", "\n doc ", "source-thread"))
+                test.eq(type(removed) == "table" and removed.removed, 1)
+                test.eq(#fetch_kb10_nodes(db, store_id), 0)
+                teardown_kb10_store(db, store_id)
+            end)
+
             test.it("rejects a prepared SQLite replacement when teardown removes the store", function()
                 if db:type() ~= sql.type.SQLITE then return end
                 local process = require("process")
