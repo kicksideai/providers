@@ -5,7 +5,7 @@ local M = {}
 local http: any = native_http
 
 function M._set_http_client_for_test(value: any) http = value or native_http end
-local function trim(v: any): string return type(v) == "string" and (v:match("^%s*(.-)%s*$") or "") or "" end
+local trim = require("text_trim").trim
 
 function M.validate_config(raw: any): (any?, error?)
     if type(raw) ~= "table" then return nil, errors.new({ kind = errors.INVALID, message = "MCP configuration is missing" }) end

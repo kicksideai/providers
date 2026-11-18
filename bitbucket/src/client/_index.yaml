@@ -13,6 +13,7 @@ entries:
     source: file://api.lua
     modules: [http_client, json]
     imports:
+      text_trim: kickside.provider_text:trim
       types: kickside.bitbucket.client:types
 
   - name: transport
@@ -21,6 +22,7 @@ entries:
     source: file://transport.lua
     modules: [base64]
     imports:
+      text_trim: kickside.provider_text:trim
       component: kickside.component:component
       api: kickside.bitbucket.client:api
       types: kickside.bitbucket.client:types

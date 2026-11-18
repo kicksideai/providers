@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local trim = require("text_trim").trim
 local test = require("test")
 local fs = require("fs")
 local funcs = require("funcs")
@@ -85,7 +86,7 @@ return { run = test.run_cases(function()
                 for page, marker in ipairs(markers) do
                     local body = markdown:sub(marker.finish + 1, markers[page + 1] and markers[page + 1].start - 1 or #markdown)
                     if selection == "all" or kinds[page] == "scan" then
-                        test.eq(body:match("^%s*(.-)%s*$"), "OCR TEXT " .. page)
+                        test.eq(trim(body), "OCR TEXT " .. page)
                     else
                         local old = original:sub(originals[page].finish + 1, originals[page + 1] and originals[page + 1].start - 1 or #original)
                         test.eq(body, old, "the text layer stays byte-for-byte intact")
@@ -163,7 +164,7 @@ return { run = test.run_cases(function()
                         local old = original:sub(originals[page].finish + 1, originals[page + 1] and originals[page + 1].start - 1 or #original)
                         test.eq(body, old, "the text layer stays byte-for-byte intact")
                     elseif kinds[page] == "blank" then test.is_nil(body:match("%S"))
-                    else test.eq(body:match("^%s*(.-)%s*$"), "SCANNED " .. page) end
+                    else test.eq(trim(body), "SCANNED " .. page) end
                 end
                 if mode == "text" then test.eq(markdown, original) end
                 if mode == "mixed" then

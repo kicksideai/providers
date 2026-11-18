@@ -101,6 +101,7 @@ entries:
     source: file://src_link/client/transport.lua
     modules: [security]
     imports:
+      text_trim: kickside.provider_text:trim
       preconditions: kickside.discord.client:preconditions
       component: kickside.component:component
       api: app.suites:reply_transport_api
@@ -274,6 +275,7 @@ entries:
     kind: library.lua
     source: file://src_link/inbound/inbound.lua
     imports:
+      text_trim: kickside.provider_text:trim
       contract: app.suites:inbound_contract_fixture
       transport: app.suites:inbound_fixture
       types: kickside.discord.client:types
@@ -332,6 +334,7 @@ entries:
     kind: library.lua
     source: file://src_link/client/transport.lua
     imports:
+      text_trim: kickside.provider_text:trim
       security: app.suites:ingress_security_fixture
       base: kickside.connection:base_connection
       reply_authorization: kickside.connection:reply_authorization
@@ -407,6 +410,7 @@ entries:
     source: file://worker_source.lua
     modules: [time, channel, logger, process]
     imports:
+      text_trim: kickside.provider_text:trim
       component: kickside.component:component
       protocol: kickside.discord.gateway:protocol
       backoff: kickside.discord.gateway:backoff

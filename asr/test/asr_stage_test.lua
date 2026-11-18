@@ -255,6 +255,20 @@ local function define_tests()
             test.is_false(tostring(result.metadata.asr_error):find(secret, 1, true) ~= nil)
         end)
 
+        test.it("trims a transcript with a megabyte of internal whitespace", function()
+            local transcript = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+            local set, calls = deps({
+                max_transcript_bytes = #transcript,
+                transcribe = function(_request: TranscribeRequest): (string?, string?, boolean?)
+                    return "\t" .. transcript .. "\n", nil
+                end,
+            })
+            local result = stage.run(audio(), set)
+            test.eq(result.metadata.asr_bytes, #transcript)
+            test.eq(#calls.persisted, 1)
+            test.is_true(calls.persisted[1].text == transcript)
+        end)
+
         test.it("does not persist a transcript over the output cap", function()
             local set: StageDeps, calls: StageCalls = deps({
                 max_transcript_bytes = 10,

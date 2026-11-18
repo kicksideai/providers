@@ -23,10 +23,7 @@ local VALID = {
     get_messages = true,
 }
 
-local function trim(v: any): string
-    if type(v) ~= "string" then return "" end
-    return (v:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local DEFAULT_LIMIT = 20
 

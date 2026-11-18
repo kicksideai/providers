@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local http_client = require("http_client")
 local json = require("json")
 local types = require("types")
@@ -16,7 +17,7 @@ M.percent_encode = percent_encode
 -- Bitbucket slugs contain only letters, digits, dashes, and underscores.
 local function workspace_slug(value: any): (string?, error?)
     if type(value) ~= "string" then return nil, errors.new({ kind = errors.INVALID, message = "Bitbucket workspace must be a workspace slug" }) end
-    local slug = (value :: string):gsub("^%s*(.-)%s*$", "%1")
+    local slug = trim(value)
     if slug == "" then return nil, errors.new({ kind = errors.INVALID, message = "Bitbucket workspace must be a workspace slug" }) end
     if not slug:match("^[%w_%-]+$") then
         return nil, errors.new({ kind = errors.INVALID, message = "Bitbucket workspace '" .. slug .. "' is not a workspace slug (letters, digits, '-' and '_' only)" })
@@ -79,7 +80,7 @@ end
 local function retry_after_ms(headers: any): integer?
     local value = header_value(headers, "Retry-After")
     if value == nil then return nil end
-    local seconds = tonumber(((value :: string):gsub("^%s*(.-)%s*$", "%1")))
+    local seconds = tonumber(trim(value))
     if seconds == nil or seconds < 0 or seconds ~= math.floor(seconds) then return nil end
     return (math.floor(seconds) :: integer) * 1000
 end

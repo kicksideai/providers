@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local component = require("component")
 local base64 = require("base64")
 local api = require("api")
@@ -20,7 +21,7 @@ end
 local function field(ctx: any, key: string): string?
     local value = ctx[key]
     if type(value) ~= "string" then return nil end
-    local trimmed = (value :: string):gsub("^%s*(.-)%s*$", "%1")
+    local trimmed = trim(value)
     if trimmed == "" then return nil end
     return trimmed
 end

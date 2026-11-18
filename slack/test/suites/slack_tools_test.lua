@@ -207,6 +207,11 @@ local function define_tests()
             test.contains(err_of(slack_write, { action = "add_reaction", channel_id = "C1", message_ts = "t1" }), "emoji is required")
         end)
 
+        test.it("applies the message limit after a megabyte of internal whitespace", function()
+            local body = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+            test.contains(err_of(slack_write, { action = "send_message", channel_id = "C1", content = body }), "exceeds")
+        end)
+
         test.it("sends a message, threading when thread_ts is given", function()
             with(slack_write, {
                 post_message = function(_c: any, channel: any, payload: any): any

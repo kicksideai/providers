@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local contract = require("contract")
 local logger = require("logger")
 local channel = require("channel")
@@ -240,7 +241,7 @@ local function run(params: any, deps: any): any
     local configured_selection = get_setting(RASTERIZE_NS, "rasterize_page_selection")
     local selection: string? = type(configured_selection) == "string" and configured_selection or nil
     local declared = type(params.mime_type) == "string" and (params.mime_type :: string):lower() or ""
-    local mime = ((declared:match("^[^;]*") or ""):match("^%s*(.-)%s*$")) :: string
+    local mime = trim(declared:match("^[^;]*"))
     local pages: { any } = {}
     local original: string = ""
     if mime:sub(1, 6) == "image/" then

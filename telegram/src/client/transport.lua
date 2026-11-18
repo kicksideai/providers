@@ -6,10 +6,7 @@ local reply_authorization = require("reply_authorization")
 
 local M = {}
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function denied(message: string): error
     return (errors.new({ message = message, kind = errors.PERMISSION_DENIED,

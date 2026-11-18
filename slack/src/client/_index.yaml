@@ -28,6 +28,7 @@ entries:
       comment: Actor-scoped Slack connection resolver and API transport.
     source: file://transport.lua
     imports:
+      text_trim: kickside.provider_text:trim
       component: kickside.component:component
       api: kickside.slack.client:api
       types: kickside.slack.client:types

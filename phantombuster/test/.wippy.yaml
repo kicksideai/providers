@@ -24,6 +24,7 @@ profiles:
       app:db:options.sslmode: disable
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/phantombuster: ..
     kickside/blocks: ../../../kickside/platform/blocks
     kickside/security: ../../../kickside/platform/security

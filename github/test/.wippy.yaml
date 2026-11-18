@@ -17,6 +17,7 @@ profiles:
       app:db:options.sslmode: disable
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/github: ..
     kickside/security: ../../../kickside/platform/security
     kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
