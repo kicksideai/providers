@@ -476,7 +476,6 @@ entries:
       suite: kb10_query
     source: file://query_policy_test.lua
     method: run
-    modules: [registry]
     imports:
       test: wippy.test:test
       policy: kickside.kb10.binding:query_policy

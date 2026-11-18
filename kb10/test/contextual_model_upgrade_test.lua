@@ -14,11 +14,11 @@ return test.run_cases(function()
             local rows = {}
             for _, kind in ipairs({ "document", "wiki" }) do
                 for _, case in ipairs({
-                    { value = "", saved = false, analysis = "class:fast" },
+                    { value = "", saved = false },
                     { value = false, saved = false },
-                    { summary = "class:fast", chunk = "class:fast", analysis = "class:fast" },
+                    { summary = "class:fast", chunk = "class:fast" },
                     { value = "custom-model", saved = "custom-model", summary = "custom-model", chunk = "custom-model", analysis = "custom-model" },
-                    { value = "", saved = false, named_summary = "custom-summary", summary = "custom-summary", analysis = "class:fast" },
+                    { value = "", saved = false, named_summary = "custom-summary", summary = "custom-summary" },
                 }) do
                     local id = uuid.v7()
                     local _, err = store.create_store(id, "class:embed", {

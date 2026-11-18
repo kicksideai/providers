@@ -101,7 +101,7 @@ const schemaFields = computed<EngineConfigField[]>(() => {
 })
 
 // Keys declared in config_schema that a dedicated control below renders and
-// writes: the summary settings in the contextual section, and the answer model,
+// writes: the summary settings in the contextual section, and the analysis model,
 // its strategy, tuning, reranking and instructions in the Ask section. The
 // generic options list renders only the remaining engine keys.
 const OWNED_KEYS = [
@@ -181,7 +181,8 @@ function seed() {
   }
   engineConfig.value = cfg
 
-  retrievalModel.value = resolveSetting('analysis_model', c.analysis_model)
+  const analysis = c.analysis_model ?? (isEdit.value ? false : resolveSetting('analysis_model', undefined))
+  retrievalModel.value = resolveModel(analysis, '')
   enableReranking.value = c.enable_reranking === true
   hyde.value = c.query_strategy === 'hyde'
   selfTuning.value = c.self_tuning === true
@@ -440,21 +441,19 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Ask: one section — the answer model, how it answers, and standing rules. -->
     <div class="cx-group">
-      <div class="cx-group-h"><Icon icon="tabler:message-2" aria-hidden="true" /><span>Ask</span></div>
-      <p class="cx-lead">How this knowledge base answers questions on the Ask tab.</p>
+      <div class="cx-group-h"><Icon icon="tabler:message-2" aria-hidden="true" /><span>Search and Ask</span></div>
 
       <div class="cx-field">
-        <span class="cx-label">Answer model</span>
+        <span class="cx-label">Search analysis model</span>
         <wc-model-picker :value="retrievalModel" capability="generate" @select="retrievalModel = pickValue($event)"></wc-model-picker>
-        <p v-if="retrievalModel" class="st-hint">Reads the retrieved passages and writes the answer. Unset models use Fast.</p>
-        <p v-else class="st-hint">Answers are disabled. Ask returns matching passages.</p>
+        <p v-if="retrievalModel" class="st-hint">Ask uses the selected model to write answers.</p>
+        <p v-else class="st-hint">Search returns direct matches. Ask uses Fast when available.</p>
       </div>
 
       <label class="cx-toggle">
         <ToggleSwitch v-model="hyde" aria-label="Hypothetical answer retrieval" />
-        <span><span class="cx-label">Hypothetical answer retrieval</span><span class="st-hint">Generates a short hypothetical answer with the selected answer model before embedding each question. Off uses the raw question.</span></span>
+        <span><span class="cx-label">Hypothetical answer retrieval</span><span class="st-hint">Uses the Search analysis model to generate a short hypothetical answer before embedding each question.</span></span>
       </label>
       <label class="cx-toggle">
         <ToggleSwitch v-model="selfTuning" aria-label="Autonomous retrieval tuning" />

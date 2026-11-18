@@ -108,9 +108,9 @@ describe('KbCreateConfig engine fields', () => {
   })
 
   it.each([
-    { chunk: '', analysis: '', expectedChunk: 'class:fast', expectedAnalysis: 'class:fast' },
+    { chunk: '', analysis: '', expectedChunk: 'class:fast', expectedAnalysis: '' },
     { chunk: false, analysis: false, expectedChunk: '', expectedAnalysis: '' },
-    { chunk: undefined, analysis: undefined, expectedChunk: 'class:fast', expectedAnalysis: 'class:fast' },
+    { chunk: undefined, analysis: undefined, expectedChunk: 'class:fast', expectedAnalysis: '' },
     { chunk: 'chunk-model', analysis: 'answer-model', expectedChunk: 'chunk-model', expectedAnalysis: 'answer-model' },
   ])('opens legacy model settings without publishing changes ($chunk, $analysis)', async ({ chunk, analysis, expectedChunk, expectedAnalysis }) => {
     const wrapper = render({
