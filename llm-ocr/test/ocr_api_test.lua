@@ -9,6 +9,7 @@ local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
 local contract = require("contract")
+local jobs = require("jobs")
 local pipeline = require("pipeline")
 local upload_type = require("upload_type")
 
@@ -656,6 +657,51 @@ local function define_tests()
                 db:release()
                 test.is_nil(delete_err)
             end
+        end)
+
+        test.it("renews the progress deadline between successive page batches", function()
+            local upload_id = seed("", {1,2,3})
+            local job_id = uuid_v4()
+            local db = assert(sql.get("app:db"))
+            local _, err = sql.builder.insert("kickside_job"):set_map({id = job_id,
+                job_type = "ocr.fixture", job_identity = job_id, owner_kind = "installation", owner_id = "ocr-fixture",
+                status = "running", lease_token = "ocr-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00"})
+                :run_with(db):exec()
+            test.is_nil(err)
+            local original = jobs.heartbeat
+            local clock, deadline, reports = 0, 0, 0
+            local observed = {}
+            -- The provider tests the reporting boundary independently of the installed Jobs version.
+            jobs.heartbeat = function(id, lease)
+                test.eq(id, job_id)
+                test.eq(lease.token, "ocr-lease")
+                test.eq(lease.execution_seq, 1)
+                local valid, lease_err = jobs.lease_valid(id, lease)
+                if lease_err or not valid then return valid, lease_err end
+                reports = reports + 1
+                deadline = clock + 600000
+                return true, nil
+            end
+            local ok, result = pcall(stage.run, {upload_id = upload_id, storage_id = STORAGE_ID,
+                cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = 1}}, {
+                batch_size = 1, transcribe = function()
+                    observed[#observed + 1] = deadline
+                    test.is_true(clock < deadline, "the batch has a live progress deadline")
+                    clock = clock + 540000
+                    return "Scanned words", nil
+                end})
+            jobs.heartbeat = original
+            local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
+            db:release()
+            test.is_nil(delete_err)
+            test.is_true(ok, tostring(result))
+            test.is_true(result.success)
+            test.eq(reports, 3)
+            test.eq(#observed, 3)
+            for i, actual in ipairs(observed) do
+                test.eq(actual, (i - 1) * 540000 + 600000, "each batch advances its progress deadline")
+            end
+            test.is_true(clock > 600000, "total work exceeds one progress interval")
         end)
 
         test.it("uses the document-wide decision for marked legacy images", function()
