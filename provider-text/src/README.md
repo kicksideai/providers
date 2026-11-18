@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
+
 # KickSide Provider Text
 
 `kickside.provider_text:trim` removes leading and trailing ASCII whitespace
