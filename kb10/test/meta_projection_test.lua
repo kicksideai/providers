@@ -1,8 +1,87 @@
 local test = require("test")
 local worker = require("meta_projection")
+local funcs = require("funcs")
+local sql = require("sql")
+local uuid = require("uuid")
 
 local function define_tests()
     test.describe("Knowledge graph meta projection", function()
+        test.it("publishes saved counts during upgrade without advancing the projection", function()
+            local db = assert(sql.get("app:db"))
+            local cases = {
+                { body = '{"counts":{"pending_source_count":2},"graph_updated_at":"2026-01-01T00:00:00Z"}', expected = "2" },
+                { body = '{"counts":{"pending_source_count":0}}', expected = "0" },
+                { body = '{"counts":{"pending_source_count":2}}', existing = "1", expected = "1" },
+                { body = '{"counts":{"document_count":2}}' },
+            }
+            for _, case in ipairs(cases) do
+                case.id, case.projection = uuid.v7(), uuid.v7()
+                assert(db:execute([[INSERT INTO kickside_components (component_id, impl_id)
+                    VALUES ($1, 'kickside.kb10:engine_document')]], { case.id }))
+                assert(db:execute([[INSERT INTO kickside_thread (id, thread_class, component_id)
+                    VALUES ($1, 'test', $2)]], { case.id, case.id }))
+                assert(db:execute([[INSERT INTO kickside_projection (id, thread_id, kind, projection_key, body, last_event_seq)
+                    VALUES ($1, $2, 'knowledge.graph.meta', 'graph_meta', $3, 2)]], { case.projection, case.id, case.body }))
+                if case.existing then
+                    assert(db:execute([[INSERT INTO kickside_component_meta (meta_id, component_id, key, value)
+                        VALUES ($1, $2, 'pending_source_count', $3)]], { uuid.v7(), case.id, case.existing }))
+                end
+            end
+
+            local ok, failure = pcall(function()
+                local saved = {}
+                for _, target in ipairs({ "app:kb10_migration_ledger", "app:db" }) do
+                    local migration_id = "kb10-pending-count-" .. uuid.v7()
+                    local result, err = funcs.call("kickside.kb10.migrations:08_publish_pending_source_count", {
+                        database_id = target, id = migration_id, direction = "up",
+                    })
+                    test.is_nil(err, tostring(err))
+                    assert(result)
+                    test.eq(result.failed, 0, tostring(result.error))
+                    local ledger = assert(sql.get(target))
+                    assert(ledger:execute("DELETE FROM _migrations WHERE id = $1", { migration_id }))
+                    assert(ledger:release())
+                    for _, case in ipairs(cases) do
+                        local row = assert(db:query([[SELECT m.value, m.meta_id, m.updated_at, p.last_event_seq
+                            FROM kickside_projection p LEFT JOIN kickside_component_meta m
+                            ON m.component_id = p.thread_id AND m.key = 'pending_source_count'
+                            WHERE p.id = $1]], { case.projection }))[1]
+                        test.eq(row.value, case.expected)
+                        test.eq(tonumber(row.last_event_seq), 2)
+                        if saved[case.id] then
+                            test.eq(row.meta_id, saved[case.id].meta_id)
+                            test.eq(row.updated_at, saved[case.id].updated_at)
+                        end
+                        saved[case.id] = row
+                    end
+                end
+            end)
+            for _, case in ipairs(cases) do
+                assert(db:execute("DELETE FROM kickside_thread WHERE id = $1", { case.id }))
+                assert(db:execute("DELETE FROM kickside_components WHERE component_id = $1", { case.id }))
+            end
+            assert(db:release())
+            if not ok then error(failure) end
+        end)
+
+        test.it("publishes pending counts only when the fold changes them", function()
+            local body = { counts = { pending_source_count = 2 } }
+            local fields
+            local function fold(event)
+                local result, err = worker.run({
+                    thread_id = "kb-1", projection = { body = body }, events = { event },
+                    component = { set_meta = function(_, meta) fields = meta; return true end },
+                })
+                test.is_nil(err)
+                body = result.body
+            end
+            fold({ type = "kickside.knowledge.events:graph.changed", body = { concept_delta = 1 } })
+            test.eq(fields.concept_count, 1)
+            test.is_nil(fields.pending_source_count)
+            fold({ type = "kickside.knowledge.events:graph.changed", body = { source_processed_delta = 2 } })
+            test.eq(fields.pending_source_count, 0)
+        end)
+
         test.it("folds graph.changed deltas into component public meta", function()
             local writes: { any } = {}
             local result, err = worker.run({

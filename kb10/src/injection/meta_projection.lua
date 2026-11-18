@@ -87,17 +87,16 @@ local function apply_change(counts: any, ev: any, kb_id: string): string?
     return trim((ev :: any).created_at)
 end
 
-local function sync_public_meta(input: any, kb_id: string, counts: any, updated_at: string): (boolean, string?)
+local function sync_public_meta(input: any, kb_id: string, counts: any, updated_at: string, previous_pending: number?): (boolean, string?)
     local component_api = (type(input.component) == "table" and input.component) or component
     local status = trim(counts.status) ~= "" and trim(counts.status) or "ready"
     local pending_source_count = clamp_count(counts.pending_source_count)
     if pending_source_count > 0 then
         status = "syncing"
     end
-    local ok, err = component_api.set_meta(kb_id, {
+    local fields: { [string]: any } = {
         status = status,
         last_error = counts.last_error ~= nil and tostring(counts.last_error or "") or "",
-        pending_source_count = pending_source_count,
         document_count = clamp_count(counts.document_count),
         chunk_count = clamp_count(counts.chunk_count),
         summary_count = clamp_count(counts.summary_count),
@@ -108,7 +107,11 @@ local function sync_public_meta(input: any, kb_id: string, counts: any, updated_
         auto_description = counts.auto_description ~= nil and tostring(counts.auto_description or "") or "",
         last_materialized_at = updated_at,
         graph_updated_at = updated_at,
-    })
+    }
+    if previous_pending ~= pending_source_count then
+        fields.pending_source_count = pending_source_count
+    end
+    local ok, err = component_api.set_meta(kb_id, fields)
     if ok == true then return true, nil end
     return false, tostring(err or "component.set_meta failed")
 end
@@ -117,6 +120,7 @@ function M.run(input: any): any
     input = type(input) == "table" and input or {}
     local projection = type(input.projection) == "table" and input.projection or {}
     local body: any = decode_object(projection.body)
+    local previous_pending = type(body.counts) == "table" and tonumber(body.counts.pending_source_count) or nil
     body.counts = type(body.counts) == "table" and body.counts or {
         status = "ready",
         last_error = "",
@@ -145,7 +149,7 @@ function M.run(input: any): any
     if updated_at == "" then updated_at = time.now():utc():format(time.RFC3339) end
     body.graph_updated_at = updated_at
 
-    local meta_ok, meta_err = sync_public_meta(input, kb_id, body.counts, updated_at)
+    local meta_ok, meta_err = sync_public_meta(input, kb_id, body.counts, updated_at, previous_pending)
     if not meta_ok then return nil, meta_err end
 
     local range = type(input.range) == "table" and input.range or {}

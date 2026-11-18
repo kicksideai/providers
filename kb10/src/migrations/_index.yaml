@@ -77,3 +77,18 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 08_publish_pending_source_count
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-17T20:00:00Z"
+    source: file://08_publish_pending_source_count.lua
+    modules: [json, sql, uuid]
+    imports:
+      migration: wippy.migration:migration
+      core_db: kickside.core:db
+      component_types: kickside.component:types
+    method: migrate

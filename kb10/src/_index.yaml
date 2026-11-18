@@ -180,6 +180,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:07_preserve_answer_settings
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:08_publish_pending_source_count
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 

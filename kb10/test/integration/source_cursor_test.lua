@@ -606,6 +606,13 @@ local function define_tests()
                 query("UPDATE kb10_stores SET config=$1 WHERE component_id=$2 RETURNING id",
                     { '{"fixture_recovered":true}', targets[2] })
                 recover(fixture, targets, head, 0)
+                local counts, _, public_documents = source_counts(fixture, targets[1])
+                test.eq(public_documents, 0)
+                test.eq(counts.chunk_count, 0)
+                local body = assert(json.decode(cursor(fixture).body))
+                for _, target in ipairs(targets) do
+                    test.is_nil(next(body.kbs[target].sources), "deleted source remains in the projection")
+                end
             end)
         end)
 

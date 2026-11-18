@@ -3,26 +3,30 @@ import { computed, ref, watch } from 'vue'
 import { api, host } from '@wippy-fe/proxy'
 import type { ComponentMetaEvent } from './componentMeta'
 
-function pendingCount(value: unknown): number {
-  const count = typeof value === 'string' || typeof value === 'number' ? Number(value) : 0
-  return Number.isInteger(count) && count > 0 ? count : 0
+function pendingCount(value: unknown): number | null {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null
+  const count = Number(value)
+  return Number.isSafeInteger(count) && count >= 0 ? count : null
 }
 
 export function useKbIndexing(kbId: () => string) {
-  const pending = ref(0)
-  const indexingNotice = computed(() => pending.value > 0
-    ? `Indexing ${pending.value === 1 ? 'document' : 'documents'} — ${pending.value} waiting`
-    : '')
+  const pending = ref<number | null>(null)
+  const indexingNotice = computed(() => {
+    const count = pending.value
+    return count ? `Indexing ${count === 1 ? 'document' : 'documents'} — ${count} waiting` : ''
+  })
   let revision = 0
 
   function onMeta(event: ComponentMetaEvent) {
     if (event.component_id !== kbId()) return
+    const count = pendingCount(event.meta.pending_source_count)
+    if (count === null && !event.deleted.includes('pending_source_count')) return
     revision++
-    pending.value = pendingCount(event.meta.pending_source_count)
+    pending.value = count
   }
 
   watch(kbId, async (id, _, onCleanup) => {
-    pending.value = 0
+    pending.value = null
     if (!id) return
     const snapshot = ++revision
     onCleanup(() => { revision++ })

@@ -34,6 +34,10 @@ entries:
       comment: In-memory database for kb10 slice tests.
     file: ":memory:"
 
+  - name: kb10_migration_ledger
+    kind: db.sql.sqlite
+    file: ":memory:"
+
   - name: uploads
     kind: fs.directory
     meta:
@@ -258,6 +262,7 @@ entries:
       suite: knowledge_injection
     source: file://meta_projection_test.lua
     method: run
+    modules: [funcs, sql, uuid]
     imports:
       test: wippy.test:test
       meta_projection: kickside.kb10.injection:meta_projection

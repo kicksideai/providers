@@ -11,17 +11,19 @@ const get = vi.mocked(api.get)
 
 beforeEach(() => get.mockReset())
 
-it('starts hidden on older metadata and follows live counts in both forms', async () => {
+it('keeps an absent count unknown and follows live counts in both forms', async () => {
   get.mockResolvedValue({ data: { meta: {} } } as Awaited<ReturnType<typeof api.get>>)
   const scope = effectScope()
   const { pending, indexingNotice, onMeta } = scope.run(() => useKbIndexing(() => 'kb'))!
   await flushPromises()
-  expect(pending.value).toBe(0)
+  expect(pending.value).toBeNull()
   expect(indexingNotice.value).toBe('')
 
   onMeta({ event: 'component.meta.changed', component_id: 'kb', meta: { pending_source_count: '3' }, deleted: [] })
   expect(pending.value).toBe(3)
   expect(indexingNotice.value).toBe('Indexing documents — 3 waiting')
+  onMeta({ event: 'component.meta.changed', component_id: 'kb', meta: { status: 'syncing' }, deleted: [] })
+  expect(pending.value).toBe(3)
   onMeta({ event: 'component.meta.changed', component_id: 'kb', meta: { pending_source_count: 0 }, deleted: [] })
   expect(pending.value).toBe(0)
   expect(indexingNotice.value).toBe('')
@@ -42,9 +44,9 @@ it('loads an already-pending KB and keeps a newer event ahead of a late snapshot
 
   kbId.value = 'second'
   await nextTick()
-  expect(pending.value).toBe(0)
+  expect(pending.value).toBeNull()
   onMeta({ event: 'component.meta.changed', component_id: 'first', meta: { pending_source_count: 5 }, deleted: [] })
-  expect(pending.value).toBe(0)
+  expect(pending.value).toBeNull()
   onMeta({ event: 'component.meta.changed', component_id: 'second', meta: { pending_source_count: 1 }, deleted: [] })
   snapshot({ data: { meta: { pending_source_count: 0 } } } as Response)
   await flushPromises()
