@@ -221,14 +221,14 @@ local function subtree_contains_root_concept_tx(tx: any, db_type: any, store_id:
     return false, nil
 end
 
-local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, node_id: any): (kb10.Map?, any?)
+local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, node_id: any): (kb10.Map?, any?, kb10.Map?)
     if not is_str(node_id) then return nil, errors.new({ message = "node_id is required", kind = errors.INVALID }) end
     local anchor = descendant_cte_anchor(db_type)
     local rows, err = tx:query(
         "WITH RECURSIVE descendants(id) AS (" ..
         "SELECT " .. anchor .. " UNION ALL " ..
         "SELECT n.id FROM kb10_nodes n JOIN descendants d ON n.parent_id = d.id WHERE n.store_id = $2" ..
-        ") SELECT node_type, metadata FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
+        ") SELECT id, node_type, metadata FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
         { node_id, store_id, store_id }
     )
     if err then return nil, errors.wrap(err, "source count lookup failed") end
@@ -239,9 +239,11 @@ local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, no
         chunk_count = 0,
         summary_count = 0,
     }
+    local root_metadata: kb10.Map? = nil
     for _, row in ipairs(rows or {}) do
         if row.node_type == kb10.NODE_TYPE.DOCUMENT then
             local metadata = decode_metadata(row.metadata)
+            if tostring(row.id) == node_id then root_metadata = metadata end
             if metadata.status == "failed" then
                 counts.failed_document_count = counts.failed_document_count + 1
             else
@@ -253,7 +255,7 @@ local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, no
             counts.summary_count = counts.summary_count + 1
         end
     end
-    return counts, nil
+    return counts, nil, root_metadata
 end
 
 -- Delete a node and its whole subtree (chunks/summaries) plus their embeddings,
@@ -429,22 +431,15 @@ function writer.replace_document(store_id: any, replacement: any)
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
 
-    local metadata_field = db_type == sql.type.SQLITE
-        and "json_extract(metadata, '$.%s')" or "(metadata::jsonb ->> '%s')"
-    local fields = "id"
-    local args: {any} = { store_id, external_source, external_id }
-    local metadata = document.metadata
-    if is_str(metadata.thread_id) and is_str(metadata.thread_event_id) and is_str(metadata.status) then
-        fields = fields .. ", CASE WHEN " .. metadata_field:format("thread_id") .. " = $4 THEN "
-            .. metadata_field:format("thread_event_seq") .. " END AS prior_source_seq"
-            .. ", CASE WHEN " .. metadata_field:format("thread_event_id") .. " = $5 AND "
-            .. metadata_field:format("status") .. " = $6 THEN 1 ELSE 0 END AS same_event"
-        args[4], args[5], args[6] = metadata.thread_id, metadata.thread_event_id, metadata.status
+    local where_external
+    if db_type == sql.type.SQLITE then
+        where_external = "AND json_extract(metadata, '$.external_source') = $2 AND json_extract(metadata, '$.external_id') = $3"
+    else
+        where_external = "AND (metadata::jsonb ->> 'external_source') = $2 AND (metadata::jsonb ->> 'external_id') = $3"
     end
     local prior_rows, prior_err = tx:query(
-        "WITH matched AS (SELECT id, metadata FROM kb10_nodes WHERE store_id = $1 AND node_type = '"
-            .. kb10.NODE_TYPE.DOCUMENT .. "' AND " .. metadata_field:format("external_source") .. " = $2 AND "
-            .. metadata_field:format("external_id") .. " = $3) SELECT " .. fields .. " FROM matched ORDER BY id", args
+        "SELECT id FROM kb10_nodes WHERE store_id = $1 AND node_type = '" .. kb10.NODE_TYPE.DOCUMENT .. "' " .. where_external .. " ORDER BY id",
+        { store_id, external_source, external_id }
     )
     if prior_err then return fail_tx(tx, db, errors.wrap(prior_err, "failed to find prior documents")) end
 
@@ -464,11 +459,12 @@ function writer.replace_document(store_id: any, replacement: any)
     end
 
     local doc_id: any
+    local prior_source_seq: number? = nil
     if reused_id then
         -- The generation being replaced still counts as a removed document: the
         -- deltas the caller derives from these counts describe the knowledge
         -- base's document population, not node identity.
-        local reused_counts, count_err = subtree_source_counts_tx(tx, db_type, store_id, reused_id)
+        local reused_counts, count_err, prior_metadata = subtree_source_counts_tx(tx, db_type, store_id, reused_id)
         if count_err then return fail_tx(tx, db, count_err) end
         removed = removed + 1
         removed_completed_documents = removed_completed_documents + (tonumber(reused_counts and reused_counts.document_count) or 0)
@@ -478,12 +474,18 @@ function writer.replace_document(store_id: any, replacement: any)
 
         -- A source event's generation is immutable. A new outcome for that
         -- event, such as a completed document replacing a failed one, still writes.
-        if #prior_rows == 1 and tonumber(prior_rows[1].same_event) == 1 then
+        local metadata = document.metadata
+        local same_thread = prior_metadata and is_str(metadata.thread_id)
+            and prior_metadata.thread_id == metadata.thread_id
+        if same_thread then prior_source_seq = tonumber(prior_metadata.thread_event_seq) end
+        if #prior_rows == 1 and same_thread and is_str(metadata.thread_event_id)
+            and prior_metadata.thread_event_id == metadata.thread_event_id
+            and prior_metadata.status == metadata.status then
             local committed, commit_err = commit_tx(tx, db, "document replay")
             if not committed then return nil, commit_err end
             return {
                 document_node_id = reused_id,
-                prior_source_seq = tonumber(prior_rows[1].prior_source_seq),
+                prior_source_seq = prior_source_seq,
                 summary_count = removed_summaries,
                 chunk_count = removed_chunks,
                 removed = removed,
@@ -548,7 +550,7 @@ function writer.replace_document(store_id: any, replacement: any)
 
     return {
         document_node_id = doc_id,
-        prior_source_seq = prior_rows and prior_rows[1] and tonumber(prior_rows[1].prior_source_seq) or nil,
+        prior_source_seq = prior_source_seq,
         removed = removed,
         removed_document_count = removed_completed_documents,
         removed_failed_document_count = removed_failed_documents,

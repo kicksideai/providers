@@ -1169,6 +1169,7 @@ local function run_with_deps(input_raw, deps)
     local cursor = type(input.cursor) == "table" and input.cursor or {}
     local prior_seq = tonumber(cursor.last_seq) or 0
     local deadline = tonumber(input.execution_deadline_ns)
+    local started_ns = deadline and time.now():unix_nano() or 0
     local longest_event_ns = 0
     local consumed_seq, stopped_seq, failure, retryable
     local processed, failed_processed = 0, 0
@@ -1206,7 +1207,6 @@ local function run_with_deps(input_raw, deps)
 
     for index, raw in ipairs(raw_events) do
         if type(raw) == "table" then
-            local started_ns = deadline and time.now():unix_nano() or 0
             -- Keep time to finalize the prefix and return the proc result.
             if consumed_seq and deadline and deadline - started_ns <= longest_event_ns + time.SECOND then
                 stopped_seq = tonumber(raw.seq)
@@ -1266,7 +1266,11 @@ local function run_with_deps(input_raw, deps)
             end
             consumed_seq = event.seq
             processed = processed + failed_processed
-            if deadline then longest_event_ns = math.max(longest_event_ns, time.now():unix_nano() - started_ns) end
+            if deadline then
+                local finished_ns = time.now():unix_nano()
+                longest_event_ns = math.max(longest_event_ns, finished_ns - started_ns)
+                started_ns = finished_ns
+            end
         end
     end
 
