@@ -178,3 +178,75 @@ entries:
     kind: library.lua
     source: file://worker_process_fixture.lua
     modules: [channel]
+
+  - name: secret_transport_source
+    kind: library.lua
+    source: file://src_link/client/transport.lua
+    imports:
+      component: kickside.component:component
+      api: app.suites:secret_transport_fixture
+      types: kickside.slack.client:types
+      base: kickside.connection:base_connection
+      reply_authorization: kickside.connection:reply_authorization
+
+  - name: secret_transport_fixture
+    kind: library.lua
+    source: file://secret_transport_fixture.lua
+
+  - name: secret_transport_probe
+    kind: function.lua
+    source: file://secret_transport_probe.lua
+    method: run
+    imports:
+      transport: app.suites:secret_transport_source
+
+  - name: secret_transport_contract
+    kind: contract.definition
+    methods:
+    - name: run
+
+  - name: secret_transport_binding
+    kind: contract.binding
+    contracts:
+    - contract: app.suites:secret_transport_contract
+      context_required:
+      - component_id
+      methods:
+        run: app.suites:secret_transport_probe
+
+  - name: secret_transport_calls
+    kind: security.policy
+    policy:
+      resources:
+      - app.suites:secret_transport_contract
+      - app.suites:secret_transport_binding
+      - app.suites:secret_transport_probe
+      actions:
+      - contract.get
+      - contract.open
+      - contract.call
+      - funcs.call
+      effect: allow
+
+  - name: secret_transport_test
+    kind: function.lua
+    source: file://secret_transport_test.lua
+    method: run
+    meta:
+      type: test
+      suite: slack
+    modules:
+    - contract
+    - security
+    - registry
+    - sql
+    - uuid
+    imports:
+      test: wippy.test:test
+
+  - name: secret_transport_storage
+    kind: security.policy
+    policy:
+      actions: db.get
+      resources: [app:db]
+      effect: allow

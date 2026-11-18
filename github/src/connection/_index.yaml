@@ -5,6 +5,8 @@ entries:
   - name: github_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [token], type: string}
       title: GitHub
       comment: Connect GitHub with a personal access token to read repositories, issues, pull requests, and comments.
       icon: tabler:brand-github
@@ -53,6 +55,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.github.security:secret_context_dispatch, kickside.github.security:secret_context_read]
     meta: { comment: "github connection - test_connection" }
     source: file://test_connection.lua
     method: test_connection
@@ -64,6 +68,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.github.security:secret_context_dispatch, kickside.github.security:secret_context_read]
     meta: { comment: "github connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources

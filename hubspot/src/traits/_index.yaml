@@ -46,6 +46,8 @@ entries:
 
   - name: read_tool
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -150,6 +152,8 @@ entries:
 
   - name: write_tool
     kind: function.lua
+    security:
+      policies: [kickside.hubspot.security:secret_context_dispatch, kickside.hubspot.security:secret_context_read]
     meta:
       type: tool
       mcp:

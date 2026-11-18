@@ -32,7 +32,7 @@ local function rotate(component_id: string, credential: any, name: any): (number
     if exchange_err or not access_url then
         return nil, tostring(exchange_err), http.STATUS.BAD_REQUEST
     end
-    local old_context, old_err = component.get_private_context(component_id)
+    local old_context, old_err = component.get_private_runtime_context(component_id)
     if old_err then
         return nil, tostring(old_err), http.STATUS.INTERNAL_ERROR
     end

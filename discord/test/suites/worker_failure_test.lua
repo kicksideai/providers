@@ -9,7 +9,7 @@ return {run = test.run_cases(function()
             local events = channel.new(1)
             events:send({kind = "cancel"})
             local driver = worker.new({process = {events = function() return events end, event = {CANCEL = "cancel"}},
-                component = {get_private_context = function() return {bot_token = "fixture-token"}, nil end}})
+                component = {get_private_runtime_context = function() return {bot_token = "fixture-token"}, nil end}})
             driver.main({token = "fixture-token", component_id = "fixture-connection"})
             test.eq(health.message, fixture.failure)
         end)
@@ -18,7 +18,7 @@ return {run = test.run_cases(function()
                 local events = channel.new(1)
                 events:send({kind = "cancel"})
                 local driver = worker.new({process = {events = function() return events end, event = {CANCEL = "cancel"}},
-                    component = {get_private_context = function() return context, nil end}})
+                    component = {get_private_runtime_context = function() return context, nil end}})
                 driver.main({component_id = "fixture-connection"})
                 test.eq(fixture.token, "valid-token")
             end
