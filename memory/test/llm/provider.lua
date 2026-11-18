@@ -28,19 +28,24 @@ local function vector(text: string): { number }
     return v
 end
 
-local function embed(args: any): (any, any)
-    script.record(args.options.user, "embed", args, {})
-    local input = args.input
-    if type(input) == "string" then input = { input } end
-    local out = {}
-    for i, text in ipairs(input) do out[i] = vector(tostring(text)) end
-    return { success = true, result = { embeddings = out }, tokens = { prompt_tokens = 1, total_tokens = 1 } }
-end
-
 local function failed(failure: string, kind: string?, retryable: boolean?, details: any?): error
     local failure_kind = kind or errors.UNAVAILABLE
     local transient = failure_kind == errors.UNAVAILABLE or failure_kind == errors.TIMEOUT or failure_kind == errors.RATE_LIMITED
     return errors.new({ kind = failure_kind, retryable = retryable ~= nil and retryable or transient, message = failure, details = details })
+end
+
+local function embed(args: any): (any, any)
+    local user = args.options.user
+    script.record(user, "embed", args, {})
+    local out, failure, kind, retryable, _, details = script.take(user, "embed", true)
+    if failure then return nil, failed(failure, kind, retryable, details) end
+    if out == nil then
+        local input = args.input
+        if type(input) == "string" then input = { input } end
+        out = {}
+        for i, text in ipairs(input) do out[i] = vector(tostring(text)) end
+    end
+    return { success = true, result = { embeddings = out }, tokens = { prompt_tokens = 1, total_tokens = 1 } }
 end
 
 local function structured_output(args: any): (any, any)
