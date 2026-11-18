@@ -218,10 +218,6 @@ function seed() {
 }
 
 function buildConfig(): Record<string, unknown> {
-  // When contextual is on, publish the two models so embed_func runs the
-  // document-summary + per-chunk enrichment path. When off (document only), omit
-  // them — embed_func then embeds chunks as-is (plain, cheaper). Required types
-  // never reach the off branch.
   const cfg: Record<string, unknown> = { ...engineConfig.value }
   if (contextual.value) {
     cfg.summary_model = summaryModel.value || DEFAULT_CONTEXT_MODEL
@@ -233,8 +229,9 @@ function buildConfig(): Record<string, unknown> {
     if (summaryCharsValue.value !== null) cfg.summary_max_chars = summaryCharsValue.value
     else delete cfg.summary_max_chars
   } else {
-    delete cfg.summary_model
-    delete cfg.chunk_enrichment_model
+    // Omitted keys retain the saved models or fall through to engine defaults.
+    cfg.summary_model = false
+    cfg.chunk_enrichment_model = false
     delete cfg.summary_prompt
     delete cfg.summary_max_chars
   }
@@ -572,7 +569,7 @@ onMounted(() => {
         <KbButton
           variant="soft"
           small
-          :disabled="maintenanceBlocked"
+          :disabled="maintenanceBlocked || ctx.config?.summary_model === false"
           :loading="maintenanceRunning('resummarize')"
           @click="startRun('resummarize')"
         >Regenerate summaries</KbButton>

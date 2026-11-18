@@ -88,4 +88,22 @@ describe('KbCreateConfig engine fields', () => {
     expect(lastPublished().enable_reranking).toBe(false)
     wrapper.unmount()
   })
+
+  it('publishes disabled models instead of omitting them when contextual embedding is switched off', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      id: 'kb-1',
+      config: { summary_model: 'summary-model', chunk_enrichment_model: 'chunk-model' },
+    })
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    expect(lastPublished()).toMatchObject({ summary_model: false, chunk_enrichment_model: false })
+
+    await toggle.trigger('click')
+    expect(lastPublished()).toMatchObject({ summary_model: 'summary-model', chunk_enrichment_model: 'chunk-model' })
+    wrapper.unmount()
+  })
 })
