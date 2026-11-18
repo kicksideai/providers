@@ -775,6 +775,21 @@ entries:
       query_log: kickside.kb10.persist:query_log
       store: kickside.kb10.persist:store
 
+  - name: contextual_model_upgrade_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_contextual_model_upgrade
+    source: file://contextual_model_upgrade_test.lua
+    method: run
+    modules: [uuid, sql, funcs]
+    imports:
+      test: wippy.test:test
+      store: kickside.kb10.persist:store
+      materializer: kickside.kb10.injection:source_materializer
+      query_policy: kickside.kb10.binding:query_policy
+      engines: kickside.knowledge:engines
+
   - name: enrichment_component_fixture
     kind: library.lua
     source: file://enrichment_component_fixture.lua

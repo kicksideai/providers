@@ -51,7 +51,6 @@ const contextRequired = computed(() => kbType.value !== 'document')
 
 const embeddingModel = ref('')
 const contextual = ref(true)
-const initialContextual = ref(true)
 const summaryModel = ref('')
 const chunkModel = ref('')
 // The two settings the summary model reads: standing instructions folded into
@@ -161,8 +160,7 @@ function seed() {
   embeddingModel.value = ctx.value.embedding_model || PREFERRED_EMBED
   summaryModel.value = resolveSetting('summary_model', c.summary_model)
   chunkModel.value = resolveSetting('chunk_enrichment_model', c.chunk_enrichment_model)
-  initialContextual.value = contextRequired.value || !!chunkModel.value
-  contextual.value = initialContextual.value
+  contextual.value = contextRequired.value || !!(summaryModel.value || chunkModel.value)
 
   summaryPrompt.value = typeof c.summary_prompt === 'string' ? c.summary_prompt : ''
   // A knowledge base being created holds no length of its own — the box stays
@@ -198,13 +196,8 @@ function seed() {
 
 function buildConfig(): Record<string, unknown> {
   const cfg: Record<string, unknown> = { ...engineConfig.value }
-  const contextChanged = contextual.value !== initialContextual.value
-  function contextualModel(key: string, value: string) {
-    if (!contextChanged) return value || false
-    return contextual.value && resolveSetting(key, value)
-  }
-  cfg.summary_model = contextualModel('summary_model', summaryModel.value)
-  cfg.chunk_enrichment_model = contextualModel('chunk_enrichment_model', chunkModel.value)
+  cfg.summary_model = contextual.value && (summaryModel.value || false)
+  cfg.chunk_enrichment_model = contextual.value && (chunkModel.value || false)
   cfg.summary_prompt = summaryPrompt.value.trim()
   if (summaryCharsValue.value !== null) cfg.summary_max_chars = summaryCharsValue.value
   cfg.embed_images = embedImages.value
@@ -230,6 +223,14 @@ function pickValue(e: Event): string {
 function onEmbed(e: Event) { embeddingModel.value = pickValue(e) }
 function onSummary(e: Event) { summaryModel.value = resolveSetting('summary_model', pickValue(e)) }
 function onChunk(e: Event) { chunkModel.value = resolveSetting('chunk_enrichment_model', pickValue(e)) }
+
+function setContextual(enabled: boolean) {
+  if (enabled && !summaryModel.value && !chunkModel.value) {
+    summaryModel.value = resolveSetting('summary_model', undefined)
+    chunkModel.value = resolveSetting('chunk_enrichment_model', undefined)
+  }
+  contextual.value = enabled
+}
 
 function setEngineField(f: EngineConfigField, raw: string) {
   if (f.type === 'integer') {
@@ -366,7 +367,7 @@ onMounted(() => {
               <template v-if="contextRequired"> Required — the concept graph is built from these models.</template>
             </span>
           </span>
-          <ToggleSwitch v-if="!contextRequired" v-model="contextual" aria-label="Contextual embedding" />
+          <ToggleSwitch v-if="!contextRequired" :model-value="contextual" @update:model-value="setContextual" aria-label="Contextual embedding" />
           <span v-else class="cx-req">Required</span>
         </div>
 

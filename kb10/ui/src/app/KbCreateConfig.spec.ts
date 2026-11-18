@@ -121,11 +121,32 @@ describe('KbCreateConfig engine fields', () => {
     await flushPromises()
     expect(lastPublished()).toEqual({})
     const toggle = wrapper.get('[aria-label="Contextual embedding"]')
-    expect(toggle.attributes('aria-checked')).toBe(String(expectedChunk !== ''))
+    expect(toggle.attributes('aria-checked')).toBe('true')
     const pickers = wrapper.findAll('wc-model-picker').map(picker => picker.attributes('value') || '')
-    expect(pickers).toEqual(expectedChunk ? ['custom-summary', expectedChunk, expectedAnalysis] : [expectedAnalysis])
+    expect(pickers).toEqual(['custom-summary', expectedChunk, expectedAnalysis])
     await toggle.trigger('click')
-    expect(lastPublished()).toEqual(expectedChunk ? { summary_model: false, chunk_enrichment_model: false } : { chunk_enrichment_model: 'class:fast' })
+    expect(lastPublished()).toEqual(expectedChunk ? { summary_model: false, chunk_enrichment_model: false } : { summary_model: false })
+    wrapper.unmount()
+  })
+
+  it('returns to an unchanged disabled configuration after enabling then disabling both models', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      id: 'kb-1',
+      config: { summary_model: false, chunk_enrichment_model: false, analysis_model: 'answer-model' },
+    })
+    await flushPromises()
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(lastPublished()).toEqual({ summary_model: 'class:fast', chunk_enrichment_model: 'class:fast' })
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(lastPublished()).toEqual({})
     wrapper.unmount()
   })
 })
