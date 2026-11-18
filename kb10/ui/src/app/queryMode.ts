@@ -1,11 +1,7 @@
 export type QueryConfig = Record<string, unknown>
 
-function model(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-export function applyQueryModel(config: QueryConfig, value: unknown): void {
-  const selected = model(value)
+export function applyQueryModel(config: QueryConfig, value: string | false): void {
+  const selected = value === false ? '' : value.trim()
   if (selected) {
     config.retrieval_model = selected
     config.analysis_model = selected
@@ -13,5 +9,5 @@ export function applyQueryModel(config: QueryConfig, value: unknown): void {
   }
   delete config.retrieval_model
   // The query choice does not change document summary generation.
-  config.analysis_model = false
+  config.analysis_model = value === false ? false : ''
 }

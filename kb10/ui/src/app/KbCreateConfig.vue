@@ -66,7 +66,7 @@ const embedImages = ref(false)
 const captionModel = ref(DEFAULT_KB_MODEL)
 const engineConfig = ref<Record<string, unknown>>({})
 // Retrieval / agentic RAG.
-const retrievalModel = ref('')
+const retrievalModel = ref<string | false>('')
 const enableReranking = ref(false)
 const hyde = ref(false)
 const selfTuning = ref(false)
@@ -181,8 +181,8 @@ function seed() {
   }
   engineConfig.value = cfg
 
-  const analysis = c.analysis_model ?? (isEdit.value ? false : resolveSetting('analysis_model', undefined))
-  retrievalModel.value = resolveModel(analysis, '')
+  const analysis = c.analysis_model ?? (isEdit.value ? '' : resolveSetting('analysis_model', undefined))
+  retrievalModel.value = analysis === false ? false : resolveModel(analysis, '')
   enableReranking.value = c.enable_reranking === true
   hyde.value = c.query_strategy === 'hyde'
   selfTuning.value = c.self_tuning === true
@@ -446,8 +446,9 @@ onMounted(() => {
 
       <div class="cx-field">
         <span class="cx-label">Search analysis model</span>
-        <wc-model-picker :value="retrievalModel" capability="generate" @select="retrievalModel = pickValue($event)"></wc-model-picker>
-        <p v-if="retrievalModel" class="st-hint">Ask uses the selected model to write answers.</p>
+        <wc-model-picker :value="retrievalModel || ''" capability="generate" @select="retrievalModel = pickValue($event).trim() || false"></wc-model-picker>
+        <p v-if="retrievalModel === false" class="st-hint">Answers are disabled. Ask returns matching passages.</p>
+        <p v-else-if="retrievalModel" class="st-hint">Ask uses the selected model to write answers.</p>
         <p v-else class="st-hint">Search returns direct matches. Ask uses Fast when available.</p>
       </div>
 

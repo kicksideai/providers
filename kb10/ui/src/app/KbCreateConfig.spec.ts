@@ -65,6 +65,7 @@ describe('KbCreateConfig engine fields', () => {
     expect(labels.filter(l => l === 'Document size limit')).toHaveLength(1)
     expect(labels.filter(l => l === 'Rerank results')).toHaveLength(1)
     expect(labels.filter(l => l === 'Hypothetical answer retrieval')).toHaveLength(1)
+    expect(labels.filter(l => l === 'Search analysis model')).toHaveLength(1)
     expect(labels).not.toContain('Query analysis model')
     expect(labels).not.toContain('Retrieval instructions')
     expect(wrapper.findAll('input[type="text"]')).toHaveLength(0)
@@ -147,6 +148,27 @@ describe('KbCreateConfig engine fields', () => {
     await toggle.trigger('click')
     expect(toggle.attributes('aria-checked')).toBe('false')
     expect(lastPublished()).toEqual({})
+    wrapper.unmount()
+  })
+
+  it.each([
+    { setting: '', hint: 'Search returns direct matches. Ask uses Fast when available.' },
+    { setting: false, hint: 'Answers are disabled. Ask returns matching passages.' },
+  ])('describes Ask for the saved analysis setting $setting', async ({ setting, hint }) => {
+    const wrapper = render({ kb_type: 'document', edit: true, config: { analysis_model: setting } })
+    await flushPromises()
+    expect(wrapper.text()).toContain(hint)
+    expect(lastPublished()).toEqual({})
+    wrapper.unmount()
+  })
+
+  it('disables answers when the selected analysis model is cleared', async () => {
+    const wrapper = render({ kb_type: 'document', edit: true, config: { analysis_model: 'answer-model' } })
+    const pickers = wrapper.findAll('wc-model-picker')
+    const picker = pickers[pickers.length - 1]
+    await picker.trigger('select', { detail: '' })
+    expect(lastPublished()).toEqual({ analysis_model: false })
+    expect(wrapper.text()).toContain('Answers are disabled. Ask returns matching passages.')
     wrapper.unmount()
   })
 })

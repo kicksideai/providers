@@ -332,7 +332,6 @@ local function handle(request)
     local self_tuning = analysis_model ~= nil and config.self_tuning == true
     local effective_strategy = analysis_model and strategy or "plain"
     local extra_prompt = config.extra_prompt or ""
-    local enable_reranking = config.enable_reranking
 
     -- The page of ranked rows at [offset + 1, offset + limit], formatted, with
     -- next_offset when the ranking holds a row past the page.
@@ -488,7 +487,7 @@ local function handle(request)
     end
 
     local final_results = all_results
-    if enable_reranking and analysis_model then
+    if analysis_model and config.query_driver ~= "agentic" and config.enable_reranking == true then
         local reranked_results, rerank_err = rerank_results(query_text, all_results, analysis_model)
         if rerank_err then return nil, rerank_err end
         final_results = reranked_results

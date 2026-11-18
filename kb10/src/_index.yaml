@@ -476,7 +476,7 @@ entries:
             type: [string, boolean]
             default: *document_analysis_model
             label: Search analysis model
-            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables Search analysis. Ask uses the selected model or class:fast.
+            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables Search analysis. Ask uses the selected model, defaults to class:fast for empty or omitted values, and returns passages for false.
           extra_prompt:
             type: string
             default: ""
@@ -666,7 +666,7 @@ entries:
             type: [string, boolean]
             default: *wiki_analysis_model
             label: Search analysis model
-            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables Search analysis. Ask uses the selected model or class:fast.
+            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables Search analysis. Ask uses the selected model, defaults to class:fast for empty or omitted values, and returns passages for false.
           extra_prompt:
             type: string
             default: ""
