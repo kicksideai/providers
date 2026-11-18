@@ -47,7 +47,7 @@ local function construct(dependencies: any): any
     -- Every Slack connection with its app-level token, read directly from the
     -- component store (trusted system read, no actor scoping).
     local function list_connections(): ({ any }?, error?)
-        local rows, err = component.list_system({
+        local rows, err = component.list_runtime_context({
             meta = { class = "connection", provider = CONNECTION_PROVIDER },
             include = { private_context = true, meta = true },
         })

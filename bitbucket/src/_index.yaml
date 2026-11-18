@@ -17,7 +17,7 @@ entries:
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
-    version: "*"
+    version: '>=0.3.21'
     meta:
       comment: Resolves Bitbucket connection components and their stored credentials through the component service.
 
@@ -31,6 +31,6 @@ entries:
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
-    version: "*"
+    version: '>=0.3.8'
     meta:
       comment: Implements the component and deletable contracts used by Bitbucket connections.

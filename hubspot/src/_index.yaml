@@ -34,7 +34,7 @@ entries:
         path: .meta.default_field_mapping_ref
 
   - name: dep.kickside.component
-    version: '*'
+    version: '>=0.3.21'
     kind: ns.dependency
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.
@@ -48,7 +48,7 @@ entries:
     component: kickside/connection
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.8'
     kind: ns.dependency
     meta:
       comment: Implements the shared component and deletable contracts.

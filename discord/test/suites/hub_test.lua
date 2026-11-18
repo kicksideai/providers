@@ -50,7 +50,7 @@ local function define_tests()
                     if selects == 1 then return { channel = inbox } end
                     return { channel = events, value = { kind = "cancel" } }
                 end },
-                component = { list_system = function()
+                component = { list_runtime_context = function()
                     return {
                         { component_id = "unavailable", private_context = { bot_token = "token-a" } },
                         { component_id = "available", private_context = { bot_token = "token-b" } },

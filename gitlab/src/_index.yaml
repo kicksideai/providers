@@ -17,7 +17,7 @@ entries:
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
-    version: "*"
+    version: '>=0.3.21'
     meta:
       comment: Resolves GitLab connection components through the component service.
 
@@ -31,6 +31,6 @@ entries:
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
-    version: "*"
+    version: '>=0.3.8'
     meta:
       comment: Implements the component and deletable contracts used by GitLab connections.

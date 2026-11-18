@@ -15,10 +15,10 @@ local trim = require("text_trim").trim
 -- trusted private-context read exposes the bot token to this transport.
 local function context(component_api: any, component_id: string?): (any?, error?)
     if component_id and component_id ~= "" then
-        local allowed, access_err = component_api.get_context(component_id, component_api.ACCESS.READ)
+        local allowed, access_err = component_api.get_runtime_context(component_id, component_api.ACCESS.READ)
         if access_err then return nil, access_err end
         if not allowed then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "connection access denied" }) end
-        local ctx, err = component_api.get_private_context(component_id)
+        local ctx, err = component_api.get_private_runtime_context(component_id)
         if err then return nil, err end
         return ctx, nil
     end
@@ -47,7 +47,7 @@ function M.inbound_context(connection_id: string): (any?, any?)
         return nil, errors.new({ message = "trusted Discord ingress is required", kind = errors.PERMISSION_DENIED,
             details = { reason = "ingress_denied" } })
     end
-    local rows, read_err = component.list_system({ component_ids = { connection_id }, include = { private_context = true } })
+    local rows, read_err = component.list_runtime_context({ component_ids = { connection_id }, include = { private_context = true } })
     if read_err then return nil, read_err end
     local row = type(rows) == "table" and rows[1] or nil
     if not row or row.impl_id ~= "kickside.discord.connection:discord_connection" then
@@ -78,7 +78,7 @@ local function send_admitted_reply_with(component_api: any, authorization: any, 
         end
         return { success = false, error = "reply outcome is uncertain", uncertain = true }
     end
-    local context, context_err = component_api.get_private_context(args.component_id)
+    local context, context_err = component_api.get_private_runtime_context(args.component_id)
     if context_err or type(context) ~= "table" then
         return { success = false, error = tostring(context_err or "reply connection unavailable"), uncertain = true }
     end
@@ -166,11 +166,11 @@ function M.send_outbound(args: any): any
     end
     local component_id, id_err = base.component_id()
     if not component_id then return { success = false, error = id_err } end
-    local allowed, access_err = component.get_context(component_id, component.ACCESS.WRITE)
+    local allowed, access_err = component.get_runtime_context(component_id, component.ACCESS.WRITE)
     if access_err or not allowed then
         return { success = false, error = access_err or "connection write denied" }
     end
-    local private, private_err = component.get_private_context(component_id)
+    local private, private_err = component.get_private_runtime_context(component_id)
     if private_err or type(private) ~= "table" then
         return { success = false, error = private_err or "connection unavailable" }
     end

@@ -193,12 +193,7 @@ function M.http_error(status_code: any, body: any): (string, string)
     if code == 429 then
         return "SimpleFIN rate limit reached", "rate_limited"
     end
-    local message = "SimpleFIN request failed with status " .. tostring(code)
-    local text = trim(body)
-    if text ~= "" then
-        message = message .. ": " .. (#text > 300 and (text:sub(1, 300) .. "...") or text)
-    end
-    return message, "provider_error"
+    return "SimpleFIN request failed with status " .. tostring(code), "provider_error"
 end
 
 -- ── Normalization ───────────────────────────────────────────────────────

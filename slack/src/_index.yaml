@@ -15,7 +15,7 @@ entries:
       comment: Slack bot-token + Socket Mode connection, reply provider, resource discovery, and normalized inbound adapter for channel/DM bots.
 
   - name: dep.kickside.component
-    version: '*'
+    version: '>=0.3.21'
     kind: ns.dependency
     meta:
       comment: Resolves Slack connection components for the socket supervisor and transport.
@@ -29,7 +29,7 @@ entries:
     component: kickside/connection
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.8'
     kind: ns.dependency
     meta:
       comment: Implements the component and deletable contracts used by Slack connections.

@@ -14,8 +14,8 @@ local function base_component(overrides: any?): any
         open = function(): (any?, any?) return nil, "no oauth" end,
         open_by_meta = function(): (any?, any?) return nil, "no oauth default" end,
         get_private_context = function(): (any?, any?) return nil, "no private context" end,
-        get_context = function(): (any?, any?) return nil, "no context" end,
-        get_context_by_meta = function(): (any?, any?) return nil, "no default context" end,
+        get_runtime_context = function(): (any?, any?) return nil, "no context" end,
+        get_runtime_context_by_meta = function(): (any?, any?) return nil, "no default context" end,
     }
     for k, v in pairs(overrides or {}) do fake[k] = v end
     return fake
@@ -26,7 +26,7 @@ local function define_tests()
         test.it("refuses a stored token before private context read when connection READ is denied", function()
             local private_reads = 0
             local fake = base_component({
-                get_context = function(id: string, access: any): (any?, any?)
+                get_runtime_context = function(id: string, access: any): (any?, any?)
                     test.eq(id, "pat1")
                     test.eq(access, "read")
                     return nil, "permission denied"
@@ -61,10 +61,10 @@ local function define_tests()
 
         test.it("falls back to an explicit stored credential connection", function()
             with_component(base_component({
-                get_context = function(id: string, access: any): (any?, any?)
+                get_runtime_context = function(id: string, access: any): (any?, any?)
                     test.eq(id, "pat1")
                     test.eq(access, "read")
-                    return { component_id = id }, nil
+                    return { component_id = id, token = "ghp_test" }, nil
                 end,
                 get_private_context = function(id: string): any
                     test.eq(id, "pat1")
@@ -101,7 +101,7 @@ local function define_tests()
 
         test.it("auto-selects a stored credential connection by provider metadata", function()
             with_component(base_component({
-                get_context_by_meta = function(meta: any): any
+                get_runtime_context_by_meta = function(meta: any): any
                     test.eq(meta.provider, "github")
                     return { component_id = "cred1", token = "pat" }, nil
                 end,

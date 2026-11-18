@@ -3,6 +3,8 @@ namespace: kickside.telegram.sink
 entries:
   - name: message_write
     kind: function.lua
+    security:
+      policies: [kickside.telegram.security:secret_context_dispatch, kickside.telegram.security:secret_context_read]
     source: file://_fn_message_write.lua
     method: write
     imports:

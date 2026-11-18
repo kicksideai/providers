@@ -136,6 +136,43 @@ local function define_tests()
             transport.get = get
         end)
 
+        test.it("finds and reads shared-drive files through the Drive tool", function()
+            local folder_id, file_id = "shared-folder", "shared-file"
+            local file = { id = file_id, name = "Notes", mimeType = "text/plain" }
+            local get = stub(transport, "get", function(_, url, query)
+                if url:sub(-6) == "/files" then
+                    if query.supportsAllDrives and query.includeItemsFromAllDrives then
+                        return { success = true, data = { files = { file } } }
+                    end
+                    return { success = true, data = { files = {} } }
+                end
+                if not query.supportsAllDrives then
+                    return { success = false, status_code = 404, error = "File not found" }
+                end
+                if url:sub(-#folder_id) == folder_id then
+                    return { success = true, data = { id = folder_id, mimeType = "application/vnd.google-apps.folder" } }
+                end
+                return { success = true, data = file }
+            end)
+            local raw = stub(transport, "get_raw", function(_, _, query)
+                if query.supportsAllDrives and query.alt == "media" then
+                    return { success = true, data = { text = "Shared drive contents" } }
+                end
+                return { success = false, status_code = 404, error = "File not found" }
+            end)
+
+            local folder = drive_tool.handler({ action = "get_file", file_id = folder_id })
+            local listed = drive_tool.handler({ action = "list_files", query = "'shared-folder' in parents" })
+            local searched = drive_tool.handler({ action = "search_files", query = "Notes" })
+            local read = drive_tool.handler({ action = "read_file", file_id = file_id })
+            transport.get, transport.get_raw = get, raw
+
+            test.eq(folder.id, folder_id)
+            test.eq(listed.files[1].id, file_id)
+            test.eq(searched.files[1].id, file_id)
+            test.eq(read.content, "Shared drive contents")
+        end)
+
         test.it("requests bounded Gmail headers and explicit fields without changing detail", function()
             local seen = ""
             local request = stub(transport, "request_json", function(_, _, url)

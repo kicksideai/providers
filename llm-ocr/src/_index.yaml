@@ -196,10 +196,10 @@ entries:
     component: kickside/core
 
   - name: dep.kickside.uploads
-    version: '*'
+    version: '>=0.3.17'
     kind: ns.dependency
     meta:
-      comment: Reads uploaded page artifacts through the uploads repository.
+      comment: Reads page artifacts and uses the shared OCR page selection and Markdown helpers.
     component: kickside/uploads
 
   - name: dep.kickside.settings

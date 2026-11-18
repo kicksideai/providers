@@ -85,7 +85,7 @@ local function handler()
     if config_err or not normalized then write(res, http.STATUS.BAD_REQUEST, { success = false, error = tostring(config_err) }); return end
     local instance, open_err = component.open(component_id, component.ACCESS.WRITE, CLIENT_CONTRACT)
     if open_err or not instance then write(res, http.STATUS.FORBIDDEN, { success = false, error = "connection unavailable: " .. tostring(open_err) }); return end
-    local old_context, old_err = component.get_private_context(component_id)
+    local old_context, old_err = component.get_private_runtime_context(component_id)
     if old_err then write(res, http.STATUS.INTERNAL_ERROR, { success = false, error = tostring(old_err) }); return end
     local service, service_err = component.get_service()
     if service_err or not service then write(res, http.STATUS.INTERNAL_ERROR, { success = false, error = "component service unavailable" }); return end

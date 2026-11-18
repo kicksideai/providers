@@ -17,6 +17,8 @@ entries:
 
   - name: pull_issues
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for Jira issues selected by project/JQL config.
     source: file://pull_issues.lua
@@ -30,6 +32,8 @@ entries:
 
   - name: pull_issue_keys
     kind: function.lua
+    security:
+      policies: [kickside.atlassian.security:secret_context_dispatch, kickside.atlassian.security:secret_context_read]
     meta:
       comment: Keys-only Jira issue listing used by Data Sync reconcile.
     source: file://pull_issue_keys.lua
