@@ -1397,6 +1397,96 @@ local function define_tests()
                 teardown_kb10_store(db, store_id)
             end)
 
+            test.it("binds each byte-exact source tuple to one root", function()
+                local store_id = bootstrap_kb10_store(db)
+                local function document(source, id)
+                    return {
+                        node_type = "document",
+                        content = "source document",
+                        metadata = { external_source = source, external_id = id },
+                    }
+                end
+
+                local first = assert(kb10_store.replace_document(store_id, {
+                    document = document("a:b", "café"),
+                }))
+                local second = assert(kb10_store.replace_document(store_id, {
+                    document = document("a", "b:café"),
+                }))
+                test.is_true(first.document_node_id ~= second.document_node_id)
+
+                local duplicate, duplicate_err = kb10_store.insert_node(store_id, document("a:b", "café"))
+                local found = assert(kb10_store.find_by_external_id(store_id, "a:b", "café"))
+                local removed = assert(kb10_store.delete_documents_by_external_id(store_id, "a:b", "café"))
+                local remaining = assert(kb10_store.find_by_external_id(store_id, "a", "b:café"))
+                teardown_kb10_store(db, store_id)
+
+                test.is_nil(duplicate)
+                test.not_nil(duplicate_err)
+                test.eq(#found, 1)
+                test.eq(tostring(found[1].id), first.document_node_id)
+                test.eq(type(removed) == "table" and removed.removed, 1)
+                test.eq(#remaining, 1)
+                test.eq(tostring(remaining[1].id), second.document_node_id)
+            end)
+
+            test.it("keeps one root when two writers replace a missing source concurrently", function()
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local guard
+                if db:type() == sql.type.POSTGRES then
+                    guard = assert(db:begin())
+                    local _, err = guard:execute("LOCK TABLE kb10_nodes IN SHARE MODE")
+                    if err then error(err) end
+                end
+
+                local events = process.events()
+                local pending = {}
+                for _ = 1, 2 do
+                    local pid = assert(process.spawn_monitored("app:replace_race_writer", "app:processes", store_id))
+                    pending[tostring(pid)] = true
+                end
+
+                if guard then
+                    local deadline = time.now():add("5s")
+                    local blocked = 0
+                    repeat
+                        local rows = assert(db:query([[SELECT count(*) AS blocked FROM pg_stat_activity
+                            WHERE datname = current_database() AND wait_event_type = 'Lock'
+                                AND (query LIKE 'INSERT INTO kb10_nodes (%'
+                                    OR query LIKE 'SELECT id FROM kb10_stores%FOR NO KEY UPDATE')]]))
+                        blocked = tonumber(rows[1].blocked)
+                        if blocked == 2 then break end
+                        time.sleep("10ms")
+                    until time.now():after(deadline)
+                    local _, err = guard:commit()
+                    if err then error(err) end
+                    test.eq(blocked, 2, "both database transactions reach the race barrier")
+                end
+
+                local ids = {}
+                local overdue = time.after("10s")
+                while #ids < 2 do
+                    local selected = channel.select({ events:case_receive(), overdue:case_receive() })
+                    test.eq(selected.channel, events)
+                    local event = selected.value
+                    if pending[tostring(event.from)] then
+                        test.eq(event.kind, process.event.EXIT)
+                        test.is_nil(event.result.error)
+                        ids[#ids + 1] = tostring(event.result.value)
+                        pending[tostring(event.from)] = nil
+                    end
+                end
+
+                local roots = assert(kb10_store.find_by_external_id(store_id, "fixture", "concurrent:document"))
+                teardown_kb10_store(db, store_id)
+                test.eq(#roots, 1)
+                test.eq(ids[1], ids[2])
+                test.eq(tostring(roots[1].id), ids[1])
+            end)
+
             test.it("carries the new generation's children under the kept document id", function()
                 local store_id = bootstrap_kb10_store(db)
 

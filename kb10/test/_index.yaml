@@ -218,12 +218,19 @@ entries:
       suite: knowledge_injection
     source: file://source_worker_test.lua
     method: run
-    modules: [json, logger, sql]
+    modules: [json, logger, sql, process, channel, time]
     imports:
       test: wippy.test:test
       source_worker_lib: kickside.kb10.injection:source_worker_lib
       kb10_store: kickside.kb10.persist:store
       source_worker_fixtures: app:source_worker_fixtures
+
+  - name: replace_race_writer
+    kind: process.lua
+    source: file://replace_race_writer.lua
+    method: run
+    imports:
+      store: kickside.kb10.persist:store
 
   - name: source_worker_lineage_test
     kind: function.lua

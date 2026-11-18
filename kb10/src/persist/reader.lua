@@ -459,10 +459,6 @@ function reader.graph_traverse(store_id: any, start_node_id: any, opts: any)
     return { nodes = node_rows or {}, edges = collected_edges, truncated = truncated }
 end
 
--- Find all nodes whose metadata carries the given (external_source,
--- external_id) pair. Used by deterministic source workers to reconcile
--- a source artifact (e.g. a Confluence page) on every poll: same
--- external_id ⇒ replace, not append.
 function reader.find_by_external_id(store_id: any, external_source: any, external_id: any)
     if not store_id or not external_id then
         return nil, errors.new({ message = "store_id and external_id are required", kind = errors.INVALID })
@@ -470,18 +466,9 @@ function reader.find_by_external_id(store_id: any, external_source: any, externa
     local db, err = ops.get_db()
     if err then return nil, err end
 
-    local db_type = ops.get_db_type(db)
-    local where_external
-    if db_type == sql.type.SQLITE then
-        where_external = "AND json_extract(metadata, '$.external_source') = $2 AND json_extract(metadata, '$.external_id') = $3"
-    else
-        where_external = "AND (metadata::jsonb ->> 'external_source') = $2 AND (metadata::jsonb ->> 'external_id') = $3"
-    end
-    local rows, query_err = db:query(
-        "SELECT id, store_id, parent_id, node_type, content, content_type, metadata " ..
-        "FROM kb10_nodes WHERE store_id = $1 " .. where_external,
-        { store_id, external_source or "", external_id }
-    )
+    local db_type, type_err = ops.get_db_type(db)
+    if type_err then db:release(); return nil, type_err end
+    local rows, query_err = ops.find_source_nodes_tx(db, db_type, store_id, external_source or "", external_id)
     db:release()
 
     if query_err then return nil, query_err end

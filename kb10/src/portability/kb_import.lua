@@ -10,6 +10,7 @@ local fs = require("fs")
 local uuid = require("uuid")
 local ctx = require("ctx")
 local store_lib = require("store")
+local ops = require("ops")
 local pio = require("portable_io")
 
 local M = {}
@@ -72,9 +73,27 @@ function M.handler(args: any): any
     -- 2. Pass one: a fresh id per node, recording old -> new. Only the id map is held
     --    in memory (the node bodies are never buffered), so a multi-GB KB imports fine.
     local node_map: { [string]: string } = {}
-    pio.scan_jsonl(storage, nodes_path, function(n: any)
-        if type(n.id) == "string" then node_map[n.id :: string] = uuid.v7() end
+    local roots_by_source: { [string]: { [string]: string } } = {}
+    local source_roots: { [string]: boolean } = {}
+    local _, scan_err = pio.scan_jsonl(storage, nodes_path, function(n: any)
+        if type(n.id) ~= "string" then return end
+        local id = n.id :: string
+        node_map[id] = uuid.v7()
+        if n.node_type ~= "document" or type(n.parent_id) == "string" then return end
+        local source, external_id = ops.source_key(n.metadata)
+        if not source or not external_id then return end
+        local roots = roots_by_source[source]
+        if not roots then
+            roots = {}
+            roots_by_source[source] = roots
+        end
+        local prior = roots[external_id]
+        if prior and prior <= id then return end
+        if prior then source_roots[node_map[prior]] = nil end
+        roots[external_id] = id
+        source_roots[node_map[id]] = true
     end)
+    if scan_err then return { success = false, error = "read nodes.jsonl: " .. tostring(scan_err) } end
 
     -- 3. Pass two: insert in file order, BATCHED -- one commit per BATCH, not one per
     --    row (a per-row commit turns a multi-million-node restore into hours). nodes.jsonl
@@ -96,7 +115,7 @@ function M.handler(args: any): any
     local node_batch: { any } = {}
     local function flush_nodes()
         if #node_batch == 0 then return end
-        local _, ferr = store_lib.insert_nodes(component_id, node_batch)
+        local _, ferr = store_lib.insert_nodes(component_id, node_batch, source_roots)
         if ferr then insert_err = tostring(ferr) end
         node_batch = {}
     end

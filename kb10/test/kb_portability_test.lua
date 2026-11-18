@@ -8,6 +8,7 @@
 
 local test = require("test")
 local sql = require("sql")
+local json = require("json")
 local uuid = require("uuid")
 local fs = require("fs")
 local funcs = require("funcs")
@@ -111,6 +112,49 @@ local function define_tests()
     end)
 
     test.describe("kb10 portability round-trip", function()
+        test.it("imports duplicate public addresses while binding their tuple to the first root", function()
+            local dst = uuid.v7()
+            local path = "portability/duplicates-" .. dst
+            local storage = assert(fs.get(SCRATCH))
+            test.is_true(storage:mkdir("portability") == true or storage:isdir("portability"))
+            assert(storage:mkdir(path))
+            assert(storage:mkdir(path .. "/data"))
+            local base = path .. "/data/"
+            local first = "00000000-0000-7000-8000-000000000001"
+            local other = "00000000-0000-7000-8000-000000000002"
+            local child = "00000000-0000-7000-8000-000000000003"
+            local metadata = { external_source = "feed:é", external_id = string.rep("a:bñ", 2048) }
+            local document = { id = first, node_type = "document", content = "first", metadata = metadata }
+            local rows = {
+                json.encode(document),
+                json.encode({ id = other, node_type = "document", content = "second", metadata = metadata }),
+                (json.encode({ id = child, node_type = "chunk", parent_id = other, content = "public child", metadata = metadata })),
+            }
+            local _, store_err = storage:writefile(base .. "store.jsonl", '{"embedding_model":"class:embed"}\n')
+            test.is_nil(store_err)
+            local _, nodes_err = storage:writefile(base .. "nodes.jsonl", table.concat(rows, "\n") .. "\n")
+            test.is_nil(nodes_err)
+
+            local actor, scope = runtime_identity()
+            local result, err = funcs.new():with_actor(actor):with_scope(scope)
+                :with_context({ component_id = dst })
+                :call("kickside.kb10.portability:import_into_func", { storage_id = SCRATCH, path = path })
+            test.is_nil(err)
+            test.is_true(result.success, tostring(result.error))
+            local ids = result.id_map.rows.kb10_nodes
+            document.id = nil
+            document.content = "new generation"
+            local replaced = assert(kb10_store.replace_document(dst, { document = document }))
+            test.eq(replaced.document_node_id, ids[first])
+            test.eq(assert(kb10_store.get_node(dst, ids[other])).content, "second")
+            test.eq(tostring(assert(kb10_store.get_node(dst, ids[child])).parent_id), ids[other])
+            test.eq(#assert(kb10_store.find_by_external_id(dst, metadata.external_source, metadata.external_id)), 3)
+
+            assert(kb10_store.delete_store(dst))
+            storage:remove(base .. "store.jsonl")
+            storage:remove(base .. "nodes.jsonl")
+        end)
+
         test.it("returns the missing store part error before creating a knowledge store", function()
             local dst = uuid.v7()
             local actor, scope = runtime_identity()

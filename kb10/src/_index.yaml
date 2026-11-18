@@ -180,6 +180,10 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:07_preserve_answer_settings
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:08_source_identity_schema
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:09_source_identity_backfill
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 
