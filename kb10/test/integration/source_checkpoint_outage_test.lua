@@ -17,6 +17,7 @@ local uploads = require("uploads")
 local uuid = require("uuid")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
+local DELETE = "kickside.knowledge.events:content.deleted"
 
 local function in_db(check)
     local db = assert(sql.get("app:db"))
@@ -73,6 +74,13 @@ local function metadata(row)
     return type(row.metadata) == "table" and row.metadata or assert(json.decode(row.metadata))
 end
 
+local function delete(db, id, role, external_id, selected)
+    assert(threads.append_system(db, id, {{type = DELETE, role = role,
+        body_json = assert(json.encode({kb_id = id, metadata = {node_id = selected}})),
+        external = {external_source = "knowledge.kb", external_id = external_id, external_version = "delete"},
+    }}))
+end
+
 local function assert_replay_stays_bounded(db, registered, store_id, model)
     local function population()
         return assert(db:query([[SELECT
@@ -116,8 +124,8 @@ return {run = test.run_cases(function()
                 return assert(projections.register_projection(db, id, {
                     kind = "knowledge.injection.source", worker_input_mode = "prefetch_events", system_identity = true,
                     worker_ref = "proc://kickside.kb10.injection:checkpoint_source_worker",
-                    events = {input = {{type = UPSERT}}},
-                    worker_config = {materialization = {summary_model = "", chunk_enrichment_model = ""}},
+                    events = {input = {{type = UPSERT}, {type = DELETE}}},
+                    worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
                 }))
             end)
             local scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
@@ -160,7 +168,21 @@ return {run = test.run_cases(function()
                     test.eq(runs[1].status, "failed")
                     test.eq(runs[2].status, "completed")
                     assert_replay_stays_bounded(db, registered, id, model)
+                    delete(db, id, "system", "c", done.roots[3].id)
                 end)
+                local deleted = wait_state(registered, id, function(cursor)
+                    return tonumber(cursor.last_seq) == 6 and cursor.status == "pending" and not cursor.scheduled_at
+                end)
+                test.eq(#deleted.roots, 2)
+                test.eq(deleted.roots[1].id, outage.roots[1].id)
+                in_db(function(db) delete(db, id, "user", "a", done.roots[1].id) end)
+                local refused = wait_state(registered, id, function(cursor)
+                    return cursor.status == "pending" and cursor.last_error ~= nil and not cursor.scheduled_at
+                end)
+                test.eq(tonumber(refused.cursor.last_seq), 6)
+                test.contains(refused.cursor.last_error, "invalid selected document delete")
+                test.eq(#refused.roots, 2)
+                test.eq(refused.roots[1].id, outage.roots[1].id)
             end)
             process.terminate(scheduler)
             in_db(function(db)

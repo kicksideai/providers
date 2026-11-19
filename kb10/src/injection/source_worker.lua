@@ -112,6 +112,17 @@ local function decode_object(value: any): { [string]: any }
     return {}
 end
 
+local function selected_document_id(event: table, thread_id: string): (string?, error?)
+    local body = event.body
+    local meta = type(body) == "table" and body.metadata or nil
+    if event.type ~= CONTENT_DELETED or type(meta) ~= "table" or meta.node_id == nil then return nil, nil end
+    if event.role ~= "system" or body.kb_id ~= thread_id
+        or type(meta.node_id) ~= "string" or not uuid.validate(meta.node_id) then
+        return nil, errors.new({kind = errors.INVALID, message = "invalid selected document delete"})
+    end
+    return meta.node_id, nil
+end
+
 local function ensure_source_lineage(item: any, event: any, thread_id: string): (boolean?, string?)
     if type(item) ~= "table" then return nil, "source item must be an object" end
     local metadata = type(item.metadata) == "table" and item.metadata or {}
@@ -1156,15 +1167,8 @@ local function run_with_deps(input_raw, deps)
             if not from_seq or event.seq < from_seq then from_seq = event.seq end
             if not to_seq or event.seq > to_seq then to_seq = event.seq end
 
-            local meta = event.body.metadata
-            local selected_node_id
-            if event.type == CONTENT_DELETED and type(meta) == "table" and meta.node_id ~= nil then
-                if event.role ~= "system" or event.body.kb_id ~= thread_id or
-                    type(meta.node_id) ~= "string" or not uuid.validate(meta.node_id) then
-                    return nil, errors.new({kind = errors.INVALID, message = "invalid selected document delete"})
-                end
-                selected_node_id = meta.node_id
-            end
+            local selected_node_id, select_err = selected_document_id(event, thread_id)
+            if select_err then return nil, select_err end
             local items, dispatch_err, retryable = dispatcher(event)
             if dispatch_err then
                 logger:warn("dispatcher error", {
@@ -1500,6 +1504,7 @@ return {
     run_proc = run_proc,
     run_with_deps = run_with_deps,
     ensure_source_lineage = ensure_source_lineage,
+    selected_document_id = selected_document_id,
     prepare_checkpoint_document = prepare_checkpoint_document,
     -- Production seams reused outside the worker: resummarize (kb10 engine)
     -- regenerates a document's summary/chunk-enrichment from stored content

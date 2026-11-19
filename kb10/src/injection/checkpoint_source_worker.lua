@@ -53,7 +53,10 @@ local function prepare(target, event, deadline)
         external_version = event.external_version}
     local extracted, extract_err = extractor.checkpoint_input(event)
     if not extracted then return nil, dependency("artifact", extract_err) end
-    if extracted.error then return nil, invalid(extracted.error) end
+    if extracted.error then
+        if extracted.retryable then return nil, dependency("artifact integrity", extracted.error) end
+        return nil, invalid(extracted.error)
+    end
     local rejected = extracted.rejection
     local doc = rejected and rejected.document or extracted.documents[1] or extracted.deletes[1]
     if not doc then return nil, invalid("knowledge event has no source item") end
@@ -68,8 +71,8 @@ local function prepare(target, event, deadline)
         end
     end
     if event.type == DELETE then
-        local body = type(event.body) == "table" and event.body or {}
-        local selected = type(body.metadata) == "table" and body.metadata.node_id or nil
+        local selected, select_err = legacy_worker.selected_document_id(event, target.source_thread_id)
+        if select_err then return nil, select_err end
         return function(tx, dialect)
             local receipt, err = writer.delete_document_tx(tx, dialect, store_id, {
                 node_id = selected, source_thread_id = target.source_thread_id,
