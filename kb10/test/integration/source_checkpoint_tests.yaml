@@ -79,3 +79,17 @@ entries:
       test: wippy.test:test
       threads: kickside.core.threads.persist:writer
       uploads: kickside.uploads.persist:upload_record_repo
+
+  - name: source_provider_rejection_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_provider_rejection_test.lua
+    method: run
+    modules: [json, process, sql, time, uuid]
+    imports:
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer

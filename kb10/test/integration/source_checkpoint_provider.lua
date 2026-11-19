@@ -4,11 +4,16 @@ local sql = require("sql")
 local function embed(args)
     local db = assert(sql.get("app:db"))
     local states = assert(db:query("SELECT online FROM kb10_checkpoint_model WHERE model=$1", {args.model}))
-    local failed = tonumber(states[1].online) == 0
-        and tostring(args.input[1]):find("queued replacement", 1, true) ~= nil
+    local rejected = tonumber(states[1].online) == -1
+    local failed = rejected or (tonumber(states[1].online) == 0
+        and tostring(args.input[1]):find("queued replacement", 1, true) ~= nil)
     assert(db:execute([[UPDATE kb10_checkpoint_model SET calls=calls+1, failures=failures+$1 WHERE model=$2]],
         {failed and 1 or 0, args.model}))
     db:release()
+    if rejected then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "fixture model provider rejects the API key", details = {code = "checkpoint_fixture_rejected"}})
+    end
     if failed then
         return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true,
             message = "fixture model provider cannot be reached", details = {code = "checkpoint_fixture_outage"}})
