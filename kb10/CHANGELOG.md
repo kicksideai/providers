@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.26](https://github.com/kicksideai/providers/compare/kb10-v0.2.25...kb10-v0.2.26) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** count committed document populations from the store ([#164](https://github.com/kicksideai/providers/issues/164)) ([f52abd2](https://github.com/kicksideai/providers/commit/f52abd2a552ec21e99efae71ad60525c110e3c50))
+
 ## [0.2.25](https://github.com/kicksideai/providers/compare/kb10-v0.2.24...kb10-v0.2.25) (2026-11-19)
 
 
