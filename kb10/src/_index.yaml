@@ -68,7 +68,7 @@ entries:
   - name: dep.kickside.knowledge
     kind: ns.dependency
     component: kickside/knowledge
-    version: ">=0.1.88"
+    version: ">=0.1.89"
     meta:
       comment: Reads and writes knowledge bases through the knowledge contract.
 
