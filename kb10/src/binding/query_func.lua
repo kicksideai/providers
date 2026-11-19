@@ -355,7 +355,7 @@ local function handle(request)
     end
 
     local entry_text = query_text
-    if effective_strategy == "hyde" then
+    if analysis_model and strategy == "hyde" then
         local hypothetical, hyde_err = hyde_query_text(query_text, analysis_model)
         if hyde_err then return nil, hyde_err end
         entry_text = hypothetical
