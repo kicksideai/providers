@@ -5,7 +5,7 @@ import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-FLOORS = {"kickside/component": (0, 3, 21), "kickside/contract": (0, 3, 8)}
+FLOORS = {"kickside/component": (0, 3, 23), "kickside/contract": (0, 3, 8)}
 TOKEN_CLIENTS = {"airtable", "box", "dropbox", "linear", "notion"}
 
 class SecretDependencyTests(unittest.TestCase):
@@ -18,8 +18,7 @@ class SecretDependencyTests(unittest.TestCase):
             dependencies = {entry["component"]: entry.get("version", "*")
                             for entry in entries if entry["kind"] == "ns.dependency"}
             required = dict(FLOORS)
-            if module.name in TOKEN_CLIENTS:
-                required["kickside/connection"] = (0, 5, 8)
+            required["kickside/connection"] = (0, 5, 9) if module.name in TOKEN_CLIENTS else (0, 1, 8)
             for dependency, floor in required.items():
                 with self.subTest(module=module.name, dependency=dependency):
                     constraint = dependencies[dependency]

@@ -133,8 +133,8 @@ local function define_tests()
 
         test.it("declares compatible versions for foreign packages", function()
             for _, expected in ipairs({
-                { "component", "kickside/component", ">=0.3.21" },
-                { "connection", "kickside/connection", "*" },
+                { "component", "kickside/component", ">=0.3.23" },
+                { "connection", "kickside/connection", ">=0.1.8" },
                 { "contract", "kickside/contract", ">=0.3.8" },
             }) do
                 local dep = get("kickside.bitbucket:dep.kickside." .. expected[1])
