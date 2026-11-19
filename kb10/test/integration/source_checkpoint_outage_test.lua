@@ -18,6 +18,9 @@ local uuid = require("uuid")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
 local DELETE = "kickside.knowledge.events:content.deleted"
+local GRAPH = "kickside.knowledge.events:graph.changed"
+local DIGEST = "kickside.knowledge.events:digest.requested"
+local TREAT = "kickside.knowledge.events:treatment.requested"
 
 local function in_db(check)
     local db = assert(sql.get("app:db"))
@@ -29,9 +32,10 @@ end
 
 local function read_store(db, registration, id)
     return {
-        cursor = assert(db:query([[SELECT c.last_seq,c.last_error,j.attempts,j.status,j.scheduled_at,
+        cursor = assert(db:query([[SELECT c.last_seq,c.last_error,j.attempts,j.status,j.scheduled_at,t.event_count,
             j.last_error AS job_error FROM kickside_projection_cursor c
-            JOIN kickside_job j ON j.id=c.job_id WHERE c.id=$1]], {registration.cursor_id}))[1],
+            JOIN kickside_job j ON j.id=c.job_id JOIN kickside_thread t ON t.id=c.thread_id WHERE c.id=$1]],
+            {registration.cursor_id}))[1],
         roots = assert(db:query([[SELECT id,content,metadata,external_id FROM kb10_nodes
             WHERE store_id=$1 AND node_type='document' ORDER BY external_id]], {id})),
     }
@@ -57,6 +61,22 @@ local function append(db, id, external_id, version, body)
     }}))
 end
 
+local function outputs(db, id)
+    local result = {graph = {}, digest = {}, treatment = {}}
+    local kinds = {[GRAPH] = result.graph, [DIGEST] = result.digest, [TREAT] = result.treatment}
+    local rows = assert(db:query([[SELECT type,body FROM kickside_event WHERE thread_id=$1
+        AND type IN ($2,$3,$4) ORDER BY seq]], {id, GRAPH, DIGEST, TREAT}))
+    for _, row in ipairs(rows) do
+        local body = type(row.body) == "table" and row.body or assert(json.decode(row.body))
+        table.insert(kinds[row.type], body)
+    end
+    return result
+end
+
+local function caught_up(cursor)
+    return tonumber(cursor.last_seq) == tonumber(cursor.event_count) and cursor.status == "pending" and not cursor.scheduled_at
+end
+
 local function absent_artifact()
     local id = uuid.v7()
     local text = "fixture immutable bytes"
@@ -75,10 +95,11 @@ local function metadata(row)
 end
 
 local function delete(db, id, role, external_id, selected)
-    assert(threads.append_system(db, id, {{type = DELETE, role = role,
+    local result = assert(threads.append_system(db, id, {{type = DELETE, role = role,
         body_json = assert(json.encode({kb_id = id, metadata = {node_id = selected}})),
         external = {external_source = "knowledge.kb", external_id = external_id, external_version = "delete"},
     }}))
+    return tonumber(result.events[1].seq)
 end
 
 local function assert_replay_stays_bounded(db, registered, store_id, model)
@@ -140,15 +161,19 @@ return {run = test.run_cases(function()
                 test.eq(outage.roots[1].content, "Earlier good revision")
 
                 in_db(function(db)
+                    local published = outputs(db, id)
+                    test.eq(#published.graph, 1)
+                    test.eq(published.graph[1].source_to_seq, 1)
+                    test.eq(published.graph[1].document_delta, 1)
+                    test.eq(#published.digest, 0)
+                    test.eq(#published.treatment, 0)
                     append(db, id, "a", "3", missing)
                     append(db, id, "b", "1", missing)
                     append(db, id, "c", "1", {content = "Later good document"})
                     test.eq(read_store(db, registered, id).cursor.scheduled_at, outage.cursor.scheduled_at)
                     assert(db:execute("UPDATE kb10_checkpoint_model SET online=1 WHERE model=$1", {model}))
                 end)
-                local done = wait_state(registered, id, function(cursor)
-                    return tonumber(cursor.last_seq) == 5 and cursor.status == "pending" and not cursor.scheduled_at
-                end)
+                local done = wait_state(registered, id, caught_up)
                 test.is_nil(done.cursor.last_error)
                 test.eq(#done.roots, 3)
                 test.eq(done.roots[1].id, outage.roots[1].id)
@@ -159,27 +184,56 @@ return {run = test.run_cases(function()
                 test.eq(done.roots[3].content, "Later good document")
 
                 in_db(function(db)
+                    local published = outputs(db, id)
+                    test.eq(#published.graph, 5)
+                    test.eq(#published.digest, 1)
+                    test.eq(#published.treatment, 1)
+                    test.eq(published.digest[1].source_target_seq, published.graph[5].source_to_seq)
+                    test.eq(published.treatment[1].source_target_seq, published.graph[5].source_to_seq)
+                    test.eq(published.graph[2].document_delta, 0)
+                    test.eq(published.graph[3].status, "degraded")
+                    test.eq(published.graph[3].failed_delta, 0)
+                    test.contains(published.graph[3].last_error, "stored content is missing")
+                    test.eq(published.graph[4].status, "error")
+                    test.eq(published.graph[4].failed_delta, 1)
+                    test.contains(published.graph[4].last_error, "stored content is missing")
+                    test.eq(published.graph[5].document_delta, 1)
+                    local embeddings = 0
+                    for _, graph in ipairs(published.graph) do
+                        test.eq(graph.source_processed_delta, 1)
+                        test.eq(graph.source_projection_id, registered.projection_id)
+                        embeddings = embeddings + graph.embedding_delta
+                    end
+                    test.eq(embeddings, tonumber(assert(db:query([[SELECT COUNT(*) AS count
+                        FROM kb10_embeddings WHERE store_id=$1]], {id}))[1].count))
                     local provider = assert(db:query("SELECT calls,failures FROM kb10_checkpoint_model WHERE model=$1", {model}))[1]
                     test.eq(tonumber(provider.calls), 4)
                     test.eq(tonumber(provider.failures), 1)
                     local runs = assert(db:query("SELECT status FROM kickside_job_run WHERE job_id=$1 ORDER BY execution_seq",
                         {registered.job_id}))
-                    test.eq(#runs, 2)
+                    test.eq(#runs, 3)
                     test.eq(runs[1].status, "failed")
                     test.eq(runs[2].status, "completed")
+                    test.eq(runs[3].status, "completed")
                     assert_replay_stays_bounded(db, registered, id, model)
-                    delete(db, id, "system", "c", done.roots[3].id)
                 end)
+                local delete_seq = in_db(function(db) return delete(db, id, "system", "c", done.roots[3].id) end)
                 local deleted = wait_state(registered, id, function(cursor)
-                    return tonumber(cursor.last_seq) == 6 and cursor.status == "pending" and not cursor.scheduled_at
+                    return tonumber(cursor.last_seq) >= delete_seq and caught_up(cursor)
                 end)
                 test.eq(#deleted.roots, 2)
                 test.eq(deleted.roots[1].id, outage.roots[1].id)
-                in_db(function(db) delete(db, id, "user", "a", done.roots[1].id) end)
+                in_db(function(db)
+                    local published = outputs(db, id)
+                    test.eq(#published.graph, 6)
+                    test.eq(published.graph[6].document_delta, -1)
+                    test.eq(published.graph[6].source_to_seq, delete_seq)
+                    delete(db, id, "user", "a", done.roots[1].id)
+                end)
                 local refused = wait_state(registered, id, function(cursor)
                     return cursor.status == "pending" and cursor.last_error ~= nil and not cursor.scheduled_at
                 end)
-                test.eq(tonumber(refused.cursor.last_seq), 6)
+                test.eq(tonumber(refused.cursor.last_seq), tonumber(deleted.cursor.last_seq))
                 test.contains(refused.cursor.last_error, "invalid selected document delete")
                 test.eq(#refused.roots, 2)
                 test.eq(refused.roots[1].id, outage.roots[1].id)
