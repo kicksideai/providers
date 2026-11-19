@@ -10,6 +10,7 @@ local json = require("json")
 
 local source_worker = require("source_worker_lib")
 local kb10_store = require("kb10_store")
+local kb10_writer = require("kb10_writer")
 
 local fixtures = require("source_worker_fixtures")
 
@@ -109,6 +110,91 @@ local function define_tests()
             test.is_nil(err)
             test.eq(result.patch.last_status, "skipped_no_events")
             teardown_kb10_store(db, cid)
+        end)
+
+        for _, operation in ipairs({"replace_document", "delete_documents_by_external_id"}) do
+            test.it("returns a " .. operation .. " conflict without acknowledging the event", function()
+                local writes = 0
+                local conflict = errors.new({kind = errors.CONFLICT, message = "document revision changed"})
+                local result, err = source_worker.run_with_deps({
+                    thread_id = uuid(),
+                    projection = {id = uuid()},
+                    events = {build_event({seq = 41, body = {page_id = "conflict", title = "Document", text = "Text"}})},
+                    worker_config = {target_kb_ids = {uuid()}},
+                }, worker_deps({
+                    dispatcher = operation == "replace_document" and doc_dispatcher or function()
+                        return {deletes = {{external_source = "fixture", external_id = "conflict"}}}
+                    end,
+                    embedder = fake_embedder,
+                    resolve_materialized_store = function(id)
+                        return {
+                            store = {
+                                vector_dimensions = function() return DIMS end,
+                                [operation] = function()
+                                    writes = writes + 1
+                                    if writes == 1 then return nil, conflict end
+                                    return {document_node_id = uuid(), chunk_count = 1}
+                                end,
+                            },
+                            store_row = {id = id, component_id = id, embedding_model = "class:embed", kb_type = "document"},
+                            engine = {default_config = MATERIALIZATION_CONFIG},
+                        }
+                    end,
+                }))
+                test.eq(writes, 1)
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.CONFLICT), tostring(err))
+            end)
+        end
+
+        test.it("keeps the Core cursor at its committed position after a writer conflict", function()
+            local projections = require("projections")
+            local invoke = require("invoke")
+            local claim = require("claim")
+            local thread_id = uuid()
+            local conn = assert(sql.get(APP_DB))
+            assert(conn:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
+                VALUES ($1,'test',$2,2)]], {thread_id, thread_id}))
+            for seq = 1, 2 do
+                assert(conn:execute([[INSERT INTO kickside_event (id,thread_id,type,role,body,seq)
+                    VALUES ($1,$2,'fixture.page','user',$3,$4)]],
+                    {uuid(), thread_id, '{"page_id":"conflict","title":"Document","text":"Text"}', seq}))
+            end
+            local registered = assert(projections.register_projection(conn, thread_id, {
+                kind = "writer-conflict", worker_ref = "proc://app:source_conflict_worker",
+                worker_input_mode = "prefetch_events", system_identity = true, start_seq = 1,
+            }))
+            assert(conn:execute("UPDATE kickside_job SET scheduled_at=created_at WHERE id=$1", {registered.job_id}))
+            local claimed = assert(claim.claim_batch(conn, tostring(conn:type()), 16, nil, nil, nil,
+                {"kickside.core.projections:advance"}))
+            conn:release()
+            local job
+            for _, row in ipairs(claimed) do
+                if row.id == registered.job_id then job = row end
+            end
+            assert(job, "projection slot was not claimed")
+
+            local result, run_err = invoke.run({
+                job = {id = job.id, lease_token = job.lease_token, execution_seq = tonumber(job.execution_seq),
+                    attempts = tonumber(job.attempts)},
+                payload = {cursor_id = registered.cursor_id},
+            })
+
+            conn = assert(sql.get(APP_DB))
+            local cursors = assert(conn:query("SELECT last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1",
+                {registered.cursor_id}))
+            local runs = assert(conn:query("SELECT status FROM kickside_job_run WHERE job_id=$1", {registered.job_id}))
+            assert(projections.remove_projection(conn, thread_id, {projection_id = registered.projection_id}))
+            assert(conn:execute("DELETE FROM kickside_event WHERE thread_id=$1", {thread_id}))
+            assert(conn:execute("DELETE FROM kickside_thread WHERE id=$1", {thread_id}))
+            conn:release()
+
+            test.is_nil(result)
+            test.is_true(errors.is(run_err, errors.CONFLICT), tostring(run_err))
+            test.eq(tonumber(cursors[1].last_seq), 1)
+            test.eq(cursors[1].status, "active")
+            test.contains(cursors[1].last_error, "document revision changed")
+            test.eq(#runs, 0)
         end)
 
         test.it("uses only the flat external identity emitted by projections", function()
@@ -509,10 +595,11 @@ local function define_tests()
 
         test.it("replaces a document on re-ingest with the same external_id", function()
             local cid = bootstrap_kb10_store(db)
+            local thread_id = uuid()
             local resolver = materialized_store_resolver_for({ [cid] = true })
 
             source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({
@@ -537,7 +624,7 @@ local function define_tests()
             test.not_nil(v1_document_id)
 
             local result = source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({
@@ -648,6 +735,7 @@ local function define_tests()
 
             test.it("removes prior nodes when extractor emits a delete", function()
                 local cid = bootstrap_kb10_store(db)
+                local thread_id = uuid()
                 local resolver = materialized_store_resolver_for({ [cid] = true })
                 local mixed_dispatcher = delete_dispatcher_for({
                     ["fixture.page"] = doc_handler,
@@ -656,7 +744,7 @@ local function define_tests()
 
                 -- Seed: insert a document.
                 source_worker.run_with_deps({
-                    thread_id = uuid(),
+                    thread_id = thread_id,
                     projection = { id = uuid() },
                     events = {
                         build_event({
@@ -673,7 +761,7 @@ local function define_tests()
 
                 -- Now delete it.
                 local result = source_worker.run_with_deps({
-                    thread_id = uuid(),
+                    thread_id = thread_id,
                     projection = { id = uuid() },
                     events = {
                         build_event({
@@ -976,6 +1064,7 @@ local function define_tests()
 
             test.it("replaces image nodes on re-ingest of the same document", function()
                 local cid = bootstrap_kb10_store(db)
+                local thread_id = uuid()
                 local resolver = materialized_store_resolver_for({ [cid] = true })
                 local image_loader, captioner = recording_caption_deps()
                 local deps = worker_deps({
@@ -991,14 +1080,14 @@ local function define_tests()
                 }
 
                 source_worker.run_with_deps({
-                    thread_id = uuid(), projection = { id = uuid() },
+                    thread_id = thread_id, projection = { id = uuid() },
                     events = { build_event({ id = "re-1", seq = 1, type = "fixture.image_page", body = { page_id = "img-re" } }) },
                     worker_config = cfg,
                 }, deps)
                 test.eq(#image_nodes(db, cid), 2, "first ingest materializes the unique images")
 
                 source_worker.run_with_deps({
-                    thread_id = uuid(), projection = { id = uuid() },
+                    thread_id = thread_id, projection = { id = uuid() },
                     events = { build_event({ id = "re-2", seq = 2, type = "fixture.image_page", body = { page_id = "img-re" } }) },
                     worker_config = cfg,
                 }, deps)
@@ -1286,6 +1375,171 @@ local function define_tests()
             end)
         end)
 
+        test.it("scopes source mutations and preserves the published bulk delete", function()
+            local store_id = bootstrap_kb10_store(db)
+            local source_key = "shared:source"
+            local function metadata(thread_id)
+                local ref = {
+                    thread_id = thread_id, thread_event_id = "event:" .. thread_id, thread_event_seq = 1,
+                    external_source = "fixture", external_id = source_key, external_version = "v1",
+                }
+                return {
+                    thread_id = thread_id, thread_event_id = ref.thread_event_id, thread_event_seq = 1,
+                    external_source = "fixture", external_id = source_key, external_version = "v1",
+                    source_ref = ref,
+                }
+            end
+            local left, duplicate, concept = uuid(), uuid(), uuid()
+            local first_lineage, other_lineage = metadata("first-thread"), metadata("other-thread")
+            assert(kb10_store.insert_node(store_id, {
+                id = left, node_type = "document", content = "first lineage", metadata = first_lineage,
+            }))
+            local materializer_store = require("materializer_store")
+            local other = assert(materializer_store.replace_document(materializer_store, {
+                store_id = store_id, source_thread_id = "other-thread", document = {
+                    node_type = "document", content = "other lineage", metadata = other_lineage,
+                },
+            }))
+            local right = other.document_node_id
+            test.is_true(right ~= left)
+            test.eq(assert(kb10_store.get_node(store_id, left)).content, "first lineage")
+
+            local inferred = assert(materializer_store.replace_document(materializer_store, {
+                store_id = store_id, document = {
+                    node_type = "document", content = "other lineage", metadata = other_lineage,
+                },
+            }))
+            test.eq(inferred.document_node_id, right)
+            test.eq(assert(kb10_store.get_node(store_id, left)).content, "first lineage")
+            local mismatch, mismatch_err = materializer_store.replace_document(materializer_store, {
+                store_id = store_id, source_thread_id = store_id, document = {
+                    node_type = "document", content = "would overwrite the primary", metadata = other_lineage,
+                },
+            })
+            test.is_nil(mismatch)
+            test.contains(tostring(mismatch_err), "source_thread_id")
+            test.eq(assert(kb10_store.get_node(store_id, left)).content, "first lineage")
+
+            local duplicate_id, duplicate_err = kb10_store.insert_node(store_id, {
+                node_type = "document", metadata = other_lineage,
+            })
+            test.is_nil(duplicate_id)
+            test.not_nil(duplicate_err)
+            assert(kb10_store.insert_nodes(store_id, {
+                {id = duplicate, node_type = "document", content = "same lineage", metadata = first_lineage},
+                {id = concept, node_type = "concept", content = "shared concept"},
+            }, {}))
+            for _, node_id in ipairs({left, right}) do
+                assert(kb10_store.insert_edge(store_id, {
+                    from_node_id = node_id, to_node_id = concept, edge_type = "categorized_as",
+                }))
+            end
+
+            local delete = {
+                store_id = store_id, external_source = "fixture", external_id = source_key,
+                source_ref = first_lineage.source_ref, source_thread_id = store_id,
+            }
+            local removed, delete_err = materializer_store.delete_documents_by_external_id(materializer_store, delete)
+            test.is_nil(delete_err)
+            test.eq(removed.removed, 1)
+            test.eq(removed.document_node_id, left)
+            test.eq(assert(kb10_store.get_node(store_id, duplicate)).content, "same lineage")
+            local replay = assert(materializer_store.delete_documents_by_external_id(materializer_store, delete))
+            test.eq(replay.removed, 0)
+            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", source_key)), 2)
+            test.eq(assert(kb10_store.get_node(store_id, right)).content, "other lineage")
+            test.eq(#assert(kb10_store.get_edges(store_id, right, {direction = "out"})), 1)
+
+            local replacement = assert(materializer_store.replace_document(materializer_store, {
+                store_id = store_id, source_thread_id = "other-thread", document = {
+                    node_type = "document", content = "other lineage updated", metadata = other_lineage,
+                },
+            }))
+            test.eq(replacement.document_node_id, right)
+            test.eq(assert(kb10_store.get_node(store_id, right)).content, "other lineage updated")
+            local bulk = assert(kb10_store.delete_documents_by_external_id(store_id, "fixture", source_key))
+            test.eq(bulk.removed, 2)
+            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", source_key)), 0)
+            teardown_kb10_store(db, store_id)
+        end)
+
+        test.it("keeps public member lookup and bulk deletion byte exact", function()
+            local store_id = bootstrap_kb10_store(db)
+            local exact, padded_source, padded_id, chunk, concept = uuid(), uuid(), uuid(), uuid(), uuid()
+            assert(kb10_store.insert_nodes(store_id, {
+                {id = exact, node_type = "document", metadata = {external_source = "fixture", external_id = "doc"}},
+                {id = padded_source, node_type = "document", metadata = {external_source = " fixture ", external_id = "doc"}},
+                {id = padded_id, node_type = "document", metadata = {external_source = "fixture", external_id = " doc "}},
+                {id = chunk, node_type = "chunk", parent_id = exact,
+                    metadata = {external_source = "fixture", external_id = "doc"}},
+                {id = concept, node_type = "concept"},
+            }, {
+                {source_scope = "", external_source = "fixture", external_id = "doc"},
+                {source_scope = "incoming-source", external_source = "fixture", external_id = "doc"},
+                {source_scope = "incoming-id", external_source = "fixture", external_id = "doc"},
+            }))
+            for _, node in ipairs({exact, padded_source, padded_id}) do
+                assert(kb10_store.insert_edge(store_id, {
+                    from_node_id = node, to_node_id = concept, edge_type = "categorized_as",
+                }))
+            end
+
+            local rows = assert(kb10_store.find_by_external_id(store_id, "fixture", "doc"))
+            test.eq(#rows, 2)
+            local ids = {[rows[1].id] = true, [rows[2].id] = true}
+            test.is_true(ids[exact] and ids[chunk])
+
+            local removed = assert(kb10_store.delete_documents_by_external_id(store_id, "fixture", "doc"))
+            test.eq(removed.removed, 1)
+            test.eq(removed.removed_chunk_count, 1)
+            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", "doc")), 0)
+            for _, key in ipairs({{" fixture ", "doc", padded_source}, {"fixture", " doc ", padded_id}}) do
+                local padded = assert(kb10_store.find_by_external_id(store_id, key[1], key[2]))
+                test.eq(#padded, 1)
+                test.eq(padded[1].id, key[3])
+                test.eq(#assert(kb10_store.get_edges(store_id, key[3], {direction = "out"})), 1)
+            end
+            local bound = assert(db:query("SELECT id FROM kb10_nodes WHERE store_id = $1 AND source_scope IS NOT NULL",
+                {store_id}))
+            test.eq(#bound, 2)
+            assert(kb10_store.delete_store(store_id))
+            test.eq(#assert(db:query("SELECT id FROM kb10_nodes WHERE store_id = $1", {store_id})), 0)
+        end)
+
+        test.it("removes unowned vectors during search ownership migration before ranking", function()
+            local store_id = bootstrap_kb10_store(db)
+            local owner_store_id = bootstrap_kb10_store(db)
+            local node_id = assert(kb10_store.insert_node(store_id, {node_type = "chunk", content = "owned chunk"}))
+            local orphan_node_id = uuid()
+            if db:type() == sql.type.POSTGRES then
+                orphan_node_id = assert(kb10_store.insert_node(owner_store_id, {
+                    node_type = "chunk", content = "chunk in another store",
+                }))
+            end
+            local vector, query = {}, {}
+            for i = 1, DIMS do vector[i], query[i] = 0, 0 end
+            vector[1], query[2] = 1, 1
+            assert(kb10_store.insert_embedding(store_id, node_id, "chunk", nil, vector))
+            local orphan_id = uuid()
+            local _, seed_err = db:execute([[INSERT INTO kb10_embeddings (id, node_id, store_id, node_type, parent_id, embedding)
+                VALUES ($1, $2, $3, 'chunk', $4, $5)]], {orphan_id, orphan_node_id, store_id, node_id, json.encode(query)})
+            test.is_nil(seed_err, tostring(seed_err))
+
+            local migration_id = uuid()
+            local result, migrate_err = require("funcs").call("kickside.kb10.migrations:11_sqlite_search_row_backfill",
+                {database_id = APP_DB, id = migration_id, direction = "up"})
+            test.is_nil(migrate_err, tostring(migrate_err))
+            test.eq(result.failed, 0, tostring(result.error))
+            test.eq(#assert(db:query("SELECT id FROM kb10_embeddings WHERE id = $1", {orphan_id})), 0)
+            local rows = assert(kb10_store.vector_search(store_id, query, {limit = 1}))
+            test.eq(#rows, 1)
+            test.eq(tostring(rows[1].id), node_id)
+            local _, ledger_err = db:execute("DELETE FROM _migrations WHERE id = $1", {migration_id})
+            test.is_nil(ledger_err, tostring(ledger_err))
+            teardown_kb10_store(db, owner_store_id)
+            teardown_kb10_store(db, store_id)
+        end)
+
         test.describe("replace_document", function()
             local function lineage(external_id)
                 local source_ref = {
@@ -1397,6 +1651,251 @@ local function define_tests()
                 teardown_kb10_store(db, store_id)
             end)
 
+            test.it("binds each byte-exact source tuple to one root", function()
+                local store_id = bootstrap_kb10_store(db)
+                local function document(source, id)
+                    return {
+                        node_type = "document",
+                        content = "source document",
+                        metadata = { external_source = source, external_id = id },
+                    }
+                end
+
+                local first = assert(kb10_store.replace_document(store_id, {
+                    document = document("a:b", "café"),
+                }))
+                local second = assert(kb10_store.replace_document(store_id, {
+                    document = document("a", "b:café"),
+                }))
+                test.is_true(first.document_node_id ~= second.document_node_id)
+
+                local duplicate, duplicate_err = kb10_store.insert_node(store_id, document("a:b", "café"))
+                local found = assert(kb10_store.find_by_external_id(store_id, "a:b", "café"))
+                local removed = assert(kb10_store.delete_documents_by_external_id(store_id, "a:b", "café"))
+                local remaining = assert(kb10_store.find_by_external_id(store_id, "a", "b:café"))
+                teardown_kb10_store(db, store_id)
+
+                test.is_nil(duplicate)
+                test.not_nil(duplicate_err)
+                test.eq(#found, 1)
+                test.eq(tostring(found[1].id), first.document_node_id)
+                test.eq(type(removed) == "table" and removed.removed, 1)
+                test.eq(#remaining, 1)
+                test.eq(tostring(remaining[1].id), second.document_node_id)
+            end)
+
+            test.it("looks up a SQLite source root without visiting chunk index entries", function()
+                if db:type() ~= sql.type.SQLITE then return end
+                local ops = require("ops")
+                local store_id = bootstrap_kb10_store(db)
+                local metadata = {external_source = "fixture", external_id = "root-key",
+                    source_ref = {thread_id = "source-thread"}}
+                local root_id = assert(kb10_store.insert_node(store_id, {node_type = "document", metadata = metadata}))
+                assert(kb10_store.insert_node(store_id, {node_type = "chunk", parent_id = root_id, metadata = metadata}))
+                local plan
+                local explained = {query = function(_, statement, params)
+                    plan = assert(db:query("EXPLAIN QUERY PLAN " .. statement, params))
+                    return db:query(statement, params)
+                end}
+                local found = assert(ops.find_source_root_tx(explained, db:type(), store_id,
+                    ops.source_binding(store_id, "fixture", "root-key", store_id)))
+                test.eq(found, root_id)
+                test.eq(#plan, 1)
+                test.contains(plan[1].detail, "SEARCH kb10_nodes USING INDEX kb10_nodes_source_root ")
+                local selected = assert(ops.find_document_root_tx(explained, store_id, root_id))
+                test.eq(tostring(selected.id), root_id)
+                test.eq(#plan, 1)
+                test.contains(plan[1].detail, "SEARCH kb10_nodes USING INDEX sqlite_autoindex_kb10_nodes_1 ")
+                teardown_kb10_store(db, store_id)
+            end)
+
+            test.it("keeps one root when two writers replace a missing source concurrently", function()
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local guard
+                if db:type() == sql.type.POSTGRES then
+                    guard = assert(db:begin())
+                    local _, err = guard:execute("LOCK TABLE kb10_nodes IN SHARE MODE")
+                    if err then error(err) end
+                end
+
+                local events = process.events()
+                local pending = {}
+                for _ = 1, 2 do
+                    local pid = assert(process.spawn_monitored("app:replace_race_writer", "app:processes", store_id))
+                    pending[tostring(pid)] = true
+                end
+
+                if guard then
+                    local deadline = time.now():add("5s")
+                    local blocked = 0
+                    repeat
+                        local rows = assert(db:query([[SELECT count(*) AS blocked FROM pg_stat_activity
+                            WHERE datname = current_database() AND wait_event_type = 'Lock'
+                                AND (query LIKE 'INSERT INTO kb10_nodes (%'
+                                    OR query LIKE 'SELECT id FROM kb10_stores%FOR NO KEY UPDATE')]]))
+                        blocked = tonumber(rows[1].blocked)
+                        if blocked == 2 then break end
+                        time.sleep("10ms")
+                    until time.now():after(deadline)
+                    local _, err = guard:commit()
+                    if err then error(err) end
+                    test.eq(blocked, 2, "both database transactions reach the race barrier")
+                end
+
+                local ids = {}
+                local overdue = time.after("10s")
+                while #ids < 2 do
+                    local selected = channel.select({ events:case_receive(), overdue:case_receive() })
+                    test.eq(selected.channel, events)
+                    local event = selected.value
+                    if pending[tostring(event.from)] then
+                        test.eq(event.kind, process.event.EXIT)
+                        test.is_nil(event.result.error)
+                        ids[#ids + 1] = tostring(event.result.value)
+                        pending[tostring(event.from)] = nil
+                    end
+                end
+
+                local roots = assert(kb10_store.find_by_external_id(store_id, "fixture", "concurrent:document"))
+                teardown_kb10_store(db, store_id)
+                test.eq(#roots, 1)
+                test.eq(ids[1], ids[2])
+                test.eq(tostring(roots[1].id), ids[1])
+            end)
+
+            test.it("orders store teardown before node locks during concurrent replacement", function()
+                if db:type() ~= sql.type.POSTGRES then return end
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local root = assert(kb10_store.replace_document(store_id, {document = {
+                    node_type = "document", content = "original",
+                    metadata = {external_source = "fixture", external_id = "concurrent:document",
+                        source_ref = {thread_id = "source-thread"}},
+                }}))
+                local guard = assert(db:begin())
+                local _, lock_err = guard:query("SELECT id FROM kb10_nodes WHERE id = $1 FOR UPDATE",
+                    {root.document_node_id})
+                if lock_err then error(lock_err) end
+
+                local function waits_for_lock(statement, alternate)
+                    local deadline = time.now():add("5s")
+                    repeat
+                        local rows = assert(db:query([[SELECT 1 FROM pg_stat_activity
+                            WHERE datname = current_database() AND wait_event_type = 'Lock'
+                                AND (query LIKE $1 OR query LIKE $2)]], {statement, alternate or statement}))
+                        if #rows > 0 then return true end
+                        time.sleep("10ms")
+                    until time.now():after(deadline)
+                    return false
+                end
+
+                local events = process.events()
+                local teardown = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "teardown"))
+                local teardown_waits = waits_for_lock("DELETE FROM kb10_nodes WHERE store_id%")
+                local replacement = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "replace_after_teardown"))
+                local replacement_waits = waits_for_lock("SELECT id FROM kb10_stores%FOR NO KEY UPDATE%", "UPDATE kb10_nodes SET content%")
+                local _, commit_err = guard:commit()
+                if commit_err then error(commit_err) end
+
+                local pending = {[tostring(teardown)] = true, [tostring(replacement)] = "store removed"}
+                local overdue = time.after("10s")
+                while next(pending) do
+                    local selected = channel.select({events:case_receive(), overdue:case_receive()})
+                    test.eq(selected.channel, events)
+                    local event = selected.value
+                    local pid = tostring(event.from)
+                    if pending[pid] then
+                        test.eq(event.kind, process.event.EXIT)
+                        test.is_nil(event.result.error)
+                        test.eq(event.result.value, pending[pid])
+                        pending[pid] = nil
+                    end
+                end
+                test.is_true(teardown_waits, "teardown reaches the node lock")
+                test.is_true(replacement_waits, "replacement waits at the store lock")
+                test.eq(#assert(db:query("SELECT id FROM kb10_stores WHERE id = $1", {store_id})), 0)
+            end)
+
+            test.it("rejects a prepared import batch when teardown removes the store", function()
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local tx = assert(db:begin())
+                assert(tx:execute("DELETE FROM kb10_stores WHERE id = $1", {store_id}))
+
+                local inbox, events = process.inbox(), process.events()
+                local importer = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "import_after_teardown", process.pid()))
+                local overdue = time.after("10s")
+                local ready = channel.select({inbox:case_receive(), overdue:case_receive()})
+                assert(tx:commit())
+                test.eq(ready.channel, inbox)
+                test.eq(ready.value:topic(), "prepared")
+                local exit = channel.select({events:case_receive(), overdue:case_receive()})
+                test.eq(exit.channel, events)
+                test.eq(tostring(exit.value.from), tostring(importer))
+                test.is_nil(exit.value.result.error)
+                test.eq(exit.value.result.value, "store removed")
+                test.eq(#fetch_kb10_nodes(db, store_id), 0)
+            end)
+
+            test.it("normalizes scoped source keys consistently for replay and delete", function()
+                local store_id = bootstrap_kb10_store(db)
+                local function write(source, key, content)
+                    return assert(kb10_store.replace_document(store_id, {
+                        document = {node_type = "document", content = content, metadata = {
+                            external_source = source, external_id = key, source_ref = {thread_id = "source-thread"},
+                        }},
+                    }))
+                end
+                local first = write(" fixture ", "\t doc ", "first generation")
+                local second = write("fixture", "doc", "second generation")
+                test.eq(second.document_node_id, first.document_node_id)
+                local found = assert(kb10_store.get_node(store_id, first.document_node_id))
+                test.eq(found.content, "second generation")
+                local removed = assert(kb10_store.delete_document(store_id, {
+                    external_source = " fixture ", external_id = "\n doc ",
+                }))
+                test.eq(removed.removed, 1)
+                test.eq(removed.document_node_id, first.document_node_id)
+                test.eq(#fetch_kb10_nodes(db, store_id), 0)
+                teardown_kb10_store(db, store_id)
+            end)
+
+            test.it("rejects a prepared SQLite replacement when teardown removes the store", function()
+                if db:type() ~= sql.type.SQLITE then return end
+                local process = require("process")
+                local channel = require("channel")
+                local time = require("time")
+                local store_id = bootstrap_kb10_store(db)
+                local tx = assert(db:begin())
+                assert(tx:execute("DELETE FROM kb10_stores WHERE id = $1", {store_id}))
+
+                local events = process.events()
+                local inbox = process.inbox()
+                local replacement = assert(process.spawn_monitored("app:replace_race_writer", "app:processes",
+                    store_id, "replace_after_teardown", process.pid()))
+                local overdue = time.after("10s")
+                local ready = channel.select({inbox:case_receive(), overdue:case_receive()})
+                assert(tx:commit())
+                test.eq(ready.channel, inbox)
+                test.eq(ready.value:topic(), "prepared")
+                local exit = channel.select({events:case_receive(), overdue:case_receive()})
+                test.eq(exit.channel, events)
+                test.eq(tostring(exit.value.from), tostring(replacement))
+                test.is_nil(exit.value.result.error)
+                test.eq(exit.value.result.value, "store removed")
+                test.eq(#fetch_kb10_nodes(db, store_id), 0)
+            end)
+
             test.it("carries the new generation's children under the kept document id", function()
                 local store_id = bootstrap_kb10_store(db)
 
@@ -1434,6 +1933,85 @@ local function define_tests()
                     test.eq(0, #stale_fts, "the prior generation's fts row is gone")
                 end
 
+                teardown_kb10_store(db, store_id)
+            end)
+
+            test.it("keeps search rows owned by the current document generation", function()
+                local store_id = bootstrap_kb10_store(db)
+                local first = assert(replace(store_id, "side-rows", "old root", {"old passage"}))
+                local root = first.document_node_id
+                local function chunk()
+                    local rows = assert(db:query("SELECT id FROM kb10_nodes WHERE parent_id = $1", {root}))
+                    test.eq(#rows, 1)
+                    return tostring(rows[1].id)
+                end
+                local old_chunk = chunk()
+                local function search_rows(node_id)
+                    if db:type() ~= sql.type.SQLITE then
+                        return assert(db:query("SELECT id FROM kb10_embeddings WHERE node_id = $1", {node_id}))
+                    end
+                    local rows = assert(db:query([[SELECT f.node_id, f.content, e.id
+                        FROM kb10_nodes n
+                        JOIN kb10_nodes_fts f ON f.rowid = n.fts_rowid
+                        CROSS JOIN json_each(n.embedding_ids) k
+                        JOIN kb10_embeddings e ON e.id = k.value AND e.node_id = n.id
+                        WHERE n.id = $1]], {node_id}))
+                    return rows
+                end
+                local old_rows = search_rows(old_chunk)
+                test.eq(#old_rows, 1)
+                test.not_nil(old_rows[1].id)
+
+                if db:type() == sql.type.SQLITE then
+                    local tx = assert(db:begin())
+                    local plans = {}
+                    local observed_tx = {
+                        query = function(_, statement, params) return tx:query(statement, params) end,
+                        execute = function(_, statement, params)
+                            if statement:find("DELETE FROM kb10_embeddings", 1, true)
+                                or statement:find("DELETE FROM kb10_nodes_fts", 1, true) then
+                                local plan = assert(tx:query("EXPLAIN QUERY PLAN " .. statement, params))
+                                for _, step in ipairs(plan) do plans[#plans + 1] = step.detail end
+                            end
+                            return tx:execute(statement, params)
+                        end,
+                    }
+                    local _, delete_err = kb10_writer.delete_documents_by_external_id_tx(
+                        observed_tx, sql.type.SQLITE, store_id, "fixture", "side-rows")
+                    local _, rollback_err = tx:rollback()
+                    test.is_nil(rollback_err)
+                    test.is_nil(delete_err)
+                    local plan = table.concat(plans, "\n")
+                    test.contains(plan, "kb10_embeddings VIRTUAL TABLE INDEX 1:")
+                    test.contains(plan, "kb10_nodes_fts VIRTUAL TABLE INDEX 0:=")
+                end
+
+                local replaced = assert(replace(store_id, "side-rows", "new root", {"new passage"}))
+                test.eq(replaced.document_node_id, root)
+                local current = chunk()
+                test.is_true(current ~= old_chunk)
+                test.eq(#assert(db:query("SELECT id FROM kb10_embeddings WHERE id = $1", {old_rows[1].id})), 0)
+
+                local edited, edit_err = kb10_store.write_node_with_embedding(store_id, {
+                    id = current, content = "edited passage",
+                }, vector(2))
+                test.is_nil(edit_err)
+                test.eq(edited, current)
+                local current_rows = search_rows(current)
+                test.eq(#current_rows, 1)
+                if db:type() == sql.type.SQLITE then
+                    test.eq(current_rows[1].content, "edited passage")
+                    test.eq(current_rows[1].node_id, current)
+                end
+
+                local removal = assert(kb10_store.delete_documents_by_external_id(store_id, "fixture", "side-rows"))
+                test.eq(type(removal) == "table" and removal.removed_chunk_count, 1)
+                test.eq(#assert(db:query("SELECT id FROM kb10_embeddings WHERE id = $1", {current_rows[1].id})), 0)
+                if db:type() == sql.type.SQLITE then
+                    test.eq(#assert(db:query(
+                        "SELECT rowid FROM kb10_nodes_fts WHERE node_id IN ($1, $2, $3)",
+                        {root, old_chunk, current})), 0)
+                end
                 teardown_kb10_store(db, store_id)
             end)
 

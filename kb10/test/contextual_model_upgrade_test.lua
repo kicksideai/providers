@@ -15,7 +15,7 @@ for i = 1, 512 do vector[i] = i == 1 and 1 or 0 end
 
 local function migrate()
     local migration_id = "contextual-model-upgrade-" .. uuid.v7()
-    local result, err = funcs.call("kickside.kb10.migrations:08_preserve_contextual_model_settings", {
+    local result, err = funcs.call("kickside.kb10.migrations:12_preserve_contextual_model_settings", {
         database_id = "app:db", id = migration_id, direction = "up",
     })
     test.is_nil(err, tostring(err))

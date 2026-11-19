@@ -72,6 +72,15 @@ local function write_paged(storage: any, path: string, page_query: any, cursor_f
             if options.strip then
                 for _, k in ipairs(options.strip :: { any }) do (r :: any)[k] = nil end
             end
+            local row: any = r
+            if options.source_bindings and row.node_type == "document" and row.parent_id == nil then
+                row.source_binding = {
+                    source_scope = row.source_scope or json.null,
+                    external_source = row.external_source,
+                    external_id = row.external_id,
+                }
+                row.source_scope, row.external_source, row.external_id = nil, nil, nil
+            end
             lines[#lines + 1] = json.encode(r)
         end
         f:write(table.concat(lines, "\n") .. "\n")
@@ -128,9 +137,9 @@ local function impl(args: any): any
     -- any rare inversion).
     local node_count, nerr = write_paged(storage, base .. "nodes.jsonl", function(cursor, lim)
         return db:query(
-            "SELECT id, parent_id, node_type, content, content_type, metadata FROM kb10_nodes WHERE store_id = $1 AND " .. cursor_cmp(db_type, "id", "$2") .. " ORDER BY id LIMIT $3",
+            "SELECT id, parent_id, node_type, content, content_type, metadata, source_scope, external_source, external_id FROM kb10_nodes WHERE store_id = $1 AND " .. cursor_cmp(db_type, "id", "$2") .. " ORDER BY id LIMIT $3",
             { component_id, cursor, lim })
-    end, "id", { decode_field = "metadata" })
+    end, "id", { decode_field = "metadata", source_bindings = true })
     if not node_count then return done("write nodes: " .. tostring(nerr)) end
 
     local emb_count = 0

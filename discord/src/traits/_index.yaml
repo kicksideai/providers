@@ -123,6 +123,7 @@ entries:
     source: file://discord_get.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.discord.client:transport
       api: kickside.discord.client:api
@@ -133,6 +134,7 @@ entries:
     source: file://discord_write.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.discord.client:transport
       api: kickside.discord.client:api

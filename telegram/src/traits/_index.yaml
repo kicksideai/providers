@@ -105,6 +105,7 @@ entries:
     source: file://telegram_get.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.telegram.client:transport
       api: kickside.telegram.client:api
@@ -115,6 +116,7 @@ entries:
     source: file://telegram_write.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.telegram.client:transport
       api: kickside.telegram.client:api

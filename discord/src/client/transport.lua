@@ -9,10 +9,7 @@ local preconditions = require("preconditions")
 
 local M = {}
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 -- Resolve the selected component under the caller's current access before the
 -- trusted private-context read exposes the bot token to this transport.

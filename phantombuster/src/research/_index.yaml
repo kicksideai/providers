@@ -7,6 +7,7 @@ entries:
     meta: { comment: Normalize configured PhantomBuster actor snapshots into Research evidence. }
     source: file://source.lua
     imports:
+      text_trim: kickside.provider_text:trim
       pull_core: kickside.phantombuster.source:pull_core
       operation_policy: kickside.phantombuster.source:operation_policy
 
@@ -18,6 +19,7 @@ entries:
     source: file://source.lua
     method: run
     imports:
+      text_trim: kickside.provider_text:trim
       pull_core: kickside.phantombuster.source:pull_core
       operation_policy: kickside.phantombuster.source:operation_policy
 

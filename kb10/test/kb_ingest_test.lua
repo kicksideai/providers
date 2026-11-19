@@ -266,7 +266,7 @@ local function event_for_external(thread_id, external_id, event_type)
     local db, db_err = sql.get("app:db")
     if db_err then error("db unavailable: " .. tostring(db_err)) end
     local rows, qerr = db:query(
-        [[SELECT id, type, external_source, external_id, external_version, body, seq
+        [[SELECT id, type, role, external_source, external_id, external_version, body, seq
           FROM kickside_event
           WHERE thread_id = $1 AND external_id = $2 AND type = $3
           ORDER BY seq DESC
@@ -801,6 +801,100 @@ local function define_tests()
                 test.eq(test_kb_id, event.body.kb_id)
                 test.eq(external_id, event.body.metadata.external_id)
                 test.eq("knowledge.kb", event.body.metadata.external_source)
+            end)
+
+            test.it("deletes selected document UUIDs independently of their source pair and versions", function()
+                local external_id = "shared-delete-" .. uuid()
+                local incoming_thread = uuid()
+                local store = assert(kb10_store.get_store(test_kb_id))
+                local foreign_store = uuid()
+                assert(kb10_store.create_store(foreign_store, "class:embed", {}))
+                local foreign = assert(kb10_store.insert_node(foreign_store, {node_type = "document"}))
+                local function root(lineage, content)
+                    return assert(kb10_store.replace_document(store.id, {source_thread_id = lineage, document = {
+                        node_type = "document", content = content, metadata = {
+                            external_source = "knowledge.kb", external_id = external_id,
+                            source_ref = lineage and {thread_id = lineage} or nil,
+                        },
+                    }})).document_node_id
+                end
+                local incoming = root(incoming_thread, "incoming root")
+                local local_root = root(test_kb_id, "local root")
+                local unowned = uuid()
+                assert(kb10_store.insert_nodes(store.id, {{
+                    id = unowned, node_type = "document", content = "unbound root",
+                    metadata = {external_source = "knowledge.kb", external_id = external_id},
+                }}, {}))
+                local manual = assert(kb10_store.insert_node(store.id, {node_type = "document"}))
+                local concept = assert(kb10_store.insert_node(store.id, {node_type = "concept", content = "concept"}))
+                for _, id in ipairs({incoming, local_root, unowned}) do
+                    assert(kb10_store.insert_edge(store.id, {
+                        from_node_id = id, to_node_id = concept, edge_type = "categorized_as",
+                    }))
+                end
+                local child = assert(kb10_store.insert_node(store.id, {parent_id = local_root, node_type = "chunk"}))
+                local exec = new_executor(test_user_id):with_context({kb_id = test_kb_id})
+                local prior_version, projection_id
+                local function selected_delete(id, external)
+                    local queued, err = exec:call(DELETE_CONTENT_METHOD, {
+                        external_id = external,
+                        external_version = "same-content-version",
+                        metadata = {node_id = id},
+                        source_ref = {external_version = "same-content-version"},
+                    })
+                    test.is_nil(err)
+                    test.is_true(queued.success)
+                    test.eq(queued.external_id, external or id)
+                    local event = assert(event_for_external(test_kb_id, queued.external_id,
+                        "kickside.knowledge.events:content.deleted"))
+                    test.eq(event.body.metadata.node_id, id)
+                    test.is_true(queued.external_version ~= "same-content-version")
+                    test.is_true(queued.external_version ~= prior_version)
+                    prior_version, projection_id = queued.external_version, queued.projection_id
+                    local materialized, worker_err = source_worker.run_with_deps({
+                        thread_id = test_kb_id, projection = {id = queued.projection_id}, events = {event},
+                        worker_config = {target_kb_ids = {test_kb_id, foreign_store}},
+                    }, worker_fixtures.worker_deps())
+                    test.is_nil(worker_err)
+                    return materialized.metrics.documents_removed
+                end
+                for _, selection in ipairs({{id = incoming, external = external_id}, {id = unowned, external = external_id}, {id = manual}}) do
+                    local id = selection.id
+                    test.eq(selected_delete(id, selection.external), 1)
+                    test.is_nil(kb10_store.get_node(store.id, id))
+                    test.eq(#assert(kb10_store.get_edges(store.id, id, {direction = "out"})), 0)
+                    test.eq(assert(kb10_store.get_node(store.id, local_root)).content, "local root")
+                    test.eq(#assert(kb10_store.get_edges(store.id, local_root, {direction = "out"})), 1)
+                end
+                local recreated = root(incoming_thread, "recreated root")
+                test.is_true(recreated ~= incoming)
+                test.eq(selected_delete(incoming, external_id), 0)
+                test.eq(assert(kb10_store.get_node(store.id, recreated)).content, "recreated root")
+                test.eq(selected_delete(child, external_id), 0)
+                test.eq(selected_delete(foreign, external_id), 0)
+                test.not_nil(kb10_store.get_node(store.id, child))
+                test.not_nil(kb10_store.get_node(foreign_store, foreign))
+                local malformed, malformed_err = exec:call(DELETE_CONTENT_METHOD, {
+                    external_id = external_id, metadata = {node_id = "bad selector"},
+                })
+                test.is_nil(malformed)
+                test.not_nil(malformed_err)
+                local db = assert(sql.get("app:db"))
+                local rows = assert(db:query("SELECT body FROM kickside_projection WHERE id = $1", {projection_id}))
+                local original = rows[1].body
+                local body = assert(json.decode(original))
+                body.worker_config = {target_kb_ids = {foreign_store}}
+                assert(db:execute("UPDATE kickside_projection SET body = $1 WHERE id = $2",
+                    {json.encode(body), projection_id}))
+                local excluded, excluded_err = exec:call(DELETE_CONTENT_METHOD, {
+                    external_id = "excluded-selection", metadata = {node_id = local_root},
+                })
+                assert(db:execute("UPDATE kickside_projection SET body = $1 WHERE id = $2", {original, projection_id}))
+                db:release()
+                test.is_nil(excluded)
+                test.contains(tostring(excluded_err), "source projection excludes")
+                test.is_nil(event_for_external(test_kb_id, "excluded-selection", "kickside.knowledge.events:content.deleted"))
+                assert(kb10_store.delete_store(foreign_store))
             end)
 
             test.it("queues content deletes by upload_id as canonical external ids", function()

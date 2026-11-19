@@ -7,10 +7,7 @@ local M = {}
 local DM_CONTRACT = "kickside.dm:receive"
 local CHANNEL_CONTRACT = "kickside.channel:receive"
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function event_data(args: any): any
     args = type(args) == "table" and args or {}

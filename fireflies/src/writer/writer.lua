@@ -44,10 +44,7 @@ type UpdateResult = {
     status_code: integer?,
 }
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return ((value :: string):gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 -- A refusal on the merits: the request itself is the reason, so sending it again
 -- unchanged produces this same answer. Everything this writer rejects before

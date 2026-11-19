@@ -7,12 +7,7 @@ local operation_policy = require("operation_policy")
 
 local M = {}
 
-local function trim(v: any): string
-    if type(v) ~= "string" then
-        return ""
-    end
-    return (v:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function value(row: any, ...): any
     if type(row) ~= "table" then
