@@ -112,13 +112,14 @@ local function authorization(conn: google_types.Connection, request: google_type
     return token_type .. " " .. access_token, nil, access_token
 end
 
-local function send(conn: google_types.Connection, method: string, endpoint: string, body: any?): (any, error?)
+local function send(conn: google_types.Connection, method: string, endpoint: string, body: any?,
+        max_response_body: number?): (any, error?)
     local auth, err, access_token = authorization(conn)
     if err then return nil, err end
     local options: any = { headers = {
         ["Authorization"] = auth :: string,
         ["Content-Type"] = "application/json",
-    } }
+    }, max_response_body = max_response_body }
     if body ~= nil then
         local encoded, encode_err = json.encode(body)
         if encode_err then return nil, errors.wrap(encode_err, "Google request body is not serializable") end
@@ -156,8 +157,9 @@ end, connection_id)
 
 -- Raw-text request for endpoints returning non-JSON bodies (Drive export to
 -- text/plain or CSV). Returns a Result whose data is { text }.
-transport.request_raw = capacity_http.wrap(function(conn: google_types.Connection, method: string, endpoint: string, query: { [string]: any }?): (google_types.Result?, error?)
-    local response, err = send(conn, method, build_url(endpoint, query), nil)
+transport.request_raw = capacity_http.wrap(function(conn: google_types.Connection, method: string, endpoint: string,
+        query: { [string]: any }?, max_response_body: number?): (google_types.Result?, error?)
+    local response, err = send(conn, method, build_url(endpoint, query), nil, max_response_body)
     if err then return nil, err end
 
     if response and response.status_code >= 200 and response.status_code < 300 then
@@ -185,8 +187,9 @@ function transport.delete(conn: google_types.Connection, endpoint: string, query
     return transport.request_json(conn, "DELETE", endpoint, nil, query)
 end
 
-function transport.get_raw(conn: google_types.Connection, endpoint: string, query: { [string]: any }?): (google_types.Result?, error?)
-    return transport.request_raw(conn, "GET", endpoint, query)
+function transport.get_raw(conn: google_types.Connection, endpoint: string, query: { [string]: any }?,
+        max_response_body: number?): (google_types.Result?, error?)
+    return transport.request_raw(conn, "GET", endpoint, query, max_response_body)
 end
 
 function transport.user_info(conn: google_types.Connection): (google_types.Result?, error?)
