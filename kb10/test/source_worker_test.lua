@@ -1447,6 +1447,49 @@ local function define_tests()
             teardown_kb10_store(db, store_id)
         end)
 
+        test.it("keeps public member lookup and bulk deletion byte exact", function()
+            local store_id = bootstrap_kb10_store(db)
+            local exact, padded_source, padded_id, chunk, concept = uuid(), uuid(), uuid(), uuid(), uuid()
+            assert(kb10_store.insert_nodes(store_id, {
+                {id = exact, node_type = "document", metadata = {external_source = "fixture", external_id = "doc"}},
+                {id = padded_source, node_type = "document", metadata = {external_source = " fixture ", external_id = "doc"}},
+                {id = padded_id, node_type = "document", metadata = {external_source = "fixture", external_id = " doc "}},
+                {id = chunk, node_type = "chunk", parent_id = exact,
+                    metadata = {external_source = "fixture", external_id = "doc"}},
+                {id = concept, node_type = "concept"},
+            }, {
+                {source_scope = "", external_source = "fixture", external_id = "doc"},
+                {source_scope = "incoming-source", external_source = "fixture", external_id = "doc"},
+                {source_scope = "incoming-id", external_source = "fixture", external_id = "doc"},
+            }))
+            for _, node in ipairs({exact, padded_source, padded_id}) do
+                assert(kb10_store.insert_edge(store_id, {
+                    from_node_id = node, to_node_id = concept, edge_type = "categorized_as",
+                }))
+            end
+
+            local rows = assert(kb10_store.find_by_external_id(store_id, "fixture", "doc"))
+            test.eq(#rows, 2)
+            local ids = {[rows[1].id] = true, [rows[2].id] = true}
+            test.is_true(ids[exact] and ids[chunk])
+
+            local removed = assert(kb10_store.delete_documents_by_external_id(store_id, "fixture", "doc"))
+            test.eq(removed.removed, 1)
+            test.eq(removed.removed_chunk_count, 1)
+            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", "doc")), 0)
+            for _, key in ipairs({{" fixture ", "doc", padded_source}, {"fixture", " doc ", padded_id}}) do
+                local padded = assert(kb10_store.find_by_external_id(store_id, key[1], key[2]))
+                test.eq(#padded, 1)
+                test.eq(padded[1].id, key[3])
+                test.eq(#assert(kb10_store.get_edges(store_id, key[3], {direction = "out"})), 1)
+            end
+            local bound = assert(db:query("SELECT id FROM kb10_nodes WHERE store_id = $1 AND source_scope IS NOT NULL",
+                {store_id}))
+            test.eq(#bound, 2)
+            assert(kb10_store.delete_store(store_id))
+            test.eq(#assert(db:query("SELECT id FROM kb10_nodes WHERE store_id = $1", {store_id})), 0)
+        end)
+
         test.it("removes unowned vectors during search ownership migration before ranking", function()
             local store_id = bootstrap_kb10_store(db)
             local owner_store_id = bootstrap_kb10_store(db)
@@ -1788,7 +1831,7 @@ local function define_tests()
                 test.eq(#fetch_kb10_nodes(db, store_id), 0)
             end)
 
-            test.it("normalizes source keys consistently for replace, lookup and delete", function()
+            test.it("normalizes scoped source keys consistently for replay and delete", function()
                 local store_id = bootstrap_kb10_store(db)
                 local function write(source, key, content)
                     return assert(kb10_store.replace_document(store_id, {
@@ -1800,13 +1843,13 @@ local function define_tests()
                 local first = write(" fixture ", "\t doc ", "first generation")
                 local second = write("fixture", "doc", "second generation")
                 test.eq(second.document_node_id, first.document_node_id)
-                local found = assert(kb10_store.find_by_external_id(store_id, " fixture\t", " doc "))
-                test.eq(#found, 1)
-                test.eq(found[1].id, first.document_node_id)
-                test.eq(found[1].content, "second generation")
-                local removed = assert(kb10_store.delete_documents_by_external_id(
-                    store_id, " fixture ", "\n doc ", "source-thread"))
-                test.eq(type(removed) == "table" and removed.removed, 1)
+                local found = assert(kb10_store.get_node(store_id, first.document_node_id))
+                test.eq(found.content, "second generation")
+                local removed = assert(kb10_store.delete_document(store_id, {
+                    external_source = " fixture ", external_id = "\n doc ",
+                }))
+                test.eq(removed.removed, 1)
+                test.eq(removed.document_node_id, first.document_node_id)
                 test.eq(#fetch_kb10_nodes(db, store_id), 0)
                 teardown_kb10_store(db, store_id)
             end)

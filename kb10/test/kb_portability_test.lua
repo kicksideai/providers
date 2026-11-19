@@ -161,7 +161,15 @@ local function define_tests()
                 node_type = "document", content = "another generation", metadata = foreign_metadata,
             }, source_thread_id = "source:thread"}))
             test.eq(other_replaced.document_node_id, ids[foreign])
-            test.eq(#assert(kb10_store.find_by_external_id(dst, metadata.external_source, metadata.external_id)), 4)
+            local exact = assert(kb10_store.find_by_external_id(dst, metadata.external_source, metadata.external_id))
+            test.eq(#exact, 2)
+            local exact_ids = {[exact[1].id] = true, [exact[2].id] = true}
+            test.is_true(exact_ids[ids[child]] and exact_ids[ids[foreign]])
+            local padded = assert(kb10_store.find_by_external_id(dst, padded_metadata.external_source,
+                padded_metadata.external_id))
+            test.eq(#padded, 2)
+            local padded_ids = {[padded[1].id] = true, [padded[2].id] = true}
+            test.is_true(padded_ids[ids[first]] and padded_ids[ids[other]])
 
             assert(kb10_store.delete_store(dst))
             storage:remove(base .. "store.jsonl")

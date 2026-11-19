@@ -102,15 +102,12 @@ function ops.find_document_root_tx(tx: any, store_id: any, id: string)
     return rows[1], nil
 end
 
+-- Published member lookups match the external key in stored metadata byte for byte.
 local function member_columns(db_type: any): (string, string)
     if db_type == sql.type.POSTGRES then
-        local whitespace = [[E'\011\012\013\014\015 ']]
-        return "btrim(metadata->>'external_source', " .. whitespace .. ")",
-            "btrim(metadata->>'external_id', " .. whitespace .. ")"
+        return "metadata->>'external_source'", "metadata->>'external_id'"
     end
-    local whitespace = "char(9,10,11,12,13,32)"
-    return "trim(json_extract(metadata, '$.external_source'), " .. whitespace .. ")",
-        "trim(json_extract(metadata, '$.external_id'), " .. whitespace .. ")"
+    return "json_extract(metadata, '$.external_source')", "json_extract(metadata, '$.external_id')"
 end
 
 function ops.source_member_key(db_type: any): (string, string)
@@ -124,7 +121,7 @@ function ops.find_source_nodes_tx(tx: any, db_type: any, store_id: any, source: 
     local fields = documents and "id" or "id, store_id, parent_id, node_type, content, content_type, metadata"
     return tx:query("SELECT " .. fields .. " FROM kb10_nodes WHERE " .. predicate ..
         " AND " .. key .. " = " .. index_tuple(db_type, "$1, $2, $3", "kb10_source_pair") ..
-        (documents and " AND node_type = 'document'" or ""), {store_id, trim(source), trim(id)})
+        (documents and " AND node_type = 'document'" or ""), {store_id, source or "", id})
 end
 
 -- Decode each row's metadata json blob into a table, in place.

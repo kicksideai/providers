@@ -468,7 +468,7 @@ function reader.find_by_external_id(store_id: any, external_source: any, externa
 
     local db_type, type_err = ops.get_db_type(db)
     if type_err then db:release(); return nil, type_err end
-    local rows, query_err = ops.find_source_nodes_tx(db, db_type, store_id, external_source or "", external_id)
+    local rows, query_err = ops.find_source_nodes_tx(db, db_type, store_id, external_source, external_id)
     db:release()
 
     if query_err then return nil, query_err end
