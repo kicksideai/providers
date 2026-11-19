@@ -1404,6 +1404,22 @@ local function define_tests()
             test.is_true(right ~= left)
             test.eq(assert(kb10_store.get_node(store_id, left)).content, "first lineage")
 
+            local inferred = assert(materializer_store.replace_document(materializer_store, {
+                store_id = store_id, document = {
+                    node_type = "document", content = "other lineage", metadata = other_lineage,
+                },
+            }))
+            test.eq(inferred.document_node_id, right)
+            test.eq(assert(kb10_store.get_node(store_id, left)).content, "first lineage")
+            local mismatch, mismatch_err = materializer_store.replace_document(materializer_store, {
+                store_id = store_id, source_thread_id = store_id, document = {
+                    node_type = "document", content = "would overwrite the primary", metadata = other_lineage,
+                },
+            })
+            test.is_nil(mismatch)
+            test.contains(tostring(mismatch_err), "source_thread_id")
+            test.eq(assert(kb10_store.get_node(store_id, left)).content, "first lineage")
+
             local duplicate_id, duplicate_err = kb10_store.insert_node(store_id, {
                 node_type = "document", metadata = other_lineage,
             })

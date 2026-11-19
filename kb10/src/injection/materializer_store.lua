@@ -104,6 +104,10 @@ local function validate_replace_document(args: { [string]: any }): string?
         local _, err = reject_missing_lineage("replace_document", "source_ref.thread_id")
         return err
     end
+    if args.source_thread_id ~= nil and args.source_thread_id ~= doc_thread then
+        local _, err = reject_mismatched_lineage("replace_document", "source_thread_id")
+        return err
+    end
     local doc_source = trim(doc_metadata.external_source)
     local doc_external_id = trim(doc_metadata.external_id)
     local doc_external_version = trim(doc_metadata.external_version)
@@ -195,7 +199,7 @@ function M.replace_document(_self: any, args: any): (any, any?)
     return kb10_store.replace_document(a.store_id, {
         document = a.document,
         children = a.children,
-        source_thread_id = a.source_thread_id,
+        source_thread_id = a.document.metadata.source_ref.thread_id,
     })
 end
 
