@@ -3,13 +3,13 @@ local engines = require("engines")
 
 return test.run_cases(function()
     test.describe("engine query configuration", function()
-        test.it("enables answers for new bases and preserves explicit query settings", function()
+        test.it("leaves Search analysis off by default and preserves explicit query settings", function()
             for _, kind in ipairs({ "document", "wiki" }) do
                 local engine, err = engines.resolve(kind)
                 test.is_nil(err)
                 local defaults = engine.default_config
                 local properties = engine.config_schema.properties
-                test.eq(defaults.analysis_model, "class:fast")
+                test.is_nil(defaults.analysis_model)
                 for _, key in ipairs({ "summary_model", "chunk_enrichment_model", "analysis_model" }) do
                     test.eq(properties[key].default, defaults[key])
                 end

@@ -120,6 +120,23 @@ return test.run_cases(function()
         end)
 
         for _, kind in ipairs({ "document", "wiki" }) do
+            test.it("retrieves plain matches with HyDE and tuning set but no available model for " .. kind, function()
+                for _, setting in ipairs({ {}, { analysis_model = "" }, { analysis_model = false },
+                    { analysis_model = "class:unassigned-test-class" } }) do
+                    local id = uuid.v7()
+                    setting.query_strategy, setting.self_tuning = "hyde", true
+                    assert(store.create_store(id, "class:embed", setting, { kb_type = kind }))
+                    stores[#stores + 1] = id
+                    local result, calls, search_err = search(id, seed_passages(id))
+                    test.is_nil(search_err, tostring(search_err))
+                    test.eq(result.items[1].content, "Reference passage")
+                    test.eq(result.retrieval.strategy, "plain")
+                    test.is_nil(result.retrieval.tuning)
+                    test.eq(calls.analysis, 0)
+                    test.eq(calls.reranking, 0)
+                end
+            end)
+
             test.it("keeps Search plain after upgrading " .. kind .. " bases with analysis off", function()
                 local _, card_err = models.upsert_card({ name = card_name, class = { "fast" },
                     capabilities = { "generate", "structured_output" }, max_tokens = 4096, output_tokens = 1024 })

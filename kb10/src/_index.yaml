@@ -455,7 +455,6 @@ entries:
         # incremental (prior-description plus most recent summaries) form.
         digest_context_tokens: 48000
         digest_chars_per_token: 4
-        analysis_model: &document_analysis_model "class:fast"
         extra_prompt: ""
         enable_reranking: false
         query_strategy: plain
@@ -474,9 +473,8 @@ entries:
             default: *document_chunk_model
           analysis_model:
             type: [string, boolean]
-            default: *document_analysis_model
             label: Search analysis model
-            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables Search analysis. Ask uses the selected model, defaults to class:fast for empty or omitted values, and returns passages for false.
+            description: A named model enables Search analysis and Ask answers. Omitted or empty values keep Search plain and use Fast for Ask when available. False keeps Search plain and returns passages from Ask.
           extra_prompt:
             type: string
             default: ""
@@ -639,7 +637,6 @@ entries:
         extraction_model: "class:nano"
         retrieval_model: "class:nano"
         max_retrieval_iterations: 3
-        analysis_model: &wiki_analysis_model "class:fast"
         extra_prompt: ""
         enable_reranking: false
         query_strategy: plain
@@ -664,9 +661,8 @@ entries:
             default: *wiki_chunk_model
           analysis_model:
             type: [string, boolean]
-            default: *wiki_analysis_model
             label: Search analysis model
-            description: Model for document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables Search analysis. Ask uses the selected model, defaults to class:fast for empty or omitted values, and returns passages for false.
+            description: A named model enables Search analysis and Ask answers. Omitted or empty values keep Search plain and use Fast for Ask when available. False keeps Search plain and returns passages from Ask.
           extra_prompt:
             type: string
             default: ""

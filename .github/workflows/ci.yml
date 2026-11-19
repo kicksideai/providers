@@ -1111,6 +1111,13 @@ jobs:
             cd "$source_root"
             version=$(jq -er --arg path notion '.[$path] // "0.1.0"' .release-please-manifest.json)
             wippy publish --config notion --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: provider-text
+          engine: package
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C provider-text lint
         - module: search-index
           engine: sqlite
           commands: |
