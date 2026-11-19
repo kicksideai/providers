@@ -554,6 +554,69 @@ function writer.replace_document(store_id: any, replacement: any)
     return result, nil
 end
 
+-- Record an attempted immutable revision without rewriting an accepted tree.
+-- The owning checkpoint supplies the transaction and the canonical lineage.
+function writer.reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
+        metadata: kb10.Map, code: string): (any?, any?)
+    local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, source_thread_id)
+    if not binding then
+        return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a source identity"})
+    end
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local id, lookup_err = ops.find_source_root_tx(tx, db_type, store_id, binding)
+    if lookup_err then return nil, lookup_err end
+
+    local outcomes = {
+        artifact_reference_not_found = "The selected artifact is missing.",
+        artifact_bytes_not_found = "The selected artifact's stored content is missing.",
+    }
+    local reason = outcomes[code]
+    local position = tonumber(metadata.thread_event_seq)
+    if not reason or not position or not is_str(metadata.thread_event_id) then
+        return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a verified source revision"})
+    end
+    local rejection = {code = code, kind = errors.NOT_FOUND, message = reason, thread_event_seq = position,
+        thread_event_id = metadata.thread_event_id, external_version = metadata.external_version}
+    local stored = {}
+    if id then
+        local rows, read_err = tx:query("SELECT metadata FROM kb10_nodes WHERE store_id=$1 AND id=$2", {store_id, id})
+        if read_err then return nil, errors.wrap(read_err, "failed to read source revision") end
+        if not rows[1] then return nil, errors.new({kind = errors.CONFLICT, message = "source document changed"}) end
+        stored = decode_metadata(rows[1].metadata)
+        local prior = stored.source_rejection
+        local previous_seq = math.max(tonumber(stored.thread_event_seq) or 0,
+            tonumber(type(prior) == "table" and prior.thread_event_seq) or 0)
+        if previous_seq >= position then
+            return nil, errors.new({kind = errors.CONFLICT, message = "source rejection no longer owns this revision"})
+        end
+    end
+    if not id or stored.status == "failed" then
+        stored = metadata
+        stored.role = kb10.NODE_TYPE.DOCUMENT
+        stored.status = "failed"
+        stored.source_title = stored.title
+        stored.title = "Indexing failed"
+        stored.error = reason
+    end
+    stored.source_rejection = rejection
+    if not id then
+        return insert_node_tx(tx, db_type, store_id, {
+            node_type = kb10.NODE_TYPE.DOCUMENT, content_type = "text/plain", metadata = stored,
+        }, binding)
+    end
+
+    local encoded, encode_err = json.encode(stored)
+    if encode_err then return nil, errors.wrap(encode_err, "failed to encode source rejection") end
+    local updated, update_err = tx:execute([[UPDATE kb10_nodes SET metadata=$1, updated_at=CURRENT_TIMESTAMP
+        WHERE store_id=$2 AND id=$3]], {encoded, store_id, id})
+    if update_err then return nil, errors.wrap(update_err, "failed to record source rejection") end
+    if not updated or updated.rows_affected ~= 1 then
+        return nil, errors.new({kind = errors.CONFLICT, message = "source document changed"})
+    end
+    return id, nil
+end
+
 -- Create the per-component store row. The store id equals the component_id so
 -- the control plane (graph root anchor, concept tooling) can address the store
 -- by component_id. opts carries the optional kb_type / enrichment_agent_id the

@@ -1,5 +1,5 @@
 local M = {}
-local artifact_content_repo = require("artifact_content_repo")
+local artifact_input = require("artifact_input")
 local hash = require("hash")
 local trim = require("text_trim").trim
 
@@ -89,7 +89,7 @@ function M.run(input)
     if content == nil and body.content_omitted == true then
         local ref = source_ref or {}
         local read_err
-        content, read_err = artifact_content_repo.read_artifact_content(ref.upload_id, ref.artifact_id)
+        content, read_err = artifact_input.read(ref.upload_id, ref.artifact_id)
         if read_err then
             return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err), retryable = true }
         end

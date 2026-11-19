@@ -1,0 +1,22 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: source_checkpoint_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint}
+    source: file://source_checkpoint_test.lua
+    method: run
+    modules: [sql, json, time, uuid, fs]
+    imports:
+      apply: kickside.core.projections:apply
+      artifact_input: kickside.kb10.injection:artifact_input
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
+      ops: kickside.kb10.persist:ops
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      uploads: kickside.uploads.persist:upload_record_repo
+      writer: kickside.kb10.persist:writer

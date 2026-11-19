@@ -56,6 +56,15 @@ entries:
       tabular_chunker: kickside.kb10.injection:tabular_chunker
       doc2md: kickside.convert.doc2md:doc2md
 
+  - name: artifact_input
+    kind: library.lua
+    meta:
+      internal: true
+      comment: Read the source artifact and preserve the producer's failure and verified absence.
+    source: file://artifact_input.lua
+    imports:
+      artifacts: kickside.uploads.persist:artifact_content_repo
+
   # Maps canonical kickside.knowledge content events into source_worker
   # documents/deletes. Discovered by the source worker at runtime via meta.type.
   - name: content_extractor
@@ -73,7 +82,7 @@ entries:
     modules: [hash]
     imports:
       text_trim: kickside.contract:text_trim
-      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      artifact_input: kickside.kb10.injection:artifact_input
 
   # Deterministic, source-agnostic projection worker. Discovers extractors at
   # runtime via the registry (meta.type=projection.extractor) and materializes the
