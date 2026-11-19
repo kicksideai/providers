@@ -81,13 +81,7 @@ local function event_body(event: any): { [string]: any }
     return decode_object(ev.body)
 end
 
-local function event_kb_id(event: any): string
-    local body = event_body(event)
-    return trim(body.kb_id)
-end
-
-local function event_user_id(event: any): string
-    local body = event_body(event)
+local function event_user_id(body: { [string]: any }): string
     local uid = trim(body.actor_id)
     if uid ~= "" then return uid end
     local meta = type(body.metadata) == "table" and body.metadata or {}
@@ -173,23 +167,35 @@ local function run_with_deps(input_raw: any, deps: DigestWorkerDeps?)
     local digest_requested = false
     local treatment_requested = false
 
-    -- Target KB: the projection pins it via worker_config; fall back to the events'
-    -- own kb_id (every knowledge content event carries it).
+    -- Declared projections run on the KB primary thread unless configured explicitly.
     local kb_id = ""
     local targets = type(worker_config.target_kb_ids) == "table" and worker_config.target_kb_ids or {}
     for _, id in ipairs(targets) do
         local s = trim(tostring(id))
         if s ~= "" then kb_id = s; break end
     end
+    if kb_id == "" then kb_id = trim(input.thread_id) end
+
+    if kb_id == "" then
+        logger:warn("digest worker skipped: no kb_id resolved", { events = #events })
+        return {
+            patch = { last_run_at = time.now():utc():format(time.RFC3339), last_status = "skipped_no_kb" },
+            metrics = { events_seen = #events, digest_requested = false },
+        }, nil
+    end
 
     local user_ids: DigestUserIds = {}
+    local target_events: { any } = {}
     for _, ev in ipairs(events) do
-        local et = event_type(ev)
-        if et == DIGEST_REQUEST_EVENT_TYPE then digest_requested = true end
-        if et == TREATMENT_REQUEST_EVENT_TYPE then treatment_requested = true end
-        if kb_id == "" then kb_id = event_kb_id(ev) end
-        local uid = event_user_id(ev)
-        if uid ~= "" then user_ids[uid] = true end
+        local body = event_body(ev)
+        if trim(body.kb_id) == kb_id then
+            target_events[#target_events + 1] = ev
+            local et = event_type(ev)
+            if et == DIGEST_REQUEST_EVENT_TYPE then digest_requested = true end
+            if et == TREATMENT_REQUEST_EVENT_TYPE then treatment_requested = true end
+            local uid = event_user_id(body)
+            if uid ~= "" then user_ids[uid] = true end
+        end
     end
 
     if not digest_requested and not treatment_requested then
@@ -197,14 +203,6 @@ local function run_with_deps(input_raw: any, deps: DigestWorkerDeps?)
         return {
             patch = { last_run_at = time.now():utc():format(time.RFC3339), last_status = "skipped_no_request" },
             metrics = { events_seen = #events, digest_requested = false, kb_id = kb_id },
-        }, nil
-    end
-
-    if kb_id == "" then
-        logger:warn("digest worker skipped: no kb_id resolved", { events = #events })
-        return {
-            patch = { last_run_at = time.now():utc():format(time.RFC3339), last_status = "skipped_no_kb" },
-            metrics = { events_seen = #events, digest_requested = true },
         }, nil
     end
 
@@ -219,7 +217,7 @@ local function run_with_deps(input_raw: any, deps: DigestWorkerDeps?)
         end
         if digest_result then
             local projection_id = trim((projection :: any).id) ~= "" and trim((projection :: any).id) or trim((projection :: any).projection_id)
-            append_events = digest_meta_append(trim(input.thread_id), projection_id, kb_id, digest_result, events :: { any })
+            append_events = digest_meta_append(trim(input.thread_id), projection_id, kb_id, digest_result, target_events)
         end
     end
 

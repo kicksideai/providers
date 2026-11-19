@@ -69,7 +69,7 @@ local function define_tests()
 
         test.it("runs digest when source appends a final digest request", function()
             local deps, calls = make_fake_digest_deps()
-            local result, err = digest_worker.run_with_deps(make_input({
+            local input: any = make_input({
                 {
                     id = "evt-1",
                     seq = 1,
@@ -88,7 +88,16 @@ local function define_tests()
                         reason = "source_complete",
                     },
                 },
-            }), deps)
+                {
+                    id = "evt-3",
+                    seq = 3,
+                    type = "kickside.knowledge.events:digest.requested",
+                    body = { kb_id = "kb-2", reason = "source_complete" },
+                },
+            })
+            input.thread_id = "kb-1"
+            input.worker_config = nil
+            local result, err = digest_worker.run_with_deps(input, deps)
 
             test.is_nil(err)
             test.not_nil(result)
@@ -101,10 +110,11 @@ local function define_tests()
             test.not_nil(result.append_events)
             test.eq(1, #result.append_events)
             local write = (result.append_events[1] :: any)
-            test.eq("thread-1", write.thread_id)
+            test.eq("kb-1", write.thread_id)
             test.eq(1, #write.events)
             local ev = (write.events[1] :: any)
             test.eq("kickside.knowledge.events:graph.changed", ev.type)
+            test.eq("kb-1", ev.body.kb_id)
             test.eq("knowledge.graph.meta", ev.external.external_source)
             test.eq("digest-updated:kb-1:proj-1:2", ev.external.external_id)
             test.eq("digest.updated", ev.body.reason)
@@ -140,6 +150,45 @@ local function define_tests()
             test.eq(first.topic, enrichment_consts.TOPIC)
             test.eq(first.payload.component_id, "kb-1")
             test.eq(first.payload.execution_identity.actor_id, "owner@example.test")
+        end)
+
+        test.it("ignores foreign finalizer requests on the primary thread", function()
+            local deps, calls = make_fake_digest_deps()
+            deps.send = function(_pid: string, _topic: string, _payload: { [string]: any }): (any, string?)
+                error("foreign request started treatment")
+            end
+            local input: any = make_input({
+                { type = "kickside.knowledge.events:digest.requested", body = { kb_id = "kb-2" } },
+                { type = "kickside.knowledge.events:treatment.requested", body = { kb_id = "kb-2" } },
+            })
+            input.thread_id = "kb-1"
+            input.worker_config = nil
+
+            local result, err = digest_worker.run_with_deps(input, deps)
+            test.is_nil(err)
+            test.eq(result.patch.last_status, "skipped_no_request")
+            test.eq(result.metrics.kb_id, "kb-1")
+            test.eq(#calls, 0)
+            test.is_nil(result.append_events)
+        end)
+
+        test.it("uses only the configured target's finalizer requests", function()
+            local deps, calls = make_fake_digest_deps()
+            deps.send = function(_pid: string, _topic: string, payload: { [string]: any }): (any, string?)
+                test.eq(payload.component_id, "kb-1")
+                test.eq(payload.user_id, "local-user")
+                return true, nil
+            end
+            local result, err = digest_worker.run_with_deps(make_input({
+                { type = "kickside.knowledge.events:digest.requested", body = { kb_id = "kb-2" } },
+                { type = "kickside.knowledge.events:treatment.requested", body = { kb_id = "kb-1", actor_id = "local-user" } },
+                { type = "kickside.knowledge.events:treatment.requested", body = { kb_id = "kb-2", actor_id = "foreign-user" } },
+            }), deps)
+
+            test.is_nil(err)
+            test.eq(result.patch.last_status, "treatment_forwarded")
+            test.eq(#calls, 0)
+            test.is_nil(result.append_events)
         end)
     end)
 end
