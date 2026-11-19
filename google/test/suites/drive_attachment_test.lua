@@ -12,6 +12,9 @@ local function fixture()
     local selected = {id = "folder", mimeType = FOLDER, driveId = "shared", capabilities = {canListChildren = true}}
     local state = {file = file, start = "token", exports = 0, move_during_export = false, files = {file}}
     local api = {
+        list_changes = function()
+            return {success = true, data = {changes = state.changes or {}, newStartPageToken = "next"}}
+        end,
         start_changes = function(_, shared)
             test.eq(shared, "shared")
             return {success = true, data = {startPageToken = state.start}}
@@ -22,7 +25,9 @@ local function fixture()
         list_files = function(_, _, _, token, _, shared)
             test.eq(shared, "shared")
             if state.change_during_listing then state.start = "advanced" end
-            return {success = true, data = {files = state.files, nextPageToken = token and nil or state.next_page}}
+            if token and state.reject_page then return {success = false, status_code = 400} end
+            if state.list_failure then return state.list_failure end
+            return {success = true, data = {files = state.files, nextPageToken = not token and state.next_page or nil}}
         end,
         export_file = function(_, id, mime, max)
             test.eq(id, "file")
@@ -68,6 +73,40 @@ return {run = test.run_cases(function()
             local result, err = source.fetch(request, deps)
             test.is_nil(result)
             test.is_true(errors.is(err, errors.NOT_FOUND))
+        end)
+
+        test.it("restarts a rejected listing token and keeps the change anchor", function()
+            local state, deps, config = fixture()
+            state.next_page = "expired"
+            local first = assert(source.pull({config = config}, deps))
+            test.eq(first.next_cursor.page_token, "expired")
+            state.reject_page = true
+            state.next_page = nil
+            local restarted = assert(source.pull({config = config, cursor = first.next_cursor}, deps))
+            test.eq(restarted.next_cursor.change_token, first.next_cursor.change_token)
+            test.eq(restarted.next_cursor.phase, "changes")
+            test.eq(#restarted.items, 1)
+        end)
+
+        test.it("does not emit subfolders observed in the changes feed", function()
+            local state, deps, config = fixture()
+            state.changes = {{file = {id = "child-folder", driveId = "shared", parents = {"folder"}, mimeType = FOLDER}}}
+            local first = assert(source.pull({config = config}, deps))
+            local changes = assert(source.pull({config = config, cursor = first.next_cursor}, deps))
+            test.eq(#changes.items, 0)
+            test.eq(changes.next_cursor.change_token, "next")
+        end)
+
+        test.it("keeps quota responses retryable without treating genuine access failures as quota", function()
+            local state, deps, config = fixture()
+            state.list_failure = {success = false, status_code = 403, error_kind = "rate_limited", retry_after_ms = 3000}
+            local page, err = source.pull({config = config}, deps)
+            test.is_nil(page)
+            test.is_true(errors.is(err, errors.RATE_LIMITED))
+            state.list_failure = {success = false, status_code = 403}
+            page, err = source.pull({config = config}, deps)
+            test.is_nil(page)
+            test.is_true(errors.is(err, errors.PERMISSION_DENIED))
         end)
 
         test.it("delays a key sweep when the corpus changes during enumeration", function()
