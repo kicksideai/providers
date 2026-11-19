@@ -61,7 +61,8 @@ describe('KbCreateConfig engine fields', () => {
     const wrapper = render({ kb_type: 'document', config: { config_schema: schema } })
     await flushPromises()
     expect(lastPublished()).toEqual({})
-    expect(wrapper.findAll('wc-model-picker').at(-1)?.attributes('value')).toBe('')
+    const pickers = wrapper.findAll('wc-model-picker')
+    expect(pickers[pickers.length - 1].attributes('value')).toBe('')
 
     await wrapper.get('[aria-label="Contextual embedding"]').trigger('click')
     expect(lastPublished()).toEqual({ summary_model: false, chunk_enrichment_model: false })
@@ -72,9 +73,19 @@ describe('KbCreateConfig engine fields', () => {
     const wrapper = render({ kb_type: 'document', edit: true, config: { retrieval_model: 'graph-model' } })
     await flushPromises()
     expect(lastPublished()).toEqual({})
-    wrapper.findAll('wc-model-picker').at(-1)?.element.dispatchEvent(new CustomEvent('select', { detail: 'search-model' }))
+    const pickers = wrapper.findAll('wc-model-picker')
+    await pickers[pickers.length - 1].trigger('select', { detail: 'search-model' })
     await flushPromises()
     expect(lastPublished()).toEqual({ analysis_model: 'search-model' })
+    wrapper.unmount()
+  })
+
+  it('saves false when a selected Search analysis model is cleared', async () => {
+    const wrapper = render({ kb_type: 'document', edit: true, config: { analysis_model: 'answer-model' } })
+    const pickers = wrapper.findAll('wc-model-picker')
+    await pickers[pickers.length - 1].trigger('select', { detail: '' })
+    expect(lastPublished()).toEqual({ analysis_model: false })
+    expect(wrapper.text()).toContain('Answers are disabled. Ask returns matching passages.')
     wrapper.unmount()
   })
 
