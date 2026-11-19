@@ -87,7 +87,7 @@ entries:
         - kickside.knowledge.events:content.deleted
     source: file://content_extractor.lua
     method: run
-    modules: [hash]
+    modules: [hash, uuid]
     imports:
       text_trim: kickside.contract:text_trim
       artifact_input: kickside.kb10.injection:artifact_input
@@ -95,10 +95,20 @@ entries:
   - name: content_extractor_lib
     kind: library.lua
     source: file://content_extractor.lua
-    modules: [hash]
+    modules: [hash, uuid]
     imports:
       text_trim: kickside.contract:text_trim
       artifact_input: kickside.kb10.injection:artifact_input
+
+  - name: matches_upload_publication
+    kind: function.lua
+    source: file://upload_publication.lua
+    method: matches
+    modules: [uuid]
+    imports:
+      component: kickside.component:component
+      ops: kickside.kb10.persist:ops
+      store: kickside.kb10.persist:store
 
   - name: checkpoint_source_worker
     kind: process.lua

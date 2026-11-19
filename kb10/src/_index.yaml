@@ -243,6 +243,7 @@ entries:
       icon: tabler:database
       class: [knowledge]
       title: Knowledge Base
+      upload_publication_match: kickside.kb10.injection:matches_upload_publication
       events:
         output:
           - type: kickside.knowledge.events:content.upserted
