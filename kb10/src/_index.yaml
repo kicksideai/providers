@@ -40,7 +40,7 @@ entries:
   - name: dep.kickside.core
     kind: ns.dependency
     component: kickside/core
-    version: "*"
+    version: ">=0.3.25"
     meta:
       comment: Event-sourced on the core thread engine (thread upsert, event append, status).
 
@@ -68,7 +68,7 @@ entries:
   - name: dep.kickside.knowledge
     kind: ns.dependency
     component: kickside/knowledge
-    version: ">=0.1.89"
+    version: ">=0.1.91"
     meta:
       comment: Reads and writes knowledge bases through the knowledge contract.
 

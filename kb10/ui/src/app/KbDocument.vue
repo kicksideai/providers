@@ -31,9 +31,9 @@ let applyingRoute = false
 // Browse + delete + realtime reconciliation come from the shared composable.
 // Pagination is server-side: documents holds only the current page, total is the
 // real match count, and the pager walks pages.
-const { loading, notice, documents, deleting, reload, remove, findDoc,
+const { loading, notice, indexingNotice, documents, deleting, reload, remove, findDoc,
   page, pageSize, total, hasPrev, hasNext, next, prev } =
-  useKbBrowse(() => kbId.value)
+  useKbBrowse(() => kbId.value, { includeIndexing: true })
 
 // The filter is page-local: it narrows the documents already loaded for the
 // current page, not the whole KB. Server-side search is out of scope, so this is
@@ -113,6 +113,7 @@ watch(routeParam, (r) => {
 <template>
   <div class="kb-page kd">
     <KbNotice v-if="notice" class="kd-notice">{{ notice }}</KbNotice>
+    <KbNotice v-if="indexingNotice" class="kd-notice" role="status">{{ indexingNotice }}</KbNotice>
 
     <KbShell>
       <template #rail>

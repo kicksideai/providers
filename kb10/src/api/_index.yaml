@@ -42,6 +42,7 @@ entries:
       component: kickside.component:component
       node_store: kickside.kb10.persist:node_store
       query_params: kickside.kb10.api:query_params
+      thread_ingest: kickside.knowledge.injection:thread_ingest
     method: handler
 
   - name: browse.endpoint
@@ -65,6 +66,7 @@ entries:
       kc: kickside.kb10:types
       engines: kickside.knowledge:engines
       query_params: kickside.kb10.api:query_params
+      thread_ingest: kickside.knowledge.injection:thread_ingest
 
   - name: graph
     kind: function.lua

@@ -4,6 +4,7 @@ local component = require("component")
 local http_errors = require("http_errors")
 local node_store = require("node_store")
 local query_params = require("query_params")
+local thread_ingest = require("thread_ingest")
 
 local function new(dependencies: any?): any
     local deps = dependencies or {}
@@ -179,12 +180,17 @@ local function handler()
         table.insert(nodes, node)
     end
 
+    local pending_source
+    if req:query("include_indexing") == "true" then
+        pending_source = thread_ingest.pending_source(kb_id, comp.impl_id)
+    end
     res:set_status(http.STATUS.OK)
     res:write_json({
         success = true,
         nodes = nodes,
         count = #nodes,
-        total = total
+        total = total,
+        pending_source = pending_source,
     })
 end
 

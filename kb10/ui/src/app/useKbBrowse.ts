@@ -7,6 +7,7 @@ import {
   contentDeletePayload,
 } from './types'
 import { subscribeComponentMeta } from './componentMeta'
+import { formatIndexingNotice } from './indexingNotice'
 
 // Browse + delete for a KB's content nodes, factored out of the document library
 // and the graph's source list so both share one fetch, one delete-through-the-
@@ -14,9 +15,10 @@ import { subscribeComponentMeta } from './componentMeta'
 // node disappears only after the engine materializes the delete and the component
 // meta refresh tells us to reconcile. A queued row stays visible (spinner) until
 // the browse read model no longer contains its node ID.
-export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void } = {}) {
+export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; includeIndexing?: boolean } = {}) {
   const loading = ref(false)
   const notice = ref('')
+  const indexingNotice = ref('')
   const nodes = ref<BrowseNode[]>([])
   // Server-side pagination: one page is fetched at a time (?limit&offset) and the
   // real total comes from the browse API's count. total drives the pager rather
@@ -59,7 +61,8 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
       // Fetch only the current page. total comes from the API count, so a large KB
       // never pulls its whole node set into one list.
       const offset = page.value * pageSize.value
-      const { data } = await api.get(`/api/v1/kb10/${id}/browse?node_type=document&limit=${pageSize.value}&offset=${offset}`)
+      const indexing = opts.includeIndexing ? '&include_indexing=true' : ''
+      const { data } = await api.get(`/api/v1/kb10/${id}/browse?node_type=document&limit=${pageSize.value}&offset=${offset}${indexing}`)
       if (seq !== loadSeq || kbId() !== id) return
       if (!data?.success) {
         notice.value = data?.error && isEngineMissing(data.error) ? ENGINE_NOTICE : data?.error || ''
@@ -67,6 +70,7 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
       }
       nodes.value = (data.nodes || []) as BrowseNode[]
       total.value = Number(data.total) || 0
+      indexingNotice.value = formatIndexingNotice(data.pending_source)
     } catch (e: any) {
       if (seq !== loadSeq) return
       const msg = e?.response?.data?.error || e?.message || 'could not load contents'
@@ -178,10 +182,16 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
   })
 
   // A KB switch starts over on the first page; total is stale until the reload lands.
-  watch(kbId, (id) => { page.value = 0; total.value = 0; load(); syncRealtime(id) }, { immediate: true })
+  watch(kbId, (id) => {
+    page.value = 0
+    total.value = 0
+    indexingNotice.value = ''
+    load()
+    syncRealtime(id)
+  }, { immediate: true })
 
   return {
-    loading, notice, nodes, documents, deleting, load, reload: load, remove, findDoc,
+    loading, notice, indexingNotice, nodes, documents, deleting, load, reload: load, remove, findDoc,
     page, pageSize, total, pageCount, hasPrev, hasNext, next, prev, goToPage,
   }
 }
