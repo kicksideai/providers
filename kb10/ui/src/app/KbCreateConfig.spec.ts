@@ -45,8 +45,17 @@ const schema = {
 function render(config: Record<string, unknown>) {
   host.props = ref({ config })
   return mount(KbCreateConfig, {
-    global: { stubs: { Icon: true }, config: { compilerOptions: { isCustomElement: (tag: string) => tag.startsWith('wc-') } } },
+    global: {
+      // Use the same picker stub with and without the private host setup.
+      stubs: { Icon: true, 'wc-model-picker': true, 'wc-agent-picker': true },
+    },
   })
+}
+
+function searchAnalysisPicker(wrapper: ReturnType<typeof render>) {
+  const field = wrapper.findAll('.cx-field').find(field => field.get('.cx-label').text() === 'Search analysis model')
+  expect(field).toBeDefined()
+  return field!.get('wc-model-picker-stub')
 }
 
 function lastPublished(): Record<string, unknown> {
@@ -61,8 +70,7 @@ describe('KbCreateConfig engine fields', () => {
     const wrapper = render({ kb_type: 'document', config: { config_schema: schema } })
     await flushPromises()
     expect(lastPublished()).toEqual({})
-    const pickers = wrapper.findAll('wc-model-picker')
-    expect(pickers[pickers.length - 1].attributes('value')).toBe('')
+    expect(searchAnalysisPicker(wrapper).attributes('value')).toBe('')
 
     await wrapper.get('[aria-label="Contextual embedding"]').trigger('click')
     expect(lastPublished()).toEqual({ summary_model: false, chunk_enrichment_model: false })
@@ -70,20 +78,31 @@ describe('KbCreateConfig engine fields', () => {
   })
 
   it('changes only analysis_model when the Search analysis picker changes', async () => {
-    const wrapper = render({ kb_type: 'document', edit: true, config: { retrieval_model: 'graph-model' } })
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      config: { summary_model: 'summary-model', retrieval_model: 'legacy-retrieval-model' },
+    })
     await flushPromises()
+    const picker = searchAnalysisPicker(wrapper)
     expect(lastPublished()).toEqual({})
-    const pickers = wrapper.findAll('wc-model-picker')
-    await pickers[pickers.length - 1].trigger('select', { detail: 'search-model' })
-    await flushPromises()
+    expect(picker.attributes('value')).toBe('')
+    expect(wrapper.text()).toContain('Search returns direct matches. Ask uses Fast when available.')
+    await picker.trigger('select', { detail: ' search-model ' })
     expect(lastPublished()).toEqual({ analysis_model: 'search-model' })
     wrapper.unmount()
   })
 
   it('saves false when a selected Search analysis model is cleared', async () => {
-    const wrapper = render({ kb_type: 'document', edit: true, config: { analysis_model: 'answer-model' } })
-    const pickers = wrapper.findAll('wc-model-picker')
-    await pickers[pickers.length - 1].trigger('select', { detail: '' })
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      config: { analysis_model: 'answer-model', retrieval_model: 'legacy-retrieval-model' },
+    })
+    await flushPromises()
+    const picker = searchAnalysisPicker(wrapper)
+    expect(picker.attributes('value')).toBe('answer-model')
+    await picker.trigger('select', { detail: '' })
     expect(lastPublished()).toEqual({ analysis_model: false })
     expect(wrapper.text()).toContain('Answers are disabled. Ask returns matching passages.')
     wrapper.unmount()
@@ -149,14 +168,22 @@ describe('KbCreateConfig engine fields', () => {
     const wrapper = render({
       kb_type: 'document',
       edit: true,
-      config: { summary_model: 'custom-summary', chunk_enrichment_model: chunk, analysis_model: analysis },
+      config: {
+        summary_model: 'custom-summary',
+        chunk_enrichment_model: chunk,
+        analysis_model: analysis,
+        retrieval_model: 'legacy-retrieval-model',
+      },
     })
     await flushPromises()
     expect(lastPublished()).toEqual({})
     const toggle = wrapper.get('[aria-label="Contextual embedding"]')
     expect(toggle.attributes('aria-checked')).toBe('true')
-    const pickers = wrapper.findAll('wc-model-picker').map(picker => picker.attributes('value') || '')
+    const pickers = wrapper.findAll('wc-model-picker-stub').map(picker => picker.attributes('value') || '')
     expect(pickers).toEqual(['custom-summary', expectedChunk, expectedAnalysis])
+    if (analysis === false) {
+      expect(wrapper.text()).toContain('Answers are disabled. Ask returns matching passages.')
+    }
     await toggle.trigger('click')
     expect(lastPublished()).toEqual(expectedChunk ? { summary_model: false, chunk_enrichment_model: false } : { summary_model: false })
     wrapper.unmount()
