@@ -11,14 +11,14 @@ local M = {}
 -- bounded lifetimes. Only Core advances the registered source position.
 local PAGE = 64
 
-local function sheet_page(doc: any, options: any, progress: any)
+local function sheet_page(doc: any, options: any, progress: any, read: any?)
     local rows = {}
     local records = 0
     local function full() return #rows >= PAGE end
     local handled, checkpoint, err = planner.plan_document(
         doc,
         options.chunk_size,
-        function(offset, length) return doc.content:sub(offset + 1, offset + length), nil end,
+        read or function(offset, length) return doc.content:sub(offset + 1, offset + length), nil end,
         function(text, metadata)
             local ordinal = progress.chunks + #rows + 1
             if ordinal > options.tabular_max_chunks_per_doc then
@@ -86,13 +86,14 @@ function M.begin(target, cursor, event, doc, deadline)
         base = base,
         options = options,
         title = doc.title,
+        bytes = #doc.content,
         model = target.store_row.embedding_model,
         dims = dims,
     }
     local state = { source = source, progress = next_progress }
     return state,
-        function(tx, dialect)
-            local begun, err = stage.begin_tx(tx, dialect, target.store_row.id, cursor, event.id, source, next_progress)
+        function(tx, _dialect)
+            local begun, err = stage.begin_tx(tx, target.store_row.id, cursor, event.id, source, next_progress)
             if not begun then return nil, err end
             return stage.rows_tx(tx, target.store_row.id, cursor.id, rows)
         end,
@@ -111,7 +112,9 @@ function M.advance(target, cursor, state, deadline)
             title = source.title,
             metadata = source.base,
         }
-        local rows, checkpoint, err = sheet_page(doc, source.options, progress)
+        if not doc.content and not state.read then state.read = stage.reader(store_id, cursor.id, source.bytes) end
+        local rows, checkpoint, err = sheet_page(doc, source.options, progress, state.read)
+        if not checkpoint then state.read = nil end
         if not rows then return nil, nil, err end
         local next_progress = plan_progress(progress, rows, checkpoint)
         return function(tx, _dialect)
@@ -169,7 +172,7 @@ function M.publication(target, cursor, state)
     local store_id = target.store_row.id
     local source, p = state.source, state.progress
     if not source.document.content then
-        local content, read_err = stage.content(store_id, cursor, source.event_id)
+        local content, read_err = stage.content(store_id, cursor.id, source.bytes)
         if not content then return nil, nil, read_err end
         source.document.content = content
     end
@@ -199,9 +202,7 @@ function M.publication(target, cursor, state)
     }
     local outcome = writer.source_checkpoint_outcome(before, change)
     return function(tx, dialect)
-        local ok, write_err = writer.write_source_checkpoint_tx(tx, dialect, store_id, selector, before, change, outcome)
-        if not ok then return nil, write_err end
-        return stage.clear_tx(tx, store_id, cursor.id)
+        return writer.write_source_checkpoint_tx(tx, dialect, store_id, selector, before, change, outcome)
     end,
         outcome,
         nil

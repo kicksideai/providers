@@ -170,12 +170,14 @@ local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embedd
             or [[(j.value->>'id')::uuid,(j.value->>'node')::uuid,r.store_id,j.value->>'kind',(j.value->>'parent')::uuid]]
         local records = sqlite and "json_each($1)" or "jsonb_array_elements($1::jsonb)"
         local ordinal = sqlite and "json_extract(j.value,'$.ordinal')" or "(j.value->>'ordinal')::integer"
+        -- Drive SQLite from this page, then seek each staged vector by its primary key.
+        local join = sqlite and " j CROSS JOIN " or " j JOIN "
         local appended, err = tx:execute(
             "INSERT INTO kb10_embeddings(id,node_id,store_id,node_type,parent_id,embedding) SELECT "
                 .. fields
                 .. ",r.embedding FROM "
                 .. records
-                .. " j JOIN kb10_source_preparation_rows r ON r.ordinal="
+                .. join .. "kb10_source_preparation_rows r ON r.ordinal="
                 .. ordinal
                 .. " WHERE r.store_id=$2 AND r.cursor_id=$3 AND r.embedding IS NOT NULL",
             { encoded, store_id, prepared.cursor_id }
@@ -866,6 +868,7 @@ function writer.delete_store(component_id: any)
 
     local cascade = {
         {sql = "DELETE FROM kb10_source_preparation_rows WHERE store_id = $1", name = "kb10_source_preparation_rows"},
+        {sql = "DELETE FROM kb10_source_blocks WHERE store_id = $1", name = "kb10_source_blocks"},
         {sql = "DELETE FROM kb10_source_preparations WHERE store_id = $1", name = "kb10_source_preparations"},
     }
     if db_type == sql.type.SQLITE then
