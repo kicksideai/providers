@@ -13,11 +13,11 @@ import { KbNotice, KbLoading } from './shared'
 import WikiView from './WikiView.vue'
 import GraphView from './GraphView.vue'
 import { subscribeComponentMeta } from './componentMeta'
-import { canGenerateAnswer } from './queryMode'
+import { formatIndexingNotice } from './indexingNotice'
 
 // kx-kb-wiki — the kb10 concept-graph KB detail. This root owns everything the two
 // readings share: the single /graph data load, the realtime refresh, the deep-link
-// route, the selected node, and the capability probe. It hands that state to the
+// route, the selected node, and the indexing status. It hands that state to the
 // active view (the wiki reader or the graph canvas) and applies the picks /
 // mutations they emit. The view is switched by the host (knowledge top bar), which
 // passes the choice down via config.view.
@@ -50,10 +50,10 @@ watch(() => props.value.config?.view, (v) => {
 
 const loading = ref(false)
 const notice = ref('')
+const indexingNotice = ref('')
 const concepts = ref<GraphConcept[]>([])
 const edges = ref<GraphEdge[]>([])
 const selectedId = ref('')
-const canAnswer = ref(false)
 
 // Enrichment attention state maintained by the backend on component meta and
 // carried on the /graph response: a failed graph pass (enrichment.error) or a
@@ -94,27 +94,20 @@ const conceptsById = computed(() => {
 // The page the wiki reader opens by default: the first root of the hierarchy.
 const firstConceptId = computed(() => buildTree(concepts.value, edges.value)[0]?.concept.id || '')
 
-async function loadCapability() {
-  if (!kbId.value) { canAnswer.value = false; return }
-  try {
-    const { data } = await api.get(`/api/v1/knowledge/${kbId.value}`)
-    const cfg = (data?.config || data?.knowledge_base?.config || {}) as Record<string, unknown>
-    canAnswer.value = canGenerateAnswer(cfg)
-  } catch { canAnswer.value = false }
-}
-
 let loadRunId = 0
 async function load(quiet = false) {
-  if (!kbId.value) return
+  const id = kbId.value
+  if (!id) return
   const run = ++loadRunId
   if (!quiet) loading.value = true
   notice.value = ''
   try {
-    const { data } = await api.get(`/api/v1/kb10/${kbId.value}/graph`)
-    if (run !== loadRunId) return
+    const { data } = await api.get(`/api/v1/kb10/${id}/graph?include_indexing=true`)
+    if (run !== loadRunId || kbId.value !== id) return
     if (data?.success) {
       concepts.value = (data.nodes || []) as GraphConcept[]
       edges.value = (data.edges || []) as GraphEdge[]
+      indexingNotice.value = formatIndexingNotice(data.pending_source)
       const enr = (data.enrichment || {}) as EnrichmentState
       enrichment.value = enr.error || enr.agent_missing ? enr : null
       // Drop a selection whose node vanished. Only reconcile when nothing is
@@ -191,7 +184,12 @@ watch(view, (v) => {
   }
 })
 
-watch(kbId, (id) => { selectedId.value = ''; load(); loadCapability(); syncRealtime(id) }, { immediate: true })
+watch(kbId, (id) => {
+  selectedId.value = ''
+  indexingNotice.value = ''
+  load()
+  syncRealtime(id)
+}, { immediate: true })
 
 function onSelect(id: string) { if (id !== selectedId.value) selectedId.value = id }
 function onChanged() {
@@ -204,6 +202,7 @@ function onReload() { load() }
 <template>
   <div class="kb-page">
     <KbNotice v-if="notice" tone="info">{{ notice }}</KbNotice>
+    <KbNotice v-if="indexingNotice" role="status">{{ indexingNotice }}</KbNotice>
 
     <KbNotice v-if="attention" tone="warn">
       {{ attention }}
@@ -231,7 +230,6 @@ function onReload() { load() }
         :concepts="concepts"
         :edges="edges"
         :selected-id="selectedId"
-        :can-answer="canAnswer"
         :loading="loading"
         @select="onSelect"
         @changed="onChanged"
@@ -245,7 +243,6 @@ function onReload() { load() }
         :concepts="concepts"
         :edges="edges"
         :selected-id="selectedId"
-        :can-answer="canAnswer"
         :loading="loading"
         @select="onSelect"
         @changed="onChanged"

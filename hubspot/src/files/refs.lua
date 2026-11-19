@@ -15,9 +15,7 @@ type Parsed = { refs: { Ref }, skipped: integer }
 M.Ref = Ref
 M.Parsed = Parsed
 
-local function trim(value: string): string
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function file_id(link: string): string?
     local scheme, host, path = link:match("^(%a+)://([^/?#]+)(/[^?#]*)")

@@ -13,6 +13,18 @@ This module owns:
   `kickside.knowledge:kb_store_lifecycle` for store create/get/update/delete.
 - Embedding, query, maintenance, and deletion bindings for Knowledge consumers.
 
+Knowledge may request `get_store({component_id, stats = true})` or the stats-only
+`get_store({component_ids})` on the named lifecycle binding. Both reads require
+an authorized Knowledge caller. Each returned `stats` object includes committed
+accepted and failed roots, nodes, edges, installed embeddings, non-root concepts,
+chunks and summaries from one database snapshot. A batch omits stores the owner
+cannot find and carries no configuration.
+
+The read does one scoped SQL statement for up to 2,000 component IDs. Its cost
+tracks the node, edge and vector populations in the requested stores. Revisit
+transaction-owned store totals if large populated pages dominate catalog latency.
+Ordinary store/config lookups keep their existing query.
+
 ## Boundary and engine descriptors
 
 Knowledge owns KB Components and the engine-neutral lifecycle. KB10 owns its
@@ -27,6 +39,17 @@ and public-metadata projections. Knowledge discovers these declarations without
 branching on the engine name. Source materialization uses the descriptor’s
 workers; it does not use a public materializer contract.
 
+## Browse document populations
+
+`GET /api/v1/kb10/{id}/browse?scope=documents` lists accepted top-level
+document roots. `scope=failures` lists failed-only roots. A rejected update
+that preserves the accepted revision stays in Documents. Each page's `total`
+is the count of committed roots in its scope and includes rows outside the
+page. Requesting a scope requires KB READ access, as with ordinary browse.
+
+Omit `scope` to browse the existing `node_type` or `parent_id` filters. That
+route continues to count the full set matching the filter.
+
 ## Original document source
 
 `GET /kb10/{id}/nodes/{node_id}/source` is relative to the host's authenticated
@@ -34,17 +57,16 @@ API router. It requires an authenticated actor, KB READ access and a document
 node belonging to the KB's store. The node's `upload_id`, or
 `source_ref.upload_id`, selects its original upload.
 
-The unreleased storage integration calls `uploads.delivery_url` with audience
-`kb.source` and a 300-second expiry. Its successful JSON response keeps
-`success`, `url`, `filename` and `content_type`. A URL can point to signed S3
-content or tokened Uploads raw delivery. Obtain a new source response after the
-URL expires; object-host CORS must permit browser reads.
+`uploads.delivery_url` receives the stored upload ID, audience `kb.source` and
+a 300-second expiry. The JSON response contains `success`, `url`, `filename`
+and `content_type`. S3-backed uploads return a signed URL to the object.
+Local uploads return a tokenized raw-file URL. For browser reads, configure
+CORS on the object host. Request the source route again to renew an expired URL.
 
-KB10 requires Uploads >=0.3.2 for this helper; it is absent in 0.3.1. The endpoint
-trusts the node's stored upload reference and does not perform an additional
-upload-component access check. Source ingestion must validate that relationship
-while preserving legitimate shared-KB reads. Do not treat KB READ access as
-permission to attach an arbitrary upload ID.
+The KB10 dependency declaration sets the minimum supported Uploads version.
+Ingestion must validate the upload reference it attaches to a document. This
+allows a KB reader to open that document's original through the KB access
+check. [Dependency declaration](_index.yaml)
 
 ## Test
 

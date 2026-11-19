@@ -5,7 +5,7 @@ M.HUB_NAME = "app.suites.discord.supervisor.hub"
 local function parent()
     return process.registry.lookup(M.PARENT_NAME, process.registry.CONSISTENT)
 end
-function M.list_system(_)
+function M.list_runtime_context(_)
     local pid, err = parent()
     if err then return nil, err end
     return { { component_id = "supervised-connection", private_context = { bot_token = pid } } }, nil

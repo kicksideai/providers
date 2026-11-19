@@ -252,6 +252,17 @@ local function define_tests()
                 test.eq(#nodes, 0)
             end)
 
+            test.it("returns the filtered total on populated and out-of-range pages", function()
+                for _, offset in ipairs({ 0, 100 }) do
+                    local page, err = store():browse_page({
+                        store_id = store_id, opts = { top_level = true, node_type = "document", limit = 2, offset = offset },
+                    })
+                    test.is_nil(err)
+                    test.eq(page.total, 5)
+                    test.eq(#page.nodes, offset == 0 and 2 or 0)
+                end
+            end)
+
             test.it("counts the full match independent of limit and offset", function()
                 -- The pager needs the whole match size, not the capped page. With a
                 -- limit far below the seeded set (5 top-level documents), the page

@@ -21,10 +21,7 @@ local function with_deps(fake_base: any, fake_transport: any, fn: any)
     if not ok then error(err) end
 end
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function base_ok(component_id: string, deletes: { string }?): any
     return {

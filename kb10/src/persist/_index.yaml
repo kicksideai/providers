@@ -24,6 +24,7 @@ entries:
       - json
       - registry
     imports:
+      text_trim: kickside.contract:text_trim
       search_index: kickside.search_index:index
 
   - name: reader
@@ -86,6 +87,7 @@ entries:
       comment: kb10-internal taxonomy/graph node+edge+embedding+vector access (DTO adapter over the store).
     source: file://node_store.lua
     imports:
+      text_trim: kickside.contract:text_trim
       store: kickside.kb10.persist:store
       kb10: kickside.kb10:types
 

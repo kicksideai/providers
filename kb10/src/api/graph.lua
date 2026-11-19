@@ -5,6 +5,7 @@ local http_errors = require("http_errors")
 local node_store = require("node_store")
 local kc = require("kc")
 local query_params = require("query_params")
+local thread_ingest = require("thread_ingest")
 
 
 local function handler()
@@ -292,6 +293,10 @@ local function handler()
             end
         end
 
+        local pending_source
+        if req:query("include_indexing") == "true" then
+            pending_source = thread_ingest.pending_source(kb_id, comp.impl_id)
+        end
         res:set_status(http.STATUS.OK)
         res:write_json({
             success = true,
@@ -299,6 +304,7 @@ local function handler()
             nodes = enriched_nodes,
             edges = edge_list,
             enrichment = enrichment,
+            pending_source = pending_source,
         })
     end
 end

@@ -30,7 +30,7 @@ const { default: KbCreateConfig } = await import('./KbCreateConfig.vue')
 
 const schema = {
   properties: {
-    analysis_model: { type: ['string', 'boolean'], default: '', label: 'Query analysis model' },
+    analysis_model: { type: ['string', 'boolean'], default: 'class:fast', label: 'Query analysis model' },
     extra_prompt: { type: 'string', default: '', label: 'Retrieval instructions', format: 'textarea' },
     enable_reranking: { type: 'boolean', default: false, label: 'Rerank results' },
     query_strategy: { type: 'string', default: 'plain', label: 'Hypothetical answer retrieval' },
@@ -45,8 +45,17 @@ const schema = {
 function render(config: Record<string, unknown>) {
   host.props = ref({ config })
   return mount(KbCreateConfig, {
-    global: { stubs: { Icon: true }, config: { compilerOptions: { isCustomElement: (tag: string) => tag.startsWith('wc-') } } },
+    global: {
+      // Use the same picker stub with and without the private host setup.
+      stubs: { Icon: true, 'wc-model-picker': true, 'wc-agent-picker': true },
+    },
   })
+}
+
+function searchAnalysisPicker(wrapper: ReturnType<typeof render>) {
+  const field = wrapper.findAll('.cx-field').find(field => field.get('.cx-label').text() === 'Search analysis model')
+  expect(field).toBeDefined()
+  return field!.get('wc-model-picker-stub')
 }
 
 function lastPublished(): Record<string, unknown> {
@@ -57,6 +66,48 @@ function lastPublished(): Record<string, unknown> {
 describe('KbCreateConfig engine fields', () => {
   beforeEach(() => host.emit.mockReset())
 
+  it('publishes only settings changed by the user when creating a base', async () => {
+    const wrapper = render({ kb_type: 'document', config: { config_schema: schema } })
+    await flushPromises()
+    expect(lastPublished()).toEqual({})
+    expect(searchAnalysisPicker(wrapper).attributes('value')).toBe('')
+
+    await wrapper.get('[aria-label="Contextual embedding"]').trigger('click')
+    expect(lastPublished()).toEqual({ summary_model: false, chunk_enrichment_model: false })
+    wrapper.unmount()
+  })
+
+  it('changes only analysis_model when the Search analysis picker changes', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      config: { summary_model: 'summary-model', retrieval_model: 'legacy-retrieval-model' },
+    })
+    await flushPromises()
+    const picker = searchAnalysisPicker(wrapper)
+    expect(lastPublished()).toEqual({})
+    expect(picker.attributes('value')).toBe('')
+    expect(wrapper.text()).toContain('Search returns direct matches. Ask uses Fast when available.')
+    await picker.trigger('select', { detail: ' search-model ' })
+    expect(lastPublished()).toEqual({ analysis_model: 'search-model' })
+    wrapper.unmount()
+  })
+
+  it('saves false when a selected Search analysis model is cleared', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      config: { analysis_model: 'answer-model', retrieval_model: 'legacy-retrieval-model' },
+    })
+    await flushPromises()
+    const picker = searchAnalysisPicker(wrapper)
+    expect(picker.attributes('value')).toBe('answer-model')
+    await picker.trigger('select', { detail: '' })
+    expect(lastPublished()).toEqual({ analysis_model: false })
+    expect(wrapper.text()).toContain('Answers are disabled. Ask returns matching passages.')
+    wrapper.unmount()
+  })
+
   it('renders each schema key once: owned keys by their dedicated control, the rest as engine fields', async () => {
     const wrapper = render({ kb_type: 'document', config: { config_schema: schema } })
     await flushPromises()
@@ -65,6 +116,7 @@ describe('KbCreateConfig engine fields', () => {
     expect(labels.filter(l => l === 'Document size limit')).toHaveLength(1)
     expect(labels.filter(l => l === 'Rerank results')).toHaveLength(1)
     expect(labels.filter(l => l === 'Hypothetical answer retrieval')).toHaveLength(1)
+    expect(labels.filter(l => l === 'Search analysis model')).toHaveLength(1)
     expect(labels).not.toContain('Query analysis model')
     expect(labels).not.toContain('Retrieval instructions')
     expect(wrapper.findAll('input[type="text"]')).toHaveLength(0)
@@ -80,12 +132,81 @@ describe('KbCreateConfig engine fields', () => {
       config: { config_schema: schema, analysis_model: 'class:fast', enable_reranking: true },
     })
     await flushPromises()
-    expect(lastPublished().enable_reranking).toBe(true)
+    expect(lastPublished()).toEqual({})
 
     const toggle = wrapper.get('[aria-label="Rerank results"]')
     await toggle.trigger('click')
     await flushPromises()
-    expect(lastPublished().enable_reranking).toBe(false)
+    expect(lastPublished()).toEqual({ enable_reranking: false })
+    wrapper.unmount()
+  })
+
+  it('publishes disabled models instead of omitting them when contextual embedding is switched off', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      id: 'kb-1',
+      config: { summary_model: 'summary-model', chunk_enrichment_model: 'chunk-model' },
+    })
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    expect(lastPublished()).toEqual({ summary_model: false, chunk_enrichment_model: false })
+
+    await toggle.trigger('click')
+    expect(lastPublished()).toEqual({})
+    wrapper.unmount()
+  })
+
+  it.each([
+    { chunk: '', analysis: '', expectedChunk: 'class:fast', expectedAnalysis: '' },
+    { chunk: false, analysis: false, expectedChunk: '', expectedAnalysis: '' },
+    { chunk: undefined, analysis: undefined, expectedChunk: 'class:fast', expectedAnalysis: '' },
+    { chunk: 'chunk-model', analysis: 'answer-model', expectedChunk: 'chunk-model', expectedAnalysis: 'answer-model' },
+  ])('opens legacy model settings without publishing changes ($chunk, $analysis)', async ({ chunk, analysis, expectedChunk, expectedAnalysis }) => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      config: {
+        summary_model: 'custom-summary',
+        chunk_enrichment_model: chunk,
+        analysis_model: analysis,
+        retrieval_model: 'legacy-retrieval-model',
+      },
+    })
+    await flushPromises()
+    expect(lastPublished()).toEqual({})
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    const pickers = wrapper.findAll('wc-model-picker-stub').map(picker => picker.attributes('value') || '')
+    expect(pickers).toEqual(['custom-summary', expectedChunk, expectedAnalysis])
+    if (analysis === false) {
+      expect(wrapper.text()).toContain('Answers are disabled. Ask returns matching passages.')
+    }
+    await toggle.trigger('click')
+    expect(lastPublished()).toEqual(expectedChunk ? { summary_model: false, chunk_enrichment_model: false } : { summary_model: false })
+    wrapper.unmount()
+  })
+
+  it('returns to an unchanged disabled configuration after enabling then disabling both models', async () => {
+    const wrapper = render({
+      kb_type: 'document',
+      edit: true,
+      id: 'kb-1',
+      config: { summary_model: false, chunk_enrichment_model: false, analysis_model: 'answer-model' },
+    })
+    await flushPromises()
+    const toggle = wrapper.get('[aria-label="Contextual embedding"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(lastPublished()).toEqual({ summary_model: '', chunk_enrichment_model: '' })
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(lastPublished()).toEqual({})
     wrapper.unmount()
   })
 })

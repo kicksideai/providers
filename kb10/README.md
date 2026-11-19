@@ -42,19 +42,15 @@ variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
 
-## Original document delivery (unreleased storage integration)
+## Original document delivery
 
-The source endpoint in this branch delegates original-file URLs to
-`kickside.uploads:uploads.delivery_url`. S3 originals use signed object URLs;
-filesystem originals use tokened raw URLs. KB10 requires Uploads >=0.3.2; the
-helper is absent in 0.3.1. The consumer change remains unreleased in this branch.
+A reader with KB READ access can open the original file attached to a document.
+KB10 resolves its stored upload reference through Uploads. For S3-backed files,
+Uploads returns a signed object URL. For local files, it returns a tokenized
+Uploads URL. Request a fresh URL when the current one expires.
 
-The endpoint keeps its existing KB READ check and response fields. It trusts the
-document's stored upload reference; ingestion must preserve a validated source
-relationship. KB access alone does not authorize an arbitrary upload ID.
-
-See the [module reference](src/README.md#original-document-source) for the route,
-expiry and response contract.
+The [module reference](src/README.md#original-document-source) describes the
+route, access checks and response fields.
 
 ## Retrieval optimization
 
@@ -70,9 +66,11 @@ Tuning updates guidance for future retrieval and ingestion. Existing documents, 
 
 ## Use
 
-Install with Knowledge and select an embedding model, then create a document or wiki knowledge base. New bases use `class:fast` for analysis and grounded answers. An explicitly empty or false `analysis_model` keeps analysis and answering disabled. Wiki offers Wiki and Graph views. Ingest through Knowledge’s content interfaces and inspect processing before query. KB10 owns materialization, retrieval, graph views, and maintenance; Knowledge owns base lifecycle.
+Install with Knowledge and select an embedding model, then create a document or wiki knowledge base. For `summary_model` and `chunk_enrichment_model`, an omitted or empty value uses the engine default and `false` disables that model. On upgrade, KB10 converts previously stored empty summary and chunk enrichment settings to `false` to preserve generation behavior. Wiki offers Wiki and Graph views. Ingest through Knowledge’s content interfaces and inspect processing before query. KB10 owns materialization, retrieval, graph views, and maintenance. Knowledge owns base lifecycle and answer generation.
 
-When an explicit analysis class has no enabled models, search returns plain matches and `retrieval.analysis = { status: "unavailable", reason: "no_models_for_class", model: "<configured class>" }` with `retrieval.strategy = "plain"`. Model-backed query enhancements stay inactive until the class has a model. Catalog and provider failures remain errors, and Ask still requires an available model. This search behavior does not change ingestion or its independently configured summary model.
+Search uses the named `analysis_model` for query analysis. Empty, false, and omitted settings leave analysis off. Reranking applies in Single-shot mode. Agentic mode retains the stored reranking preference for use when switching back.
+
+When an explicit analysis class has no enabled models, search returns plain matches and `retrieval.analysis = { status: "unavailable", reason: "no_models_for_class", model: "<configured class>" }` with `retrieval.strategy = "plain"`. HyDE and autonomous tuning stay inactive when Search has no available model. Catalog and provider failures remain errors. Knowledge uses Fast for Ask when `analysis_model` is omitted or empty. With `analysis_model: false` or an unassigned Fast class, Ask returns ranked passages with an explanation.
 
 ## Reference
 

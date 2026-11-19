@@ -1,5 +1,108 @@
 # Changelog
 
+## [0.2.29](https://github.com/kicksideai/providers/compare/kb10-v0.2.28...kb10-v0.2.29) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** retry individual files in Knowledge uploads ([#171](https://github.com/kicksideai/providers/issues/171)) ([e675d08](https://github.com/kicksideai/providers/commit/e675d0871b1f993cbd0417ddc02ce62cb6afad7f))
+
+## [0.2.28](https://github.com/kicksideai/providers/compare/kb10-v0.2.27...kb10-v0.2.28) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** retain queued sources through dependency outages ([#168](https://github.com/kicksideai/providers/issues/168)) ([e9b5476](https://github.com/kicksideai/providers/commit/e9b5476bc134528c28e069d5accc9ddbebbda7b1))
+
+## [0.2.27](https://github.com/kicksideai/providers/compare/kb10-v0.2.26...kb10-v0.2.27) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** serve complete owned store statistics ([#166](https://github.com/kicksideai/providers/issues/166)) ([a99d910](https://github.com/kicksideai/providers/commit/a99d910eb07c94254d37a2e0e803117f2ebbd809))
+
+## [0.2.26](https://github.com/kicksideai/providers/compare/kb10-v0.2.25...kb10-v0.2.26) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** count committed document populations from the store ([#164](https://github.com/kicksideai/providers/issues/164)) ([f52abd2](https://github.com/kicksideai/providers/commit/f52abd2a552ec21e99efae71ad60525c110e3c50))
+
+## [0.2.25](https://github.com/kicksideai/providers/compare/kb10-v0.2.24...kb10-v0.2.25) (2026-11-19)
+
+
+### Features
+
+* **kb10:** offer re-ingest for selected uploads ([#157](https://github.com/kicksideai/providers/issues/157)) ([6a3ed0e](https://github.com/kicksideai/providers/commit/6a3ed0e74cf383be648baad1b8aa9f581b1133e6))
+
+## [0.2.24](https://github.com/kicksideai/providers/compare/kb10-v0.2.23...kb10-v0.2.24) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** read browse pages and totals in one snapshot ([#155](https://github.com/kicksideai/providers/issues/155)) ([fded628](https://github.com/kicksideai/providers/commit/fded628e484b503d20c3a557ac29dbf820b8d040))
+
+## [0.2.23](https://github.com/kicksideai/providers/compare/kb10-v0.2.22...kb10-v0.2.23) (2026-11-19)
+
+
+### Performance Improvements
+
+* **kb10:** bound and resume spreadsheet planning ([1f5a249](https://github.com/kicksideai/providers/commit/1f5a249750abaf41adb3c6d38f2fed9bc1dff774))
+
+## [0.2.22](https://github.com/kicksideai/providers/compare/kb10-v0.2.21...kb10-v0.2.22) (2026-11-19)
+
+
+### Features
+
+* **kb10:** commit source checkpoint outcomes atomically ([#150](https://github.com/kicksideai/providers/issues/150)) ([e12ab60](https://github.com/kicksideai/providers/commit/e12ab60060e3ccf868e61da393680a5342c810e9))
+
+
+### Bug Fixes
+
+* **kb10:** isolate metadata by projection target ([0cc4483](https://github.com/kicksideai/providers/commit/0cc4483cbcc06f361bc12f98704fa2b088a85739))
+* **kb10:** narrow the optional HyDE model before querying ([0257949](https://github.com/kicksideai/providers/commit/02579497994c778c913f1e63f73efc9ed639d3cb))
+* **kb10:** scope metadata and digest to the projection target ([9f5e8e7](https://github.com/kicksideai/providers/commit/9f5e8e7b5531d5f9011f4f470bb69fb1bf56fef4))
+
+## [0.2.21](https://github.com/kicksideai/providers/compare/kb10-v0.2.20...kb10-v0.2.21) (2026-11-19)
+
+
+### Features
+
+* **kb10:** checkpoint canonical source ingestion ([#147](https://github.com/kicksideai/providers/issues/147)) ([bca2b2d](https://github.com/kicksideai/providers/commit/bca2b2dec7ac3763e8d15128fd154c885159e061))
+
+## [0.2.20](https://github.com/kicksideai/providers/compare/kb10-v0.2.19...kb10-v0.2.20) (2026-11-19)
+
+
+### Features
+
+* **kb10:** show indexing progress on the knowledge base page ([#130](https://github.com/kicksideai/providers/issues/130)) ([1d0f167](https://github.com/kicksideai/providers/commit/1d0f167a7b77fcdd2ab12971975d70ced72d7bda))
+
+## [0.2.19](https://github.com/kicksideai/providers/compare/kb10-v0.2.18...kb10-v0.2.19) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** accept documents with long internal whitespace ([#132](https://github.com/kicksideai/providers/issues/132)) ([69f0007](https://github.com/kicksideai/providers/commit/69f000781ceb56acd802b11a619d6b9f22de90ba))
+* **kb10:** keep contextual embedding off after saving ([10b5d79](https://github.com/kicksideai/providers/commit/10b5d796414daf366a866eb0ef2dc7b58af6e7b8))
+* **kb10:** keep contextual embedding off after saving ([#131](https://github.com/kicksideai/providers/issues/131)) ([10b5d79](https://github.com/kicksideai/providers/commit/10b5d796414daf366a866eb0ef2dc7b58af6e7b8))
+* **kb10:** show query results in the Ask panel ([#133](https://github.com/kicksideai/providers/issues/133)) ([70efa23](https://github.com/kicksideai/providers/commit/70efa236082d8cc53da077a9dfb8caa2bc602c91))
+
+## [0.2.18](https://github.com/kicksideai/providers/compare/kb10-v0.2.17...kb10-v0.2.18) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** keep document deletion separate from selection ([#145](https://github.com/kicksideai/providers/issues/145)) ([ea2e37b](https://github.com/kicksideai/providers/commit/ea2e37bcc02e128cf2f476da4d4952216de1f8a1))
+* **kb10:** preserve document addresses and scope source bindings ([#137](https://github.com/kicksideai/providers/issues/137)) ([decb36e](https://github.com/kicksideai/providers/commit/decb36e93c1fbcc956f025be30dd8cc4781ba1b1))
+* **kb10:** resolve replacement scope from document lineage ([#144](https://github.com/kicksideai/providers/issues/144)) ([a853a9c](https://github.com/kicksideai/providers/commit/a853a9c9fcde539f52c3774ffd6a1a16da8f7d41))
+
+## [0.2.17](https://github.com/kicksideai/providers/compare/kb10-v0.2.16...kb10-v0.2.17) (2026-11-18)
+
+
+### Bug Fixes
+
+* **kb10:** admit owning secret operations without caller key access ([#110](https://github.com/kicksideai/providers/issues/110)) ([b46393b](https://github.com/kicksideai/providers/commit/b46393b1b03500aad9b1f886fe42b5dbc60bc107))
+
 ## [0.2.16](https://github.com/kicksideai/providers/compare/kb10-v0.2.15...kb10-v0.2.16) (2026-11-17)
 
 

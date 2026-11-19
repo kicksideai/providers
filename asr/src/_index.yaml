@@ -2,6 +2,11 @@ version: "1.0"
 namespace: kickside.asr
 
 entries:
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: definition
     kind: ns.definition
     readme: file://README.md
@@ -72,6 +77,7 @@ entries:
     source: file://stage.lua
     modules: [contract, fs, logger]
     imports:
+      text_trim: kickside.provider_text:trim
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
 

@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import type { Component } from 'vue'
 import KbSearch from './KbSearch.vue'
-import { canGenerateAnswer } from '../queryMode'
 
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@wippy-fe/proxy', () => ({ api: { get, post }, host: { handleError: vi.fn() } }))
@@ -22,11 +21,10 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     post.mockResolvedValue({ data: { success: true, answer: 'Grounded answer', results: [{ id: 'passage', content: 'Answer source' }] } })
   })
 
-  it.each([{}, { analysis_model: false }, { analysis_model: ' ' }, { summarization_model: 'summary' }])(
-    'hides Ask and explains setup without an Answer model: %j', async (config) => {
-      const wrapper = mount(component, { props: { kbId: 'kb', ask: canGenerateAnswer(config) } })
+  it.each([undefined, false])(
+    'uses search in panels without Ask enabled: %j', async (ask) => {
+      const wrapper = mount(component, { props: { kbId: 'kb', ask } })
       expect(wrapper.find('.kc-search-modes').exists()).toBe(false)
-      expect(wrapper.text()).toContain('Select an Answer model in knowledge base settings to enable Ask.')
       await wrapper.get('input').setValue('question')
       await wrapper.get('input').trigger('keyup.enter')
       await flushPromises()
@@ -37,7 +35,7 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
   )
 
   it('uses the answer endpoint and question placeholder with an Answer model', async () => {
-    const wrapper = mount(component, { props: { kbId: 'kb', ask: canGenerateAnswer({ analysis_model: 'answer' }) } })
+    const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
     await wrapper.get('.kc-search-mode:last-child').trigger('click')
     expect(wrapper.get('input').attributes('placeholder')).toBe('Ask this knowledge base a question…')
     await wrapper.get('input').setValue('question')
@@ -46,6 +44,28 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     expect(post).toHaveBeenCalledWith('/api/v1/knowledge/kb/ask', { query: 'question', limit: 8 })
     expect(get).not.toHaveBeenCalled()
     expect(wrapper.get('.kc-ans-body').text()).toBe('Grounded answer')
+  })
+
+  it.each([
+    'Answers are disabled. Returning query results.',
+    'No answer model is available. Returning query results.',
+  ])('shows every passage in Ask query mode: %s', async (notice) => {
+    post.mockResolvedValueOnce({ data: {
+      success: true, mode: 'query', answer: notice,
+      results: [
+        { id: 'first', content: 'First passage' },
+        { id: 'second', content: 'Second passage' },
+      ],
+    } })
+    const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
+    await wrapper.get('.kc-search-mode:last-child').trigger('click')
+    await wrapper.get('input').setValue('question')
+    await wrapper.get('button[aria-label="Ask"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="status"]').text()).toBe(notice)
+    expect(wrapper.find('.kc-ans').exists()).toBe(false)
+    expect(wrapper.findAll('.kc-search-r-body').map((row) => row.text())).toEqual(['First passage', 'Second passage'])
+    expect(get).not.toHaveBeenCalled()
   })
 
   it('shows relevance and result navigation without retrieval jargon', async () => {
@@ -76,15 +96,29 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     await wrapper.get('input').trigger('keyup.enter')
     await flushPromises()
     expect(wrapper.text()).toContain('Direct match')
-    expect(wrapper.find('.kc-search-modes').exists()).toBe(false)
+    expect(wrapper.find('.kc-search-modes').exists()).toBe(layout === 'panel')
     expect(wrapper.get('[role="status"]').text()).toBe('Showing direct matches. No model is assigned to class:fast.')
+    if (layout === 'panel') {
+      post.mockResolvedValueOnce({ data: { success: true, mode: 'query',
+        answer: 'No answer model is available. Returning query results.',
+        results: [{ id: 'passage', content: 'Direct match' }],
+      } })
+      await wrapper.get('.kc-search-mode:last-child').trigger('click')
+      await flushPromises()
+      expect(post).toHaveBeenCalledWith('/api/v1/knowledge/kb/ask', { query: 'question', limit: 8 })
+      expect(wrapper.get('[role="status"]').text()).toBe('No answer model is available. Returning query results.')
+      expect(wrapper.text()).toContain('Direct match')
+      await wrapper.get('.kc-search-mode:first-child').trigger('click')
+      await flushPromises()
+    }
     await wrapper.get('input').trigger('keyup.enter')
     await flushPromises()
+    expect(wrapper.text()).toContain('Search passage')
     expect(wrapper.find('[role="status"]').exists()).toBe(false)
     if (layout === 'panel') expect(wrapper.find('.kc-search-modes').exists()).toBe(true)
   })
 
-  it.each(['response', 'rejection'] as const)('disables Ask after an unavailable Ask-first %s and restores it after analysis is available', async (outcome) => {
+  it.each(['response', 'rejection'] as const)('keeps Ask available after an unavailable Ask %s', async (outcome) => {
     const data = { success: false, error: 'ask failed: answer generation failed: No models found for class: fast',
       retrieval: { strategy: 'plain', analysis: { status: 'unavailable', reason: 'no_models_for_class', model: 'class:fast' } } }
     if (outcome === 'response') post.mockResolvedValueOnce({ data })
@@ -95,14 +129,9 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     await wrapper.get('button[aria-label="Ask"]').trigger('click')
     await flushPromises()
     expect(get).not.toHaveBeenCalled()
-    expect(wrapper.find('.kc-search-modes').exists()).toBe(false)
-    expect(wrapper.text()).toContain(data.error)
-    expect(wrapper.get('input').attributes('placeholder')).toBe('Search every indexed passage…')
-    await wrapper.get('input').trigger('keyup.enter')
-    await flushPromises()
-    expect(get).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain('Search passage')
     expect(wrapper.find('.kc-search-modes').exists()).toBe(true)
+    expect(wrapper.text()).toContain(data.error)
+    expect(wrapper.get('input').attributes('placeholder')).toBe('Ask this knowledge base a question…')
   })
 
   it('keeps Ask available after a concrete provider fails', async () => {
@@ -117,6 +146,26 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     expect(wrapper.text()).toContain('ask failed: provider unavailable')
     expect(wrapper.find('.kc-search-modes').exists()).toBe(true)
     expect(wrapper.get('input').attributes('placeholder')).toBe('Ask this knowledge base a question…')
+  })
+
+  it('shows a provider failure without presenting stale passages as an answer', async () => {
+    const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
+    await wrapper.get('.kc-search-mode:last-child').trigger('click')
+    await wrapper.get('input').setValue('first question')
+    await wrapper.get('button[aria-label="Ask"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.kc-ans-body').text()).toBe('Grounded answer')
+
+    post.mockRejectedValueOnce({ response: { status: 503, data: {
+      success: false, error: 'Model provider profile is unavailable',
+    } } })
+    await wrapper.get('input').setValue('second question')
+    await wrapper.get('button[aria-label="Ask"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.kc-search-err').text()).toContain('Model provider profile is unavailable')
+    expect(wrapper.find('.kc-ans').exists()).toBe(false)
+    expect(wrapper.find('.kc-search-result').exists()).toBe(false)
+    expect(post).toHaveBeenCalledTimes(2)
   })
 
   it('returns to search when the Answer capability is removed', async () => {

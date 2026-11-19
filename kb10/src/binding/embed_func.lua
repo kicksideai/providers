@@ -3,10 +3,7 @@ local thread_ingest = require("thread_ingest")
 
 type Map = { [string]: any }
 
-local function trim(value)
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function shallow_copy(input: any): Map
     local out: Map = {}
@@ -54,7 +51,7 @@ local function handle(request: any)
     end
 
     local content = req.content
-    if type(content) ~= "string" or trim(content) == "" then
+    if trim(content) == "" then
         return { success = false, error = "content is required" }
     end
 

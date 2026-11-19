@@ -131,16 +131,16 @@ local function define_tests()
             }), "undeclared field")
         end)
 
-        test.it("declares every foreign package unpinned", function()
+        test.it("declares compatible versions for foreign packages", function()
             for _, expected in ipairs({
-                { "component", "kickside/component" },
-                { "connection", "kickside/connection" },
-                { "contract", "kickside/contract" },
+                { "component", "kickside/component", ">=0.3.23" },
+                { "connection", "kickside/connection", ">=0.1.8" },
+                { "contract", "kickside/contract", ">=0.3.8" },
             }) do
                 local dep = get("kickside.bitbucket:dep.kickside." .. expected[1])
                 test.eq(dep.kind, "ns.dependency")
                 test.eq(data(dep).component, expected[2])
-                test.eq(tostring(data(dep).version or ""), "*", expected[2] .. " must stay unpinned")
+                test.eq(tostring(data(dep).version or ""), expected[3], expected[2] .. " compatibility bound")
             end
         end)
     end)

@@ -2,6 +2,7 @@ version: "1.0"
 namespace: kickside.kb10
 
 entries:
+
   - name: text_limits
     kind: library.lua
     meta:
@@ -25,7 +26,7 @@ entries:
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
-    version: "*"
+    version: ">=0.3.9"
     meta:
       comment: Implements the shared component and deletable contracts.
 
@@ -39,9 +40,9 @@ entries:
   - name: dep.kickside.core
     kind: ns.dependency
     component: kickside/core
-    version: "*"
+    version: ">=0.3.25"
     meta:
-      comment: Event-sourced on the core thread engine (thread upsert, event append, status).
+      comment: Owns the knowledge thread and supervised source checkpoints.
 
   - name: dep.kickside.doc2md
     kind: ns.dependency
@@ -60,14 +61,14 @@ entries:
   - name: dep.kickside.jobs
     kind: ns.dependency
     component: kickside/jobs
-    version: "*"
+    version: ">=0.1.87"
     meta:
       comment: Whole-KB maintenance (resummarize, re-embed) runs as a durable job so the request answers immediately and the work carries the caller's frozen identity.
 
   - name: dep.kickside.knowledge
     kind: ns.dependency
     component: kickside/knowledge
-    version: "*"
+    version: ">=0.1.93"
     meta:
       comment: Reads and writes knowledge bases through the knowledge contract.
 
@@ -79,9 +80,9 @@ entries:
   - name: dep.kickside.uploads
     kind: ns.dependency
     component: kickside/uploads
-    version: ">=0.3.2"
+    version: ">=0.3.29"
     meta:
-      comment: Stages files and resolves storage-aware original delivery through Uploads.
+      comment: Stages files, rejects invalid bound upload tokens before storage, and resolves original delivery through Uploads.
 
   - name: dep.wippy.agent
     kind: ns.dependency
@@ -124,6 +125,7 @@ entries:
   # created, replaced, embedded, and deleted only by kb10's own materialization
   # pipeline (the injection workers via the internal materializer_store surface);
   # direct kb_store mutations are for taxonomy/graph state.
+
   - name: api_router
     kind: ns.requirement
     meta:
@@ -178,6 +180,18 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:07_preserve_answer_settings
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:08_source_identity_schema
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:09_source_identity_backfill
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:10_sqlite_search_row_keys
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:11_sqlite_search_row_backfill
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:12_preserve_contextual_model_settings
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:14_store_document_counts
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 
@@ -191,10 +205,17 @@ entries:
     kind: library.lua
     source: file://types.lua
 
+  - name: model_settings
+    kind: library.lua
+    source: file://model_settings.lua
+    imports:
+      engines: kickside.knowledge:engines
+
   # ─── kb_store binding (default engine for knowledge's control plane) ──
   # kb10 implements ONLY the model-agnostic store lifecycle toward knowledge. Node,
   # edge, embedding, summary and graph operations are kb10-internal (persist:node_store
   # + injection:materializer_store) and never cross the contract seam.
+
   - name: kb_store_lifecycle
     kind: contract.binding
     meta:
@@ -214,6 +235,7 @@ entries:
   # The embeddable binding also declares queryable so component-bound dispatch
   # (component.open(kb_id, READ, queryable), used by the agent kb_query trait)
   # resolves through the component's impl binding.
+
   - name: embeddable
     kind: contract.binding
     meta:
@@ -324,6 +346,7 @@ entries:
   # mints a job on kb10's own queue and answers a receipt. The engine descriptors
   # name this binding as maintenance_binding; knowledge resolves a KB's engine,
   # reads that id and opens this binding with the KB as context.
+
   - name: maintainable
     kind: contract.binding
     meta:
@@ -343,6 +366,7 @@ entries:
   # declared here — knowledge never names kb10. One entry per kb_type kb10
   # provides (document, graph). Both back onto the same store + bindings; the
   # graph entry seeds a root concept node (is_graph).
+
   - name: engine_document
     kind: registry.entry
     meta:
@@ -369,6 +393,8 @@ entries:
       config_maintenance:
         schedule_resummarize: [summary_model, summary_prompt, summary_max_chars]
       store_contract: kickside.knowledge:kb_store_lifecycle
+      store_binding: kickside.kb10:kb_store_lifecycle
+      store_stats_batch: true
       component:
         create: { view: kickside.kb10.ui:create_view }
         manage: { view: kickside.kb10.ui:document_view }
@@ -422,8 +448,8 @@ entries:
         chunk_overlap: 150
         summary_max_chars: 2400
         summary_prompt: ""
-        summary_model: "class:fast"
-        chunk_enrichment_model: "class:fast"
+        summary_model: &document_summary_model "class:fast"
+        chunk_enrichment_model: &document_chunk_model "class:fast"
         # Images: when on, diagrams/figures from the source become retrievable image
         # nodes -- described in context by image_caption_model, contextually embedded
         # alongside text, and placed in the graph so agentic search returns the diagram.
@@ -441,8 +467,6 @@ entries:
         # incremental (prior-description plus most recent summaries) form.
         digest_context_tokens: 48000
         digest_chars_per_token: 4
-        # Ask: how a grounded answer is produced (built-in synthesis | agentic agent).
-        analysis_model: "class:fast"
         extra_prompt: ""
         enable_reranking: false
         query_strategy: plain
@@ -453,11 +477,16 @@ entries:
       config_schema:
         type: object
         properties:
+          summary_model:
+            type: [string, boolean]
+            default: *document_summary_model
+          chunk_enrichment_model:
+            type: [string, boolean]
+            default: *document_chunk_model
           analysis_model:
             type: [string, boolean]
-            default: "class:fast"
-            label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables analysis and answering.
+            label: Search analysis model
+            description: A named model enables Search analysis and Ask answers. Omitted or empty values keep Search plain and use Fast for Ask when available. False keeps Search plain and returns passages from Ask.
           extra_prompt:
             type: string
             default: ""
@@ -516,6 +545,7 @@ entries:
   # of the same concept+edge data behind a view switch: the wiki reader (page tree)
   # and the graph canvas (node/edge map). depth is the default concept-link depth,
   # carried in default_config, applied by create/read APIs and enforced by placement.
+
   - name: engine_wiki
     kind: registry.entry
     meta:
@@ -542,6 +572,8 @@ entries:
       config_maintenance:
         schedule_resummarize: [summary_model, summary_prompt, summary_max_chars]
       store_contract: kickside.knowledge:kb_store_lifecycle
+      store_binding: kickside.kb10:kb_store_lifecycle
+      store_stats_batch: true
       component:
         create: { view: kickside.kb10.ui:create_view }
         # The wiki manage UI renders the same concept+edge data two ways. The
@@ -597,8 +629,8 @@ entries:
         chunk_overlap: 150
         summary_max_chars: 2400
         summary_prompt: ""
-        summary_model: "class:fast"
-        chunk_enrichment_model: "class:fast"
+        summary_model: &wiki_summary_model "class:fast"
+        chunk_enrichment_model: &wiki_chunk_model "class:fast"
         # Images: when on, diagrams/figures from the source become retrievable image
         # nodes -- described in context by image_caption_model, contextually embedded
         # alongside text, and placed in the graph so agentic search returns the diagram.
@@ -619,7 +651,6 @@ entries:
         extraction_model: "class:nano"
         retrieval_model: "class:nano"
         max_retrieval_iterations: 3
-        analysis_model: "class:fast"
         extra_prompt: ""
         enable_reranking: false
         query_strategy: plain
@@ -636,11 +667,16 @@ entries:
       config_schema:
         type: object
         properties:
+          summary_model:
+            type: [string, boolean]
+            default: *wiki_summary_model
+          chunk_enrichment_model:
+            type: [string, boolean]
+            default: *wiki_chunk_model
           analysis_model:
             type: [string, boolean]
-            default: "class:fast"
-            label: Query analysis model
-            description: Model for grounded answers, document analysis, HyDE, reranking, and retrieval tuning. Empty or false disables analysis and answering.
+            label: Search analysis model
+            description: A named model enables Search analysis and Ask answers. Omitted or empty values keep Search plain and use Fast for Ask when available. False keeps Search plain and returns passages from Ask.
           extra_prompt:
             type: string
             default: ""
@@ -701,3 +737,18 @@ entries:
             description: Documents longer than this many characters are marked failed instead of indexed; the uploaded file is kept. Empty means no limit.
             minimum: 0
             maximum: 268435456
+
+  - name: upload_read_token_call
+    kind: security.policy
+    policy:
+      resources:
+        - kickside.uploads.tokens:pack_read
+      actions: [funcs.call, funcs.security]
+      effect: allow
+
+  - name: models_reload_call
+    kind: security.policy
+    policy:
+      resources: [kickside.models.persist:reload_profiles]
+      actions: [funcs.call, funcs.security]
+      effect: allow

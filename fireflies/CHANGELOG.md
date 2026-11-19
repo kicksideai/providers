@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.29](https://github.com/kicksideai/providers/compare/fireflies-v0.1.28...fireflies-v0.1.29) (2026-11-19)
+
+
+### Bug Fixes
+
+* require compatible encrypted provider dependencies ([#173](https://github.com/kicksideai/providers/issues/173)) ([508276b](https://github.com/kicksideai/providers/commit/508276b3183236b644609b48eae680e671fa6b89))
+
+## [0.1.28](https://github.com/kicksideai/providers/compare/fireflies-v0.1.27...fireflies-v0.1.28) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
+## [0.1.27](https://github.com/kicksideai/providers/compare/fireflies-v0.1.26...fireflies-v0.1.27) (2026-11-18)
+
+
+### Bug Fixes
+
+* declare encrypted provider credentials and trusted runtime access ([#105](https://github.com/kicksideai/providers/issues/105)) ([42cab0e](https://github.com/kicksideai/providers/commit/42cab0e6f4ddd00da4d56e3d2ab48b18cabe41ba))
+
 ## [0.1.26](https://github.com/kicksideai/providers/compare/fireflies-v0.1.25...fireflies-v0.1.26) (2026-11-06)
 
 

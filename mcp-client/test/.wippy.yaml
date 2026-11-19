@@ -26,6 +26,7 @@ profiles:
       app:db:pool.max_idle: 8
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/mcp-client: ..
     kickside/oauth: ../../../kickside/platform/oauth
     kickside/component: ../../../kickside/core/component

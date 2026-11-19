@@ -230,9 +230,9 @@ local function define_tests()
 
         test.it("declares every foreign package used by production entries", function()
             for _, expected in ipairs({
-                { "component", "kickside/component", "*" },
+                { "component", "kickside/component", ">=0.3.23" },
                 { "connection", "kickside/connection", ">=0.3.0" },
-                { "contract", "kickside/contract", "*" },
+                { "contract", "kickside/contract", ">=0.3.8" },
                 { "oauth", "kickside/oauth", "*" },
                 { "settings", "kickside/settings", "*" },
             }) do

@@ -48,8 +48,9 @@ end
 local function statement_allowance(model: string, ids: { string }, evidence: string): (integer?, integer?, error?)
     local limit, limit_err = schema_util.output_limit(model)
     if limit_err then return nil, nil, limit_err end
+    if not limit then return schema_util.LIMITS.per_statement, nil, nil end
     for per_statement = schema_util.LIMITS.per_statement, 1, -1 do
-        local fits, fit_err = holds(limit :: integer, ids, 1, per_statement, evidence)
+        local fits, fit_err = holds(limit, ids, 1, per_statement, evidence)
         if fit_err then return nil, nil, fit_err end
         if fits then return per_statement, limit, nil end
     end
@@ -62,9 +63,10 @@ function M.extraction_capacity(model: string, span: { any }?, agent_id: string?)
     if #ids == 0 then ids[1] = uuid.v7() end
     local per_statement, limit, allowance_err = statement_allowance(model, ids :: { string }, evidence :: string)
     if allowance_err then return nil, allowance_err end
+    if not limit then return nil, nil end
     local count = 1
     while true do
-        local fits, fit_err = holds(limit :: integer, ids :: { string }, count + 1, per_statement :: integer, evidence :: string)
+        local fits, fit_err = holds(limit, ids :: { string }, count + 1, per_statement :: integer, evidence :: string)
         if fit_err then return nil, fit_err end
         if not fits then return count, nil end
         count = count + 1

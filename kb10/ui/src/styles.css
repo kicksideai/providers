@@ -265,7 +265,7 @@ select.ap-input { cursor: pointer; }
 .ap-submit svg { width: 16px; height: 16px; }
 
 /* My uploads picker */
-.ap-uploads-bar { display: flex; gap: 9px; align-items: center; }
+.ap-uploads-bar { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
 .ap-uploads-bar .ap-input { flex: 1; }
 .ap-uploads-state {
   display: flex; align-items: center; gap: 8px; padding: 22px 4px;
@@ -310,8 +310,9 @@ select.ap-input { cursor: pointer; }
 .ap-item.done .ap-item-ic { color: var(--p-success-500); }
 .ap-item.error .ap-item-ic { color: var(--p-danger-500); }
 .ap-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--p-text-color); }
-.ap-item-status { flex: none; font-size: 11px; color: var(--p-text-muted-color); }
+.ap-item-status { max-width: 55%; overflow-wrap: anywhere; font-size: 11px; color: var(--p-text-muted-color); }
 .ap-item.error .ap-item-status { color: var(--p-danger-500); }
+.ap-item-retry { flex: none; color: var(--p-text-color); text-decoration: underline; }
 
 /* ── Settings panel ──────────────────────────────────────────────────────── */
 .st { max-width: 760px; }

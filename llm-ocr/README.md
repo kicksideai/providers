@@ -59,6 +59,10 @@ variables in the harness configuration for your test server.
 
 Install the OCR processor and PDF rasterizer requirements, configure the generation model, and upload a scanned or image-only document through Uploads. OCR processes selected pages; original content and derived artifacts stay owned by Uploads.
 
+For processing jobs, OCR reports progress through Jobs 0.1.83 or later before
+each page batch. Each report uses the active execution's lease, and OCR stops
+before the next batch if that lease has been revoked.
+
 ### Model request shape
 
 Each page is sent as a system prompt, then a user message with the instruction text
@@ -71,6 +75,9 @@ different request declares it in its `metadata.ocr` object; every field is optio
 | `prompt` | instruction text sent with the image |
 | `image_first` | `true` sends the image before the instruction text |
 | `output_limit` | positive integer output token limit |
+
+A page whose generation stops at the output limit fails; its error detail carries the
+output length and its last 2 KB.
 
 A non-empty `ocr_prompt` setting takes precedence over the card's `prompt`. Each model
 the LLM attempts, including class members and fallbacks, receives the request its own

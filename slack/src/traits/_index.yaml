@@ -11,6 +11,8 @@ namespace: kickside.slack.traits
 entries:
   - name: slack_get
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -65,6 +67,8 @@ entries:
 
   - name: slack_write
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta:
       type: tool
       mcp:
@@ -124,6 +128,7 @@ entries:
     source: file://slack_get.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.slack.client:transport
       api: kickside.slack.client:api
@@ -134,6 +139,7 @@ entries:
     source: file://slack_write.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.slack.client:transport
       api: kickside.slack.client:api

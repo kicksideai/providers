@@ -38,10 +38,7 @@ local RETENTION_KEYS = { class = true, max_age_seconds = true }
 local OWNERSHIP_KEYS = { owner_component_id = true, owner_user_ref = true, connection_id = true }
 local RANGE_KEYS = { minimum = true, maximum = true }
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function closed(value: Map, allowed: { [string]: boolean }, path: string): string?
     for key in pairs(value) do

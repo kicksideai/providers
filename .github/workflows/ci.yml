@@ -52,7 +52,7 @@ jobs:
         persist-credentials: false
     - uses: kicksideai/.github/actions/setup-wippy@5401fa65bed7d8648125957520e94206ed1ffd0b
       with:
-        version: 0.3.65a
+        version: 0.3.66a
         hub-url: https://hub.wippy.ai
     - name: Materialize Wippy frontend build inputs
       run: make ui-kit
@@ -574,7 +574,7 @@ jobs:
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
             version=$(jq -er --arg path mcp-client '.[$path]' .release-please-manifest.json)
-            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs
+            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.mcp_client:ui_fs
         - module: mcp-client
           engine: postgres
           commands: |
@@ -600,7 +600,7 @@ jobs:
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
             version=$(jq -er --arg path mcp-client '.[$path]' .release-please-manifest.json)
-            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs
+            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.mcp_client:ui_fs
         - module: memory
           engine: sqlite
           commands: |
@@ -1111,6 +1111,13 @@ jobs:
             cd "$source_root"
             version=$(jq -er --arg path notion '.[$path] // "0.1.0"' .release-please-manifest.json)
             wippy publish --config notion --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: provider-text
+          engine: package
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/.scratch"
+            mkdir -p "$TMPDIR"
+            make -C provider-text lint
         - module: search-index
           engine: sqlite
           commands: |
@@ -1328,7 +1335,7 @@ jobs:
         node-version: '22'
     - uses: kicksideai/.github/actions/setup-wippy@5401fa65bed7d8648125957520e94206ed1ffd0b
       with:
-        version: 0.3.65a
+        version: 0.3.66a
         hub-url: https://hub.wippy.ai
     - name: Check out converters module sources
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

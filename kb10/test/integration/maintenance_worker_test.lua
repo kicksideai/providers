@@ -324,6 +324,15 @@ local function define_tests()
             restore()
         end)
 
+        test.it("rejects an unknown maintenance verb with a megabyte of internal whitespace", function()
+            local verb = "re" .. string.rep(" ", 1024 * 1024) .. "embed"
+            local outcome = worker.run_authorized({
+                payload = { kb_id = kb_id(), run_id = kb_id(), run_type = "\t" .. verb .. "\n" },
+            })
+            test.is_false(outcome.ok)
+            test.is_true(outcome.job_error == "unknown kb10 maintenance run type: " .. verb)
+        end)
+
         test.it("refuses a payload that names no run", function()
             local outcome = worker.run_authorized({ payload = { kb_id = "kb-1", run_type = "resummarize" } })
             test.is_false((outcome :: any).ok)

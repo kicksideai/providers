@@ -8,11 +8,11 @@ local M = {}
 -- single Fireflies connection in scope (trusted read of its private context).
 local function context(component_id: string?): (any?, error?)
     if component_id and component_id ~= "" then
-        local ctx, err = component.get_context(component_id, component.ACCESS.READ)
+        local ctx, err = component.get_runtime_context(component_id, component.ACCESS.READ)
         if err then return nil, err end
         return ctx, nil
     end
-    local ctx, err = component.get_context_by_meta({
+    local ctx, err = component.get_runtime_context_by_meta({
         class = types.CONNECTION_CLASS,
         provider = types.PROVIDER,
     }, component.ACCESS.READ)

@@ -59,7 +59,7 @@ local function define_tests()
                     ask_unavailable()
                     local lineage = { external_source = "test", external_id = "reference", external_version = "1",
                         thread_event_id = uuid.v7(), thread_event_seq = 1,
-                        source_ref = { external_source = "test", external_id = "reference", external_version = "1" } }
+                        source_ref = { thread_id = id, external_source = "test", external_id = "reference", external_version = "1" } }
                     lineage.source_ref.thread_event_id = lineage.thread_event_id
                     lineage.source_ref.thread_event_seq = lineage.thread_event_seq
                     local vector = {}

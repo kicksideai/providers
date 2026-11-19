@@ -24,10 +24,7 @@ local function arg_table(args: any): kb10.Map
     return {}
 end
 
-local function trim(value)
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function source_node_type(node_type)
     return type(node_type) == "string" and SOURCE_NODE_TYPES[node_type] == true
@@ -187,6 +184,14 @@ function M:browse_nodes(args: any): (any, string?)
     local a = (arg_table(args) :: any) :: kb10.BrowseNodesArgs
     local rows, err: any = store.browse_nodes(a.store_id, a.opts)
     return normalize_nodes(rows), (err :: string?)
+end
+
+function M:browse_page(args: any): (any, string?)
+    local a = (arg_table(args) :: any) :: kb10.BrowseNodesArgs
+    local page, err: any = store.browse_page(a.store_id, a.opts)
+    if err then return nil, (err :: string?) end
+    normalize_nodes(page.nodes)
+    return page, nil
 end
 
 -- Every node matching opts, read page by page.

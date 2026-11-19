@@ -1,5 +1,6 @@
 local test = require("test")
 local sql = require("sql")
+local process = require("process")
 local uuid_v4 = require("uuid").v4
 local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
@@ -9,10 +10,30 @@ local llm = require("llm")
 local ocr = require("ocr")
 local stage = require("stage")
 local contract = require("contract")
+local jobs = require("jobs")
+local proc_supervisor = require("proc_supervisor")
 local pipeline = require("pipeline")
 local upload_type = require("upload_type")
 
 local STORAGE_ID = "app:temp_fs"
+
+local function with_heartbeat_owners(job_id: string, tokens: { string }, run): any
+    local channel = process.listen(proc_supervisor.CONTROL_TOPIC)
+    local names = {}
+    local ok, result = pcall(function()
+        for _, token in ipairs(tokens) do
+            local name = proc_supervisor.execution_name(job_id, token)
+            local registered, err = process.registry.register(name, nil, process.registry.CONSISTENT)
+            test.is_true(registered, tostring(err))
+            names[#names + 1] = name
+        end
+        return run()
+    end)
+    for _, name in ipairs(names) do process.registry.unregister(name, process.registry.CONSISTENT) end
+    process.unlisten(channel)
+    if not ok then error(result) end
+    return result
+end
 
 -- Fakes keep the model seam under test without requiring a live LLM.
 local function fake_prompt(): any
@@ -554,6 +575,13 @@ local function define_tests()
             test.eq(text, "Full page body.")
         end)
 
+        test.it("preserves model text with a megabyte of internal whitespace", function()
+            local reply = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+            local text, err = ocr_with(reply).transcribe("img", { model = "class:fast" })
+            test.is_nil(err, tostring(err))
+            test.is_true(text == reply)
+        end)
+
         test.it("requires image bytes and a model", function()
             local _, image_err = ocr_with("x").transcribe("", { model = "class:fast" })
             test.not_nil(image_err)
@@ -567,6 +595,31 @@ local function define_tests()
             test.is_nil(text)
             test.not_nil(err)
             test.is_true(tostring(err):find("token limit", 1, true) ~= nil, tostring(err))
+        end)
+
+        test.it("reports the output length and tail of a generation stopped at the token limit", function()
+            local reply = "PAGE HEADER\n" .. string.rep("| 12 | Lot 4 |\n", 400)
+            local text, err = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe("img", { model = "class:fast" })
+            test.is_nil(text)
+            test.contains(tostring(err), "token limit")
+            test.contains(tostring(err), tostring(#reply) .. " bytes")
+            local details = (err :: any):details()
+            test.eq(details.output_bytes, #reply)
+            test.eq(details.output_tail, reply:sub(-ocr.LENGTH_TAIL_BYTES))
+            test.eq(ocr.LENGTH_TAIL_BYTES, 2048)
+            test.eq(#details.output_tail, 2048)
+        end)
+
+        test.it("starts the reported tail of a cut generation on a character boundary", function()
+            -- Each repeated unit is 3 bytes, so the tail boundary lands inside a character.
+            local reply = string.rep("\226\148\128", 1000)
+            local _, err = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe("img", { model = "class:fast" })
+            local tail = (err :: any):details().output_tail
+            local lead = tail:byte(1)
+            test.is_true(lead < 0x80 or lead >= 0xC0, "tail starts with a continuation byte")
+            test.is_true(#tail <= ocr.LENGTH_TAIL_BYTES)
+            test.eq(#tail, 2046)
+            test.eq(tail, reply:sub(-2046))
         end)
 
         test.it("asks the model for an explicit no-text reply and returns empty text for it", function()
@@ -643,9 +696,11 @@ local function define_tests()
                     :run_with(db):exec()
                 test.is_nil(err)
                 local calls = 0
-                local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
-                    cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = sequence}}, {
-                    batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
+                local result = with_heartbeat_owners(job_id, { "ocr-lease" }, function()
+                    return stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                        cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = sequence}}, {
+                        batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
+                end)
                 test.eq(calls, sequence == 1 and 3 or 0)
                 test.eq(result.success, sequence == 1)
                 if sequence == 1 then
@@ -656,6 +711,51 @@ local function define_tests()
                 db:release()
                 test.is_nil(delete_err)
             end
+        end)
+
+        test.it("renews the progress deadline between successive page batches", function()
+            local upload_id = seed("", {1,2,3})
+            local job_id = uuid_v4()
+            local db = assert(sql.get("app:db"))
+            local _, err = sql.builder.insert("kickside_job"):set_map({id = job_id,
+                job_type = "ocr.fixture", job_identity = job_id, owner_kind = "installation", owner_id = "ocr-fixture",
+                status = "running", lease_token = "ocr-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00"})
+                :run_with(db):exec()
+            test.is_nil(err)
+            local original = jobs.heartbeat
+            local clock, deadline, reports = 0, 0, 0
+            local observed = {}
+            -- The provider tests the reporting boundary independently of the installed Jobs version.
+            jobs.heartbeat = function(id, lease)
+                test.eq(id, job_id)
+                test.eq(lease.token, "ocr-lease")
+                test.eq(lease.execution_seq, 1)
+                local valid, lease_err = jobs.lease_valid(id, lease)
+                if lease_err or not valid then return valid, lease_err end
+                reports = reports + 1
+                deadline = clock + 600000
+                return true, nil
+            end
+            local ok, result = pcall(stage.run, {upload_id = upload_id, storage_id = STORAGE_ID,
+                cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = 1}}, {
+                batch_size = 1, transcribe = function()
+                    observed[#observed + 1] = deadline
+                    test.is_true(clock < deadline, "the batch has a live progress deadline")
+                    clock = clock + 540000
+                    return "Scanned words", nil
+                end})
+            jobs.heartbeat = original
+            local _, delete_err = sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec()
+            db:release()
+            test.is_nil(delete_err)
+            test.is_true(ok, tostring(result))
+            test.is_true(result.success)
+            test.eq(reports, 3)
+            test.eq(#observed, 3)
+            for i, actual in ipairs(observed) do
+                test.eq(actual, (i - 1) * 540000 + 600000, "each batch advances its progress deadline")
+            end
+            test.is_true(clock > 600000, "total work exceeds one progress interval")
         end)
 
         test.it("uses the document-wide decision for marked legacy images", function()
@@ -708,6 +808,44 @@ local function define_tests()
             test.is_true(retry.success)
             test.eq(calls, 1)
             test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nFirst transcription\n\n<!-- page 2 -->\n\nSecond transcription")
+        end)
+
+        test.it("keeps the tail of a length-cut transcription in the stage error detail", function()
+            local upload_id = seed("", {1})
+            local reply = "PAGE HEADER\n" .. string.rep("N 89 12 E 100.00\n", 300)
+            local cut = stage.run({upload_id = upload_id, storage_id = STORAGE_ID},
+                {transcribe = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe})
+            test.is_false(cut.success)
+            local detail = cut.metadata._ocr_error_detail
+            test.contains(detail, "Page 1: ocr: generation stopped at the token limit after " .. #reply .. " bytes")
+            test.contains(detail, string.rep("N 89 12 E 100.00\n", 20))
+            test.eq(detail:sub(-#reply:sub(-100)), reply:sub(-100))
+        end)
+
+        test.it("keeps a checkpoint failure whole when page tails fill the error detail", function()
+            local upload_id = seed("", {1, 2})
+            local reply = "HEAD\n" .. string.rep("N 89 12 E 100.00\n", 300)
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {
+                transcribe = ocr_with(reply, nil, llm.FINISH_REASON.LENGTH).transcribe,
+                persist = function() return false, "transcript storage unavailable" end,
+            })
+            test.eq(result.metadata.ocr_error, "persist_failed")
+            local detail = result.metadata._ocr_error_detail
+            test.is_true(#detail <= 4096)
+            test.eq(detail:sub(-#"Transcript checkpoint: transcript storage unavailable"),
+                "Transcript checkpoint: transcript storage unavailable")
+        end)
+
+        test.it("cuts the stage error detail on a character boundary", function()
+            local upload_id = seed("", {1})
+            local lead = "Transcript checkpoint: "
+            local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID}, {
+                transcribe = function() return "text", nil end,
+                persist = function() return false, string.rep("a", 4095 - #lead) .. "\226\148\128" end,
+            })
+            local detail = result.metadata._ocr_error_detail
+            test.eq(#detail, 4095)
+            test.eq(detail:sub(-1), "a")
         end)
 
         test.it("records a length-cut transcription as a failed page and retries it", function()
@@ -791,16 +929,18 @@ local function define_tests()
                 test.is_nil(err)
                 local params = {upload_id = upload_id, storage_id = STORAGE_ID,
                     cancel_ref = {job_id = job_id, lease_token = "old-lease", execution_seq = 1}}
-                local result = stage.run(params, {transcribe = function()
-                    local _, update_err = sql.builder.update("kickside_job"):set_map({lease_token = "new-lease", execution_seq = 2})
-                        :where("id = ?", job_id):run_with(db):exec()
-                    test.is_nil(update_err)
-                    local newer = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
-                        cancel_ref = {job_id = job_id, lease_token = "new-lease", execution_seq = 2}}, {
-                        transcribe = function() return "New attempt text", nil end})
-                    test.is_true(newer.success)
-                    return "Stale attempt text", nil
-                end})
+                local result = with_heartbeat_owners(job_id, { "old-lease", "new-lease" }, function()
+                    return stage.run(params, {transcribe = function()
+                        local _, update_err = sql.builder.update("kickside_job"):set_map({lease_token = "new-lease", execution_seq = 2})
+                            :where("id = ?", job_id):run_with(db):exec()
+                        test.is_nil(update_err)
+                        local newer = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                            cancel_ref = {job_id = job_id, lease_token = "new-lease", execution_seq = 2}}, {
+                            transcribe = function() return "New attempt text", nil end})
+                        test.is_true(newer.success)
+                        return "Stale attempt text", nil
+                    end})
+                end)
                 test.is_false(result.success)
                 test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nNew attempt text")
                 local primary = assert(artifact_parts_repo.get_primary_content_artifact(upload_id))

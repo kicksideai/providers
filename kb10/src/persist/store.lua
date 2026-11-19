@@ -12,8 +12,10 @@ local store = {}
 
 -- Reads
 store.get_store = reader.get_store
+store.get_store_statistics = reader.get_store_statistics
 store.vector_search = reader.vector_search
 store.browse_nodes = reader.browse_nodes
+store.browse_page = reader.browse_page
 store.count_nodes = reader.count_nodes
 store.get_summaries = reader.get_summaries
 store.list_document_summaries = reader.list_document_summaries
@@ -33,11 +35,13 @@ store.insert_graph_node = writer.insert_graph_node
 store.update_node = writer.update_node
 store.write_node_with_embedding = writer.write_node_with_embedding
 store.replace_document = writer.replace_document
+store.reject_source_revision = writer.reject_source_revision
 store.insert_embedding = writer.insert_embedding
 store.insert_nodes = writer.insert_nodes
 store.insert_embeddings = writer.insert_embeddings
 store.insert_edges = writer.insert_edges
 store.delete_node = writer.delete_node
+store.delete_document = writer.delete_document
 store.delete_documents_by_external_id = writer.delete_documents_by_external_id
 store.set_descriptions = writer.set_descriptions
 store.insert_edge = writer.insert_edge

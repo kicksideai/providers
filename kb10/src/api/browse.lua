@@ -4,6 +4,7 @@ local component = require("component")
 local http_errors = require("http_errors")
 local node_store = require("node_store")
 local query_params = require("query_params")
+local thread_ingest = require("thread_ingest")
 
 local function new(dependencies: any?): any
     local deps = dependencies or {}
@@ -60,6 +61,17 @@ local function handler()
 
     local parent_id = req:query("parent_id")
     local node_type = req:query("node_type")
+    local scope = req:query("scope")
+    if scope and scope ~= "" then
+        if scope ~= "documents" and scope ~= "failures" then
+            query_params.bad_request(res, "scope must be documents or failures")
+            return
+        end
+        if (parent_id and parent_id ~= "") or (node_type and node_type ~= "" and node_type ~= "document") then
+            query_params.bad_request(res, "scope requires a top-level document browse")
+            return
+        end
+    end
     local include_content = req:query("include_content") == "true"
     local limit, limit_err = query_params.query_int(req, "limit", 50, 1, 500)
     if limit_err then
@@ -121,9 +133,10 @@ local function handler()
     -- top_level explicitly here to preserve the roots-only contract.
     local browse_parent = (parent_id and parent_id ~= "") and parent_id or nil
 
-    local results, query_err = kb_store:browse_nodes({
+    local page, query_err = kb_store:browse_page({
         store_id = store_row.id,
         opts = {
+            scope = scope,
             parent_id = browse_parent,
             top_level = browse_parent == nil,
             node_type = (node_type and node_type ~= "") and node_type or nil,
@@ -139,24 +152,8 @@ local function handler()
         return
     end
 
-    -- The full match count for this filter, independent of limit/offset, so the UI
-    -- can page (A-B of TOTAL) rather than inferring the total from a capped page.
-    local total, count_err = kb_store:count_nodes({
-        store_id = store_row.id,
-        opts = {
-            parent_id = browse_parent,
-            top_level = browse_parent == nil,
-            node_type = (node_type and node_type ~= "") and node_type or nil,
-        },
-    })
-    if count_err then
-        res:set_status(http.STATUS.INTERNAL_ERROR)
-        res:write_json({ success = false, error = "browse count failed: " .. tostring(count_err) })
-        return
-    end
-
     local nodes = {}
-    for _, row in ipairs(results or {}) do
+    for _, row in ipairs(page.nodes) do
         local metadata = row.metadata
         if type(metadata) ~= "table" then metadata = {} end
 
@@ -164,6 +161,8 @@ local function handler()
             id = row.id,
             parent_id = row.parent_id,
             node_type = row.node_type,
+            external_source = row.external_source,
+            external_id = row.external_id,
             content_type = row.content_type,
             metadata = metadata,
             created_at = row.created_at,
@@ -177,12 +176,17 @@ local function handler()
         table.insert(nodes, node)
     end
 
+    local pending_source
+    if req:query("include_indexing") == "true" then
+        pending_source = thread_ingest.pending_source(kb_id, comp.impl_id)
+    end
     res:set_status(http.STATUS.OK)
     res:write_json({
         success = true,
         nodes = nodes,
         count = #nodes,
-        total = total
+        total = page.total,
+        pending_source = pending_source,
     })
 end
 

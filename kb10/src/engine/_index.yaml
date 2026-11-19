@@ -36,6 +36,7 @@ entries:
     source: file://maintenance_worker.lua
     method: run
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component
       maintenance_runs: kickside.kb10.persist:maintenance_runs
       reembed: kickside.kb10.engine:reembed
@@ -50,6 +51,7 @@ entries:
     source: file://maintenance_worker.lua
     method: run_authorized
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component
       maintenance_runs: kickside.kb10.persist:maintenance_runs
       reembed: kickside.kb10.engine:reembed
@@ -63,6 +65,7 @@ entries:
       comment: maintenance_worker.lua's implementation, registered beside the function entry the job dispatches, so the suite runs the recorded terminal counts, the access refusal and a failed run with the seams swapped.
     source: file://maintenance_worker.lua
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component
       maintenance_runs: kickside.kb10.persist:maintenance_runs
       reembed: kickside.kb10.engine:reembed
@@ -83,6 +86,7 @@ entries:
     source: file://resummarize.lua
     modules: [logger]
     imports:
+      text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       kb10_store: kickside.kb10.persist:store
       kb_types: kickside.kb10:types
@@ -97,6 +101,6 @@ entries:
       llm: wippy.llm:llm
       kb10_store: kickside.kb10.persist:store
       component: kickside.component:component
-      query_policy: kickside.kb10.binding:query_policy
+      analysis_model: kickside.knowledge.retrieval:analysis_model
       query_log: kickside.kb10.persist:query_log
       text_limits: kickside.kb10:text_limits

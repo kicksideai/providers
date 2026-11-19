@@ -1,7 +1,7 @@
 organization: kickside
 module: mcp-client
 type: plugin
-visibility: private
+visibility: public
 description: Multi-user-safe Streamable HTTP MCP connections and dynamic agent tools for KickSide.
 license: LicenseRef-KickSide-Community-1.0
 repository: https://github.com/kicksideai/providers

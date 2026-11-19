@@ -9,7 +9,7 @@ local function cases()
         test.it("declares the Connection client contract it imports", function()
             local dependency = registry.get("kickside.airtable:dep.kickside.connection")
             test.eq(dependency.data.component, "kickside/connection")
-            test.eq(dependency.data.version, ">=0.3.1")
+            test.eq(dependency.data.version, ">=0.5.9")
         end)
         test.it("publishes separate public reader/writer capabilities", function()
             for _, direction in ipairs({"reader", "writer"}) do

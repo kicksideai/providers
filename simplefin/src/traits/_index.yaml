@@ -37,6 +37,8 @@ entries:
 
   - name: read_tool
     kind: function.lua
+    security:
+      policies: [kickside.simplefin.security:secret_context_dispatch, kickside.simplefin.security:secret_context_read]
     meta:
       type: tool
       mcp:

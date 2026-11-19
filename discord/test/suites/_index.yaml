@@ -101,6 +101,7 @@ entries:
     source: file://src_link/client/transport.lua
     modules: [security]
     imports:
+      text_trim: kickside.provider_text:trim
       preconditions: kickside.discord.client:preconditions
       component: kickside.component:component
       api: app.suites:reply_transport_api
@@ -274,6 +275,7 @@ entries:
     kind: library.lua
     source: file://src_link/inbound/inbound.lua
     imports:
+      text_trim: kickside.provider_text:trim
       contract: app.suites:inbound_contract_fixture
       transport: app.suites:inbound_fixture
       types: kickside.discord.client:types
@@ -332,6 +334,7 @@ entries:
     kind: library.lua
     source: file://src_link/client/transport.lua
     imports:
+      text_trim: kickside.provider_text:trim
       security: app.suites:ingress_security_fixture
       base: kickside.connection:base_connection
       reply_authorization: kickside.connection:reply_authorization
@@ -407,6 +410,7 @@ entries:
     source: file://worker_source.lua
     modules: [time, channel, logger, process]
     imports:
+      text_trim: kickside.provider_text:trim
       component: kickside.component:component
       protocol: kickside.discord.gateway:protocol
       backoff: kickside.discord.gateway:backoff
@@ -445,3 +449,79 @@ entries:
       test: wippy.test:test
       health: app.suites:health_write_source
       fixture: app.suites:health_write_fixture
+
+  - name: secret_transport_source
+    kind: library.lua
+    source: file://src_link/client/transport.lua
+    modules:
+    - security
+    imports:
+      preconditions: kickside.discord.client:preconditions
+      base: kickside.connection:base_connection
+      reply_authorization: kickside.connection:reply_authorization
+      component: kickside.component:component
+      api: app.suites:secret_transport_fixture
+      types: kickside.discord.client:types
+      text_trim: kickside.provider_text:trim
+
+  - name: secret_transport_fixture
+    kind: library.lua
+    source: file://secret_transport_fixture.lua
+
+  - name: secret_transport_probe
+    kind: function.lua
+    source: file://secret_transport_probe.lua
+    method: run
+    imports:
+      transport: app.suites:secret_transport_source
+
+  - name: secret_transport_contract
+    kind: contract.definition
+    methods:
+    - name: run
+
+  - name: secret_transport_binding
+    kind: contract.binding
+    contracts:
+    - contract: app.suites:secret_transport_contract
+      context_required:
+      - component_id
+      methods:
+        run: app.suites:secret_transport_probe
+
+  - name: secret_transport_calls
+    kind: security.policy
+    policy:
+      resources:
+      - app.suites:secret_transport_contract
+      - app.suites:secret_transport_binding
+      - app.suites:secret_transport_probe
+      actions:
+      - contract.get
+      - contract.open
+      - contract.call
+      - funcs.call
+      effect: allow
+
+  - name: secret_transport_test
+    kind: function.lua
+    source: file://secret_transport_test.lua
+    method: run
+    meta:
+      type: test
+      suite: discord
+    modules:
+    - contract
+    - security
+    - registry
+    - sql
+    - uuid
+    imports:
+      test: wippy.test:test
+
+  - name: secret_transport_storage
+    kind: security.policy
+    policy:
+      actions: db.get
+      resources: [app:db]
+      effect: allow

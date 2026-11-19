@@ -18,9 +18,9 @@ local function component_with(private_ctx: any, public_ctx: any?, public_err: st
             if private_ctx == nil then return nil, errors.new({ kind = errors.NOT_FOUND, message = "no private context" }) end
             return private_ctx, nil
         end,
-        get_context = function(_id: string, _access: any): (any?, any?)
+        get_runtime_context = function(_id: string, _access: any): (any?, any?)
             if public_err then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = public_err }) end
-            return public_ctx, nil
+            return public_ctx or private_ctx, nil
         end,
     }
 end
@@ -35,6 +35,17 @@ end
 
 local function define_tests()
     test.describe("bitbucket transport", function()
+        test.it("refuses credentials when component READ is denied", function()
+            local private_reads = 0
+            with_component({ACCESS = {READ = "read"},
+                get_runtime_context = function() return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "denied"}) end,
+                get_private_context = function() private_reads = private_reads + 1; return {auth_type = "access_token", access_token = "private-key", workspace = "acme"}, nil end}, function()
+                local result, err = transport.connect("denied-component")
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.PERMISSION_DENIED))
+                test.eq(private_reads, 0)
+            end)
+        end)
         test.it("builds HTTP Basic authorization from an Atlassian API token", function()
             local conn, err = connect({ auth_type = "api_token", email = " dev@example.com ", api_token = "ATATT-1" })
             test.is_nil(err)

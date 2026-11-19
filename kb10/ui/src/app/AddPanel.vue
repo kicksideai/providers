@@ -8,9 +8,9 @@ import { KNOWLEDGE_UPLOAD_ACCEPT } from './ingestableFiles'
 // progress model: multi-file upload (Uploads-page style per-file progress),
 // already-uploaded files ("My uploads"), and pasted text.
 const props = defineProps<{ kbId: string; noun?: string }>()
-const emit = defineEmits<{ (e: 'changed'): void }>()
+const emit = defineEmits<{ (e: 'changed', closePanel: boolean): void }>()
 
-const ing = useIngest(() => props.kbId, () => emit('changed'))
+const ing = useIngest(() => props.kbId, (closePanel) => emit('changed', closePanel))
 
 type Mode = 'file' | 'uploads' | 'text'
 const mode = ref<Mode>('file')
@@ -51,6 +51,7 @@ const uploadsLoading = ref(false)
 const uploadsError = ref('')
 const filter = ref('')
 const selected = ref<Record<string, boolean>>({})
+const pendingReingest = ref<{ selection: string; key: string }>()
 
 const filteredUploads = computed(() => {
   const q = filter.value.trim().toLowerCase()
@@ -73,11 +74,22 @@ async function loadUploads() {
 function toggleSelect(uuid: string) {
   selected.value = { ...selected.value, [uuid]: !selected.value[uuid] }
 }
-async function addSelected() {
+async function addSelected(reingest = false) {
   const picked = uploads.value.filter((u) => selected.value[u.uuid]).map((u) => ({ uuid: u.uuid, name: u.filename }))
   if (!picked.length) return
-  await ing.ingestExistingUploads(picked)
-  if (!ing.errMsg.value) selected.value = {}
+  if (reingest) {
+    const selection = JSON.stringify([props.kbId, ...picked.map(({ uuid }) => uuid)])
+    if (pendingReingest.value?.selection !== selection) {
+      pendingReingest.value = { selection, key: crypto.randomUUID() }
+    }
+    await ing.ingestExistingUploads(picked, pendingReingest.value.key)
+  } else {
+    await ing.ingestExistingUploads(picked)
+  }
+  if (!ing.errMsg.value) {
+    selected.value = {}
+    pendingReingest.value = undefined
+  }
 }
 
 function fmtSize(n?: number): string {
@@ -102,6 +114,7 @@ async function submitText() {
 const STATUS_LABEL: Record<string, string> = {
   uploading: 'Uploading…',
   processing: 'Processing…',
+  retrying: 'Retrying…',
   done: 'Added',
   error: 'Failed',
 }
@@ -111,6 +124,7 @@ function statusIcon(s: string): string {
   return 'tabler:loader-2'
 }
 const hasItems = computed(() => ing.items.value.length > 0)
+const hasDone = computed(() => ing.items.value.some((it) => it.status === 'done'))
 
 onMounted(() => { if (mode.value === 'uploads') loadUploads() })
 watch(() => props.kbId, () => { ing.clearItems(); ing.reset() })
@@ -158,9 +172,13 @@ watch(() => props.kbId, () => { ing.clearItems(); ing.reset() })
     <section v-else-if="mode === 'uploads'" class="ap-pane">
       <div class="ap-uploads-bar">
         <input v-model="filter" class="ap-input" type="text" placeholder="Filter your uploads…" autocomplete="off" />
-        <button class="ap-submit" :disabled="!selectedCount || ing.busy.value" @click="addSelected">
+        <button class="ap-submit" :disabled="!selectedCount || ing.busy.value" @click="addSelected()">
           <Icon :icon="ing.busy.value ? 'tabler:loader-2' : 'tabler:plus'" :class="ing.busy.value && 'spin'" aria-hidden="true" />
           {{ selectedCount ? `Add ${selectedCount} selected` : 'Add selected' }}
+        </button>
+        <button class="ap-submit" :disabled="!selectedCount || ing.busy.value" @click="addSelected(true)">
+          <Icon icon="tabler:refresh" aria-hidden="true" />
+          Re-ingest selected
         </button>
       </div>
       <div v-if="uploadsLoading" class="ap-uploads-state"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Loading your uploads…</div>
@@ -233,13 +251,20 @@ watch(() => props.kbId, () => { ing.clearItems(); ing.reset() })
     <div v-if="hasItems" class="ap-items">
       <div class="ap-items-h">
         <span>Progress</span>
-        <button v-if="!ing.busy.value" class="ap-items-clear" @click="ing.clearItems()">Clear done</button>
+        <button v-if="hasDone && !ing.busy.value" type="button" class="ap-items-clear" @click="ing.clearDone()">Clear done</button>
       </div>
       <ul class="ap-items-list">
         <li v-for="it in ing.items.value" :key="it.key" class="ap-item" :class="it.status">
-          <Icon class="ap-item-ic" :class="['uploading','processing','embedding'].includes(it.status) && 'spin'" :icon="statusIcon(it.status)" aria-hidden="true" />
-          <span class="ap-item-name">{{ it.name }}</span>
+          <Icon class="ap-item-ic" :class="!['done','error'].includes(it.status) && 'spin'" :icon="statusIcon(it.status)" aria-hidden="true" />
+          <span class="ap-item-name" :title="it.name">{{ it.name }}</span>
           <span class="ap-item-status">{{ it.error || STATUS_LABEL[it.status] }}</span>
+          <button
+            v-if="ing.canRetry(it)"
+            type="button"
+            class="ap-items-clear ap-item-retry"
+            :aria-label="`Retry ${it.name}`"
+            @click="ing.retryFile(it.key)"
+          >Retry</button>
         </li>
       </ul>
     </div>

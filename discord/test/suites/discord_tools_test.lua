@@ -218,6 +218,11 @@ local function define_tests()
             test.contains((discord_write.handler({ action = "add_reaction", channel_id = "c1", message_id = "m1" }) :: any).error, "emoji is required")
         end)
 
+        test.it("applies the message limit after a megabyte of internal whitespace", function()
+            local body = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+            test.contains((discord_write.handler({ action = "send_message", channel_id = "c1", content = body }) :: any).error, "exceeds")
+        end)
+
         test.it("sends a message", function()
             with(discord_write, {
                 send_channel_message = function(_c: any, channel: any, payload: any): any

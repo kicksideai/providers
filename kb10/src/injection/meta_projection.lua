@@ -16,10 +16,7 @@ local function decode_object(value: any): { [string]: any }
     return decoded :: { [string]: any }
 end
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function int_delta(value: any): integer
     local n = tonumber(value)
@@ -38,37 +35,28 @@ local function add_count(value: any, delta: any): integer
     return clamp_count((tonumber(value) or 0) + int_delta(delta))
 end
 
-local function worker_config(input: any, projection: any): { [string]: any }
+local function target_kb_id(input: any, body: any): string
     local inline = type(input.worker_config) == "table" and input.worker_config or nil
-    if inline then return inline :: { [string]: any } end
-    local body = decode_object(type(projection) == "table" and projection.body or nil)
-    local cfg = type(body.worker_config) == "table" and body.worker_config or {}
-    return cfg :: { [string]: any }
-end
-
-local function target_kb_id(input: any, projection: any, events: { any }): string?
-    local cfg = worker_config(input, projection)
+    local cfg = inline or (type(body.worker_config) == "table" and body.worker_config) or {}
     local ids = type(cfg.target_kb_ids) == "table" and cfg.target_kb_ids or {}
-    if type(ids[1]) == "string" and ids[1] ~= "" then return ids[1] end
-    for _, ev in ipairs(events) do
-        local body = decode_object(type(ev) == "table" and (ev :: any).body or nil)
-        local kb_id = trim(body.kb_id)
-        if kb_id ~= "" then return kb_id end
-    end
-    return nil
+    local kb_id = trim(ids[1])
+    return kb_id ~= "" and kb_id or trim(input.thread_id)
 end
 
-local function apply_change(counts: any, ev: any): string?
+local function apply_change(counts: any, kb_id: string, ev: any): string?
     if type(ev) ~= "table" then return nil end
     local event_type = tostring((ev :: any).type or "")
-    if event_type == EVENT_CONTENT_UPSERTED or event_type == EVENT_CONTENT_DELETED then
+    local is_source = event_type == EVENT_CONTENT_UPSERTED or event_type == EVENT_CONTENT_DELETED
+    if not is_source and event_type ~= EVENT_GRAPH_CHANGED then return nil end
+
+    local body = decode_object((ev :: any).body)
+    if trim(body.kb_id) ~= kb_id then return nil end
+    if is_source then
         counts.pending_source_count = add_count(counts.pending_source_count, 1)
         counts.status = "syncing"
         counts.last_error = ""
         return trim((ev :: any).created_at)
     end
-    if event_type ~= EVENT_GRAPH_CHANGED then return nil end
-    local body = decode_object((ev :: any).body)
     counts.pending_source_count = add_count(counts.pending_source_count, -int_delta(body.source_processed_delta))
     counts.document_count = add_count(counts.document_count, body.document_delta)
     counts.chunk_count = add_count(counts.chunk_count, body.chunk_delta)
@@ -112,7 +100,10 @@ function M.run(input: any): any
     input = type(input) == "table" and input or {}
     local projection = type(input.projection) == "table" and input.projection or {}
     local body: any = decode_object(projection.body)
-    body.counts = type(body.counts) == "table" and body.counts or {
+    local kb_id = target_kb_id(input, body)
+    if kb_id == "" then return nil, "knowledge metadata projection target is required" end
+
+    local counts = type(body.counts) == "table" and body.counts or {
         status = "ready",
         last_error = "",
         document_count = 0,
@@ -127,24 +118,27 @@ function M.run(input: any): any
     }
 
     local events: { any } = (type(input.events) == "table" and input.events or {}) :: { any }
-    local kb_id = target_kb_id(input, projection, events)
-    if not kb_id then return nil, "target_kb_ids[1] is required" end
-
     local updated_at = trim(body.graph_updated_at)
+    local changed = false
     for _, ev in ipairs(events :: { any }) do
-        local event_time = apply_change(body.counts, ev)
-        if event_time and event_time ~= "" then
-            updated_at = event_time
+        local event_time = apply_change(counts, kb_id, ev)
+        if event_time then
+            changed = true
+            if event_time ~= "" then updated_at = event_time end
         end
     end
+    local range = type(input.range) == "table" and input.range or {}
+    local last_seq = tonumber(range.to_seq)
+    if not changed then return { last_seq = last_seq } end
+
     if updated_at == "" then updated_at = time.now():utc():format(time.RFC3339) end
+    body.counts = counts
     body.graph_updated_at = updated_at
 
-    local meta_ok, meta_err = sync_public_meta(input, kb_id, body.counts, updated_at)
+    local meta_ok, meta_err = sync_public_meta(input, kb_id, counts, updated_at)
     if not meta_ok then return nil, meta_err end
 
-    local range = type(input.range) == "table" and input.range or {}
-    return { body = body, last_seq = tonumber(range.to_seq) or nil }
+    return { body = body, last_seq = last_seq }
 end
 
 return M

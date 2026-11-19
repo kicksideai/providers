@@ -13,6 +13,7 @@ namespace: kickside.kb10.api
 # same code path the endpoints run rather than executing the verb itself.
 
 entries:
+
   - name: query_params
     kind: library.lua
     meta:
@@ -41,6 +42,7 @@ entries:
       component: kickside.component:component
       node_store: kickside.kb10.persist:node_store
       query_params: kickside.kb10.api:query_params
+      thread_ingest: kickside.knowledge.injection:thread_ingest
     method: handler
 
   - name: browse.endpoint
@@ -64,6 +66,7 @@ entries:
       kc: kickside.kb10:types
       engines: kickside.knowledge:engines
       query_params: kickside.kb10.api:query_params
+      thread_ingest: kickside.knowledge.injection:thread_ingest
 
   - name: graph
     kind: function.lua
@@ -122,6 +125,7 @@ entries:
     source: file://concepts.lua
     modules: [http, json, security, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       http_errors: kickside.contract:http_errors
       component: kickside.component:component
       thread_ingest: kickside.knowledge.injection:thread_ingest
@@ -228,6 +232,9 @@ entries:
       kc: kickside.kb10:types
       uploads: kickside.uploads:uploads
     method: handler
+    security:
+      policies:
+      - kickside.kb10:upload_read_token_call
 
   - name: source.endpoint
     kind: http.endpoint
@@ -265,6 +272,7 @@ entries:
   # through. Every caller mints a job -- the HTTP endpoints below and, through
   # the library seams beside them, another module's tool;
   # kickside.kb10.engine:maintenance_worker runs it.
+
   - name: maintenance_implementation
     kind: library.lua
     meta:
@@ -278,12 +286,15 @@ entries:
       job_types: kickside.core.jobs:types
       request: kickside.kb10.api:request
       maintenance_runs: kickside.kb10.persist:maintenance_runs
+      store: kickside.kb10.persist:store
+      model_settings: kickside.kb10:model_settings
 
   # The same start and status behaviour as libraries, for a caller that has no
   # HTTP request behind it: the Knowledge Manager tool's maintenance actions
   # reach these through the knowledge module's engine requirements, so both
   # surfaces defer a run through one path instead of one deferring and the other
   # blocking. Each answers (value, err).
+
   - name: schedule_resummarize
     kind: library.lua
     meta:

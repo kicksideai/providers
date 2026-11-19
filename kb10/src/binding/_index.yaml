@@ -13,6 +13,7 @@ namespace: kickside.kb10.binding
 # component id.
 
 entries:
+
   - name: query_policy
     kind: library.lua
     meta:
@@ -28,6 +29,7 @@ entries:
       - ctx
       - json
     imports:
+      text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       store: kickside.kb10.persist:store
       kc: kickside.kb10:types
@@ -35,7 +37,7 @@ entries:
       tuner: kickside.kb10.engine:tuner
       text_limits: kickside.kb10:text_limits
       model_failure: kickside.contract:model_failure
-      model_catalog: kickside.models.catalog:model_catalog
+      analysis_model: kickside.knowledge.retrieval:analysis_model
 
   - name: embed_func
     kind: function.lua
@@ -43,6 +45,7 @@ entries:
     modules:
       - ctx
     imports:
+      text_trim: kickside.contract:text_trim
       thread_ingest: kickside.knowledge.injection:thread_ingest
     method: handle
 
@@ -67,6 +70,7 @@ entries:
   # One entry per verb of kickside.knowledge:maintainable, each reading the KB
   # from binding context and calling the cross-module seam the HTTP maintenance
   # routes call, so a contract caller and a request reach one implementation.
+
   - name: schedule_resummarize_func
     kind: function.lua
     meta: { comment: "maintainable — schedule_resummarize" }
@@ -100,11 +104,13 @@ entries:
     imports: *maintenance_imports
 
   # ─── kb_store_lifecycle contract methods (DTO → store) ─────────────
+
   - name: create_store
     kind: function.lua
     meta: { comment: "kb_store_lifecycle — create_store" }
     source: file://kb_store_binding.lua
     method: create_store
+    modules: [security]
     imports: &kb_store_imports
       store: kickside.kb10.persist:store
       kb10: kickside.kb10:types
@@ -114,6 +120,7 @@ entries:
     meta: { comment: "kb_store_lifecycle — get_store" }
     source: file://kb_store_binding.lua
     method: get_store
+    modules: [security]
     imports: *kb_store_imports
 
   - name: delete_store
@@ -121,6 +128,7 @@ entries:
     meta: { comment: "kb_store_lifecycle — delete_store" }
     source: file://kb_store_binding.lua
     method: delete_store
+    modules: [security]
     imports: *kb_store_imports
 
   - name: update_config
@@ -128,4 +136,5 @@ entries:
     meta: { comment: "kb_store_lifecycle — update_config" }
     source: file://kb_store_binding.lua
     method: update_config
+    modules: [security]
     imports: *kb_store_imports

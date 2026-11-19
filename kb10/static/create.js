@@ -1,5 +1,5 @@
 import { W as o, l as n } from "./wc-runtime-CuuaQDIp.js";
-import { b as i } from "./styles-DaFmx9HW.js";
+import { b as i } from "./styles-C8dQyU9y.js";
 import { define as a } from "@wippy-fe/proxy";
 const s = {
   type: "object",
@@ -16,7 +16,7 @@ class e extends o {
     };
   }
   static get vueConfig() {
-    return n(() => import("./KbCreateConfig-B17gI9zD.js").then((t) => ({ rootComponent: t.default })), { surface: "compact", loading: "Loading the knowledge base settings…", failed: "Could not load the knowledge base settings. Reload the page to try again.", delay: 200, timeout: 3e4 });
+    return n(() => import("./KbCreateConfig-BhQl0o6H.js").then((t) => ({ rootComponent: t.default })), { surface: "compact", loading: "Loading the knowledge base settings…", failed: "Could not load the knowledge base settings. Reload the page to try again.", delay: 200, timeout: 3e4 });
   }
 }
 async function g() {

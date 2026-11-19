@@ -23,10 +23,7 @@ local VALID = {
     list_users = true,
 }
 
-local function trim(v: any): string
-    if type(v) ~= "string" then return "" end
-    return (v:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function open(): (any?, error?)
     return M._transport.connect(ctx.get("connection_id") :: string?)

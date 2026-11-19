@@ -27,6 +27,7 @@ workspace:
     kickside/core: ../../../kickside/core/core
     kickside/execution: ../../../kickside/core/execution
     kickside/jobs: ../../../kickside/core/jobs
+    kickside/provider-text: ../../provider-text
     kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
     kickside/security: ../../../kickside/platform/security
     kickside/settings: ../../../kickside/platform/settings
