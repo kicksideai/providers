@@ -4,8 +4,12 @@ local sql = require("sql")
 local function embed(args)
     local db = assert(sql.get("app:db"))
     local states = assert(db:query("SELECT online FROM kb10_checkpoint_model WHERE model=$1", {args.model}))
-    local failed = tonumber(states[1].online) == 0
-        and tostring(args.input[1]):find("queued replacement", 1, true) ~= nil
+    local failed = false
+    if tonumber(states[1].online) == 0 then
+        for _, input in ipairs(args.input) do
+            if input:find("queued replacement", 1, true) then failed = true end
+        end
+    end
     assert(db:execute([[UPDATE kb10_checkpoint_model SET calls=calls+1, failures=failures+$1 WHERE model=$2]],
         {failed and 1 or 0, args.model}))
     db:release()

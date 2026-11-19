@@ -239,6 +239,41 @@ local function define_tests()
                 assert_stream_parity(document(csv, "products.csv"), 240, block)
             end
         end)
+        test.it("resumes a bounded page inside one wide CSV record without replaying emitted fragments", function()
+            local doc = document(
+                "sku,first,second,third\nold,short,row,here\nwide,"
+                    .. string.rep("héllo ", 150)
+                    .. ",more,"
+                    .. string.rep("tail ", 100)
+                    .. "\nlast,end,row,here",
+                "catalog.csv"
+            )
+            local expected, expected_meta = tabular.chunk_document(doc, 200)
+            local texts, metadata, checkpoint = {}, {}, nil
+            local resumed_row = false
+            repeat
+                local count = 0
+                local function full() return count >= 2 end
+                local recognized, next_checkpoint, err = tabular.plan_document(
+                    doc,
+                    200,
+                    block_reader(doc.content, 17),
+                    function(text, meta)
+                        count = count + 1
+                        texts[#texts + 1], metadata[#metadata + 1] = text, meta
+                    end,
+                    { checkpoint = checkpoint, should_pause = full, pause_output = full }
+                )
+                test.is_nil(err)
+                test.is_true(recognized)
+                test.is_true(count <= 2 and #texts <= #expected)
+                checkpoint = next_checkpoint and assert(json.decode(assert(json.encode(next_checkpoint))))
+                if checkpoint and checkpoint.fragment then resumed_row = true end
+            until not checkpoint
+            test.is_true(resumed_row)
+            test.eq(assert(json.encode(texts)), assert(json.encode(expected)))
+            test.eq(assert(json.encode(metadata)), assert(json.encode(expected_meta)))
+        end)
         test.it("preserves wide row fragments, empty columns and sheet transitions on resume", function()
             local headers = {"SKU", "ATTR NAME1", "ATTR VALUE1", "Name"}
             local cells = {"A", "Finish", "Zinc", "Étoile"}

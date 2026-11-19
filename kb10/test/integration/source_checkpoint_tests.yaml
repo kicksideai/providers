@@ -53,6 +53,10 @@ entries:
     method: run
     modules: [fs, hash, json, process, sql, time, uuid]
     imports:
+      tabular: kickside.kb10.injection:tabular_chunker
+      apply: kickside.core.projections:apply
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
       jobs: kickside.core.jobs:jobs

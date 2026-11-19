@@ -100,6 +100,19 @@ entries:
       text_trim: kickside.contract:text_trim
       artifact_input: kickside.kb10.injection:artifact_input
 
+  - name: sheet_preparation
+    kind: library.lua
+    meta:
+      internal: true
+    source: file://sheet_preparation.lua
+    modules: [json]
+    imports:
+      planner: kickside.kb10.injection:tabular_chunker
+      materializer: kickside.kb10.injection:source_materializer
+      stage: kickside.kb10.persist:source_preparation
+      legacy: kickside.kb10.injection:source_worker_lib
+      writer: kickside.kb10.persist:writer
+
   - name: checkpoint_source_worker
     kind: process.lua
     meta:
@@ -112,6 +125,7 @@ entries:
     method: run
     modules: [time, logger, sql]
     imports:
+      sheet: kickside.kb10.injection:sheet_preparation
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types
       error_envelope: kickside.contract:error_envelope

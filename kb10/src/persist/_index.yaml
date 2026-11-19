@@ -27,6 +27,16 @@ entries:
       text_trim: kickside.contract:text_trim
       search_index: kickside.search_index:index
 
+  - name: source_preparation
+    kind: library.lua
+    meta:
+      internal: true
+    source: file://source_preparation.lua
+    modules: [json, sql]
+    imports:
+      ops: kickside.kb10.persist:ops
+      search: kickside.search_index:index
+
   - name: reader
     kind: library.lua
     meta:

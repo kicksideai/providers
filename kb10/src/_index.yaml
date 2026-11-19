@@ -190,6 +190,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:12_preserve_contextual_model_settings
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:13_source_preparation
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 

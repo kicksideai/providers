@@ -1,4 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local apply = require("apply")
+local claim = require("claim")
+local clock = require("clock")
 local artifact_cleanup = require("artifact_cleanup")
 local artifacts = require("artifacts")
 local fs = require("fs")
@@ -12,6 +15,7 @@ local sql = require("sql")
 local store = require("store")
 local test = require("test")
 local threads = require("threads")
+local tabular = require("tabular")
 local time = require("time")
 local uploads = require("uploads")
 local uuid = require("uuid")
@@ -28,6 +32,22 @@ local function in_db(check)
     db:release()
     if not ok then error(result) end
     return result
+end
+
+local function seed_abandoned_page(db, store_id)
+    local abandoned = uuid.v7()
+    assert(db:execute([[INSERT INTO kb10_source_preparations
+        (store_id,cursor_id,generation,event_id,content,source,progress)
+        VALUES ($1,$2,1,$3,'orphaned input','{}','{}')]], {store_id, abandoned, uuid.v7()}))
+    assert(db:execute([[INSERT INTO kb10_source_preparation_rows
+        (store_id,cursor_id,ordinal,content,metadata) VALUES ($1,$2,0,'orphaned child','{}')]], {store_id, abandoned}))
+end
+
+local function assert_no_preparation(db, store_id)
+    for _, name in ipairs({"kb10_source_preparations", "kb10_source_preparation_rows"}) do
+        local rows = assert(db:query("SELECT count(*) AS n FROM " .. name .. " WHERE store_id=$1", {store_id}))
+        test.eq(tonumber(rows[1].n), 0)
+    end
 end
 
 local function read_store(db, registration, id)
@@ -251,5 +271,238 @@ return {run = test.run_cases(function()
             in_db(function(db) assert(db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", {upload_id})) end)
             if not ok then error(err) end
         end)
+            test.it("resumes sheet parsing and embeddings on the same registered slot across process exits", function()
+                local id, upload_id = uuid.v7(), uuid.v7()
+                local model = "kb10-sheet-" .. id
+                assert(
+                    models.upsert_card({
+                        name = model,
+                        provider_id = "app:checkpoint_model_provider",
+                        provider_model = model,
+                        capabilities = { "embed" },
+                        dimensions = 512,
+                        max_tokens = 4096,
+                    })
+                )
+                assert(store.create_store(id, model, {}))
+                local csv = { "sku,description" }
+                for i = 1, 192 do
+                    csv[#csv + 1] = ("sku%d,"):format(i)
+                        .. (i == 125 and "queued replacement " or "")
+                        .. string.rep("detail ", 19)
+                end
+                local content = table.concat(csv, "\n")
+                local expected, expected_meta = tabular.chunk_document({ content = content, title = "catalog.csv" }, 200)
+                assert(expected and expected_meta)
+                assert(
+                    uploads.create(
+                        upload_id,
+                        "test-user",
+                        #content,
+                        "text/csv",
+                        "app:uploads",
+                        "catalog.csv",
+                        "document",
+                        {},
+                        "completed",
+                        "fixture"
+                    )
+                )
+                local artifact = assert(
+                    artifacts.create_artifact({
+                        upload_id = upload_id,
+                        kind = "text",
+                        role = "primary",
+                        mime_type = "text/csv",
+                        content = content,
+                        storage_id = "app:uploads",
+                    })
+                )
+                local blob = assert(artifacts.get_blob(artifact.blob_id))
+                local registration, job, cursor, event
+                in_db(function(db)
+                    assert(
+                        db:execute(
+                            [[CREATE TABLE IF NOT EXISTS kb10_checkpoint_model (
+                    model TEXT PRIMARY KEY, online INTEGER NOT NULL, calls INTEGER NOT NULL, failures INTEGER NOT NULL)]]
+                        )
+                    )
+                    assert(db:execute("INSERT INTO kb10_checkpoint_model VALUES ($1,0,0,0)", { model }))
+                    assert(
+                        db:execute(
+                            "INSERT INTO kickside_thread(id,thread_class,component_id) VALUES ($1,'test',$2)",
+                            { id, id }
+                        )
+                    )
+                    append(
+                        db,
+                        id,
+                        "catalog",
+                        "1",
+                        {
+                            content_omitted = true,
+                            content_bytes = #content,
+                            content_sha256 = hash.sha256(content),
+                            title = "catalog.csv",
+                            content_type = "text/csv",
+                            source_ref = { kind = "upload", upload_id = upload_id, artifact_id = artifact.artifact_id },
+                        }
+                    )
+                    registration = assert(projections.register_projection(db, id, {
+                        kind = "knowledge.injection.source",
+                        worker_input_mode = "prefetch_events",
+                        system_identity = true,
+                        worker_ref = "proc://kickside.kb10.injection:checkpoint_source_worker",
+                        events = { input = { { type = UPSERT } } },
+                        worker_config = {
+                            materialization = {
+                                chunk_size = 200,
+                                chunk_overlap = 0,
+                                summary_model = false,
+                                chunk_enrichment_model = false,
+                            },
+                        },
+                    }))
+                    seed_abandoned_page(db, id)
+                    local dialect = assert(db:type())
+                    local token = uuid.v7()
+                    local tx = assert(db:begin())
+                    local leased = assert(
+                        claim.lease_row(
+                            tx,
+                            dialect,
+                            registration.job_id,
+                            token,
+                            clock.format(time.now():add("1m"), dialect),
+                            clock.now(dialect)
+                        )
+                    )
+                    assert(select(2, tx:commit()) == nil)
+                    job = { id = registration.job_id, lease_token = token, execution_seq = tonumber(leased.execution_seq) }
+                    cursor = assert(db:query(
+                        [[SELECT c.*,p.body FROM kickside_projection_cursor c JOIN kickside_projection p
+                    ON p.id=c.projection_id WHERE c.id=$1]],
+                        { registration.cursor_id }
+                    ))[1]
+                    event = assert(
+                        db:query(
+                            [[SELECT id,seq,type,body,external_source,external_id,external_version FROM kickside_event
+                    WHERE thread_id=$1 AND seq=1]],
+                            { id }
+                        )
+                    )[1]
+                    for _, value in ipairs({ cursor, event }) do
+                        if type(value.body) == "string" then value.body = assert(json.decode(value.body)) end
+                    end
+                end)
+                local scheduler
+                local ok, err = pcall(function()
+                    local exits = process.events()
+                    local pid =
+                        assert(process.spawn_monitored("kickside.kb10.injection:checkpoint_source_worker", "app:processes", {
+                            checkpoint = { job = job, cursor = cursor, prefetched_last = 1 },
+                            events = { event },
+                            execution_deadline_ns = time.now():unix_nano() + 500000000,
+                        }))
+                    local overdue = time.after("10s")
+                    while true do
+                        local selected = channel.select({ exits:case_receive(), overdue:case_receive() })
+                        test.eq(selected.channel, exits)
+                        if tostring(selected.value.from) == tostring(pid) then
+                            test.is_nil(selected.value.result.error)
+                            test.is_true(
+                                selected.value.result.value.checkpointed,
+                                tostring(selected.value.result.value.error_native)
+                            )
+                            break
+                        end
+                    end
+                    in_db(function(db)
+                        local pos = assert(
+                            db:query(
+                                "SELECT last_seq,continuation FROM kickside_projection_cursor WHERE id=$1",
+                                { cursor.id }
+                            )
+                        )[1]
+                        test.eq(tonumber(pos.last_seq), 0)
+                        test.is_true(#pos.continuation > 0)
+                        cursor.last_seq, cursor.continuation = pos.last_seq, pos.continuation
+                        local partial = assert(db:query(
+                            [[SELECT count(*) AS n FROM kb10_source_preparation_rows
+                        WHERE store_id=$1 AND embedding IS NULL]],
+                            { id }
+                        ))[1]
+                        test.eq(tonumber(partial.n), 65)
+                        test.eq(#read_store(db, registration, id).roots, 0)
+                    end)
+                    assert(apply.finish_checkpointed("app:db", job, cursor, 0))
+                    assert(assert(fs.get(blob.storage_id)):remove(blob.storage_path))
+                    scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
+                    assert(jobs.nudge_workers())
+                    local outage = wait_state(
+                        registration,
+                        id,
+                        function(c) return c.status == "pending" and tonumber(c.attempts) > 0 end
+                    )
+                    test.eq(tonumber(outage.cursor.last_seq), 0)
+                    test.eq(#outage.roots, 0)
+                    in_db(function(db)
+                        local done = assert(
+                            db:query(
+                                "SELECT count(*) AS n FROM kb10_source_preparation_rows WHERE store_id=$1 AND embedding IS NOT NULL",
+                                { id }
+                            )
+                        )[1]
+                        test.eq(tonumber(done.n), 96, assert(json.encode(outage.cursor)))
+                        test.eq(#outputs(db, id).graph, 0)
+                        assert(db:execute("UPDATE kb10_checkpoint_model SET online=1 WHERE model=$1", { model }))
+                    end)
+                    local done = wait_state(registration, id, caught_up)
+                    test.eq(#done.roots, 1)
+                    test.eq(done.roots[1].content, content)
+                    in_db(function(db)
+                        local graph = outputs(db, id).graph
+                        test.eq(#graph, 1)
+                        test.eq(graph[1].chunk_delta, #expected)
+                        local children = assert(
+                            db:query(
+                                "SELECT content,metadata FROM kb10_nodes WHERE store_id=$1 AND node_type='chunk'",
+                                { id }
+                            )
+                        )
+                        test.eq(#children, #expected)
+                        for _, child in ipairs(children) do
+                            local m = type(child.metadata) == "table" and child.metadata
+                                or assert(json.decode(child.metadata))
+                            local i = tonumber(m.chunk_index)
+                            test.eq(child.content, expected[i])
+                            test.eq(m.row_start, expected_meta[i].row_start)
+                            test.eq(m.contextual_prefix, expected_meta[i].contextual_prefix)
+                        end
+                        test.eq(graph[1].summary_delta, 1)
+                        local calls =
+                            assert(db:query("SELECT calls,failures FROM kb10_checkpoint_model WHERE model=$1", { model }))[1]
+                        test.eq(
+                            assert(tonumber(calls.calls)) - assert(tonumber(calls.failures)),
+                            math.ceil((#expected + 1) / 96)
+                        )
+                        assert_no_preparation(db, id)
+                    end)
+                end)
+                if scheduler then process.terminate(scheduler) end
+                in_db(function(db)
+                    assert(projections.remove_projection(db, id, { projection_id = registration.projection_id }))
+                    assert(db:execute("DELETE FROM kb10_checkpoint_model WHERE model=$1", { model }))
+                    assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", { id }))
+                    assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", { id }))
+                end)
+                in_db(function(db) seed_abandoned_page(db, id) end)
+                assert(store.delete_store(id))
+                in_db(function(db) assert_no_preparation(db, id) end)
+                assert(models.delete_card(model))
+                assert(select(2, artifact_cleanup.delete_for_upload(upload_id)) == nil)
+                in_db(function(db) assert(db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", { upload_id })) end)
+                if not ok then error(err) end
+            end)
     end)
 end)}

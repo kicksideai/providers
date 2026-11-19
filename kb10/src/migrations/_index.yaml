@@ -143,3 +143,15 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 13_source_preparation
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-19T09:00:00Z"
+    source: file://13_source_preparation.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
