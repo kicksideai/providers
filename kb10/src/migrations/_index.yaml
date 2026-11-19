@@ -143,3 +143,17 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 14_store_document_counts
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-19T10:00:00Z"
+    source: file://14_store_document_counts.lua
+    modules: [sql]
+    imports:
+      migration: wippy.migration:migration
+      ops: kickside.kb10.persist:ops
+    method: migrate

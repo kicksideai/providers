@@ -27,6 +27,17 @@ and public-metadata projections. Knowledge discovers these declarations without
 branching on the engine name. Source materialization uses the descriptor’s
 workers; it does not use a public materializer contract.
 
+## Browse document populations
+
+`GET /api/v1/kb10/{id}/browse?scope=documents` lists accepted top-level
+document roots. `scope=failures` lists failed-only roots. A rejected update
+that preserves the accepted revision stays in Documents. Each page's `total`
+is the count of committed roots in its scope and includes rows outside the
+page. Requesting a scope requires KB READ access, as with ordinary browse.
+
+Omit `scope` to browse the existing `node_type` or `parent_id` filters. That
+route continues to count the full set matching the filter.
+
 ## Original document source
 
 `GET /kb10/{id}/nodes/{node_id}/source` is relative to the host's authenticated

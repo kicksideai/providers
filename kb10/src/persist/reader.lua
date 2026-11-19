@@ -78,9 +78,20 @@ end
 
 -- A missing parent includes every parent unless the caller requests roots.
 -- Both the page and its total use the same predicate and bound parameters.
-local function browse_filter(store_id: any, opts: kb10.BrowseNodesOptions)
+local function scope_count_column(scope: string?): string?
+    if scope == "documents" then return "document_count" end
+    if scope == "failures" then return "failed_count" end
+    return nil
+end
+
+local function browse_filter(db_type: any, store_id: any, opts: kb10.BrowseNodesOptions)
     local clause = " FROM kb10_nodes WHERE store_id = $1"
     local params = { store_id }
+    if scope_count_column(opts.scope) then
+        local failed = opts.scope == "failures" and "true" or "false"
+        return clause .. " AND " .. ops.SOURCE_ROOT .. " AND " ..
+            ops.failed_document_sql(db_type) .. " = " .. failed, params
+    end
     if opts.parent_id and opts.parent_id ~= "" then
         table.insert(params, opts.parent_id)
         clause = clause .. " AND parent_id = $" .. #params
@@ -97,7 +108,7 @@ end
 local function read_nodes(handle: any, db_type: any, store_id: any, browse_opts: kb10.BrowseNodesOptions)
     local fields = "id, store_id, parent_id, node_type, content_type, metadata, created_at, updated_at, external_source, external_id"
     if browse_opts.include_content then fields = fields .. ", content" end
-    local clause, params = browse_filter(store_id, browse_opts)
+    local clause, params = browse_filter(db_type, store_id, browse_opts)
 
     -- A document's chunks are all inserted in one transaction, so they share
     -- created_at (NOW()); ordering by it alone is non-deterministic. Order by the
@@ -106,7 +117,9 @@ local function read_nodes(handle: any, db_type: any, store_id: any, browse_opts:
     -- created_at and id for a stable, repeatable order across pages. Nodes without
     -- a chunk_index (concepts, documents, summaries) fall through to created_at/id.
     local order_by: string
-    if db_type == sql.type.SQLITE then
+    if scope_count_column(browse_opts.scope) then
+        order_by = " ORDER BY created_at ASC, id ASC"
+    elseif db_type == sql.type.SQLITE then
         -- (expr IS NULL) sorts NULL chunk_index last without relying on the
         -- NULLS LAST syntax (SQLite >= 3.30 only).
         local ci = "CAST(json_extract(metadata, '$.chunk_index') AS INTEGER)"
@@ -120,8 +133,15 @@ local function read_nodes(handle: any, db_type: any, store_id: any, browse_opts:
     return handle:query(query, params)
 end
 
-local function count_nodes(handle: any, store_id: any, opts: kb10.BrowseNodesOptions)
-    local clause, params = browse_filter(store_id, opts)
+local function count_nodes(handle: any, db_type: any, store_id: any, opts: kb10.BrowseNodesOptions)
+    local column = scope_count_column(opts.scope)
+    if column then
+        local rows, err = handle:query("SELECT " .. column .. " AS total FROM kb10_stores WHERE id = $1", { store_id })
+        if err then return nil, err end
+        return rows[1] and tonumber(rows[1].total) or 0
+    end
+
+    local clause, params = browse_filter(db_type, store_id, opts)
     local rows, err = handle:query("SELECT COUNT(*) AS total" .. clause, params)
     if err then return nil, err end
     return tonumber(rows[1].total)
@@ -155,7 +175,7 @@ function reader.browse_page(store_id: any, opts: any)
     end
     local rows, query_err = read_nodes(tx, db_type, store_id, options)
     local total
-    if not query_err then total, query_err = count_nodes(tx, store_id, options) end
+    if not query_err then total, query_err = count_nodes(tx, db_type, store_id, options) end
     local _, finish_err
     if query_err then _, finish_err = tx:rollback() else _, finish_err = tx:commit() end
     db:release()
@@ -168,7 +188,7 @@ end
 function reader.count_nodes(store_id: any, opts: any)
     local db, err = ops.get_db()
     if err then return nil, err end
-    local total, count_err = count_nodes(db, store_id, browse_options(opts))
+    local total, count_err = count_nodes(db, ops.get_db_type(db), store_id, browse_options(opts))
     db:release()
     return total, count_err
 end

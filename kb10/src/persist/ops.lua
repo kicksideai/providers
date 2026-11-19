@@ -51,8 +51,23 @@ end
 ops.vector_to_string = search_index.vector_literal
 ops.placeholders = search_index.placeholders
 
-ops.SOURCE_ROOT = "node_type = 'document' AND parent_id IS NULL"
 ops.SOURCE_BOUND = "source_scope IS NOT NULL"
+
+function ops.document_root_sql(prefix: string?): string
+    local p = prefix or ""
+    return p .. "node_type = 'document' AND " .. p .. "parent_id IS NULL"
+end
+
+ops.SOURCE_ROOT = ops.document_root_sql()
+
+function ops.failed_document_sql(db_type: any, prefix: string?): string
+    local metadata = (prefix or "") .. "metadata"
+    if db_type == sql.type.SQLITE then
+        return "(CASE WHEN json_valid(" .. metadata .. ") THEN COALESCE(json_extract(" .. metadata ..
+            ", '$.status') = 'failed', false) ELSE false END)"
+    end
+    return "COALESCE(" .. metadata .. "->>'status' = 'failed', false)"
+end
 
 function ops.source_binding(component_id: string?, source: any, id: any, source_thread: string?)
     source, id = trim(source), trim(id)

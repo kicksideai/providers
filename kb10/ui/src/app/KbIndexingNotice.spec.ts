@@ -2,6 +2,7 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import KbNotice from './shared/KbNotice.vue'
+import RailHeader from './shared/RailHeader.vue'
 
 const proxy = vi.hoisted(() => ({
   get: vi.fn(),
@@ -39,7 +40,7 @@ it.each(['document', 'wiki', 'graph'] as const)('shows waiting work in the %s vi
   proxy.view = view === 'graph' ? 'graph' : 'wiki'
   const component = view === 'document' ? KbDocument : KbWiki
   const endpoint = view === 'document'
-    ? '/api/v1/kb10/kb/browse?node_type=document&limit=50&offset=0&include_indexing=true'
+    ? '/api/v1/kb10/kb/browse?scope=documents&limit=50&offset=0&include_indexing=true'
     : '/api/v1/kb10/kb/graph?include_indexing=true'
   const wrapper = shallowMount(component, { global: { stubs: { KbNotice: false } } })
   await flushPromises()
@@ -64,5 +65,21 @@ it.each(['document', 'wiki', 'graph'] as const)('shows waiting work in the %s vi
     expect(proxy.get).toHaveBeenCalledTimes(index + 2)
     expect(proxy.get).toHaveBeenLastCalledWith(endpoint)
   }
+  wrapper.unmount()
+})
+
+it('uses the accepted and failed page totals when switching document scopes', async () => {
+  proxy.get.mockResolvedValueOnce({ data: { success: true, total: 91, nodes: [] } })
+  const wrapper = shallowMount(KbDocument, { global: { stubs: { KbShell: false, KbTabs: false } } })
+  await flushPromises()
+  expect(wrapper.findComponent(RailHeader).props()).toMatchObject({ title: 'Documents', count: 91 })
+  expect(proxy.get).toHaveBeenLastCalledWith(expect.stringContaining('scope=documents&limit=50&offset=0'))
+
+  proxy.get.mockResolvedValueOnce({ data: { success: true, total: 2, nodes: [] } })
+  await wrapper.findAll('[role="tab"]')[1].trigger('click')
+  await flushPromises()
+  expect(wrapper.findComponent(RailHeader).props()).toMatchObject({ title: 'Indexing failures', count: 2 })
+  expect(proxy.get).toHaveBeenLastCalledWith(expect.stringContaining('scope=failures&limit=50&offset=0'))
+
   wrapper.unmount()
 })

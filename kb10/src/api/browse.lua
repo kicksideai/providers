@@ -61,6 +61,17 @@ local function handler()
 
     local parent_id = req:query("parent_id")
     local node_type = req:query("node_type")
+    local scope = req:query("scope")
+    if scope and scope ~= "" then
+        if scope ~= "documents" and scope ~= "failures" then
+            query_params.bad_request(res, "scope must be documents or failures")
+            return
+        end
+        if (parent_id and parent_id ~= "") or (node_type and node_type ~= "" and node_type ~= "document") then
+            query_params.bad_request(res, "scope requires a top-level document browse")
+            return
+        end
+    end
     local include_content = req:query("include_content") == "true"
     local limit, limit_err = query_params.query_int(req, "limit", 50, 1, 500)
     if limit_err then
@@ -125,6 +136,7 @@ local function handler()
     local page, query_err = kb_store:browse_page({
         store_id = store_row.id,
         opts = {
+            scope = scope,
             parent_id = browse_parent,
             top_level = browse_parent == nil,
             node_type = (node_type and node_type ~= "") and node_type or nil,

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import { loadByTagName } from '@wippy-fe/proxy'
+import { api, loadByTagName } from '@wippy-fe/proxy'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import { type BrowseNode, nodeLabel } from './types'
 import { docIcon, docBadge, relativeTime } from './docMeta'
-import { useKbBrowse } from './useKbBrowse'
+import { useKbBrowse, type DocumentScope } from './useKbBrowse'
 import {
-  KbShell, RailHeader, IconButton, SearchField, KbNotice, KbDrawer, KbConfirm, KbSearch,
+  KbShell, RailHeader, IconButton, SearchField, KbNotice, KbDrawer, KbConfirm, KbSearch, KbTabs,
 } from './shared'
 import EmptyState from './EmptyState.vue'
 import DocReader from './DocReader.vue'
@@ -27,13 +27,19 @@ const emit = useEvents<E>()
 const kbId = computed(() => props.value.config?.kb_id || '')
 const routeParam = computed(() => props.value.config?.route || '')
 let applyingRoute = false
+const scope = ref<DocumentScope>('documents')
+const tabs = [
+  { id: 'documents', label: 'Documents' },
+  { id: 'failures', label: 'Indexing failures' },
+]
+const listTitle = computed(() => scope.value === 'documents' ? 'Documents' : 'Indexing failures')
 
 // Browse + delete + realtime reconciliation come from the shared composable.
 // Pagination is server-side: documents holds only the current page, total is the
 // real match count, and the pager walks pages.
 const { loading, notice, indexingNotice, documents, deleting, reload, remove, findDoc,
   page, pageSize, total, hasPrev, hasNext, next, prev } =
-  useKbBrowse(() => kbId.value, { includeIndexing: true })
+  useKbBrowse(() => kbId.value, { includeIndexing: true, scope: () => scope.value })
 
 // The filter is page-local: it narrows the documents already loaded for the
 // current page, not the whole KB. Server-side search is out of scope, so this is
@@ -50,7 +56,12 @@ const rangeStart = computed(() => (total.value === 0 ? 0 : page.value * pageSize
 const rangeEnd = computed(() => Math.min((page.value + 1) * pageSize.value, total.value))
 
 const selectedId = ref('')
-const selected = computed(() => deleting.value[selectedId.value] ? null : findDoc(selectedId.value) || null)
+const linkedDocument = ref<BrowseNode | null>(null)
+const selected = computed(() => {
+  if (deleting.value[selectedId.value]) return null
+  return findDoc(selectedId.value) || (linkedDocument.value?.id === selectedId.value ? linkedDocument.value : null)
+})
+let routeRequest = 0
 
 const addOpen = ref(false)
 const searchOpen = ref(false)
@@ -66,6 +77,16 @@ function select(n: BrowseNode) {
 function selectById(id: string) {
   const n = findDoc(id)
   if (n) { select(n); searchOpen.value = false }
+}
+
+function selectScope(id: string) {
+  if (id === scope.value) return
+  routeRequest++
+  searchOpen.value = false
+  selectedId.value = ''
+  linkedDocument.value = null
+  q.value = ''
+  scope.value = id === 'failures' ? 'failures' : 'documents'
 }
 
 function askRemove(n: BrowseNode) { confirmTarget.value = n }
@@ -88,11 +109,15 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   loadByTagName('wc-resource-view', { timeoutMs: 10000 }).catch(() => {})
 })
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => {
+  routeRequest++
+  window.removeEventListener('keydown', onKeydown)
+})
 
 // Honor a deep-linked doc id once the list lands; else keep the current one,
 // else open the first.
 watch(documents, (docs) => {
+  if (linkedDocument.value && findDoc(linkedDocument.value.id)) linkedDocument.value = null
   if (selected.value) return
   const available = docs.filter((doc) => !deleting.value[doc.id])
   const wanted = routeParam.value ? available.find((doc) => doc.id === routeParam.value) : null
@@ -103,11 +128,25 @@ watch(documents, (docs) => {
 
 watch(kbId, () => { selectedId.value = '' })
 
-watch(routeParam, (r) => {
-  if (!r || r === selectedId.value) return
-  const t = findDoc(r)
-  if (t) { applyingRoute = true; try { select(t) } finally { applyingRoute = false } }
-})
+watch([kbId, routeParam], async ([id, route]) => {
+  const request = ++routeRequest
+  if (linkedDocument.value?.id !== route) linkedDocument.value = null
+  if (!id || !route || route === selectedId.value) return
+  let target = findDoc(route)
+  if (!target) {
+    try {
+      const { data } = await api.get(`/api/v1/kb10/${id}/browse?node_id=${encodeURIComponent(route)}`)
+      if (request !== routeRequest || data?.node?.node_type !== 'document' || data.node.parent_id) return
+      target = data.node as BrowseNode
+    } catch {
+      return
+    }
+  }
+  selectScope(target.metadata?.status === 'failed' ? 'failures' : 'documents')
+  linkedDocument.value = findDoc(target.id) ? null : target
+  applyingRoute = true
+  try { select(target) } finally { applyingRoute = false }
+}, { immediate: true })
 </script>
 
 <template>
@@ -117,18 +156,20 @@ watch(routeParam, (r) => {
 
     <KbShell>
       <template #rail>
-        <RailHeader title="Documents" :count="total">
+        <RailHeader :title="listTitle" :count="total">
           <template #actions>
-            <IconButton icon="tabler:search" label="Search" :active="searchOpen" @click="searchOpen = !searchOpen" />
+            <IconButton v-if="scope === 'documents'" icon="tabler:search" label="Search" :active="searchOpen" @click="searchOpen = !searchOpen" />
             <IconButton icon="tabler:plus" label="Add document" :active="addOpen" @click="addOpen = true" />
           </template>
         </RailHeader>
 
+        <KbTabs :tabs="tabs" :active="scope" @select="selectScope" />
+
         <div class="kd-filter">
-          <SearchField v-model="q" placeholder="Filter documents…" />
+          <SearchField v-model="q" :placeholder="scope === 'failures' ? 'Filter indexing failures…' : 'Filter documents…'" />
         </div>
 
-        <nav class="kd-list" aria-label="Documents">
+        <nav class="kd-list" :aria-label="listTitle">
           <div v-if="loading && !documents.length" class="kd-list-skel"><div v-for="i in 6" :key="i" class="kd-skel-row" /></div>
           <div
             v-for="n in filtered"
@@ -155,7 +196,8 @@ watch(routeParam, (r) => {
             />
           </div>
           <div v-if="!loading && !filtered.length" class="kd-list-empty">
-            {{ documents.length ? 'No documents match.' : 'No documents yet — add one with +.' }}
+            <template v-if="scope === 'failures'">{{ documents.length ? 'No indexing failures match.' : 'No indexing failures.' }}</template>
+            <template v-else>{{ documents.length ? 'No documents match.' : 'No documents yet — add one with +.' }}</template>
           </div>
         </nav>
 

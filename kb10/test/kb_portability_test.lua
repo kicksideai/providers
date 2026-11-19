@@ -128,6 +128,7 @@ local function define_tests()
             local foreign_metadata = {
                 external_source = metadata.external_source,
                 external_id = metadata.external_id,
+                status = "failed",
                 source_ref = {thread_id = "source:thread"},
             }
             local padded_metadata = {external_source = " " .. metadata.external_source,
@@ -151,16 +152,23 @@ local function define_tests()
             test.is_nil(err)
             test.is_true(result.success, tostring(result.error))
             local ids = result.id_map.rows.kb10_nodes
+            test.eq(assert(kb10_store.browse_page(dst, {scope = "documents"})).total, 2)
+            local failed_page = assert(kb10_store.browse_page(dst, {scope = "failures"}))
+            test.eq(failed_page.total, 1)
+            test.eq(failed_page.nodes[1].id, ids[foreign])
             document.id = nil
             document.content = "new generation"
             local replaced = assert(kb10_store.replace_document(dst, { document = document }))
             test.eq(replaced.document_node_id, ids[other])
             test.eq(assert(kb10_store.get_node(dst, ids[first])).content, "first")
             test.eq(tostring(assert(kb10_store.get_node(dst, ids[child])).parent_id), ids[first])
+            foreign_metadata.status = "completed"
             local other_replaced = assert(kb10_store.replace_document(dst, {document = {
                 node_type = "document", content = "another generation", metadata = foreign_metadata,
             }, source_thread_id = "source:thread"}))
             test.eq(other_replaced.document_node_id, ids[foreign])
+            test.eq(assert(kb10_store.browse_page(dst, {scope = "documents"})).total, 3)
+            test.eq(assert(kb10_store.browse_page(dst, {scope = "failures"})).total, 0)
             local exact = assert(kb10_store.find_by_external_id(dst, metadata.external_source, metadata.external_id))
             test.eq(#exact, 2)
             local exact_ids = {[exact[1].id] = true, [exact[2].id] = true}
