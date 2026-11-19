@@ -1,9 +1,9 @@
 import { defineComponent as Ce, openBlock as t, createElementBlock as a, toDisplayString as A, createElementVNode as l, createVNode as $, unref as g, createCommentVNode as O, ref as T, computed as R, watch as de, onMounted as it, createBlock as ie, normalizeClass as xe, Fragment as te, renderList as fe, createTextVNode as ce, normalizeStyle as $e, withModifiers as Re, withDirectives as Fe, vModelText as Ke, vModelSelect as rt, withCtx as be, onBeforeUnmount as Ze, onUnmounted as Nt, nextTick as lt, createStaticVNode as At, Transition as Ye, vModelCheckbox as Bt } from "vue";
 import { loadByTagName as st, api as Ie, host as Ue } from "@wippy-fe/proxy";
 import { a as Ut, u as zt } from "./wc-runtime-f54Bo-yJ.js";
-import { q as Pt, r as Vt, t as Wt, d as bt, e as Ht, f as kt, v as Ee, w as at, x as ot, g as xt, u as wt, b as _t, _ as Te, y as ut, z as $t, A as Xt, B as Yt, C as Gt, D as Kt, j as Ct, k as It, l as Mt, o as Ge, p as St, F as jt, G as dt, H as Zt, N as vt, I as Qt, h as ft, E as pt, i as gt, s as Jt } from "./AddPanel.vue_vue_type_script_setup_true_lang-iMf6E03m.js";
+import { r as Pt, t as Vt, v as Wt, d as bt, e as Ht, f as kt, w as Ee, x as at, y as ot, g as xt, u as wt, b as _t, _ as Te, z as ut, A as $t, B as Xt, C as Yt, D as Gt, F as Kt, j as Ct, k as It, l as Mt, o as Ge, p as St, G as jt, H as dt, I as Zt, N as vt, J as Qt, h as ft, q as Jt, E as pt, i as gt, s as qt } from "./queryMode-DMTns9sb.js";
 import { Icon as P } from "@iconify/vue";
-import { _ as je, c as qt } from "./queryMode-D9gMlIJK.js";
+import { _ as je } from "./modelSettings-Bkdghd0O.js";
 const en = { class: "kx-count" }, tn = /* @__PURE__ */ Ce({
   __name: "CountPill",
   props: {
@@ -2853,7 +2853,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
       }
       try {
         const { data: F } = await Ie.get(`/api/v1/knowledge/${o.value}`), oe = F?.config || F?.knowledge_base?.config || {};
-        U.value = qt(oe);
+        U.value = Jt(oe);
       } catch {
         U.value = !1;
       }
@@ -2902,7 +2902,7 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
     function me(F) {
       const oe = ++W;
       if (k && (k(), k = null), !F) return;
-      const ne = Jt(F, () => B());
+      const ne = qt(F, () => B());
       if (oe !== W) {
         ne && ne();
         return;
@@ -2997,4 +2997,4 @@ const Kl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
 export {
   ks as mountConfig
 };
-//# sourceMappingURL=wiki-mount-v4Mw1Fy5.js.map
+//# sourceMappingURL=wiki-mount-BU_-UMRV.js.map

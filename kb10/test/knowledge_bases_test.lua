@@ -214,6 +214,9 @@ local function define_tests()
                 test.not_nil(result.component_id)
                 test.eq(result.kb_type, "document")
                 component_id = result.component_id
+                local row, read_err = kb10_store.get_store(component_id)
+                test.is_nil(read_err, tostring(read_err))
+                test.is_nil(next(row.config), "creating a base without overrides stores an empty config")
             end)
 
             test.it("finds by name", function()

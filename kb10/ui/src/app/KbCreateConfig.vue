@@ -5,7 +5,6 @@ import { loadByTagName } from '@wippy-fe/proxy'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import KbButton from './shared/KbButton.vue'
-import { applyQueryModel } from './queryMode'
 import { DEFAULT_KB_MODEL, resolveModel } from './modelSettings'
 import { fitsHalfColumn } from './pairing'
 import { useMaintenance, type MaintenanceRunType } from './useMaintenance'
@@ -51,8 +50,8 @@ const contextRequired = computed(() => kbType.value !== 'document')
 
 const embeddingModel = ref('')
 const contextual = ref(true)
-const summaryModel = ref('')
-const chunkModel = ref('')
+const summaryModel = ref<string | false>()
+const chunkModel = ref<string | false>()
 // The two settings the summary model reads: standing instructions folded into
 // every document summary, and the length budget. Free text for the budget so an
 // empty box (the engine default applies) stays distinct from an explicit 0 (no
@@ -66,7 +65,8 @@ const embedImages = ref(false)
 const captionModel = ref(DEFAULT_KB_MODEL)
 const engineConfig = ref<Record<string, unknown>>({})
 // Retrieval / agentic RAG.
-const retrievalModel = ref('')
+const analysisSetting = ref<string | false>()
+const retrievalModel = computed(() => resolveModel(analysisSetting.value, ''))
 const enableReranking = ref(false)
 const hyde = ref(false)
 const selfTuning = ref(false)
@@ -113,6 +113,12 @@ function resolveSetting(key: string, value: unknown): string {
   const fallback = schemaFields.value.find(f => f.key === key)?.default
   return resolveModel(value, typeof fallback === 'string' ? fallback : DEFAULT_KB_MODEL)
 }
+const selectedSummaryModel = computed(() => resolveSetting('summary_model', summaryModel.value))
+const selectedChunkModel = computed(() => resolveSetting('chunk_enrichment_model', chunkModel.value))
+
+function modelSetting(value: unknown): string | false | undefined {
+  if (typeof value === 'string' || value === false) return value
+}
 // Prose fields need the full row to be readable; the rest are placed by what
 // they render — see fitsHalfColumn.
 const engineProseFields = computed(() => engineFields.value.filter(f => f.format === 'textarea'))
@@ -158,9 +164,9 @@ const summaryCharsError = computed(() => {
 function seed() {
   const c = ctx.value.config || {}
   embeddingModel.value = ctx.value.embedding_model || PREFERRED_EMBED
-  summaryModel.value = resolveSetting('summary_model', c.summary_model)
-  chunkModel.value = resolveSetting('chunk_enrichment_model', c.chunk_enrichment_model)
-  contextual.value = contextRequired.value || !!(summaryModel.value || chunkModel.value)
+  summaryModel.value = modelSetting(c.summary_model)
+  chunkModel.value = modelSetting(c.chunk_enrichment_model)
+  contextual.value = contextRequired.value || !!(selectedSummaryModel.value || selectedChunkModel.value)
 
   summaryPrompt.value = typeof c.summary_prompt === 'string' ? c.summary_prompt : ''
   // A knowledge base being created holds no length of its own — the box stays
@@ -181,8 +187,7 @@ function seed() {
   }
   engineConfig.value = cfg
 
-  const analysis = c.analysis_model ?? (isEdit.value ? false : resolveSetting('analysis_model', undefined))
-  retrievalModel.value = resolveModel(analysis, '')
+  analysisSetting.value = modelSetting(c.analysis_model)
   enableReranking.value = c.enable_reranking === true
   hyde.value = c.query_strategy === 'hyde'
   selfTuning.value = c.self_tuning === true
@@ -197,23 +202,21 @@ function seed() {
 
 function buildConfig(): Record<string, unknown> {
   const cfg: Record<string, unknown> = { ...engineConfig.value }
-  cfg.summary_model = contextual.value && (summaryModel.value || false)
-  cfg.chunk_enrichment_model = contextual.value && (chunkModel.value || false)
+  cfg.summary_model = contextual.value ? summaryModel.value : false
+  cfg.chunk_enrichment_model = contextual.value ? chunkModel.value : false
   cfg.summary_prompt = summaryPrompt.value.trim()
   if (summaryCharsValue.value !== null) cfg.summary_max_chars = summaryCharsValue.value
   cfg.embed_images = embedImages.value
-  if (isEdit.value || embedImages.value) cfg.image_caption_model = captionModel.value || DEFAULT_KB_MODEL
-  applyQueryModel(cfg, retrievalModel.value)
+  cfg.image_caption_model = captionModel.value || DEFAULT_KB_MODEL
+  cfg.analysis_model = analysisSetting.value
   cfg.query_strategy = hyde.value ? 'hyde' : 'plain'
   cfg.self_tuning = selfTuning.value
-  if (isEdit.value || selfTuning.value) cfg.self_tuning_query_interval = tuningInterval.value
+  cfg.self_tuning_query_interval = tuningInterval.value
   cfg.enable_reranking = enableReranking.value
   cfg.extra_prompt = queryPrompt.value.trim()
-  if ((isEdit.value || queryDriver.value === 'agentic') && retrievalIterations.value) {
-    cfg.max_retrieval_iterations = retrievalIterations.value
-  }
+  if (retrievalIterations.value) cfg.max_retrieval_iterations = retrievalIterations.value
   cfg.query_driver = queryDriver.value
-  if (isEdit.value || (queryDriver.value === 'agentic' && queryAgent.value)) cfg.query_agent = queryAgent.value
+  cfg.query_agent = queryAgent.value
   return cfg
 }
 
@@ -222,13 +225,13 @@ function pickValue(e: Event): string {
   return typeof d === 'string' ? d : (d && typeof d === 'object' && 'value' in d ? String((d as { value: unknown }).value) : '')
 }
 function onEmbed(e: Event) { embeddingModel.value = pickValue(e) }
-function onSummary(e: Event) { summaryModel.value = resolveSetting('summary_model', pickValue(e)) }
-function onChunk(e: Event) { chunkModel.value = resolveSetting('chunk_enrichment_model', pickValue(e)) }
+function onSummary(e: Event) { summaryModel.value = pickValue(e) }
+function onChunk(e: Event) { chunkModel.value = pickValue(e) }
 
 function setContextual(enabled: boolean) {
-  if (enabled && !summaryModel.value && !chunkModel.value) {
-    summaryModel.value = resolveSetting('summary_model', undefined)
-    chunkModel.value = resolveSetting('chunk_enrichment_model', undefined)
+  if (enabled && !selectedSummaryModel.value && !selectedChunkModel.value) {
+    summaryModel.value = ''
+    chunkModel.value = ''
   }
   contextual.value = enabled
 }
@@ -253,13 +256,13 @@ function engineFieldValue(key: string): string {
 const formConfig = computed(buildConfig)
 const initialConfig = ref<Record<string, unknown>>({})
 const configPatch = computed(() => Object.fromEntries(Object.entries(formConfig.value).filter(
-  ([key, value]) => !Object.is(value, initialConfig.value[key]),
+  ([key, value]) => value !== undefined && !Object.is(value, initialConfig.value[key]),
 )))
 const dirty = computed(() => Object.keys(configPatch.value).length > 0 ||
   Object.keys(initialConfig.value).some(key => !(key in formConfig.value)))
 
 function publish() {
-  emit('config-changed', { embedding_model: embeddingModel.value, config: isEdit.value ? configPatch.value : formConfig.value })
+  emit('config-changed', { embedding_model: embeddingModel.value, config: configPatch.value })
 }
 
 const {
@@ -376,12 +379,12 @@ onMounted(() => {
           <div class="cx-row">
             <div class="cx-field">
               <span class="cx-label">Summary model</span>
-              <wc-model-picker :value="summaryModel" capability="generate" @select="onSummary"></wc-model-picker>
+              <wc-model-picker :value="selectedSummaryModel" capability="generate" @select="onSummary"></wc-model-picker>
               <p class="st-hint">Summarises each document before chunking.</p>
             </div>
             <div class="cx-field">
               <span class="cx-label">Chunk enrichment model</span>
-              <wc-model-picker :value="chunkModel" capability="generate" @select="onChunk"></wc-model-picker>
+              <wc-model-picker :value="selectedChunkModel" capability="generate" @select="onChunk"></wc-model-picker>
               <p class="st-hint">Adds context to each chunk.</p>
             </div>
           </div>
@@ -446,8 +449,9 @@ onMounted(() => {
 
       <div class="cx-field">
         <span class="cx-label">Search analysis model</span>
-        <wc-model-picker :value="retrievalModel" capability="generate" @select="retrievalModel = pickValue($event)"></wc-model-picker>
-        <p v-if="!retrievalModel" class="st-hint">Search returns direct matches.</p>
+        <wc-model-picker :value="retrievalModel" capability="generate" @select="analysisSetting = pickValue($event).trim() || false"></wc-model-picker>
+        <p v-if="analysisSetting === false" class="st-hint">Answers are disabled. Ask returns matching passages.</p>
+        <p v-else-if="!retrievalModel" class="st-hint">Search returns direct matches. Ask uses Fast when available.</p>
       </div>
 
       <label class="cx-toggle">
@@ -459,7 +463,7 @@ onMounted(() => {
         <span><span class="cx-label">Autonomous retrieval tuning</span><span class="st-hint">Learns standing instructions from document summaries and retrieval outcomes. Applies changes when a caller has write access.</span></span>
       </label>
       <p v-if="lastTuning?.applied_at" class="st-hint">Last tuning: {{ lastTuning.applied_at }}. {{ lastTuning.rationale }}</p>
-      <p v-if="(hyde || selfTuning) && !retrievalModel" class="cx-err">Select a query analysis model for retrieval optimization.</p>
+      <p v-if="(hyde || selfTuning) && !retrievalModel" class="st-hint">HyDE and tuning stay off until a Search analysis model is available.</p>
       <label v-if="selfTuning" class="cx-field">
         <span class="cx-label">Tuning interval</span>
         <input class="cx-input" type="number" min="5" max="500" step="1" v-model.number="tuningInterval" />

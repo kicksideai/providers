@@ -2,8 +2,8 @@ import { ref as m, computed as _, onBeforeUnmount as ie, watch as F, defineCompo
 import { Icon as O } from "@iconify/vue";
 import { api as ae, host as ue, loadByTagName as xe } from "@wippy-fe/proxy";
 import { a as $e, u as Ce } from "./wc-runtime-f54Bo-yJ.js";
-import { c as Ee, E as ve, i as fe, s as Se, a as me, _ as Z, u as Te, b as De, n as ee, d as Ne, e as Le, f as Me, g as Ie, h as Oe, j as Pe, k as Be, l as Re, m as je, o as Ve, p as Xe } from "./AddPanel.vue_vue_type_script_setup_true_lang-iMf6E03m.js";
-import { _ as he, c as Ue } from "./queryMode-D9gMlIJK.js";
+import { c as Ee, E as ve, i as fe, s as Se, a as me, _ as Z, u as Te, b as De, n as ee, d as Ne, e as Le, f as Me, g as Ie, h as Oe, j as Pe, k as Be, l as Re, m as je, o as Ve, p as Xe, q as qe } from "./queryMode-DMTns9sb.js";
+import { _ as he } from "./modelSettings-Bkdghd0O.js";
 const pe = {
   "text/markdown": "MD",
   "text/plain": "TXT",
@@ -18,7 +18,7 @@ const pe = {
   "application/vnd.ms-powerpoint": "PPT",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX"
 };
-function qe(i) {
+function Ue(i) {
   const s = i.content_type || "";
   if (pe[s]) return pe[s];
   const y = i.metadata || {}, u = String(y.filename || y.source_url || y.title || ""), k = u.lastIndexOf(".");
@@ -67,7 +67,7 @@ function Ae(i, s = {}) {
     t && (clearTimeout(t), N.delete(e));
   }
   const Y = /* @__PURE__ */ new Set(["concept", "edge", "chunk", "summary"]);
-  function U(e) {
+  function q(e) {
     return Date.parse(e.updated_at || e.created_at || "") || 0;
   }
   function le(e) {
@@ -83,13 +83,13 @@ function Ae(i, s = {}) {
         o.set(l, n.length), n.push(t);
         continue;
       }
-      U(t) >= U(n[I]) && (n[I] = t);
+      q(t) >= q(n[I]) && (n[I] = t);
     }
     return n;
   }
-  const q = _(() => le(k.value.filter((e) => !Y.has(e.node_type || ""))));
+  const U = _(() => le(k.value.filter((e) => !Y.has(e.node_type || ""))));
   function R(e) {
-    return q.value.find((o) => o.id === e);
+    return U.value.find((o) => o.id === e);
   }
   let j = 0;
   async function z() {
@@ -153,7 +153,7 @@ function Ae(i, s = {}) {
   }
   function G() {
     if (Object.keys(E.value).length === 0) return;
-    const e = new Set(q.value.map(W).filter(Boolean)), o = { ...x.value }, n = { ...E.value };
+    const e = new Set(U.value.map(W).filter(Boolean)), o = { ...x.value }, n = { ...E.value };
     let t = !1;
     for (const [l, I] of Object.entries(E.value))
       if (I && !e.has(I)) {
@@ -199,7 +199,7 @@ function Ae(i, s = {}) {
     loading: y,
     notice: u,
     nodes: k,
-    documents: q,
+    documents: U,
     deleting: x,
     load: z,
     reload: z,
@@ -361,14 +361,14 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
     function E(p) {
       return String((p.metadata || {}).contextual_prefix || "");
     }
-    const B = _(() => s.node.metadata || {}), N = _(() => B.value.source_url), V = _(() => c.value || s.node.content_type || "text/markdown"), Y = _(() => String(B.value.original_mime_type || B.value.source_mime || "")), U = _(() => Te(B.value) ? De(Y.value || s.node.content_type || "") : !1), le = _(() => `/api/v1/kb10/${s.kbId}/nodes/${s.node.id}/source`), q = _(() => String(B.value.filename || B.value.original_filename || "")), R = _(() => k.value ? k.value : h.value.map((p) => p.content).filter(Boolean).join(`
+    const B = _(() => s.node.metadata || {}), N = _(() => B.value.source_url), V = _(() => c.value || s.node.content_type || "text/markdown"), Y = _(() => String(B.value.original_mime_type || B.value.source_mime || "")), q = _(() => Te(B.value) ? De(Y.value || s.node.content_type || "") : !1), le = _(() => `/api/v1/kb10/${s.kbId}/nodes/${s.node.id}/source`), U = _(() => String(B.value.filename || B.value.original_filename || "")), R = _(() => k.value ? k.value : h.value.map((p) => p.content).filter(Boolean).join(`
 
 `)), j = _(() => {
       const p = R.value.trim();
       return p ? p.split(/\s+/).length : 0;
     });
     function z() {
-      U.value && (P.value = !P.value);
+      q.value && (P.value = !P.value);
     }
     const A = m(null), g = m(!1), X = m(!1);
     function K() {
@@ -422,7 +422,7 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
     }
     return F([R, L, y], () => {
       L.value === "read" && !y.value && ce(G);
-    }), F(U, (p) => {
+    }), F(q, (p) => {
       p || (P.value = !1);
     }), F(() => s.node?.id, () => oe(), { immediate: !0 }), ie(() => {
       W?.disconnect();
@@ -437,7 +437,7 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
         d("div", rt, [
           d("div", ut, [
             d("h2", dt, b(a(ee)(i.node)), 1),
-            U.value ? (r(), Q(a(Ne), {
+            q.value ? (r(), Q(a(Ne), {
               key: 0,
               class: te(["dr-orig-btn", { on: P.value }]),
               label: P.value ? "Hide original" : "View original",
@@ -510,7 +510,7 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
                   class: "dr-rv",
                   "content-type": V.value,
                   source: R.value,
-                  filename: q.value
+                  filename: U.value
                 }, null, 8, gt)
               ], 512),
               D.value ? (r(), v("div", _t)) : C("", !0)
@@ -577,11 +577,11 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
       ], 64)),
       f(a(Ie), {
         contained: "",
-        open: P.value && U.value,
-        title: q.value || "Original",
+        open: P.value && q.value,
+        title: U.value || "Original",
         "content-type": Y.value || i.node.content_type || "",
         "source-url": le.value,
-        filename: q.value,
+        filename: U.value,
         onClose: e[2] || (e[2] = (o) => P.value = !1)
       }, null, 8, ["open", "title", "content-type", "source-url", "filename"])
     ]));
@@ -592,10 +592,10 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
 }, Pt = {
   key: 0,
   class: "kd-list-skel"
-}, Bt = ["onClick"], Rt = { class: "kd-row-ic" }, jt = { class: "kd-row-main" }, Vt = { class: "kd-row-title" }, Xt = { class: "kd-row-sub" }, Ut = {
+}, Bt = ["onClick"], Rt = { class: "kd-row-ic" }, jt = { class: "kd-row-main" }, Vt = { class: "kd-row-title" }, Xt = { class: "kd-row-sub" }, qt = {
   key: 1,
   class: "kd-list-empty"
-}, qt = {
+}, Ut = {
   key: 0,
   class: "kd-pager"
 }, zt = { class: "kd-pager-label" }, At = { class: "kx-main-scroll kd-reader" }, Kt = /* @__PURE__ */ re({
@@ -615,9 +615,9 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
       pageSize: N,
       total: V,
       hasPrev: Y,
-      hasNext: U,
+      hasNext: q,
       next: le,
-      prev: q
+      prev: U
     } = Ae(() => u.value), R = m(""), j = _(() => {
       const n = R.value.trim().toLowerCase();
       return n ? T.value.filter((t) => ee(t).toLowerCase().includes(n)) : T.value;
@@ -629,7 +629,7 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
       }
       try {
         const { data: n } = await ae.get(`/api/v1/knowledge/${u.value}`), t = n?.config || {};
-        K.value = Ue(t);
+        K.value = qe(t);
       } catch {
         K.value = !1;
       }
@@ -746,7 +746,7 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
               d("span", jt, [
                 d("span", Vt, b(a(ee)(l)), 1),
                 d("span", Xt, [
-                  S(b(a(qe)(l)), 1),
+                  S(b(a(Ue)(l)), 1),
                   l.created_at ? (r(), v(ne, { key: 0 }, [
                     S(" · " + b(a(ye)(l.created_at)), 1)
                   ], 64)) : C("", !0)
@@ -763,22 +763,22 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
                 onClick: (I) => p(l)
               }, null, 8, ["label", "spin", "disabled", "onClick"])
             ], 10, Bt))), 128)),
-            !a(h) && !j.value.length ? (r(), v("div", Ut, b(a(T).length ? "No documents match." : "No documents yet — add one with +."), 1)) : C("", !0)
+            !a(h) && !j.value.length ? (r(), v("div", qt, b(a(T).length ? "No documents match." : "No documents yet — add one with +."), 1)) : C("", !0)
           ]),
-          a(V) > a(N) ? (r(), v("div", qt, [
+          a(V) > a(N) ? (r(), v("div", Ut, [
             f(a(Z), {
               icon: "tabler:chevron-left",
               label: "Previous page",
               size: "sm",
               disabled: !a(Y),
-              onClick: a(q)
+              onClick: a(U)
             }, null, 8, ["disabled", "onClick"]),
             d("span", zt, b(z.value) + "–" + b(A.value) + " of " + b(a(V)), 1),
             f(a(Z), {
               icon: "tabler:chevron-right",
               label: "Next page",
               size: "sm",
-              disabled: !a(U),
+              disabled: !a(q),
               onClick: a(le)
             }, null, 8, ["disabled", "onClick"])
           ])) : C("", !0)
@@ -851,4 +851,4 @@ const Ke = { class: "kx-railhead" }, Ge = { class: "kx-railhead-title" }, He = {
 export {
   Yt as mountConfig
 };
-//# sourceMappingURL=document-mount-DHxQ6zAT.js.map
+//# sourceMappingURL=document-mount-DyfuF1po.js.map

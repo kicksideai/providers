@@ -57,6 +57,27 @@ function lastPublished(): Record<string, unknown> {
 describe('KbCreateConfig engine fields', () => {
   beforeEach(() => host.emit.mockReset())
 
+  it('publishes only settings changed by the user when creating a base', async () => {
+    const wrapper = render({ kb_type: 'document', config: { config_schema: schema } })
+    await flushPromises()
+    expect(lastPublished()).toEqual({})
+    expect(wrapper.findAll('wc-model-picker').at(-1)?.attributes('value')).toBe('')
+
+    await wrapper.get('[aria-label="Contextual embedding"]').trigger('click')
+    expect(lastPublished()).toEqual({ summary_model: false, chunk_enrichment_model: false })
+    wrapper.unmount()
+  })
+
+  it('changes only analysis_model when the Search analysis picker changes', async () => {
+    const wrapper = render({ kb_type: 'document', edit: true, config: { retrieval_model: 'graph-model' } })
+    await flushPromises()
+    expect(lastPublished()).toEqual({})
+    wrapper.findAll('wc-model-picker').at(-1)?.element.dispatchEvent(new CustomEvent('select', { detail: 'search-model' }))
+    await flushPromises()
+    expect(lastPublished()).toEqual({ analysis_model: 'search-model' })
+    wrapper.unmount()
+  })
+
   it('renders each schema key once: owned keys by their dedicated control, the rest as engine fields', async () => {
     const wrapper = render({ kb_type: 'document', config: { config_schema: schema } })
     await flushPromises()
@@ -143,7 +164,7 @@ describe('KbCreateConfig engine fields', () => {
 
     await toggle.trigger('click')
     expect(toggle.attributes('aria-checked')).toBe('true')
-    expect(lastPublished()).toEqual({ summary_model: 'class:fast', chunk_enrichment_model: 'class:fast' })
+    expect(lastPublished()).toEqual({ summary_model: '', chunk_enrichment_model: '' })
 
     await toggle.trigger('click')
     expect(toggle.attributes('aria-checked')).toBe('false')

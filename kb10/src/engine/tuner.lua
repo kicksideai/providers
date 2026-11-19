@@ -4,7 +4,7 @@ local time = require("time")
 local llm = require("llm")
 local store = require("kb10_store")
 local component = require("component")
-local query_policy = require("query_policy")
+local analysis_model = require("analysis_model")
 local query_log = require("query_log")
 
 local M = { _llm = llm, _store = store, _component = component, _query_log = query_log }
@@ -36,7 +36,7 @@ function M.interval(config: table): (integer?, any?)
 end
 
 function M.propose(evidence: table): (any, any?)
-    local model = query_policy.resolve_analysis_model(evidence.config)
+    local model = analysis_model.configured(evidence.config)
     if not model then return nil, errors.new({ kind = errors.INVALID, message = "autonomous tuning requires the KB analysis_model" }) end
     if type(evidence.samples) ~= "table" or #evidence.samples == 0 then
         return nil, errors.new({ kind = errors.INVALID, message = "knowledge base has no document summaries to tune" })
@@ -93,7 +93,7 @@ local function apply(component_id: string, row: table, token: string): (any, any
     local fresh, read_err = M._store.get_store(component_id)
     if read_err then return nil, errors.wrap(read_err, "re-read tuning configuration") end
     local config = fresh.config or {}
-    if config.self_tuning ~= true or query_policy.resolve_analysis_model(config) ~= proposal.model
+    if config.self_tuning ~= true or analysis_model.configured(config) ~= proposal.model
         or config.summary_prompt ~= row.config.summary_prompt or config.extra_prompt ~= row.config.extra_prompt then
         return nil, errors.new({ kind = errors.CONFLICT, message = "KB tuning settings change during generation" })
     end

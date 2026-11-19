@@ -3,7 +3,7 @@ import { l as n, b as i } from "./styles-B-Ei5Rxs.js";
 import "@iconify/vue";
 import { define as s } from "@wippy-fe/proxy";
 const r = n(
-  () => import("./KbCreateConfig-D7Bs3wOG.js"),
+  () => import("./KbCreateConfig-BZ2AnSVo.js"),
   { loading: "Loading the knowledge base settings…", failed: "Could not load the knowledge base settings. Reload the page to try again." },
   o
 ), a = {

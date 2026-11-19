@@ -17,7 +17,7 @@ entries:
   - name: query_policy
     kind: library.lua
     meta:
-      comment: Query-mode resolution and bounded interactive LLM options.
+      comment: Explicit query-mode resolution and bounded interactive LLM options.
     source: file://query_policy.lua
 
   - name: query_service
@@ -36,7 +36,7 @@ entries:
       tuner: kickside.kb10.engine:tuner
       text_limits: kickside.kb10:text_limits
       model_failure: kickside.contract:model_failure
-      model_catalog: kickside.models.catalog:model_catalog
+      analysis_model: kickside.knowledge.retrieval:analysis_model
 
   - name: embed_func
     kind: function.lua
@@ -53,9 +53,6 @@ entries:
     imports:
       query_service: kickside.kb10.binding:query_service
     method: handle
-    security:
-      policies:
-      - kickside.kb10:models_reload_call
 
   - name: delete_func
     kind: function.lua

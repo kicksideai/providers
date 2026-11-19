@@ -74,7 +74,7 @@ Install with Knowledge and select an embedding model, then create a document or 
 
 Search uses the named `analysis_model` for query analysis. Empty, false, and omitted settings leave analysis off. Reranking applies in Single-shot mode. Agentic mode retains the stored reranking preference for use when switching back.
 
-When an explicit analysis class has no enabled models, search returns plain matches and `retrieval.analysis = { status: "unavailable", reason: "no_models_for_class", model: "<configured class>" }` with `retrieval.strategy = "plain"`. Model-backed query enhancements stay inactive until the class has a model. Catalog and provider failures remain errors, and Ask still requires an available model. This search behavior does not change ingestion or its independently configured summary model.
+When an explicit analysis class has no enabled models, search returns plain matches and `retrieval.analysis = { status: "unavailable", reason: "no_models_for_class", model: "<configured class>" }` with `retrieval.strategy = "plain"`. HyDE and autonomous tuning stay inactive when Search has no available model. Catalog and provider failures remain errors. Knowledge uses Fast for Ask when `analysis_model` is omitted or empty. With `analysis_model: false` or an unassigned Fast class, Ask returns ranked passages with an explanation.
 
 ## Reference
 

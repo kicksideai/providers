@@ -5,7 +5,7 @@ local funcs = require("funcs")
 local uuid = require("uuid")
 local store = require("store")
 local materializer = require("materializer")
-local query_policy = require("query_policy")
+local analysis_model = require("analysis_model")
 local query_service = require("query_service")
 local engines = require("engines")
 local models = require("models")
@@ -109,7 +109,7 @@ return test.run_cases(function()
                     test.is_nil(config_err)
                     test.eq(options.summary_model, case.summary)
                     test.eq(options.chunk_enrichment_model, case.chunk)
-                    test.eq(query_policy.resolve_analysis_model(saved.config), case.analysis)
+                    test.eq(analysis_model.configured(saved.config), case.analysis)
                     local db = assert(sql.get("app:db"))
                     local runs, runs_err = db:query("SELECT id FROM kb10_maintenance_runs WHERE component_id = $1", { row.id })
                     db:release()
@@ -120,6 +120,23 @@ return test.run_cases(function()
         end)
 
         for _, kind in ipairs({ "document", "wiki" }) do
+            test.it("retrieves plain matches with HyDE and tuning set but no available model for " .. kind, function()
+                for _, setting in ipairs({ {}, { analysis_model = "" }, { analysis_model = false },
+                    { analysis_model = "class:unassigned-test-class" } }) do
+                    local id = uuid.v7()
+                    setting.query_strategy, setting.self_tuning = "hyde", true
+                    assert(store.create_store(id, "class:embed", setting, { kb_type = kind }))
+                    stores[#stores + 1] = id
+                    local result, calls, search_err = search(id, seed_passages(id))
+                    test.is_nil(search_err, tostring(search_err))
+                    test.eq(result.items[1].content, "Reference passage")
+                    test.eq(result.retrieval.strategy, "plain")
+                    test.is_nil(result.retrieval.tuning)
+                    test.eq(calls.analysis, 0)
+                    test.eq(calls.reranking, 0)
+                end
+            end)
+
             test.it("keeps Search plain after upgrading " .. kind .. " bases with analysis off", function()
                 local _, card_err = models.upsert_card({ name = card_name, class = { "fast" },
                     capabilities = { "generate", "structured_output" }, max_tokens = 4096, output_tokens = 1024 })
