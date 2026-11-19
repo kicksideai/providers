@@ -33,6 +33,14 @@ entries:
     source: file://tabular_chunker.lua
     imports:
       text_trim: kickside.contract:text_trim
+      tabular_records: kickside.kb10.injection:tabular_records
+
+  - name: tabular_records
+    kind: library.lua
+    meta:
+      internal: true
+      comment: Ordered spreadsheet records over a seekable byte reader.
+    source: file://tabular_records.lua
 
   # Storage-facing projection slice: materialization config, summary/chunk planning,
   # document replacement, and canonical deletes. Engine-agnostic through the

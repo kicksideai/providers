@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.23](https://github.com/kicksideai/providers/compare/kb10-v0.2.22...kb10-v0.2.23) (2026-11-19)
+
+
+### Performance Improvements
+
+* **kb10:** bound and resume spreadsheet planning ([1f5a249](https://github.com/kicksideai/providers/commit/1f5a249750abaf41adb3c6d38f2fed9bc1dff774))
+
+## [0.2.22](https://github.com/kicksideai/providers/compare/kb10-v0.2.21...kb10-v0.2.22) (2026-11-19)
+
+
+### Features
+
+* **kb10:** commit source checkpoint outcomes atomically ([#150](https://github.com/kicksideai/providers/issues/150)) ([e12ab60](https://github.com/kicksideai/providers/commit/e12ab60060e3ccf868e61da393680a5342c810e9))
+
+
+### Bug Fixes
+
+* **kb10:** isolate metadata by projection target ([0cc4483](https://github.com/kicksideai/providers/commit/0cc4483cbcc06f361bc12f98704fa2b088a85739))
+* **kb10:** narrow the optional HyDE model before querying ([0257949](https://github.com/kicksideai/providers/commit/02579497994c778c913f1e63f73efc9ed639d3cb))
+* **kb10:** scope metadata and digest to the projection target ([9f5e8e7](https://github.com/kicksideai/providers/commit/9f5e8e7b5531d5f9011f4f470bb69fb1bf56fef4))
+
 ## [0.2.21](https://github.com/kicksideai/providers/compare/kb10-v0.2.20...kb10-v0.2.21) (2026-11-19)
 
 
