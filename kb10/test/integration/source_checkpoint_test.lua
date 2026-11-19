@@ -201,9 +201,10 @@ return {run = test.run_cases(function()
                 local empty = assert(writer.source_checkpoint_before(kb_id, selector, change.kind))
                 assert(writer.replace_document(kb_id, replacement(kb_id, events[2], 2)))
                 local existing = assert(document(kb_id))
-                local write = function(before)
+                local write = function(before, outcome)
+                    outcome = outcome or writer.source_checkpoint_outcome(before, change)
                     return function(tx, dialect)
-                        return writer.write_source_checkpoint_tx(tx, dialect, kb_id, selector, before, change)
+                        return writer.write_source_checkpoint_tx(tx, dialect, kb_id, selector, before, change, outcome)
                     end
                 end
                 local stale, stale_err = apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1,
@@ -213,7 +214,26 @@ return {run = test.run_cases(function()
                 test.eq(document(kb_id).child_id, existing.child_id)
                 test.eq(tonumber(snapshot(current.id).last_seq), 0)
 
+                local before_vector = assert(writer.source_checkpoint_before(kb_id, selector, change.kind))
+                assert(writer.insert_embedding(kb_id, existing.id, "document", nil,
+                    change.replacement.children[1].embedding))
+                local changed, changed_err = apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1,
+                    append_events = {{thread_id = kb_id, events = {{type = GRAPH}}}}}, write(before_vector))
+                test.is_nil(changed)
+                test.is_true(errors.is(changed_err, errors.CONFLICT), tostring(changed_err))
+                test.eq(document(kb_id).child_id, existing.child_id)
+                test.eq(tonumber(snapshot(current.id).last_seq), 0)
+
                 local before = assert(writer.source_checkpoint_before(kb_id, selector, change.kind))
+                local wrong = writer.source_checkpoint_outcome(before, change)
+                wrong.embedding_delta = wrong.embedding_delta + 1
+                local mismatched, mismatch_err = apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1,
+                    append_events = {{thread_id = kb_id, events = {{type = GRAPH}}}}}, write(before, wrong))
+                test.is_nil(mismatched)
+                test.contains(tostring(mismatch_err), "source writer result differs from checkpoint outcome")
+                test.eq(document(kb_id).child_id, existing.child_id)
+                test.eq(tonumber(snapshot(current.id).last_seq), 0)
+
                 local moved = false
                 local execute = write(before)
                 local refused, refusal = apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1,

@@ -83,9 +83,10 @@ local function prepare(target: any, event: any, deadline: number): (CheckpointWr
         if not replacement then return nil, dependency("model", model_err), nil end
         change.replacement = replacement
     end
+    local outcome = writer.source_checkpoint_outcome(before, change)
     return function(tx, dialect)
-        return writer.write_source_checkpoint_tx(tx, dialect, store_id, selector, before, change)
-    end, nil, writer.source_checkpoint_outcome(before, change)
+        return writer.write_source_checkpoint_tx(tx, dialect, store_id, selector, before, change, outcome)
+    end, nil, outcome
 end
 
 local function run(input)
