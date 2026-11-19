@@ -1,0 +1,87 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local test = require("test")
+local source = require("drive_folder")
+
+local DOC = "application/vnd.google-apps.document"
+local FOLDER = "application/vnd.google-apps.folder"
+local VERSION = "9007199254740993"
+
+local function fixture()
+    local file = {id = "file", parents = {"folder"}, driveId = "shared", name = "Spec",
+        version = VERSION, mimeType = DOC, webViewLink = "https://docs.google.com/document/d/file/edit"}
+    local selected = {id = "folder", mimeType = FOLDER, driveId = "shared", capabilities = {canListChildren = true}}
+    local state = {file = file, start = "token", exports = 0, move_during_export = false, files = {file}}
+    local api = {
+        start_changes = function(_, shared)
+            test.eq(shared, "shared")
+            return {success = true, data = {startPageToken = state.start}}
+        end,
+        get_file = function(_, id)
+            return {success = true, data = id == "folder" and selected or file}
+        end,
+        list_files = function(_, _, _, token, _, shared)
+            test.eq(shared, "shared")
+            if state.change_during_listing then state.start = "advanced" end
+            return {success = true, data = {files = state.files, nextPageToken = token and nil or state.next_page}}
+        end,
+        export_file = function(_, id, mime, max)
+            test.eq(id, "file")
+            test.eq(mime, "text/plain")
+            test.eq(max, 10 * 1024 * 1024)
+            state.exports = state.exports + 1
+            if state.move_during_export then file.parents = {"different-folder"} end
+            return {success = true, data = {text = "Discovered contents"}}
+        end,
+    }
+    local deps = {
+        drive = api,
+        connect = function(id)
+            test.eq(id, "connection")
+            return {get_info = function()
+                return {provider = "google", scopes_granted = "https://www.googleapis.com/auth/drive.readonly"}
+            end}
+        end,
+    }
+    local config = {connection_id = "connection", folder_id = "folder"}
+    local ref = {file_id = "file", version = VERSION, folder_id = "folder", drive_id = "shared"}
+    return state, deps, config, {component_id = "connection", ref = ref}
+end
+
+return {run = test.run_cases(function()
+    test.describe("Google Drive versioned folder attachments", function()
+        test.it("lists a versioned descriptor without downloading and exports the exact Docs revision", function()
+            local state, deps, config, request = fixture()
+            local page = assert(source.pull({config = config}, deps))
+            test.eq(state.exports, 0)
+            test.eq(page.items[1].item_key, "google:drive:file")
+            test.eq(page.items[1].payload.source_version, VERSION)
+            test.eq(page.items[1].payload.attachment.ref.version, VERSION)
+            local result = assert(source.fetch(request, deps))
+            test.eq(result.filename, "Spec.txt")
+            test.eq(result.source_url, "https://docs.google.com/document/d/file/edit")
+            test.eq(result.bytes, "Discovered contents")
+        end)
+
+        test.it("refuses bytes after the file moves during export", function()
+            local state, deps, _, request = fixture()
+            state.move_during_export = true
+            local result, err = source.fetch(request, deps)
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.NOT_FOUND))
+        end)
+
+        test.it("delays a key sweep when the corpus changes during enumeration", function()
+            local state, deps, config = fixture()
+            state.change_during_listing = true
+            state.files = {}
+            local restart = assert(source.pull_keys({config = config}, deps))
+            test.is_true(restart.has_more)
+            test.eq(restart.next_cursor.phase, "keys_restart")
+            test.eq(restart.retry_after_ms, 60000)
+            state.change_during_listing = false
+            local stable = assert(source.pull_keys({config = config, cursor = restart.next_cursor}, deps))
+            test.is_false(stable.has_more)
+            test.eq(#stable.keys, 0)
+        end)
+    end)
+end)}
