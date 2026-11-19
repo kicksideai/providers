@@ -393,6 +393,8 @@ entries:
       config_maintenance:
         schedule_resummarize: [summary_model, summary_prompt, summary_max_chars]
       store_contract: kickside.knowledge:kb_store_lifecycle
+      store_binding: kickside.kb10:kb_store_lifecycle
+      store_stats_batch: true
       component:
         create: { view: kickside.kb10.ui:create_view }
         manage: { view: kickside.kb10.ui:document_view }
@@ -570,6 +572,8 @@ entries:
       config_maintenance:
         schedule_resummarize: [summary_model, summary_prompt, summary_max_chars]
       store_contract: kickside.knowledge:kb_store_lifecycle
+      store_binding: kickside.kb10:kb_store_lifecycle
+      store_stats_batch: true
       component:
         create: { view: kickside.kb10.ui:create_view }
         # The wiki manage UI renders the same concept+edge data two ways. The
