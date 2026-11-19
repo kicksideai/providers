@@ -2,7 +2,7 @@ import { ref as p, computed as $, onBeforeUnmount as se, watch as H, defineCompo
 import { Icon as I } from "@iconify/vue";
 import { api as le, host as re, loadByTagName as _e } from "@wippy-fe/proxy";
 import { a as we, u as $e } from "./wc-runtime-f54Bo-yJ.js";
-import { E as ce, i as ve, s as xe, c as Ce, _ as Z, u as Te, a as Ee, n as ee, b as Se, d as De, e as Ne, f as Le, g as Me, h as Oe, j as Ie, k as Pe, l as Be, m as Re, o as Ve } from "./AddPanel.vue_vue_type_script_setup_true_lang-BVwoVIls.js";
+import { E as ce, i as ve, s as xe, c as Ce, _ as Z, u as Te, a as Ee, n as ee, b as Se, d as De, e as Ne, f as Le, g as Me, h as Oe, j as Ie, k as Pe, l as Be, m as Re, o as Ve } from "./AddPanel.vue_vue_type_script_setup_true_lang-xyhmMxIV.js";
 import { _ as fe } from "./KbButton.vue_vue_type_script_setup_true_lang-tUNGjhRC.js";
 const me = {
   "text/markdown": "MD",
@@ -809,4 +809,4 @@ const ze = { class: "kx-railhead" }, Ue = { class: "kx-railhead-title" }, Ae = {
 export {
   Wt as mountConfig
 };
-//# sourceMappingURL=document-mount-CuE5SrxV.js.map
+//# sourceMappingURL=document-mount-WsDSLPbO.js.map

@@ -148,6 +148,26 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     expect(wrapper.get('input').attributes('placeholder')).toBe('Ask this knowledge base a question…')
   })
 
+  it('shows a provider failure without presenting stale passages as an answer', async () => {
+    const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
+    await wrapper.get('.kc-search-mode:last-child').trigger('click')
+    await wrapper.get('input').setValue('first question')
+    await wrapper.get('button[aria-label="Ask"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.kc-ans-body').text()).toBe('Grounded answer')
+
+    post.mockRejectedValueOnce({ response: { status: 503, data: {
+      success: false, error: 'Model provider profile is unavailable',
+    } } })
+    await wrapper.get('input').setValue('second question')
+    await wrapper.get('button[aria-label="Ask"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.kc-search-err').text()).toContain('Model provider profile is unavailable')
+    expect(wrapper.find('.kc-ans').exists()).toBe(false)
+    expect(wrapper.find('.kc-search-result').exists()).toBe(false)
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+
   it('returns to search when the Answer capability is removed', async () => {
     const wrapper = mount(component, { props: { kbId: 'kb', ask: true } })
     await wrapper.get('.kc-search-mode:last-child').trigger('click')

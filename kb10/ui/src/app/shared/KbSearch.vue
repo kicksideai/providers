@@ -111,7 +111,7 @@ function pick(hit: SearchHit) {
 
     <div v-if="error" class="kc-search-err"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ error }}</span></div>
 
-    <div v-if="loading" class="kc-search-skel"><div v-for="i in 3" :key="i" class="kc-search-skel-row" /></div>
+    <div v-else-if="loading" class="kc-search-skel"><div v-for="i in 3" :key="i" class="kc-search-skel-row" /></div>
 
     <template v-else-if="results.length">
       <!-- Ask: synthesized grounded answer, else the best passage as a fallback -->
