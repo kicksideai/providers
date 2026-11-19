@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.25](https://github.com/kicksideai/providers/compare/kb10-v0.2.24...kb10-v0.2.25) (2026-11-19)
+
+
+### Features
+
+* **kb10:** offer re-ingest for selected uploads ([#157](https://github.com/kicksideai/providers/issues/157)) ([6a3ed0e](https://github.com/kicksideai/providers/commit/6a3ed0e74cf383be648baad1b8aa9f581b1133e6))
+
 ## [0.2.24](https://github.com/kicksideai/providers/compare/kb10-v0.2.23...kb10-v0.2.24) (2026-11-19)
 
 
