@@ -101,6 +101,19 @@ local function define_tests()
             test.eq(#result.documents, 0)
         end)
 
+        test.it("rejects a delete whose event and metadata identify different source items", function()
+            local result, err = call({
+                id = "evt-contradictory",
+                seq = 1,
+                type = "kickside.knowledge.events:content.deleted",
+                external = {external_source = "knowledge.kb", external_id = "document-a"},
+                body = {metadata = {external_source = "knowledge.kb", external_id = "document-b"}},
+            })
+            test.is_nil(err)
+            test.contains(result.error, "contradictory external identity")
+            test.eq(#result.deletes, 0)
+        end)
+
         test.it("propagates delete external version into delete records", function()
             local result, err = call({
                 id = "evt-delete",

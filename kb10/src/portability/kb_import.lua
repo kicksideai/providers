@@ -70,44 +70,36 @@ function M.handler(args: any): any
 
     local nodes_path = base .. "nodes.jsonl"
 
-    -- 2. Pass one: a fresh id per node, recording old -> new. Only the id map is held
-    --    in memory (the node bodies are never buffered), so a multi-GB KB imports fine.
+    -- Pass one remaps UUIDs and elects the bound root in legacy archives.
     local node_map: { [string]: string } = {}
-    local roots_by_lineage: { [string]: { [string]: { [string]: string } } } = {}
-    local source_roots: { [string]: boolean } = {}
+    local legacy_roots, legacy_winners = {}, {}
     local _, scan_err = pio.scan_jsonl(storage, nodes_path, function(n: any)
         if type(n.id) ~= "string" then return end
         local id = n.id :: string
         node_map[id] = uuid.v7()
-        if n.node_type ~= "document" or type(n.parent_id) == "string" then return end
-        local source, external_id = ops.source_key(n.metadata)
-        if not source or not external_id then return end
-        local lineage = ops.source_thread(n.metadata) or ""
-        local roots_by_source = roots_by_lineage[lineage]
-        if not roots_by_source then
-            roots_by_source = {}
-            roots_by_lineage[lineage] = roots_by_source
-        end
-        local roots = roots_by_source[source]
-        if not roots then
-            roots = {}
-            roots_by_source[source] = roots
-        end
+        if n.node_type ~= "document" or n.parent_id ~= nil or n.source_binding ~= nil then return end
+        local binding, exact = ops.legacy_source_binding(store.component_id or store.id, n.metadata)
+        if not binding then return end
+        local scope, source, external_id = binding.source_scope, binding.external_source, binding.external_id
+        legacy_roots[scope] = legacy_roots[scope] or {}
+        local sources = legacy_roots[scope]
+        sources[source] = sources[source] or {}
+        local roots = sources[source]
         local prior = roots[external_id]
-        if prior and prior <= id then return end
-        if prior then source_roots[node_map[prior]] = nil end
-        roots[external_id] = id
-        source_roots[node_map[id]] = true
+        if prior and ((prior.exact and not exact) or (prior.exact == exact and prior.id <= id)) then return end
+        if prior then legacy_winners[prior.id] = nil end
+        roots[external_id] = {id = id, exact = exact}
+        legacy_winners[id] = true
     end)
     if scan_err then return { success = false, error = "read nodes.jsonl: " .. tostring(scan_err) } end
+    legacy_roots = nil
 
     -- 3. Pass two: insert in file order, BATCHED -- one commit per BATCH, not one per
     --    row (a per-row commit turns a multi-million-node restore into hours). nodes.jsonl
     --    is exported ORDER BY id (uuid v7 == insert order) and a child's parent always
     --    pre-existed it (so it carries the smaller id and lands in this batch or an
     --    earlier one), so the self-FK holds within the transaction without per-row
-    --    deferral. Only the id map is buffered across the stream; each batch holds at
-    --    most BATCH node bodies, so a multi-GB KB imports in bounded memory.
+    --    deferral. The node bodies and explicit bindings stay in the current batch.
     local BATCH = 500
     local function build(n: any): any
         return {
@@ -117,21 +109,35 @@ function M.handler(args: any): any
             content_type = n.content_type, metadata = n.metadata or {},
         }
     end
-    local insert_err: string? = nil
-    local node_batch: { any } = {}
+    local node_batch, bindings = {}, {}
     local function flush_nodes()
         if #node_batch == 0 then return end
-        local _, ferr = store_lib.insert_nodes(component_id, node_batch, source_roots)
-        if ferr then insert_err = tostring(ferr) end
-        node_batch = {}
+        local _, err = store_lib.insert_nodes(component_id, node_batch, bindings)
+        node_batch, bindings = {}, {}
+        return err
     end
-    pio.scan_jsonl(storage, nodes_path, function(n: any)
-        if insert_err or type(n.id) ~= "string" then return end
-        node_batch[#node_batch + 1] = build(n)
-        if #node_batch >= BATCH then flush_nodes() end
+    local _, insert_err = pio.scan_jsonl(storage, nodes_path, function(n: any)
+        if type(n.id) ~= "string" then return end
+        local archived = n.source_binding
+        local binding
+        if archived ~= nil then
+            if type(archived) ~= "table" then return nil, "invalid document source binding" end
+            if archived.source_scope ~= nil then
+                binding = ops.source_binding(nil, archived.external_source, archived.external_id, archived.source_scope)
+                if type(archived.source_scope) ~= "string" or n.node_type ~= "document" or n.parent_id ~= nil or
+                    not binding or binding.external_source ~= archived.external_source or binding.external_id ~= archived.external_id then
+                    return nil, "invalid document source binding"
+                end
+            end
+        elseif legacy_winners[n.id] then
+            binding = ops.legacy_source_binding(store.component_id or store.id, n.metadata)
+        end
+        local i = #node_batch + 1
+        node_batch[i], bindings[i] = build(n), binding
+        if i >= BATCH then return nil, flush_nodes() end
     end)
-    flush_nodes()
-    if insert_err then return { success = false, error = "insert nodes: " .. (insert_err :: string) } end
+    if not insert_err then insert_err = flush_nodes() end
+    if insert_err then return { success = false, error = "import nodes: " .. tostring(insert_err) } end
 
     -- 4. embeddings (verbatim, opt-in) + edges, streamed in batches with node refs
     --    remapped. Both stay best-effort: a failed batch is warned and skipped rather

@@ -5,7 +5,6 @@ import {
   isEngineMissing,
   ENGINE_NOTICE,
   contentDeletePayload,
-  canonicalSourceKey,
 } from './types'
 import { subscribeComponentMeta } from './componentMeta'
 
@@ -39,32 +38,7 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
     if (t) { clearTimeout(t); pendingTimers.delete(nodeId) }
   }
 
-  // Concept/edge nodes belong to the graph; chunks/summaries are indexing detail.
-  const EXCLUDED = new Set(['concept', 'edge', 'chunk', 'summary'])
-
-  function docTime(n: BrowseNode): number {
-    return Date.parse(n.updated_at || n.created_at || '') || 0
-  }
-
-  // Collapse document nodes that share a canonical source identity to one row —
-  // the newest — so an in-flight replace or a redelivered ingest never shows the
-  // same file twice. Nodes without a canonical identity cannot be duplicates and
-  // are kept individually. First-seen position is preserved so the list is stable.
-  function dedupeDocuments(list: BrowseNode[]): BrowseNode[] {
-    const indexByKey = new Map<string, number>()
-    const out: BrowseNode[] = []
-    for (const n of list) {
-      const key = canonicalSourceKey(n)
-      if (!key) { out.push(n); continue }
-      const at = indexByKey.get(key)
-      if (at === undefined) { indexByKey.set(key, out.length); out.push(n); continue }
-      if (docTime(n) >= docTime(out[at])) out[at] = n
-    }
-    return out
-  }
-
-  const documents = computed(() =>
-    dedupeDocuments(nodes.value.filter((n) => !EXCLUDED.has(n.node_type || ''))))
+  const documents = nodes
 
   function findDoc(id: string): BrowseNode | undefined {
     return documents.value.find((n) => n.id === id)
@@ -85,7 +59,7 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
       // Fetch only the current page. total comes from the API count, so a large KB
       // never pulls its whole node set into one list.
       const offset = page.value * pageSize.value
-      const { data } = await api.get(`/api/v1/kb10/${id}/browse?limit=${pageSize.value}&offset=${offset}`)
+      const { data } = await api.get(`/api/v1/kb10/${id}/browse?node_type=document&limit=${pageSize.value}&offset=${offset}`)
       if (seq !== loadSeq || kbId() !== id) return
       if (!data?.success) {
         notice.value = data?.error && isEngineMissing(data.error) ? ENGINE_NOTICE : data?.error || ''
@@ -114,17 +88,11 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
   function next() { if (hasNext.value) goToPage(page.value + 1) }
   function prev() { if (hasPrev.value) goToPage(page.value - 1) }
 
-  // Queue a delete through the knowledge content thread by the node's durable
-  // external identity. Returns true when the request was accepted (the row then
-  // waits for materialization), false when it could not be queued.
+  // A queued delete waits for materialization on the Knowledge content thread.
   async function remove(n: BrowseNode): Promise<boolean> {
     const id = kbId()
     if (!id || deleting.value[n.id]) return false
     const payload = contentDeletePayload(n)
-    if (!payload) {
-      notice.value = 'This document has no durable source identity and cannot be deleted here.'
-      return false
-    }
     deleting.value = { ...deleting.value, [n.id]: true }
     let queued = false
     try {

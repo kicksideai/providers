@@ -30,6 +30,11 @@ entries:
     meta:
       comment: Implements the shared component and deletable contracts.
 
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: dep.kickside.search_index
     kind: ns.dependency
     component: kickside/search-index

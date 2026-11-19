@@ -112,7 +112,7 @@ local function define_tests()
     end)
 
     test.describe("kb10 portability round-trip", function()
-        test.it("imports duplicate public addresses and binds one root per lineage", function()
+        test.it("keeps all imported addresses and binds the exact legacy spelling first", function()
             local dst = uuid.v7()
             local path = "portability/duplicates-" .. dst
             local storage = assert(fs.get(SCRATCH))
@@ -134,9 +134,9 @@ local function define_tests()
                 external_id = metadata.external_id .. " \t"}
             local document = { id = first, node_type = "document", content = "first", metadata = padded_metadata }
             local rows = {
-                json.encode(document),
                 json.encode({ id = other, node_type = "document", content = "second", metadata = metadata }),
-                json.encode({ id = child, node_type = "chunk", parent_id = other, content = "public child", metadata = metadata }),
+                json.encode(document),
+                json.encode({ id = child, node_type = "chunk", parent_id = first, content = "public child", metadata = metadata }),
                 (json.encode({ id = foreign, node_type = "document", content = "another source", metadata = foreign_metadata })),
             }
             local _, store_err = storage:writefile(base .. "store.jsonl", '{"embedding_model":"class:embed"}\n')
@@ -154,18 +154,93 @@ local function define_tests()
             document.id = nil
             document.content = "new generation"
             local replaced = assert(kb10_store.replace_document(dst, { document = document }))
-            test.eq(replaced.document_node_id, ids[first])
-            test.eq(assert(kb10_store.get_node(dst, ids[other])).content, "second")
-            test.eq(tostring(assert(kb10_store.get_node(dst, ids[child])).parent_id), ids[other])
+            test.eq(replaced.document_node_id, ids[other])
+            test.eq(assert(kb10_store.get_node(dst, ids[first])).content, "first")
+            test.eq(tostring(assert(kb10_store.get_node(dst, ids[child])).parent_id), ids[first])
             local other_replaced = assert(kb10_store.replace_document(dst, {document = {
                 node_type = "document", content = "another generation", metadata = foreign_metadata,
-            }}))
+            }, source_thread_id = "source:thread"}))
             test.eq(other_replaced.document_node_id, ids[foreign])
             test.eq(#assert(kb10_store.find_by_external_id(dst, metadata.external_source, metadata.external_id)), 4)
 
             assert(kb10_store.delete_store(dst))
             storage:remove(base .. "store.jsonl")
             storage:remove(base .. "nodes.jsonl")
+        end)
+
+        test.it("copies bound and unbound roots without making origin provenance a destination binding", function()
+            local src, dst_a, dst_b = uuid.v7(), uuid.v7(), uuid.v7()
+            assert(kb10_store.create_store(src, "class:embed", {}))
+            local metadata = {
+                external_source = "fixture", external_id = "shared-document", source_ref = {thread_id = src},
+            }
+            local function replace(store, source_thread_id, content)
+                return assert(kb10_store.replace_document(store, {
+                    source_thread_id = source_thread_id, document = {node_type = "document", content = content, metadata = metadata},
+                })).document_node_id
+            end
+            local local_root = replace(src, src, "local")
+            local incoming = replace(src, dst_a, "incoming")
+            local unbound, concept = uuid.v7(), uuid.v7()
+            assert(kb10_store.insert_nodes(src, {
+                {id = unbound, node_type = "document", content = "unbound", metadata = metadata},
+                {id = concept, node_type = "concept", content = "topic"},
+            }, {}))
+            for _, id in ipairs({local_root, incoming, unbound}) do
+                assert(kb10_store.insert_edge(src, {from_node_id = id, to_node_id = concept, edge_type = "categorized_as"}))
+            end
+
+            local path = "portability/" .. src
+            local actor, scope = runtime_identity()
+            local function portable(method, component_id)
+                local result, err = funcs.new():with_actor(actor):with_scope(scope)
+                    :with_context({ component_id = component_id })
+                    :call("kickside.kb10.portability:" .. method, { storage_id = SCRATCH, path = path })
+                test.is_nil(err)
+                return result
+            end
+            local exported = portable("export_func", src)
+            test.is_true(exported.success, tostring(exported.error))
+            local storage = assert(fs.get(SCRATCH))
+            test.contains(assert(storage:readfile(path .. "/data/nodes.jsonl")), '"source_scope":null')
+
+            local db = assert(sql.get(APP_DB))
+            local prior_map = {}
+            for _, dst in ipairs({dst_a, dst_b}) do
+                local imported = portable("import_into_func", dst)
+                test.is_true(imported.success, tostring(imported.error))
+                local ids = imported.id_map.rows.kb10_nodes
+                for _, old in ipairs({local_root, incoming, unbound, concept}) do
+                    test.not_nil(ids[old])
+                    test.is_true(ids[old] ~= old and ids[old] ~= prior_map[old])
+                end
+                for _, old in ipairs({local_root, incoming, unbound}) do
+                    local row = assert(kb10_store.get_node(dst, ids[old]))
+                    test.eq(row.metadata.source_ref.thread_id, src)
+                    local edges = assert(kb10_store.get_edges(dst, ids[old], {direction = "out"}))
+                    test.eq(tostring(edges[1].to_node_id), ids[concept])
+                end
+                local rows = assert(db:query("SELECT source_scope FROM kb10_nodes WHERE id = $1", {ids[incoming]}))
+                test.eq(rows[1].source_scope, dst_a)
+                test.eq(replace(dst, dst, "destination replacement"), ids[local_root])
+
+                local projected = replace(dst, src, "upstream projection")
+                test.is_true(projected ~= ids[local_root])
+                test.eq(replace(dst, src, "upstream replay"), projected)
+                local removed = assert(kb10_store.delete_document(dst, {node_id = ids[unbound]}))
+                test.eq(removed.document_node_id, ids[unbound])
+                test.not_nil(kb10_store.get_node(dst, ids[local_root]))
+                test.not_nil(kb10_store.get_node(dst, ids[incoming]))
+                test.not_nil(kb10_store.get_node(dst, projected))
+                prior_map = ids
+                assert(kb10_store.delete_store(dst))
+            end
+            db:release()
+            test.eq(assert(kb10_store.get_node(src, local_root)).content, "local")
+            assert(kb10_store.delete_store(src))
+            for _, part in ipairs({"store", "nodes", "edges", "embeddings"}) do
+                assert(storage:remove(path .. "/data/" .. part .. ".jsonl"))
+            end
         end)
 
         test.it("returns the missing store part error before creating a knowledge store", function()

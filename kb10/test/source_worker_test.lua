@@ -1375,7 +1375,7 @@ local function define_tests()
             end)
         end)
 
-        test.it("preserves public roots and graph links belonging to another source lineage", function()
+        test.it("scopes source mutations and preserves the published bulk delete", function()
             local store_id = bootstrap_kb10_store(db)
             local source_key = "shared:source"
             local function metadata(thread_id)
@@ -1396,7 +1396,7 @@ local function define_tests()
             }))
             local materializer_store = require("materializer_store")
             local other = assert(materializer_store.replace_document(materializer_store, {
-                store_id = store_id, document = {
+                store_id = store_id, source_thread_id = "other-thread", document = {
                     node_type = "document", content = "other lineage", metadata = other_lineage,
                 },
             }))
@@ -1419,28 +1419,31 @@ local function define_tests()
                 }))
             end
 
-            local _, ambiguous_err = kb10_store.delete_documents_by_external_id(store_id, "fixture", source_key)
-            test.is_true(errors.is(ambiguous_err, errors.CONFLICT), tostring(ambiguous_err))
             local delete = {
                 store_id = store_id, external_source = "fixture", external_id = source_key,
-                source_ref = first_lineage.source_ref,
+                source_ref = first_lineage.source_ref, source_thread_id = store_id,
             }
             local removed, delete_err = materializer_store.delete_documents_by_external_id(materializer_store, delete)
             test.is_nil(delete_err)
-            test.eq(removed.removed, 2)
+            test.eq(removed.removed, 1)
+            test.eq(removed.document_node_id, left)
+            test.eq(assert(kb10_store.get_node(store_id, duplicate)).content, "same lineage")
             local replay = assert(materializer_store.delete_documents_by_external_id(materializer_store, delete))
             test.eq(replay.removed, 0)
-            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", source_key)), 1)
+            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", source_key)), 2)
             test.eq(assert(kb10_store.get_node(store_id, right)).content, "other lineage")
             test.eq(#assert(kb10_store.get_edges(store_id, right, {direction = "out"})), 1)
 
             local replacement = assert(materializer_store.replace_document(materializer_store, {
-                store_id = store_id, document = {
+                store_id = store_id, source_thread_id = "other-thread", document = {
                     node_type = "document", content = "other lineage updated", metadata = other_lineage,
                 },
             }))
             test.eq(replacement.document_node_id, right)
             test.eq(assert(kb10_store.get_node(store_id, right)).content, "other lineage updated")
+            local bulk = assert(kb10_store.delete_documents_by_external_id(store_id, "fixture", source_key))
+            test.eq(bulk.removed, 2)
+            test.eq(#assert(kb10_store.find_by_external_id(store_id, "fixture", source_key)), 0)
             teardown_kb10_store(db, store_id)
         end)
 
@@ -1636,11 +1639,15 @@ local function define_tests()
                     return db:query(statement, params)
                 end}
                 local found = assert(ops.find_source_root_tx(explained, db:type(), store_id,
-                    "fixture", "root-key", "source-thread"))
-                teardown_kb10_store(db, store_id)
+                    ops.source_binding(store_id, "fixture", "root-key", store_id)))
                 test.eq(found, root_id)
                 test.eq(#plan, 1)
                 test.contains(plan[1].detail, "SEARCH kb10_nodes USING INDEX kb10_nodes_source_root ")
+                local selected = assert(ops.find_document_root_tx(explained, store_id, root_id))
+                test.eq(tostring(selected.id), root_id)
+                test.eq(#plan, 1)
+                test.contains(plan[1].detail, "SEARCH kb10_nodes USING INDEX sqlite_autoindex_kb10_nodes_1 ")
+                teardown_kb10_store(db, store_id)
             end)
 
             test.it("keeps one root when two writers replace a missing source concurrently", function()

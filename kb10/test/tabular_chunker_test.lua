@@ -207,10 +207,12 @@ local function define_tests()
             local doc = document(converted.markdown)
             doc.external_source = "test:sheet"
             doc.external_version = "v1"
+            doc.thread_id = id
             doc.thread_event_id = uuid.v7()
             doc.thread_event_seq = 1
             doc.source_ref = { external_source = doc.external_source, external_id = doc.external_id,
-                external_version = doc.external_version, thread_event_id = doc.thread_event_id, thread_event_seq = 1 }
+                external_version = doc.external_version, thread_id = id,
+                thread_event_id = doc.thread_event_id, thread_event_seq = 1 }
             local function embed(batch, _model, dims)
                 local result = {}
                 for _, _value in ipairs(batch) do
@@ -221,7 +223,7 @@ local function define_tests()
                 return { result = result }, nil
             end
             local result, ingest_err = source_materializer.ingest_documents_into_store(id,
-                { store_row = store_row, store = materializer_store }, { doc }, embed, nil, nil, nil, {}, nil)
+                { store_row = store_row, store = materializer_store, source_thread_id = id }, { doc }, embed, nil, nil, nil, {}, nil)
             test.is_nil(ingest_err)
             test.eq(result.failed, 0)
             test.eq(result.chunk_count, 4)

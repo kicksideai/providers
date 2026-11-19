@@ -89,7 +89,7 @@ function reader.browse_nodes(store_id: any, opts: any)
 
     local db_type = ops.get_db_type(db)
 
-    local fields = "id, store_id, parent_id, node_type, content_type, metadata, created_at, updated_at"
+    local fields = "id, store_id, parent_id, node_type, content_type, metadata, created_at, updated_at, external_source, external_id"
     if browse_opts.include_content then
         fields = fields .. ", content"
     end

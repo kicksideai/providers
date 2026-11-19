@@ -16,19 +16,19 @@ return require("migration").define(function()
                     local db_type = postgres and sql.type.POSTGRES or sql.type.SQLITE
                     local collation = postgres and '"C"' or "BINARY"
                     execute(tx, "ALTER TABLE kb10_nodes ADD COLUMN external_source TEXT COLLATE " .. collation)
-                    execute(tx, "ALTER TABLE kb10_nodes ADD COLUMN external_id TEXT COLLATE " .. collation .. [[
-                        CHECK ((external_source IS NULL AND external_id IS NULL) OR (
-                            external_source IS NOT NULL AND external_source <> '' AND
+                    execute(tx, "ALTER TABLE kb10_nodes ADD COLUMN external_id TEXT COLLATE " .. collation)
+                    execute(tx, "ALTER TABLE kb10_nodes ADD COLUMN source_scope TEXT COLLATE " .. collation .. [[
+                        CHECK ((source_scope IS NULL AND external_source IS NULL AND external_id IS NULL) OR (
+                            source_scope IS NOT NULL AND external_source IS NOT NULL AND external_source <> '' AND
                             external_id IS NOT NULL AND external_id <> '' AND
                             node_type = 'document' AND parent_id IS NULL))]])
-                    execute(tx, "ALTER TABLE kb10_nodes ADD COLUMN source_lineage TEXT COLLATE " .. collation)
                     local root_key = ops.source_root_key(db_type)
                     if postgres then
                         execute(tx, [[CREATE TYPE kb10_source_pair AS
                             (store_id text COLLATE "C", external_source text COLLATE "C", external_id text COLLATE "C")]])
                         execute(tx, [[CREATE TYPE kb10_source_key AS
-                            (store_id text COLLATE "C", external_source text COLLATE "C",
-                             external_id text COLLATE "C", source_lineage text COLLATE "C")]])
+                            (store_id text COLLATE "C", source_scope text COLLATE "C",
+                             external_source text COLLATE "C", external_id text COLLATE "C")]])
                         execute(tx, "ALTER TABLE kb10_nodes ADD CONSTRAINT kb10_nodes_source_root " ..
                             "EXCLUDE USING hash ((" .. root_key .. ") WITH =) WHERE (" .. ops.SOURCE_BOUND .. ")")
                     else
@@ -47,11 +47,9 @@ return require("migration").define(function()
                             " (" .. index[3] .. ", store_id)")
                     end
 
-                    for _, roots in ipairs({true, false}) do
-                        local index, predicate = ops.source_lookup_index(db_type, roots)
-                        local name = roots and "kb10_nodes_source_root_lookup" or "kb10_nodes_source_members"
-                        execute(tx, "CREATE INDEX " .. name .. " ON kb10_nodes " .. index .. " WHERE " .. predicate)
-                    end
+                    local key, predicate = ops.source_member_key(db_type)
+                    key = postgres and "USING hash ((" .. key .. "))" or key
+                    execute(tx, "CREATE INDEX kb10_nodes_source_members ON kb10_nodes " .. key .. " WHERE " .. predicate)
                 end)
             end)
         end

@@ -7,6 +7,8 @@ export interface BrowseNode {
   content_type?: string
   content?: string
   metadata?: Record<string, any>
+  external_source?: string
+  external_id?: string
   created_at?: string
   updated_at?: string
 }
@@ -69,87 +71,24 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-const sourceWhitespace = /^[\t\n\v\f\r ]$/
-
-function sourceKeyPart(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  let start = 0
-  let end = value.length
-  while (start < end && sourceWhitespace.test(value[start])) start++
-  while (end > start && sourceWhitespace.test(value[end - 1])) end--
-  return value.slice(start, end)
-}
-
-export function contentDeletePayload(n: BrowseNode): Record<string, any> | null {
+export function contentDeletePayload(n: BrowseNode): Record<string, any> {
   const metadata = asObject(n.metadata)
-  const sourceRef = asObject(metadata.source_ref)
-
-  let externalId = sourceKeyPart(metadata.external_id) || sourceKeyPart(sourceRef.external_id)
-  const externalSource = sourceKeyPart(metadata.external_source) || sourceKeyPart(sourceRef.external_source)
-  const externalVersion = str(sourceRef.external_version) || str(metadata.external_version)
-  let uploadId = str(sourceRef.upload_id) || str(metadata.upload_id)
-  let sourceUrl = str(sourceRef.source_url) || str(sourceRef.url) || str(metadata.source_url)
-  const referenceComponentId = str(sourceRef.reference_component_id)
-    || str(sourceRef.component_id)
-    || str(metadata.reference_component_id)
-  const referenceContext = Object.keys(asObject(sourceRef.reference_context)).length
-    ? asObject(sourceRef.reference_context)
-    : Object.keys(asObject(sourceRef.context)).length
-      ? asObject(sourceRef.context)
-      : asObject(metadata.reference_context)
-
-  if (!uploadId && externalId.startsWith('upload:')) uploadId = externalId.slice('upload:'.length)
-  if (!sourceUrl && externalId.startsWith('url:')) sourceUrl = externalId.slice('url:'.length)
-
-  if (!externalId && uploadId) externalId = `upload:${uploadId}`
-  if (!externalId && sourceUrl) externalId = `url:${sourceUrl}`
-  if (!externalId) return null
-
-  const outgoingSourceRef = { ...sourceRef }
-  delete outgoingSourceRef.thread_id
-  delete outgoingSourceRef.thread_event_id
-  delete outgoingSourceRef.thread_event_seq
-  const lineage = typeof sourceRef.thread_id === 'string' && sourceRef.thread_id
-    ? sourceRef.thread_id
-    : metadata.thread_id
-  if (externalSource) {
-    outgoingSourceRef.document_identity = {
-      external_source: externalSource,
-      external_id: externalId,
-      ...(typeof lineage === 'string' && lineage !== '' ? { lineage } : {}),
-    }
-    delete outgoingSourceRef.external_version
-  }
-  if (referenceComponentId && !str(outgoingSourceRef.reference_component_id)) {
-    outgoingSourceRef.reference_component_id = referenceComponentId
-  }
-  if (Object.keys(referenceContext).length && Object.keys(asObject(outgoingSourceRef.reference_context)).length === 0) {
-    outgoingSourceRef.reference_context = referenceContext
-  }
-  if (externalId && Object.keys(outgoingSourceRef).length && !str(outgoingSourceRef.external_id)) {
-    outgoingSourceRef.external_id = externalId
-  }
-  const hasSourceRef = Object.keys(outgoingSourceRef).length > 0
+  const sourceRef = { ...asObject(metadata.source_ref) }
+  delete sourceRef.thread_id
+  delete sourceRef.thread_event_id
+  delete sourceRef.thread_event_seq
+  delete sourceRef.external_version
 
   return {
-    external_id: externalId,
-    external_version: externalSource ? undefined : externalVersion || undefined,
-    upload_id: uploadId || undefined,
-    source_url: sourceUrl || undefined,
+    external_id: n.external_id || metadata.external_id || sourceRef.external_id || n.id,
+    upload_id: str(sourceRef.upload_id) || str(metadata.upload_id) || undefined,
+    source_url: str(sourceRef.source_url) || str(sourceRef.url) || str(metadata.source_url) || undefined,
     metadata: {
       title: metadata.title || metadata.filename || metadata.source_url,
       node_id: n.id,
-      source_ref: hasSourceRef ? outgoingSourceRef : undefined,
     },
-    source_ref: hasSourceRef ? outgoingSourceRef : undefined,
+    source_ref: Object.keys(sourceRef).length ? sourceRef : undefined,
   }
-}
-
-export function canonicalSourceKey(n: BrowseNode): string | null {
-  const payload = contentDeletePayload(n)
-  if (!payload) return null
-  const identity = payload.source_ref?.document_identity
-  return JSON.stringify([identity?.lineage || '', identity?.external_source || '', payload.external_id])
 }
 
 export function truncate(text: string | undefined, max: number): string {

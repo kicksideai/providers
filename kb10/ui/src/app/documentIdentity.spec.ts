@@ -1,30 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalSourceKey, contentDeletePayload } from './types'
+import { contentDeletePayload } from './types'
 
 describe('document deletion identity', () => {
-  const metadata = { external_source: 'feed:a', external_id: 'doc' }
-  const local = { id: 'one', metadata: { ...metadata, source_ref: { thread_id: 'local' } } }
-  const incoming = { id: 'two', metadata: { ...metadata, source_ref: { thread_id: 'incoming', thread_event_seq: 3 } } }
-  const legacy = { id: 'three', metadata }
-
-  it('keeps different lineages separately addressable', () => {
-    expect(new Set([local, incoming, legacy].map(canonicalSourceKey)).size).toBe(3)
-    expect(contentDeletePayload(incoming)?.source_ref).toEqual({
-      external_id: 'doc',
-      document_identity: { ...metadata, lineage: 'incoming' },
-    })
-    expect(contentDeletePayload(legacy)?.source_ref.document_identity).toEqual(metadata)
+  it('carries each root UUID and leaves delete versions to Knowledge', () => {
+    const sourceRef = { external_id: 'doc', thread_id: 'origin', thread_event_seq: 3, external_version: 'v1' }
+    const metadata = { external_source: 'feed:a', external_id: 'doc', external_version: 'v1', source_ref: sourceRef }
+    const local = contentDeletePayload({ id: 'one', metadata })
+    const incoming = contentDeletePayload({ id: 'two', metadata })
+    expect(local?.metadata.node_id).toBe('one')
+    expect(incoming?.metadata.node_id).toBe('two')
+    expect(incoming?.external_version).toBeUndefined()
+    expect(incoming?.source_ref).toEqual({ external_id: 'doc' })
   })
 
-  it('uses the persisted key and keeps non-ASCII key bytes', () => {
-    const node = { id: 'root', metadata: {
-      external_source: ' feed:a\t',
-      external_id: ' \u00a0doc\r\n',
-      thread_id: 'recorded',
-      source_ref: { thread_id: '', external_id: 'different' },
-    } }
-    expect(contentDeletePayload(node)?.source_ref.document_identity).toEqual({
-      external_source: 'feed:a', external_id: '\u00a0doc', lineage: 'recorded',
+  it('uses the bound external ID as supplied by the server', () => {
+    const node = { id: 'root', external_id: '\u00a0doc', metadata: { external_id: 'old' } }
+    expect(contentDeletePayload(node)?.external_id).toBe('\u00a0doc')
+  })
+
+  it('queues an unbound document with its UUID as the event external ID', () => {
+    expect(contentDeletePayload({ id: 'root' })).toMatchObject({
+      external_id: 'root', metadata: { node_id: 'root' },
     })
   })
 })

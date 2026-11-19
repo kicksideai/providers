@@ -8,6 +8,7 @@
 -- DTO/colon-methods so the engine-agnostic source_materializer planner drives it.
 
 local kb10_store = require("kb10_store")
+local trim = require("provider_text").trim
 
 local M = {}
 
@@ -16,11 +17,6 @@ local SOURCE_NODE_TYPES: { [string]: boolean } = { document = true, summary = tr
 local function arg_table(args: any): { [string]: any }
     if type(args) == "table" then return args :: { [string]: any } end
     return {}
-end
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 local function source_node_type(node_type: any): boolean
@@ -199,6 +195,7 @@ function M.replace_document(_self: any, args: any): (any, any?)
     return kb10_store.replace_document(a.store_id, {
         document = a.document,
         children = a.children,
+        source_thread_id = a.source_thread_id,
     })
 end
 
@@ -206,21 +203,7 @@ function M.delete_documents_by_external_id(_self: any, args: any): (any, any?)
     local a = arg_table(args)
     local ok, lineage_err = require_source_lineage("delete_documents_by_external_id", a, a.metadata)
     if not ok then return nil, lineage_err end
-    local identity = a.document_identity
-    if identity ~= nil then
-        if type(identity) ~= "table" or trim(identity.external_source) == "" or trim(identity.external_id) == ""
-            or (identity.lineage ~= nil and type(identity.lineage) ~= "string") then
-            return nil, errors.new({kind = errors.INVALID, message = "invalid document deletion identity"})
-        end
-        -- An explicit identity with no lineage addresses the legacy lineage-null group.
-        return kb10_store.delete_documents_by_external_id(
-            a.store_id, identity.external_source, identity.external_id, identity.lineage or "")
-    end
-    local ref = source_ref_from(a, a.metadata)
-    if type(ref.thread_id) ~= "string" or ref.thread_id == "" then
-        return reject_missing_lineage("delete_documents_by_external_id", "source_ref.thread_id")
-    end
-    return kb10_store.delete_documents_by_external_id(a.store_id, a.external_source, a.external_id, ref.thread_id)
+    return kb10_store.delete_document(a.store_id, a)
 end
 
 return M

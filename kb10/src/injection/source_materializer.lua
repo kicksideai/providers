@@ -775,16 +775,15 @@ function M.delete_documents_from_store(target, deletes): (any, any?)
     end
 
     for _, d in ipairs(deletes or {}) do
-        -- Only the target's managed content thread can address another lineage in that store.
-        if d.external_id and d.external_id ~= "" and (d.document_identity == nil or
-            (d.thread_id == store_row.component_id and d.delete_component_id == store_row.component_id)) then
+        if d.external_id and d.external_id ~= "" then
             local removed, delete_err = store:delete_documents_by_external_id({
                 store_id = store_id,
-                external_source = d.external_source or "",
+                node_id = d.selected_node_id,
+                source_thread_id = target.source_thread_id,
+                external_source = d.external_source,
                 external_id = d.external_id,
                 external_version = d.external_version,
                 source_ref = d.source_ref,
-                document_identity = d.document_identity,
                 metadata = d.metadata,
                 thread_event_id = d.thread_event_id,
                 thread_event_seq = d.thread_event_seq,
@@ -798,31 +797,22 @@ function M.delete_documents_from_store(target, deletes): (any, any?)
 
             local removed_row = type(removed) == "table" and removed or nil
             local removed_count = tonumber(removed_row and removed_row.removed or removed) or 0
-            if removed_count == 0 then
-                result.missing = result.missing + 1
-                result.notifications[#result.notifications + 1] = {
-                    external_source = d.external_source,
-                    external_id = d.external_id,
-                    external_version = d.external_version,
-                    user_id = d.user_id,
-                    removed = 0,
-                    missing = 1,
-                }
-            else
-                result.removed = result.removed + removed_count
-                result.notifications[#result.notifications + 1] = {
-                    external_source = d.external_source,
-                    external_id = d.external_id,
-                    external_version = d.external_version,
-                    user_id = d.user_id,
-                    removed = removed_count,
-                    removed_document_count = tonumber(removed_row and removed_row.removed_document_count) or removed_count,
-                    removed_failed_document_count = tonumber(removed_row and removed_row.removed_failed_document_count) or 0,
-                    removed_summary_count = tonumber(removed_row and removed_row.removed_summary_count) or 0,
-                    removed_chunk_count = tonumber(removed_row and removed_row.removed_chunk_count) or 0,
-                    missing = 0,
-                }
-            end
+            local missing = removed_count == 0 and 1 or 0
+            result.missing = result.missing + missing
+            result.removed = result.removed + removed_count
+            result.notifications[#result.notifications + 1] = {
+                document_node_id = removed_row and removed_row.document_node_id,
+                external_source = removed_row and removed_row.external_source or d.external_source,
+                external_id = removed_row and removed_row.external_id or d.external_id,
+                external_version = d.external_version,
+                user_id = d.user_id,
+                removed = removed_count,
+                removed_document_count = tonumber(removed_row and removed_row.removed_document_count) or removed_count,
+                removed_failed_document_count = tonumber(removed_row and removed_row.removed_failed_document_count) or 0,
+                removed_summary_count = tonumber(removed_row and removed_row.removed_summary_count) or 0,
+                removed_chunk_count = tonumber(removed_row and removed_row.removed_chunk_count) or 0,
+                missing = missing,
+            }
         end
     end
     return result, nil
@@ -1193,6 +1183,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
 
         local replacement, replace_err = store:replace_document({
             store_id = store_id,
+            source_thread_id = target.source_thread_id,
             document = {
                 node_type = kb_types.NODE_TYPE.DOCUMENT,
                 content = doc.content or "",
@@ -1265,6 +1256,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         local ok, replacement, replace_err = pcall(function()
             return store:replace_document({
                 store_id = store_id,
+                source_thread_id = target.source_thread_id,
                 document = {
                     node_type = kb_types.NODE_TYPE.DOCUMENT,
                     content = doc.content or "",

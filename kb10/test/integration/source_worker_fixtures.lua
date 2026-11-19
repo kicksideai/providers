@@ -82,18 +82,10 @@ local function kb10_materializer_adapter()
             return M.DIMS, nil
         end,
         replace_document = function(_self, args)
-            return kb10_store.replace_document(args.store_id, {
-                document = args.document,
-                children = args.children,
-            })
+            return kb10_store.replace_document(args.store_id, args)
         end,
         delete_documents_by_external_id = function(_self, args)
-            return kb10_store.delete_documents_by_external_id(
-                args.store_id,
-                args.external_source,
-                args.external_id,
-                args.source_ref.thread_id
-            )
+            return kb10_store.delete_document(args.store_id, args)
         end,
     }
 end

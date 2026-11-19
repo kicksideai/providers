@@ -69,10 +69,10 @@ end
 
 local insert_rows_tx = search_index.insert_rows_tx
 
-function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}, source_roots: any?): ({string}?, any?)
+function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}, bindings: any?): ({string}?, any?)
     local sqlite = db_type == sql.type.SQLITE
     local columns = { "id", "store_id", "parent_id", "node_type", "content", "content_type",
-        "external_source", "external_id", "source_lineage" }
+        "external_source", "external_id", "source_scope" }
     if sqlite then columns[#columns + 1] = "fts_rowid" end
     columns[#columns + 1] = "metadata"
     local ids: {string} = {}
@@ -83,11 +83,14 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
         local input = node :: kb10.NodeInput
         local id = input.id or uuid.v7()
         ids[i] = id
-        local source, external_id, lineage
-        if input.node_type == kb10.NODE_TYPE.DOCUMENT and input.parent_id == nil and
-            (source_roots == nil or source_roots[id]) then
-            source, external_id = ops.source_key(input.metadata)
-            if source then lineage = ops.source_thread(input.metadata) end
+        local binding
+        if input.node_type == kb10.NODE_TYPE.DOCUMENT and input.parent_id == nil then
+            if bindings then
+                binding = bindings[i]
+            else
+                local metadata = type(input.metadata) == "table" and input.metadata or {}
+                binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id)
+            end
         end
         local fts_rowid: number? = nil
         if sqlite and input.content then
@@ -101,7 +104,8 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
             fts[#fts + 1] = { fts_rowid, id, input.content, input.node_type }
         end
         local row = { id, store_id, input.parent_id, input.node_type, input.content,
-            input.content_type, source, external_id, lineage }
+            input.content_type, binding and binding.external_source,
+            binding and binding.external_id, binding and binding.source_scope }
         if sqlite then row[#columns - 1] = fts_rowid end
         row[#columns] = json.encode(input.metadata or {})
         rows[i] = row
@@ -113,8 +117,9 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
     return ids, nil
 end
 
-local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any): (string?, any?)
-    local ids, err = writer.insert_nodes_tx(tx, db_type, store_id, { type(node) == "table" and node or {} })
+local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any, binding: any?): (string?, any?)
+    local ids, err = writer.insert_nodes_tx(tx, db_type, store_id,
+        { type(node) == "table" and node or {} }, binding and {binding})
     if err or not ids then return nil, err end
     return ids[1], nil
 end
@@ -444,7 +449,7 @@ end
 --
 -- The document node's id is the document's identity, not the generation's:
 -- consumers fold it into their own rows and resolve the document by it long
--- after this write. So a replacement of the same source in the same lineage
+-- after this write. So a replacement of the same source in the same scope
 -- keeps the node that already carries that identity and swaps the generation
 -- underneath it — content, children, vectors. Children re-mint their ids; they
 -- are content. A caller-supplied document.id only seeds a first
@@ -458,14 +463,14 @@ function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replac
         return nil, errors.new({ message = "document root is required", kind = errors.INVALID })
     end
 
-    local external_source, external_id = ops.source_key(document.metadata)
-    if not external_source then
+    local metadata = type(document.metadata) == "table" and document.metadata or {}
+    local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, spec.source_thread_id)
+    if not binding then
         return nil, errors.new({ message = "document metadata.external_source and external_id are required", kind = errors.INVALID })
     end
     local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return nil, lock_err end
-    local reused_id, ownership_err = ops.find_source_root_tx(
-        tx, db_type, store_id, external_source, external_id, ops.source_thread(document.metadata))
+    local reused_id, ownership_err = ops.find_source_root_tx(tx, db_type, store_id, binding)
     if ownership_err then return nil, ownership_err end
 
     local removed = 0
@@ -493,7 +498,7 @@ function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replac
         if overwrite_err then return nil, errors.wrap(overwrite_err, "replace document failed") end
         doc_id = reused_id
     else
-        local new_id, doc_err = insert_node_tx(tx, db_type, store_id, document)
+        local new_id, doc_err = insert_node_tx(tx, db_type, store_id, document, binding)
         if doc_err or not new_id then return nil, errors.wrap(doc_err, "insert document failed") end
         doc_id = new_id
     end
@@ -901,23 +906,7 @@ function writer.delete_node(store_id: any, node_id: any)
     return true
 end
 
-function writer.delete_documents_by_external_id_tx(tx: any, db_type: any, store_id: any, external_source: any, external_id: any,
-        source_thread: string?)
-    if not is_str(store_id) or not is_str(external_id) then
-        return nil, errors.new({ kind = errors.INVALID, retryable = false,
-            message = "store_id and external_id are required" })
-    end
-    local _, lock_err = lock_store_tx(tx, db_type, store_id)
-    if lock_err then return nil, lock_err end
-    local rows, query_err = ops.find_source_roots_tx(tx, db_type, store_id, external_source or "", external_id, source_thread)
-    if query_err then return nil, errors.wrap(query_err, "failed to find documents by external id") end
-    if not source_thread and #rows > 1 then
-        local lineage = rows[1].lineage
-        for _, row in ipairs(rows) do
-            if row.lineage ~= lineage then return nil, ops.source_lineage_conflict() end
-        end
-    end
-
+local function delete_documents_tx(tx: any, db_type: any, store_id: any, rows: any)
     local removed = 0
     local removed_completed_documents = 0
     local removed_failed_documents = 0
@@ -941,7 +930,42 @@ function writer.delete_documents_by_external_id_tx(tx: any, db_type: any, store_
     }
 end
 
-function writer.delete_documents_by_external_id(store_id: any, external_source: any, external_id: any, source_thread: string?)
+function writer.delete_documents_by_external_id_tx(tx: any, db_type: any, store_id: any, external_source: any, external_id: any)
+    if not is_str(store_id) or not is_str(external_id) then
+        return nil, errors.new({ kind = errors.INVALID, retryable = false, message = "store_id and external_id are required" })
+    end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local rows, query_err = ops.find_source_nodes_tx(tx, db_type, store_id, external_source, external_id, true)
+    if query_err then return nil, errors.wrap(query_err, "failed to find documents by external id") end
+    return delete_documents_tx(tx, db_type, store_id, rows)
+end
+
+function writer.delete_document_tx(tx: any, db_type: any, store_id: any, selector: any)
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local id, root, err
+    if selector.node_id ~= nil then
+        if type(selector.node_id) ~= "string" or not uuid.validate(selector.node_id) then
+            return nil, errors.new({kind = errors.INVALID, message = "invalid document node ID"})
+        end
+        root, err = ops.find_document_root_tx(tx, store_id, selector.node_id)
+        id = root and tostring(root.id)
+    else
+        local binding = ops.source_binding(store_id, selector.external_source, selector.external_id, selector.source_thread_id)
+        if not binding then return nil, errors.new({kind = errors.INVALID, message = "invalid source binding"}) end
+        id, err = ops.find_source_root_tx(tx, db_type, store_id, binding)
+    end
+    if err then return nil, err end
+    local result, delete_err = delete_documents_tx(tx, db_type, store_id, id and {{id = id}} or {})
+    if delete_err then return nil, delete_err end
+    result.document_node_id = id
+    result.external_source = root and root.external_source
+    result.external_id = root and root.external_id
+    return result, nil
+end
+
+local function delete_documents(store_id: any, mutate: any, ...)
     local db, err = ops.get_db()
     if err then return 0, err end
     local db_type, db_type_err = ops.get_db_type(db)
@@ -949,8 +973,7 @@ function writer.delete_documents_by_external_id(store_id: any, external_source: 
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return 0, errors.wrap(tx_err, "failed to begin transaction") end
 
-    local result, delete_err = writer.delete_documents_by_external_id_tx(
-        tx, db_type, store_id, external_source, external_id, source_thread)
+    local result, delete_err = mutate(tx, db_type, store_id, ...)
     if delete_err then
         local _, message = fail_tx(tx, db, delete_err)
         return 0, message
@@ -958,6 +981,14 @@ function writer.delete_documents_by_external_id(store_id: any, external_source: 
     local ok, commit_err = commit_tx(tx, db, "document delete")
     if not ok then return 0, commit_err end
     return result, nil
+end
+
+function writer.delete_documents_by_external_id(store_id: any, external_source: any, external_id: any)
+    return delete_documents(store_id, writer.delete_documents_by_external_id_tx, external_source, external_id)
+end
+
+function writer.delete_document(store_id: any, selector: any)
+    return delete_documents(store_id, writer.delete_document_tx, selector)
 end
 
 -- Persist the digest service's generated KB-level summary/description.
@@ -1021,7 +1052,7 @@ end
 -- (uuid v7 == insert order), and a child's parent always pre-existed it, so the parent
 -- carries the smaller id and lands in this batch or an earlier one -- the self-FK is
 -- satisfied within the transaction without any per-row deferral.
-function writer.insert_nodes(store_id: any, nodes: any, source_roots: any?): (boolean?, any?)
+function writer.insert_nodes(store_id: any, nodes: any, bindings: any?): (boolean?, any?)
     local list = (type(nodes) == "table" and nodes or {}) :: { any }
     if #list == 0 then return true end
     local db, err = ops.get_db()
@@ -1032,7 +1063,7 @@ function writer.insert_nodes(store_id: any, nodes: any, source_roots: any?): (bo
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
     local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return fail_tx(tx, db, lock_err) end
-    local _, insert_err = writer.insert_nodes_tx(tx, db_type, store_id, list, source_roots)
+    local _, insert_err = writer.insert_nodes_tx(tx, db_type, store_id, list, bindings)
     if insert_err then return fail_tx(tx, db, insert_err) end
     return commit_tx(tx, db, "node batch insert")
 end
