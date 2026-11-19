@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.19](https://github.com/kicksideai/providers/compare/kb10-v0.2.18...kb10-v0.2.19) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** accept documents with long internal whitespace ([#132](https://github.com/kicksideai/providers/issues/132)) ([69f0007](https://github.com/kicksideai/providers/commit/69f000781ceb56acd802b11a619d6b9f22de90ba))
+* **kb10:** keep contextual embedding off after saving ([10b5d79](https://github.com/kicksideai/providers/commit/10b5d796414daf366a866eb0ef2dc7b58af6e7b8))
+* **kb10:** keep contextual embedding off after saving ([#131](https://github.com/kicksideai/providers/issues/131)) ([10b5d79](https://github.com/kicksideai/providers/commit/10b5d796414daf366a866eb0ef2dc7b58af6e7b8))
+* **kb10:** show query results in the Ask panel ([#133](https://github.com/kicksideai/providers/issues/133)) ([70efa23](https://github.com/kicksideai/providers/commit/70efa236082d8cc53da077a9dfb8caa2bc602c91))
+
 ## [0.2.18](https://github.com/kicksideai/providers/compare/kb10-v0.2.17...kb10-v0.2.18) (2026-11-19)
 
 
