@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/kicksideai/providers/compare/search-index-v0.1.2...search-index-v0.1.3) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** preserve document addresses and scope source bindings ([#137](https://github.com/kicksideai/providers/issues/137)) ([decb36e](https://github.com/kicksideai/providers/commit/decb36e93c1fbcc956f025be30dd8cc4781ba1b1))
+
 ## [0.1.2](https://github.com/kicksideai/providers/compare/search-index-v0.1.1...search-index-v0.1.2) (2026-11-06)
 
 

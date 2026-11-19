@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/kicksideai/providers/compare/google-v0.1.31...google-v0.1.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
 ## [0.1.31](https://github.com/kicksideai/providers/compare/google-v0.1.30...google-v0.1.31) (2026-11-18)
 
 
