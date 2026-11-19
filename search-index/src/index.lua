@@ -192,6 +192,8 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
     if type_err then return nil, type_err end
     local vector_column = spec.vector_column or "embedding"
     local aliases = { vectors = "e", rows = "n" }
+    local owner_join = "n." .. spec.row_key .. " = e." .. spec.vector_key ..
+        " AND n." .. spec.partition .. " = e." .. spec.partition
     local params: { any }
     local idx: integer
     local query: string
@@ -200,7 +202,7 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
         local distance = sqlite and ("vec_distance_L2(e." .. vector_column .. ", $1)") or
             ("e." .. vector_column .. " <=> ($1::vector)")
         query = "SELECT n." .. group .. " AS id, MIN(" .. distance .. ") AS vector_distance FROM " .. spec.rows ..
-            " n JOIN " .. spec.vectors .. " e ON n." .. spec.row_key .. " = e." .. spec.vector_key ..
+            " n JOIN " .. spec.vectors .. " e ON " .. owner_join ..
             " WHERE n." .. spec.partition .. " = $2 AND n." .. group .. " IS NOT NULL"
         params = { index.vector_literal(query_vector), opts.partition }
         query, idx = append_filters(query, params, 2, opts.filters, aliases)
@@ -211,7 +213,7 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
             knn_k = math.min(limit * VECTOR_OVERFETCH_FACTOR, VECTOR_OVERFETCH_MAX)
         end
         query = "SELECT " .. row_select(spec, "n", "e") .. ", e.distance AS vector_distance" ..
-            " FROM " .. spec.vectors .. " e JOIN " .. spec.rows .. " n ON n." .. spec.row_key .. " = e." .. spec.vector_key ..
+            " FROM " .. spec.vectors .. " e JOIN " .. spec.rows .. " n ON " .. owner_join ..
             " WHERE e." .. vector_column .. " MATCH $1 AND e." .. spec.partition .. " = $2 AND e.k = $3"
         params = { index.vector_literal(query_vector), opts.partition, knn_k }
         idx = 3
@@ -221,7 +223,7 @@ function index.dense_search(db: any, spec: Spec, query_vector: { number }, opts:
     else
         query = "SELECT " .. row_select(spec, "n", nil) ..
             ", e." .. vector_column .. " <=> ('" .. index.vector_literal(query_vector) .. "'::vector) AS vector_distance" ..
-            " FROM " .. spec.rows .. " n JOIN " .. spec.vectors .. " e ON n." .. spec.row_key .. " = e." .. spec.vector_key ..
+            " FROM " .. spec.rows .. " n JOIN " .. spec.vectors .. " e ON " .. owner_join ..
             " WHERE n." .. spec.partition .. " = $1"
         params = { opts.partition }
         idx = 1

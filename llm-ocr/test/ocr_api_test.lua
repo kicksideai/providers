@@ -554,6 +554,13 @@ local function define_tests()
             test.eq(text, "Full page body.")
         end)
 
+        test.it("preserves model text with a megabyte of internal whitespace", function()
+            local reply = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+            local text, err = ocr_with(reply).transcribe("img", { model = "class:fast" })
+            test.is_nil(err, tostring(err))
+            test.is_true(text == reply)
+        end)
+
         test.it("requires image bytes and a model", function()
             local _, image_err = ocr_with("x").transcribe("", { model = "class:fast" })
             test.not_nil(image_err)

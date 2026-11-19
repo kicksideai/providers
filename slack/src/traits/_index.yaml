@@ -128,6 +128,7 @@ entries:
     source: file://slack_get.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.slack.client:transport
       api: kickside.slack.client:api
@@ -138,6 +139,7 @@ entries:
     source: file://slack_write.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       tool_result: kickside.contract:tool_result
       transport: kickside.slack.client:transport
       api: kickside.slack.client:api

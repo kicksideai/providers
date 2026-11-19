@@ -22,6 +22,7 @@ profiles:
       app:db:pool.max_idle: 8
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/google: ..
     kickside/security: ../../../kickside/platform/security
     kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch

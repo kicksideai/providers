@@ -26,12 +26,12 @@ local function zero_vector(): { number }
     return v
 end
 
-local function insert_document(store_id: string, content: string): string
+local function insert_document(store_id: string, content: string, external_id: string?): string
     local id, err = kb10_store.insert_node(store_id, {
         node_type = "document",
         content = content,
         content_type = "text/plain",
-        metadata = { external_source = "resummarize.test", external_id = "doc-1" },
+        metadata = { external_source = "resummarize.test", external_id = external_id or "doc-1" },
     })
     if err then error("insert document failed: " .. tostring(err)) end
     if not id then error("node insert returns no id") end
@@ -659,7 +659,7 @@ local function define_tests()
         test.it("publishes the document total before any work and a report after every document", function()
             local component_id, d = bootstrap({ chunk_enrichment_model = false })
             insert_document(component_id, "the first document of the regeneration")
-            insert_document(component_id, "the second document of the regeneration")
+            insert_document(component_id, "the second document of the regeneration", "doc-2")
 
             local reports: { ProgressSnapshot } = {}
             local result, err = resummarize.run_with_deps(component_id, {

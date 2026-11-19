@@ -17,6 +17,7 @@ entries:
     source: file://gmail_draft_sink.lua
     modules: [hash]
     imports:
+      text_trim: kickside.provider_text:trim
       transport: kickside.google.client:transport
       gmail: kickside.google.client:gmail
   - name: gmail_draft_sink

@@ -25,7 +25,7 @@ local function materializer_store(): any
 end
 
 local materialized_seq = 0
-local function with_materialized_lineage(node)
+local function with_materialized_lineage(node, thread_id)
     materialized_seq = materialized_seq + 1
     node.metadata = type(node.metadata) == "table" and node.metadata or {}
     local metadata = node.metadata
@@ -40,6 +40,7 @@ local function with_materialized_lineage(node)
         metadata.source_ref = {
             kind = "fixture",
             origin = "knowledge_test",
+            thread_id = thread_id,
             external_source = metadata.external_source,
             external_id = external_id,
             external_version = external_version,
@@ -51,7 +52,7 @@ local function with_materialized_lineage(node)
 end
 
 local function insert_materialized_node(store_id, node)
-    return materializer_store():insert_node({ store_id = store_id, node = with_materialized_lineage(node) })
+    return materializer_store():insert_node({ store_id = store_id, node = with_materialized_lineage(node, store_id) })
 end
 
 local EMBEDDABLE_CONTRACT = "kickside.contract:embeddable"
@@ -293,7 +294,7 @@ local function define_tests()
                         thread_event_id = "event:replace-tree",
                         thread_event_seq = 4,
                     },
-                })
+                }, test_store_id)
                 local replace_child = with_materialized_lineage({
                     node_type = "summary",
                     content = "Replacement tree child.",
@@ -304,7 +305,7 @@ local function define_tests()
                         thread_event_id = "event:replace-tree",
                         thread_event_seq = 4,
                     },
-                })
+                }, test_store_id)
                 local replace_bad, replace_bad_err = materializer_store():replace_document({
                     store_id = test_store_id,
                     document = replace_doc,
@@ -768,7 +769,7 @@ local function define_tests()
                 content = "Root-anchored source document",
                 content_type = "text/plain",
                 metadata = { title = "Anchored doc" },
-            })
+            }, cid)
             local doc_meta = document.metadata
             local result, replace_err = materializer_store():replace_document({
                 store_id = cid,

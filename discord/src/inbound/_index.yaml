@@ -8,6 +8,7 @@ entries:
     source: file://inbound.lua
     modules: [contract]
     imports:
+      text_trim: kickside.provider_text:trim
       transport: kickside.discord.client:transport
       types: kickside.discord.client:types
 

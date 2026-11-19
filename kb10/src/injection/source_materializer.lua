@@ -756,7 +756,7 @@ function M.plan_document_writes(documents: any, opts: MaterializationOptions, su
     return plans, embed_texts
 end
 
-function M.delete_documents_from_store(target, deletes): (any, string?)
+function M.delete_documents_from_store(target, deletes): (any, any?)
     local store_row = target.store_row or target
     local store_id = store_row.id
     local result = {
@@ -780,7 +780,9 @@ function M.delete_documents_from_store(target, deletes): (any, string?)
         if d.external_id and d.external_id ~= "" then
             local removed, delete_err = store:delete_documents_by_external_id({
                 store_id = store_id,
-                external_source = d.external_source or "",
+                node_id = d.selected_node_id,
+                source_thread_id = target.source_thread_id,
+                external_source = d.external_source,
                 external_id = d.external_id,
                 external_version = d.external_version,
                 source_ref = d.source_ref,
@@ -789,6 +791,7 @@ function M.delete_documents_from_store(target, deletes): (any, string?)
                 thread_event_seq = d.thread_event_seq,
             })
             if delete_err then
+                if errors.is(delete_err, errors.CONFLICT) then return result, delete_err end
                 local message = "delete_documents_by_external_id failed: " .. tostring(delete_err)
                 logger:warn("delete_documents_by_external_id failed", { error = delete_err })
                 return result, message
@@ -796,31 +799,22 @@ function M.delete_documents_from_store(target, deletes): (any, string?)
 
             local removed_row = type(removed) == "table" and removed or nil
             local removed_count = tonumber(removed_row and removed_row.removed or removed) or 0
-            if removed_count == 0 then
-                result.missing = result.missing + 1
-                result.notifications[#result.notifications + 1] = {
-                    external_source = d.external_source,
-                    external_id = d.external_id,
-                    external_version = d.external_version,
-                    user_id = d.user_id,
-                    removed = 0,
-                    missing = 1,
-                }
-            else
-                result.removed = result.removed + removed_count
-                result.notifications[#result.notifications + 1] = {
-                    external_source = d.external_source,
-                    external_id = d.external_id,
-                    external_version = d.external_version,
-                    user_id = d.user_id,
-                    removed = removed_count,
-                    removed_document_count = tonumber(removed_row and removed_row.removed_document_count) or removed_count,
-                    removed_failed_document_count = tonumber(removed_row and removed_row.removed_failed_document_count) or 0,
-                    removed_summary_count = tonumber(removed_row and removed_row.removed_summary_count) or 0,
-                    removed_chunk_count = tonumber(removed_row and removed_row.removed_chunk_count) or 0,
-                    missing = 0,
-                }
-            end
+            local missing = removed_count == 0 and 1 or 0
+            result.missing = result.missing + missing
+            result.removed = result.removed + removed_count
+            result.notifications[#result.notifications + 1] = {
+                document_node_id = removed_row and removed_row.document_node_id,
+                external_source = removed_row and removed_row.external_source or d.external_source,
+                external_id = removed_row and removed_row.external_id or d.external_id,
+                external_version = d.external_version,
+                user_id = d.user_id,
+                removed = removed_count,
+                removed_document_count = tonumber(removed_row and removed_row.removed_document_count) or removed_count,
+                removed_failed_document_count = tonumber(removed_row and removed_row.removed_failed_document_count) or 0,
+                removed_summary_count = tonumber(removed_row and removed_row.removed_summary_count) or 0,
+                removed_chunk_count = tonumber(removed_row and removed_row.removed_chunk_count) or 0,
+                missing = missing,
+            }
         end
     end
     return result, nil
@@ -963,7 +957,7 @@ local function validate_vector(vec: any, dims: any, label: string): string?
     return nil
 end
 
-function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, worker_config, batch_enricher): (DocIngestResult, string?)
+function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, worker_config, batch_enricher): (DocIngestResult, any?)
     local store_row = target.store_row or target
     local store_id = store_row.id
     local store = target.store
@@ -1044,10 +1038,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     -- isolation and the rest of the batch still materializes. A single document's
     -- summary/chunks/images are still planned and embedded together, preserving
     -- their order and node associations; documents simply no longer share a fate.
-    -- A thrown error and a returned error are both recorded as a per-document
-    -- failure: the document is counted failed with its specific cause, never
-    -- aborting the loop.
-    local function materialize_one(doc: any): (boolean, string?)
+    local function materialize_one(doc: any): (boolean, any?)
         local content = type(doc.content) == "string" and doc.content or ""
         local max_doc_chars = tonumber(materialization_opts.max_document_content_chars)
         if max_doc_chars and max_doc_chars > 0 and #content > max_doc_chars then
@@ -1194,6 +1185,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
 
         local replacement, replace_err = store:replace_document({
             store_id = store_id,
+            source_thread_id = target.source_thread_id,
             document = {
                 node_type = kb_types.NODE_TYPE.DOCUMENT,
                 content = doc.content or "",
@@ -1203,6 +1195,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             children = children,
         })
         if replace_err or not replacement then
+            if errors.is(replace_err, errors.CONFLICT) then return false, replace_err end
             return false, "replace document failed: " .. tostring(replace_err or "no result")
         end
 
@@ -1241,10 +1234,8 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     -- captured error (no children, since it never materialized). This replaces any
     -- prior row for the same (external_source, external_id), so the failed doc is
     -- queryable on the KB and re-ingestion replaces it with a completed row. A
-    -- failure to persist the dead-letter is logged but never re-raised: the
-    -- isolation guarantee (siblings still materialize, cursor still advances) holds
-    -- regardless. Returns the document node id when the row was written.
-    local function dead_letter(doc: any, failure: string, system_level: boolean): any?
+    -- writer conflict leaves the source item pending.
+    local function dead_letter(doc: any, failure: string, system_level: boolean): (any?, any?)
         if type(doc) ~= "table" then return nil end
         local meta = {}
         for k, v in pairs(doc.metadata or {}) do meta[k] = v end
@@ -1267,6 +1258,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         local ok, replacement, replace_err = pcall(function()
             return store:replace_document({
                 store_id = store_id,
+                source_thread_id = target.source_thread_id,
                 document = {
                     node_type = kb_types.NODE_TYPE.DOCUMENT,
                     content = doc.content or "",
@@ -1277,10 +1269,12 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             })
         end)
         if not ok then
+            if errors.is(replacement, errors.CONFLICT) then return nil, replacement end
             logger:warn("dead-letter persist raised", { external_id = meta.external_id, error = tostring(replacement) })
             return nil
         end
         if replace_err or type(replacement) ~= "table" then
+            if errors.is(replace_err, errors.CONFLICT) then return nil, replace_err end
             logger:warn("dead-letter persist failed", { external_id = meta.external_id, error = tostring(replace_err) })
             return nil
         end
@@ -1298,20 +1292,10 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     for _, doc in ipairs(documents) do
         -- pcall returns (call_ok, materialize_one's first return, second return).
         local call_ok, doc_ok, doc_err = pcall(materialize_one, doc)
-        local succeeded = false
-        local failure = nil
-        if not call_ok then
-            -- materialize_one raised (e.g. a registry overflow on a pathological
-            -- block); doc_ok holds the raised error.
-            failure = tostring(doc_ok)
-        elseif doc_ok == true then
-            succeeded = true
-        else
-            failure = tostring(doc_err or "document materialization failed")
-        end
-
-        if not succeeded then
-            local failure_message = failure or "document materialization failed"
+        if not call_ok or doc_ok ~= true then
+            local failure = call_ok and doc_err or doc_ok
+            if errors.is(failure, errors.CONFLICT) then return result, failure end
+            local failure_message = tostring(failure or "document materialization failed")
             result.failed = result.failed + 1
             local system_level = is_system_failure(failure_message)
             logger:warn("document materialization failed", {
@@ -1321,7 +1305,9 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             })
             local dead_letter_result = nil
             if not system_level then
-                dead_letter_result = dead_letter(doc, failure_message, system_level)
+                local persist_err
+                dead_letter_result, persist_err = dead_letter(doc, failure_message, system_level)
+                if persist_err then return result, persist_err end
             end
             local dead_letter_node_id = type(dead_letter_result) == "table" and dead_letter_result.document_node_id or nil
             if system_level then

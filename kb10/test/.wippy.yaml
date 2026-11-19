@@ -21,6 +21,7 @@ workspace:
   replacements:
     kickside/kb10: ..
     kickside/search-index: ../../search-index
+    kickside/provider-text: ../../provider-text
     kickside/component: ../../../kickside/core/component
     kickside/contract: ../../../kickside/core/contract
     kickside/core: ../../../kickside/core/core

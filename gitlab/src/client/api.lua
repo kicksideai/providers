@@ -8,9 +8,7 @@ M._http = http_client
 
 local USER_AGENT = "kickside-gitlab-provider"
 
-local function trim(value: string): string
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function encode_query(s: string): string
     return (s:gsub("[^%w%-%_%.%~]", function(c: string): string

@@ -19,6 +19,7 @@ profiles:
       app:db:pool.max_idle: 8
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/slack: ..
     kickside/agents: ../../../kickside/platform/agents
     kickside/automation: ../../../kickside/platform/automation

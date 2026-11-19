@@ -2,7 +2,7 @@
 local keys = { "summary_model", "chunk_enrichment_model" }
 
 return require("migration").define(function()
-    migration("08 preserve contextual model settings", function()
+    migration("12 preserve contextual model settings", function()
         database("postgres", function()
             up(function(db)
                 for _, key in ipairs(keys) do

@@ -7,9 +7,9 @@ modules:
     - name: kickside/connection
       version: 0.5.7
     - name: kickside/contract
-      version: 0.0.0
+      version: 0.3.8
     - name: kickside/core
-      version: 0.0.0
+      version: 0.3.21
     - name: kickside/execution
       version: 0.2.7
     - name: kickside/google
@@ -17,6 +17,8 @@ modules:
     - name: kickside/jobs
       version: 0.1.76
     - name: kickside/oauth
+      version: 0.0.0
+    - name: kickside/provider-text
       version: 0.0.0
     - name: kickside/realtime-dispatch
       version: 0.0.0

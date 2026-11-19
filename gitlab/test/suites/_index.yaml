@@ -51,6 +51,7 @@ entries:
     source: file://connection_test.lua
     method: run
     imports:
+      text_trim: kickside.provider_text:trim
       test: wippy.test:test
       connection: kickside.gitlab.connection:connection_lib
 

@@ -164,6 +164,8 @@ local function handler()
             id = row.id,
             parent_id = row.parent_id,
             node_type = row.node_type,
+            external_source = row.external_source,
+            external_id = row.external_id,
             content_type = row.content_type,
             metadata = metadata,
             created_at = row.created_at,

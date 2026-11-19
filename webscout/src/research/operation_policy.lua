@@ -34,10 +34,7 @@ local RANGE_KEYS = { minimum = true, maximum = true }
 local SEARCH_KEYS = { freshness = true, safe_search = true }
 local ACCESS_KEYS = { id = true, decision = true, expires_at = true }
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function closed(value: Map, allowed: { [string]: boolean }, path: string): string?
     for key in pairs(value) do

@@ -24,6 +24,7 @@ entries:
       - json
       - registry
     imports:
+      provider_text: kickside.provider_text:trim
       search_index: kickside.search_index:index
 
   - name: reader

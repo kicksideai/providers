@@ -52,10 +52,7 @@ local function list(value: unknown): JsonList
     return type(value) == "table" and value :: JsonList or {}
 end
 
-local function trim(value: unknown): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function bounded_text(value: unknown, maximum: number): string
     local text = trim(value)

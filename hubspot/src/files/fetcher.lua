@@ -36,10 +36,7 @@ type SignedUrl = { url: unknown? }
 type Fetched = { bytes: string, filename: string, content_type: string?, size: integer }
 type Failure = { error: string }
 
-local function trim(value: unknown): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function fail(code: string, detail: string): Failure
     return { error = code .. ": " .. detail }
