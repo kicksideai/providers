@@ -487,7 +487,12 @@ return {run = test.run_cases(function()
                             assert(projections.remove_projection(db, id, {projection_id=registration.projection_id}))
                             removed = true
                         else
-                            declaration.reset = true
+                            if action == "rewind" then
+                                declaration.reset = true
+                            else
+                                declaration.ensure = true
+                                declaration.worker_ref = "proc://kickside.kb10.injection:source_worker_proc"
+                            end
                             assert(projections.register_projection(db, id, declaration))
                         end
                         assert_no_preparation(db, id)
@@ -549,7 +554,10 @@ return {run = test.run_cases(function()
             exercise_sheet("remove")
         end)
         test.it("erases interrupted preparation when its registered projection rewinds", function()
-            exercise_sheet("reset")
+            exercise_sheet("rewind")
+        end)
+        test.it("erases a partial sheet when a different source worker supersedes the declaration", function()
+            exercise_sheet("replace_worker")
         end)
     end)
 end)}
