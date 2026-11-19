@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/kicksideai/providers/compare/bitbucket-v0.1.9...bitbucket-v0.1.10) (2026-11-18)
+
+
+### Bug Fixes
+
+* declare encrypted provider credentials and trusted runtime access ([#105](https://github.com/kicksideai/providers/issues/105)) ([42cab0e](https://github.com/kicksideai/providers/commit/42cab0e6f4ddd00da4d56e3d2ab48b18cabe41ba))
+
 ## [0.1.9](https://github.com/kicksideai/providers/compare/bitbucket-v0.1.8...bitbucket-v0.1.9) (2026-11-06)
 
 

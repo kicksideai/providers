@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.23](https://github.com/kicksideai/providers/compare/memory-v0.1.22...memory-v0.1.23) (2026-11-18)
+
+
+### Bug Fixes
+
+* **test:** drive wippy/session 0.7.0 through its public context ([#125](https://github.com/kicksideai/providers/issues/125)) ([c0653aa](https://github.com/kicksideai/providers/commit/c0653aa3c81d6bfe31517b0c6c77a186234b3d54))
+* treat unknown model limits and dimensions as unknown ([#129](https://github.com/kicksideai/providers/issues/129)) ([22a9929](https://github.com/kicksideai/providers/commit/22a99290b75fb619b81402cddcff89bffae3d13c))
+
 ## [0.1.22](https://github.com/kicksideai/providers/compare/memory-v0.1.21...memory-v0.1.22) (2026-11-17)
 
 

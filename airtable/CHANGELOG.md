@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/kicksideai/providers/compare/airtable-v0.1.1...airtable-v0.1.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* declare encrypted provider credentials and trusted runtime access ([#105](https://github.com/kicksideai/providers/issues/105)) ([42cab0e](https://github.com/kicksideai/providers/commit/42cab0e6f4ddd00da4d56e3d2ab48b18cabe41ba))
+* **test:** expose get_runtime_context in HTTP connection fixtures ([#126](https://github.com/kicksideai/providers/issues/126)) ([016066a](https://github.com/kicksideai/providers/commit/016066a02e1254f9c63aba938359b7a82fa7617e))
+
 ## [0.1.1](https://github.com/kicksideai/providers/compare/airtable-v0.1.0...airtable-v0.1.1) (2026-10-24)
 
 

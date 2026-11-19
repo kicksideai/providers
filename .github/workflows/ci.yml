@@ -574,7 +574,7 @@ jobs:
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
             version=$(jq -er --arg path mcp-client '.[$path]' .release-please-manifest.json)
-            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs
+            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.mcp_client:ui_fs
         - module: mcp-client
           engine: postgres
           commands: |
@@ -600,7 +600,7 @@ jobs:
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
             version=$(jq -er --arg path mcp-client '.[$path]' .release-please-manifest.json)
-            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility private --module-type plugin --embed kickside.mcp_client:ui_fs
+            wippy publish --config mcp-client --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.mcp_client:ui_fs
         - module: memory
           engine: sqlite
           commands: |
