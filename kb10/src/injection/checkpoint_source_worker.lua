@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local apply = require("apply")
+local sheet = require("sheet")
 local job_types = require("job_types")
 local error_envelope = require("error_envelope")
 local extractor = require("extractor")
@@ -44,7 +45,7 @@ local function target_config(cursor)
         config = config, input_types = admitted}, nil
 end
 
-local function prepare(target: any, event: any, deadline: number): (CheckpointWriter?, error?, table?)
+local function prepare(target: any, cursor: table, event: any, deadline: number): (CheckpointWriter?, error?, table?, table?)
     if event.type ~= UPSERT and event.type ~= DELETE then
         if target.input_types[event.type] then
             return nil, invalid("checkpointed knowledge source has no extractor for a declared event"), nil
@@ -75,6 +76,11 @@ local function prepare(target: any, event: any, deadline: number): (CheckpointWr
         if select_err then return nil, select_err, nil end
         selector.node_id = selected
         change.kind = "delete"
+    end
+    if change.kind == "replace" then
+        local state, partial, stage_err = sheet.begin(target, cursor, event, doc, deadline)
+        if stage_err then return nil, dependency("preparation", stage_err) end
+        if partial then return partial, nil, nil, state end
     end
     local before, before_err = writer.source_checkpoint_before(store_id, selector, change.kind)
     if not before then return nil, before_err, nil end
@@ -107,20 +113,48 @@ local function run(input)
     local progressed = false
     for index, event in ipairs(input.events) do
         if progressed and deadline - time.now():unix_nano() < 1000000000 then break end
-        local write, prepare_err, outcome = prepare(target, event, deadline)
-        if not write then return nil, prepare_err end
         local sequence = tonumber(event.seq)
         if not sequence then return nil, invalid("knowledge source event has no sequence") end
-        local writes
-        if outcome then
-            writes = legacy_worker.checkpoint_writes(cursor, sequence, outcome, index == last_source)
+        local pinned, pin_err = apply.continuation(cursor)
+        if pin_err then return nil, pin_err end
+        local state, step = nil, 0
+        if pinned then
+            local read_err
+            state, read_err = sheet.resume(target.store_row.id, cursor, event)
+            if not state then return nil, read_err end
+            step = pinned.step
         end
-        local receipt, checkpoint_err = apply.checkpoint(db_id, assignment.job, cursor, assignment.prefetched_last,
-            {last_seq = sequence, append_events = writes}, write)
-        if not receipt then return nil, checkpoint_err end
-        if checkpoint_err then log:warn("source checkpoint follow-up failed", {cursor_id = cursor.id}) end
-        cursor.last_seq, cursor.continuation = receipt.last_seq, receipt.continuation
-        progressed = true
+        repeat
+            local write, outcome, prepare_err, partial
+            if not state then
+                write, prepare_err, outcome, state = prepare(target, cursor, event, deadline)
+                partial = state ~= nil
+            elseif state.progress.phase == "ready" then
+                write, outcome, prepare_err = sheet.publication(target, cursor, state)
+            else
+                local next_progress
+                write, next_progress, prepare_err = sheet.advance(target, cursor, state, deadline)
+                if prepare_err then return nil, dependency("preparation", prepare_err) end
+                state.progress = next_progress
+                partial = true
+            end
+            if not write then return nil, prepare_err end
+            local output = { last_seq = sequence }
+            if partial then
+                step = step + 1
+                output.last_seq = tonumber(cursor.last_seq)
+                output.continuation = { event_id = event.id, item = 1, step = step }
+            elseif outcome then
+                output.append_events = legacy_worker.checkpoint_writes(cursor, sequence, outcome, index == last_source)
+            end
+            local receipt, checkpoint_err =
+                apply.checkpoint(db_id, assignment.job, cursor, assignment.prefetched_last, output, write)
+            if not receipt then return nil, checkpoint_err end
+            if checkpoint_err then log:warn("source checkpoint follow-up failed", { cursor_id = cursor.id }) end
+            cursor.last_seq, cursor.continuation = receipt.last_seq, receipt.continuation
+            progressed = true
+            if partial and deadline - time.now():unix_nano() < 1000000000 then return { checkpointed = true }, nil end
+        until not partial
     end
     return {checkpointed = true}, nil
 end

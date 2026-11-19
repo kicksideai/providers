@@ -1494,7 +1494,7 @@ local function run_proc(input_raw)
     return result
 end
 
-local function prepare_checkpoint_document(target, doc, config, deadline)
+local function checkpoint_adapters(deadline)
     local function bounded(call, ceiling)
         return function(...)
             local seconds = math.floor((deadline - time.now():unix_nano()) / 1000000000)
@@ -1508,11 +1508,15 @@ local function prepare_checkpoint_document(target, doc, config, deadline)
             return call(unpack(args, 1, count))
         end
     end
-    return source_materializer.prepare_document(target, doc, {
+    return {
         embed = bounded(default_embedder, EMBED_TIMEOUT_SECONDS),
         summarize = bounded(default_summarizer, SUMMARY_TIMEOUT_SECONDS),
         enrich_batch = bounded(default_batch_enricher, ENRICH_TIMEOUT_SECONDS),
-    }, config)
+    }
+end
+
+local function prepare_checkpoint_document(target, doc, config, deadline)
+    return source_materializer.prepare_document(target, doc, checkpoint_adapters(deadline), config)
 end
 
 return {
@@ -1522,6 +1526,7 @@ return {
     ensure_source_lineage = ensure_source_lineage,
     selected_document_id = selected_document_id,
     prepare_checkpoint_document = prepare_checkpoint_document,
+    checkpoint_adapters = checkpoint_adapters,
     checkpoint_writes = checkpoint_writes,
     -- Production seams reused outside the worker: resummarize (kb10 engine)
     -- regenerates a document's summary/chunk-enrichment from stored content

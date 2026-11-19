@@ -37,10 +37,12 @@ type Checkpoint = {
     group_bytes: integer,
     group_start: integer,
     group_end: integer,
+    fragment: { [string]: integer }?,
 }
 type PlanOptions = {
     checkpoint: Checkpoint?,
     should_pause: (() -> boolean)?,
+    pause_output: (() -> boolean)?,
     max_record_bytes: integer?,
 }
 
@@ -61,6 +63,11 @@ local function source_format(doc: any): (string?, string)
     if ext and EXTENSIONS[ext] then return ext, filename end
     local mime = tostring(meta.original_mime_type or meta.source_mime or doc.content_type or ""):lower():match("^[^;]+") or ""
     return MIMES[mime], filename
+end
+
+function M.is_spreadsheet(doc: any): boolean
+    local format = source_format(doc)
+    return format ~= nil
 end
 
 -- Decode only escaped table delimiters. Count backslashes so a literal slash
@@ -226,6 +233,16 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
     local column_offset = checkpoint and checkpoint.column_offset or 0
     local pending: {string}? = checkpoint and checkpoint.pending and copy_strings(checkpoint.pending) or nil
     local should_pause = options and options.should_pause
+    local fragment = checkpoint and checkpoint.fragment
+    local pause_output = options and options.pause_output
+    local paused_row = {}
+    local record_start = offset
+    local function position(next_offset: integer, consumed_rows: integer)
+        return { format = format, size = size, offset = next_offset, max_record_bytes = max_record_bytes,
+            sheet = current, name = name, header_row = header_row, column_offset = column_offset,
+            pending = pending, row = consumed_rows, group = group, group_bytes = group_bytes,
+            group_start = group_start, group_end = group_end, fragment = fragment }
+    end
 
     local function lineage(sheet: Sheet, first_row: integer, last_row: integer, first_col: integer?, last_col: integer?, part: integer?): ChunkMeta
         local range = first_row == last_row and "row " .. tostring(first_row)
@@ -275,6 +292,11 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
             end
         end
         if #selected == 0 then
+            if pause_output and pause_output() then
+                fragment = {first = 1, column = 1}
+                return paused_row
+            end
+            fragment = nil
             local content = prefix .. header(sheet, 1, 1) .. table_line(cells, 1, 1)
             if #content > size then return "spreadsheet header exceeds chunk budget" end
             local meta = lineage(sheet, number, number, 1, #sheet.headers, nil)
@@ -282,8 +304,8 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
             meta.columns = { 1 + sheet.column_offset }
             return emit(content, meta)
         end
-        local first = 1
-        local column_start = 1
+        local first = fragment and fragment.first or 1
+        local column_start: integer = fragment and fragment.column or 1
         while first <= #selected do
             local last = first
             local candidate = project(first, last)
@@ -293,9 +315,14 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
                 local base = prefix .. header(sheet, column, column)
                 local available = size - #base - 4
                 if available < 4 then return "spreadsheet header or row identity exceeds chunk budget" end
-                local start = 1
-                local part = 1
+                local start = fragment and fragment.start or 1
+                local part = fragment and fragment.part or 1
+                fragment = nil
                 while start <= #value do
+                    if pause_output and pause_output() then
+                        fragment = {first = first, column = column_start, start = start, part = part}
+                        return paused_row
+                    end
                     local finish = unicode_end(value, start, available)
                     if finish < start then return "spreadsheet cell cannot fit chunk budget" end
                     local fragment = value:sub(start, finish)
@@ -304,7 +331,7 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
                         fragment = value:sub(start, finish)
                     end
                     if finish < start then return "spreadsheet cell cannot fit chunk budget" end
-                    local column_end = first == #selected and #sheet.headers or column
+                    local column_end: integer = first == #selected and #sheet.headers or column
                     local meta = lineage(sheet, number, number, column_start, column_end, part)
                     positions(meta, first, first, column_start, column_end)
                     local emit_err = emit(base .. "| " .. escape(fragment) .. " |", meta)
@@ -314,6 +341,11 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
                     part = part + 1
                 end
             else
+                if pause_output and pause_output() then
+                    fragment = {first = first, column = column_start}
+                    return paused_row
+                end
+                fragment = nil
                 while last < #selected do
                     local next_candidate = project(first, last + 1)
                     if #next_candidate > size then break end
@@ -341,7 +373,14 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
             first = last + 1
         end
         local summaries, mappings = attribute_summary(sheet, cells, size)
-        for i, content in ipairs(summaries) do
+        local next_summary = fragment and fragment.summary or 1
+        fragment = nil
+        for i = next_summary, #summaries do
+            if pause_output and pause_output() then
+                fragment = {first = #selected + 1, column = column_start, summary = i}
+                return paused_row
+            end
+            local content = summaries[i]
             local meta = lineage(sheet, number, number, nil, nil, nil)
             meta.row_summary = true
             meta.attribute_columns = mappings[i]
@@ -380,17 +419,16 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
 
     while true do
         if should_pause and should_pause() then
-            return true, { format = format, size = size, offset = input.offset(), max_record_bytes = max_record_bytes,
-                sheet = current, name = name,
-                header_row = header_row, column_offset = column_offset, pending = pending, row = row,
-                group = group, group_bytes = group_bytes, group_start = group_start, group_end = group_end }, nil
+            return true, position(input.offset(), row), nil
         end
+        record_start = input.offset()
         if format == "csv" then
             local cells, read_err = input.csv()
             if read_err then return nil, nil, read_err end
             if not cells then break end
             if current then
                 local row_err = add_row(current, cells)
+                if row_err == paused_row then return true, position(record_start, row - 1), nil end
                 if row_err then return nil, nil, row_err end
             else
                 local sheet_name = filename:gsub("^.*[/\\]", ""):gsub("%.[^.]+$", "")
@@ -429,6 +467,7 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
                     pending = nil
                 else
                     local row_err = add_row(current :: Sheet, cells)
+                    if row_err == paused_row then return true, position(record_start, row - 1), nil end
                     if row_err then return nil, nil, row_err end
                 end
             elseif trim(line) ~= "" then

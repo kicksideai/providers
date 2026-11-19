@@ -124,14 +124,14 @@ local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any, b
     return ids[1], nil
 end
 
-local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}, replace: boolean?): ({string}?, any?)
+local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}, replace: boolean?, prepared: table?): ({string}?, any?)
     local sqlite = db_type == sql.type.SQLITE
     local ids: {string} = {}
     local rows: {any} = {}
     local owners: {any} = {}
     local owner_count = 0
     for i, input in ipairs(embeddings) do
-        if type(input.embedding) ~= "table" then
+        if not prepared and type(input.embedding) ~= "table" then
             return nil, errors.new({ message = "embedding is required", kind = errors.INVALID })
         end
         local parent_id = input.parent_id
@@ -149,10 +149,52 @@ local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embedd
             end
             owner[#owner + 1] = ids[i]
         end
-        rows[i] = { ids[i], input.node_id, store_id, input.node_type, parent_id, ops.vector_to_string(input.embedding) }
+        if prepared then
+            rows[i] = {
+                id = ids[i],
+                node = input.node_id,
+                kind = input.node_type,
+                parent = parent_id,
+                ordinal = prepared.first + i - 1,
+            }
+        else
+            rows[i] = { ids[i], input.node_id, store_id, input.node_type, parent_id, ops.vector_to_string(input.embedding) }
+        end
     end
-    local err = insert_rows_tx(tx, "kb10_embeddings", { "id", "node_id", "store_id", "node_type", "parent_id", "embedding" }, rows)
-    if err then return nil, err end
+    if prepared then
+        local encoded, encode_err = json.encode(rows)
+        if encode_err then return nil, encode_err end
+        local fields = sqlite
+                and [[json_extract(j.value,'$.id'),json_extract(j.value,'$.node'),
+            r.store_id,json_extract(j.value,'$.kind'),json_extract(j.value,'$.parent')]]
+            or [[(j.value->>'id')::uuid,(j.value->>'node')::uuid,r.store_id,j.value->>'kind',(j.value->>'parent')::uuid]]
+        local records = sqlite and "json_each($1)" or "jsonb_array_elements($1::jsonb)"
+        local ordinal = sqlite and "json_extract(j.value,'$.ordinal')" or "(j.value->>'ordinal')::integer"
+        -- Drive SQLite from this page, then seek each staged vector by its primary key.
+        local join = sqlite and " j CROSS JOIN " or " j JOIN "
+        local appended, err = tx:execute(
+            "INSERT INTO kb10_embeddings(id,node_id,store_id,node_type,parent_id,embedding) SELECT "
+                .. fields
+                .. ",r.embedding FROM "
+                .. records
+                .. join .. "kb10_source_preparation_rows r ON r.ordinal="
+                .. ordinal
+                .. " WHERE r.store_id=$2 AND r.cursor_id=$3 AND r.embedding IS NOT NULL",
+            { encoded, store_id, prepared.cursor_id }
+        )
+        if err then return nil, err end
+        if tonumber(appended.rows_affected) ~= #rows then
+            return nil, errors.new({ kind = errors.INTERNAL, message = "prepared source embedding count changed" })
+        end
+    else
+        local err = insert_rows_tx(
+            tx,
+            "kb10_embeddings",
+            { "id", "node_id", "store_id", "node_type", "parent_id", "embedding" },
+            rows
+        )
+        if err then return nil, err end
+    end
     if owner_count > 0 then
         local assignment = "owner.value"
         if not replace then
@@ -501,6 +543,35 @@ local function require_store_tx(tx: any, db_type: any, store_id: any): any?
     return nil
 end
 
+local function insert_source_children_tx(tx, db_type, store_id, doc_id, children, prepared)
+    local sums, chunks = 0, 0
+    local nodes: { any } = {}
+    for _, child_spec in ipairs(children) do
+        local child_node = type(child_spec.node) == "table" and child_spec.node or child_spec
+        child_node.parent_id = doc_id
+        nodes[#nodes + 1] = child_node
+        if child_node.node_type == kb10.NODE_TYPE.SUMMARY then
+            sums = sums + 1
+        elseif child_node.node_type == kb10.NODE_TYPE.CHUNK then
+            chunks = chunks + 1
+        end
+    end
+    local child_ids, child_err = writer.insert_nodes_tx(tx, db_type, store_id, nodes)
+    if child_err or not child_ids then return nil, errors.wrap(child_err, "insert child failed") end
+    local embeddings: { any } = {}
+    for i, child_spec in ipairs(children) do
+        embeddings[i] = {
+            node_id = child_ids[i],
+            node_type = nodes[i].node_type,
+            parent_id = doc_id,
+            embedding = child_spec.embedding,
+        }
+    end
+    local embedding_ids, emb_err = insert_embeddings_tx(tx, db_type, store_id, embeddings, false, prepared)
+    if emb_err or not embedding_ids then return nil, errors.wrap(emb_err, "insert child embedding failed") end
+    return { summary = sums, chunk = chunks, embeddings = #embedding_ids }, nil
+end
+
 -- Atomically replace the materialized tree for one canonical source document.
 -- The worker computes embeddings outside this transaction; kb10 owns the commit
 -- boundary for doc + children + vectors + prior-version cleanup.
@@ -512,7 +583,7 @@ end
 -- underneath it — content, children, vectors. Children re-mint their ids; they
 -- are content. A caller-supplied document.id only seeds a first
 -- materialization: on replacement the stored identity wins.
-local function replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any, before: table?)
+local function replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any, before: table?, preparation: any?)
     if not is_str(store_id) then return nil, errors.new({ message = "store_id is required", kind = errors.INVALID }) end
     local spec = type(replacement) == "table" and replacement or {}
     local document = type(spec.document) == "table" and spec.document or nil
@@ -571,27 +642,29 @@ local function replace_document_tx(tx: any, db_type: any, store_id: any, replace
 
     local summary_count = 0
     local chunk_count = 0
-    local children = type(spec.children) == "table" and spec.children or {}
-    local nodes: {any} = {}
-    for _, child_spec in ipairs(children) do
-        local child_node = type(child_spec.node) == "table" and child_spec.node or child_spec
-        child_node.parent_id = doc_id
-        nodes[#nodes + 1] = child_node
-        if child_node.node_type == kb10.NODE_TYPE.SUMMARY then
-            summary_count = summary_count + 1
-        elseif child_node.node_type == kb10.NODE_TYPE.CHUNK then
-            chunk_count = chunk_count + 1
+    local embeddings = 0
+    local offset = 0
+    repeat
+        local children, read_err
+        if preparation then
+            children, read_err = preparation.read_children(tx, offset)
+        else
+            children = type(spec.children) == "table" and spec.children or {}
         end
-    end
-    local child_ids, child_err = writer.insert_nodes_tx(tx, db_type, store_id, nodes)
-    if child_err or not child_ids then return nil, errors.wrap(child_err, "insert child failed") end
-    local embeddings: {any} = {}
-    for i, child_spec in ipairs(children) do
-        embeddings[i] = { node_id = child_ids[i], node_type = nodes[i].node_type,
-            parent_id = doc_id, embedding = child_spec.embedding }
-    end
-    local embedding_ids, emb_err = insert_embeddings_tx(tx, db_type, store_id, embeddings)
-    if emb_err or not embedding_ids then return nil, errors.wrap(emb_err, "insert child embedding failed") end
+        if read_err then return nil, read_err end
+        if preparation and #children == 0 then
+            return nil,
+                errors.new({ kind = errors.INTERNAL, message = "source preparation ended before the expected child count" })
+        end
+        local prepared = preparation and { cursor_id = preparation.cursor_id, first = preparation.first_ordinal + offset }
+            or nil
+        local counts, child_err = insert_source_children_tx(tx, db_type, store_id, doc_id, children, prepared)
+        if not counts then return nil, child_err end
+        summary_count = summary_count + counts.summary
+        chunk_count = chunk_count + counts.chunk
+        embeddings = embeddings + counts.embeddings
+        offset = offset + #children
+    until not preparation or offset >= preparation.child_count
 
     return {
         document_node_id = doc_id,
@@ -602,7 +675,7 @@ local function replace_document_tx(tx: any, db_type: any, store_id: any, replace
         removed_chunk_count = removed_chunks,
         summary_count = summary_count,
         chunk_count = chunk_count,
-        embedding_count = before and #embedding_ids or nil,
+        embedding_count = before and embeddings or nil,
         removed_embedding_count = before and (tonumber(reused_counts and reused_counts.child_embedding_count) or 0) or nil,
     }, nil
 end
@@ -793,7 +866,11 @@ function writer.delete_store(component_id: any)
     end
     local store_id = rows[1].id
 
-    local cascade = {}
+    local cascade = {
+        {sql = "DELETE FROM kb10_source_preparation_rows WHERE store_id = $1", name = "kb10_source_preparation_rows"},
+        {sql = "DELETE FROM kb10_source_blocks WHERE store_id = $1", name = "kb10_source_blocks"},
+        {sql = "DELETE FROM kb10_source_preparations WHERE store_id = $1", name = "kb10_source_preparations"},
+    }
     if db_type == sql.type.SQLITE then
         local fts_err = delete_sqlite_fts_tx(tx, "SELECT fts_rowid FROM kb10_nodes WHERE store_id = $1", { store_id })
         if fts_err then return fail_tx(tx, db, fts_err) end
@@ -1170,6 +1247,13 @@ function writer.source_checkpoint_outcome(before: table, change: table): table
         delta.embedding_delta = -(tonumber(counts.embedding_count) or 0)
         return delta
     end
+    if change.preparation then
+        delta.embedding_delta = change.preparation.child_count - (tonumber(counts.child_embedding_count) or 0)
+        delta.document_delta = delta.document_delta + 1
+        delta.summary_delta = delta.summary_delta + change.preparation.summary_count
+        delta.chunk_delta = delta.chunk_delta + change.preparation.chunk_count
+        return delta
+    end
     local children = change.replacement.children
     delta.embedding_delta = #children - (tonumber(counts.child_embedding_count) or 0)
     delta.document_delta = delta.document_delta + 1
@@ -1192,7 +1276,7 @@ function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: s
     if change.kind == "delete" then
         written, write_err = delete_document_tx(tx, dialect, store_id, selector, before)
     else
-        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before)
+        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before, change.preparation)
         added = 1
     end
     if write_err or not written then return nil, write_err end

@@ -835,38 +835,34 @@ local function estimate_tokens(text: string): integer
     return math.ceil(#text / EMBED_BYTES_PER_TOKEN)
 end
 
+-- Select the same model-request boundary for an in-memory plan and a staged page.
+function M.embedding_batch_length(texts: {string}, first: integer): (integer?, string?)
+    local count, tokens = 0, 0
+    for i = first, math.min(#texts, first + EMBED_BATCH_COUNT - 1) do
+        local n = estimate_tokens(texts[i])
+        if tokens + n > EMBED_BATCH_MAX_TOKENS then
+            if count == 0 then
+                return nil, "embed chunk " .. tostring(first) .. " is ~" .. tostring(n) ..
+                    " tokens, over the " .. tostring(EMBED_BATCH_MAX_TOKENS) .. "-token per-request budget"
+            end
+            break
+        end
+        tokens = tokens + n
+        count = count + 1
+    end
+    return count, nil
+end
+
 local function batch_embed(embedder: any, embed_texts: {string}, model: any, dims: any): (any, string?, any?)
     local all: {any} = {}
     local i = 1
     local n = #embed_texts
     while i <= n do
         local batch: {string} = {}
-        local tokens = 0
-        while i <= n and #batch < EMBED_BATCH_COUNT do
-            local chunk_tokens = estimate_tokens(embed_texts[i])
-            -- A chunk whose estimate alone exceeds the budget can never share a
-            -- request; send it on its own. If it still cannot fit, the provider
-            -- would reject it, so surface a precise per-chunk error rather than
-            -- failing the whole document on an opaque overflow.
-            if #batch == 0 and chunk_tokens > EMBED_BATCH_MAX_TOKENS then
-                tokens = chunk_tokens
-                batch[1] = embed_texts[i]
-                i = i + 1
-                break
-            end
-            if #batch > 0 and tokens + chunk_tokens > EMBED_BATCH_MAX_TOKENS then
-                break
-            end
-            batch[#batch + 1] = embed_texts[i]
-            tokens = tokens + chunk_tokens
-            i = i + 1
-        end
-
-        if #batch == 1 and tokens > EMBED_BATCH_MAX_TOKENS then
-            return nil, "embed chunk " .. tostring(i - 1) .. " is ~" .. tostring(tokens) ..
-                " tokens, over the " .. tostring(EMBED_BATCH_MAX_TOKENS) ..
-                "-token per-request budget"
-        end
+        local count, size_err = M.embedding_batch_length(embed_texts, i)
+        if not count then return nil, size_err end
+        for j = i, i + count - 1 do batch[#batch + 1] = embed_texts[j] end
+        i = i + count
 
         local vectors, emb_err = embedder(batch, model, dims)
         if emb_err or type(vectors) ~= "table" or type(vectors.result) ~= "table" then
@@ -884,6 +880,7 @@ end
 M.batch_embed = batch_embed
 M.estimate_tokens = estimate_tokens
 M.EMBED_BATCH_MAX_TOKENS = EMBED_BATCH_MAX_TOKENS
+M.EMBED_BATCH_COUNT = EMBED_BATCH_COUNT
 M.MAX_DOCUMENT_CONTENT_GUARD_CHARS = MAX_DOCUMENT_CONTENT_GUARD_CHARS
 M.MAX_CHUNKS_PER_DOC = MAX_CHUNKS_PER_DOC
 M.DEFAULT_CHUNK_ENRICHMENT_BATCH_SIZE = DEFAULT_CHUNK_ENRICHMENT_BATCH_SIZE
@@ -954,6 +951,8 @@ local function validate_vector(vec: any, dims: any, label: string): string?
     return nil
 end
 
+M.validate_vector = validate_vector
+
 local function planner_callbacks(materialization_opts: MaterializationOptions, summarizer: any,
         enricher: any, captioner: any, batch_enricher: any): (any, any, any, any)
     -- LLM-compress each document into its summary with the KB's summary model;
@@ -1006,6 +1005,32 @@ local function planner_callbacks(materialization_opts: MaterializationOptions, s
     return summarize, enrich, caption, enrich_batch
 end
 
+function M.source_document(doc: any, materialization_opts: MaterializationOptions): (table, table)
+    local meta = {}
+    for k, v in pairs(doc.metadata or {}) do meta[k] = v end
+    meta.external_source = meta.external_source or doc.external_source
+    meta.external_id = meta.external_id or doc.external_id
+    meta.external_version = meta.external_version or doc.external_version
+    if type(doc.source_ref) == "table" and type(meta.source_ref) ~= "table" then
+        meta.source_ref = doc.source_ref
+    end
+    meta.materialization = meta.materialization or materialization_opts
+
+    local doc_meta = {}
+    for k, v in pairs(meta) do doc_meta[k] = v end
+    doc_meta.role = "document"
+    -- Source-document read-model status: the engine document node IS the
+    -- KB-owned read-model row keyed by canonical (external_source, external_id).
+    -- A materialized document records status=completed here; a poison document
+    -- records status=failed on the same row (see the failure path below), so
+    -- the doc's outcome is queryable on the KB and re-ingestion replaces it.
+    doc_meta.status = "completed"
+    doc_meta.error = nil
+
+    return meta, {node_type = kb_types.NODE_TYPE.DOCUMENT, content = doc.content or "",
+        content_type = doc.content_type or "text/plain", metadata = doc_meta}
+end
+
 local function prepare_replacement(doc: any, target: any, materialization_opts: MaterializationOptions, dims: number,
         summarize: any, enrich: any, caption: any, enrich_batch: any, embedder: any): (table?, string?, any?)
     local store_row = target.store_row or target
@@ -1033,26 +1058,7 @@ local function prepare_replacement(doc: any, target: any, materialization_opts: 
             " vectors for " .. tostring(#embed_texts) .. " texts"
     end
 
-    local meta = {}
-    for k, v in pairs(doc.metadata or {}) do meta[k] = v end
-    meta.external_source = meta.external_source or doc.external_source
-    meta.external_id = meta.external_id or doc.external_id
-    meta.external_version = meta.external_version or doc.external_version
-    if type(doc.source_ref) == "table" and type(meta.source_ref) ~= "table" then
-        meta.source_ref = doc.source_ref
-    end
-    meta.materialization = meta.materialization or materialization_opts
-
-    local doc_meta = {}
-    for k, v in pairs(meta) do doc_meta[k] = v end
-    doc_meta.role = "document"
-    -- Source-document read-model status: the engine document node IS the
-    -- KB-owned read-model row keyed by canonical (external_source, external_id).
-    -- A materialized document records status=completed here; a poison document
-    -- records status=failed on the same row (see the failure path below), so
-    -- the doc's outcome is queryable on the KB and re-ingestion replaces it.
-    doc_meta.status = "completed"
-    doc_meta.error = nil
+    local meta, document = M.source_document(doc, materialization_opts)
 
     local children = {}
     local invalid_vector = nil
@@ -1156,12 +1162,7 @@ local function prepare_replacement(doc: any, target: any, materialization_opts: 
     return {
         store_id = store_row.id,
         source_thread_id = target.source_thread_id,
-        document = {
-            node_type = kb_types.NODE_TYPE.DOCUMENT,
-            content = doc.content or "",
-            content_type = doc.content_type or "text/plain",
-            metadata = doc_meta,
-        },
+        document = document,
         children = children,
     }, nil
 end
