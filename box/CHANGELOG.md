@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/kicksideai/providers/compare/box-v0.1.2...box-v0.1.3) (2026-11-19)
+
+
+### Bug Fixes
+
+* require compatible encrypted provider dependencies ([#173](https://github.com/kicksideai/providers/issues/173)) ([508276b](https://github.com/kicksideai/providers/commit/508276b3183236b644609b48eae680e671fa6b89))
+
 ## [0.1.2](https://github.com/kicksideai/providers/compare/box-v0.1.1...box-v0.1.2) (2026-11-18)
 
 
