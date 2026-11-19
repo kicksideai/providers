@@ -44,51 +44,49 @@ local function target_config(cursor)
         config = config, input_types = admitted}, nil
 end
 
-local function prepare(target: any, event: any, deadline: number): (CheckpointWriter?, error?)
+local function prepare(target: any, event: any, deadline: number): (CheckpointWriter?, error?, table?)
     if event.type ~= UPSERT and event.type ~= DELETE then
         if target.input_types[event.type] then
-            return nil, invalid("checkpointed knowledge source has no extractor for a declared event")
+            return nil, invalid("checkpointed knowledge source has no extractor for a declared event"), nil
         end
-        return function(_tx, _dialect) return true, nil end, nil
+        return function(_tx, _dialect) return true, nil end, nil, nil
     end
     event.external = {external_source = event.external_source, external_id = event.external_id,
         external_version = event.external_version}
     local extracted, extract_err = extractor.checkpoint_input(event)
-    if not extracted then return nil, dependency("artifact", extract_err) end
+    if not extracted then return nil, dependency("artifact", extract_err), nil end
     if extracted.error then
-        if extracted.retryable then return nil, dependency("artifact integrity", extracted.error) end
-        return nil, invalid(extracted.error)
+        if extracted.retryable then return nil, dependency("artifact integrity", extracted.error), nil end
+        return nil, invalid(extracted.error), nil
     end
     local rejected = extracted.rejection
     local doc = rejected and rejected.document or extracted.documents[1] or extracted.deletes[1]
-    if not doc then return nil, invalid("knowledge event has no source item") end
+    if not doc then return nil, invalid("knowledge event has no source item"), nil end
     local _, lineage_err = legacy_worker.ensure_source_lineage(doc, event, target.source_thread_id)
-    if lineage_err then return nil, invalid(lineage_err) end
+    if lineage_err then return nil, invalid(lineage_err), nil end
     local store_id = target.store_row.id
+    local selector = {source_thread_id = target.source_thread_id, external_source = doc.external_source,
+        external_id = doc.external_id}
+    local change = {kind = "replace"}
     if rejected then
-        return function(tx, dialect)
-            local id, err = writer.reject_source_revision_tx(tx, dialect, store_id, target.source_thread_id,
-                doc.metadata, rejected.code)
-            return id ~= nil, err
-        end, nil
-    end
-    if event.type == DELETE then
+        change = {kind = "reject", metadata = doc.metadata, code = rejected.code}
+    elseif event.type == DELETE then
         local selected, select_err = legacy_worker.selected_document_id(event, target.source_thread_id)
-        if select_err then return nil, select_err end
-        return function(tx, dialect)
-            local receipt, err = writer.delete_document_tx(tx, dialect, store_id, {
-                node_id = selected, source_thread_id = target.source_thread_id,
-                external_source = doc.external_source, external_id = doc.external_id,
-            })
-            return receipt ~= nil, err
-        end, nil
+        if select_err then return nil, select_err, nil end
+        selector.node_id = selected
+        change.kind = "delete"
     end
-    local replacement, model_err = legacy_worker.prepare_checkpoint_document(target, doc, target.config, deadline)
-    if not replacement then return nil, dependency("model", model_err) end
+    local before, before_err = writer.source_checkpoint_before(store_id, selector, change.kind)
+    if not before then return nil, before_err, nil end
+    if change.kind == "replace" then
+        local replacement, model_err = legacy_worker.prepare_checkpoint_document(target, doc, target.config, deadline)
+        if not replacement then return nil, dependency("model", model_err), nil end
+        change.replacement = replacement
+    end
+    local outcome = writer.source_checkpoint_outcome(before, change)
     return function(tx, dialect)
-        local receipt, err = writer.replace_document_tx(tx, dialect, store_id, replacement)
-        return receipt ~= nil, err
-    end, nil
+        return writer.write_source_checkpoint_tx(tx, dialect, store_id, selector, before, change, outcome)
+    end, nil, outcome
 end
 
 local function run(input)
@@ -102,13 +100,23 @@ local function run(input)
     local cursor = assignment.cursor
     local target, target_err = target_config(cursor)
     if not target then return nil, target_err end
+    local last_source
+    for index, event in ipairs(input.events) do
+        if event.type == UPSERT or event.type == DELETE then last_source = index end
+    end
     local progressed = false
-    for _, event in ipairs(input.events) do
+    for index, event in ipairs(input.events) do
         if progressed and deadline - time.now():unix_nano() < 1000000000 then break end
-        local write, prepare_err = prepare(target, event, deadline)
+        local write, prepare_err, outcome = prepare(target, event, deadline)
         if not write then return nil, prepare_err end
+        local sequence = tonumber(event.seq)
+        if not sequence then return nil, invalid("knowledge source event has no sequence") end
+        local writes
+        if outcome then
+            writes = legacy_worker.checkpoint_writes(cursor, sequence, outcome, index == last_source)
+        end
         local receipt, checkpoint_err = apply.checkpoint(db_id, assignment.job, cursor, assignment.prefetched_last,
-            {last_seq = tonumber(event.seq)}, write)
+            {last_seq = sequence, append_events = writes}, write)
         if not receipt then return nil, checkpoint_err end
         if checkpoint_err then log:warn("source checkpoint follow-up failed", {cursor_id = cursor.id}) end
         cursor.last_seq, cursor.continuation = receipt.last_seq, receipt.continuation
