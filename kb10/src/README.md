@@ -13,6 +13,18 @@ This module owns:
   `kickside.knowledge:kb_store_lifecycle` for store create/get/update/delete.
 - Embedding, query, maintenance, and deletion bindings for Knowledge consumers.
 
+Knowledge may request `get_store({component_id, stats = true})` or the stats-only
+`get_store({component_ids})` on the named lifecycle binding. Both reads require
+an authorized Knowledge caller. Each returned `stats` object includes committed
+accepted and failed roots, nodes, edges, installed embeddings, non-root concepts,
+chunks and summaries from one database snapshot. A batch omits stores the owner
+cannot find and carries no configuration.
+
+The read does one scoped SQL statement for up to 2,000 component IDs. Its cost
+tracks the node, edge and vector populations in the requested stores. Revisit
+transaction-owned store totals if large populated pages dominate catalog latency.
+Ordinary store/config lookups keep their existing query.
+
 ## Boundary and engine descriptors
 
 Knowledge owns KB Components and the engine-neutral lifecycle. KB10 owns its

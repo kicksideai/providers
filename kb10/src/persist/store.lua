@@ -12,6 +12,7 @@ local store = {}
 
 -- Reads
 store.get_store = reader.get_store
+store.get_store_statistics = reader.get_store_statistics
 store.vector_search = reader.vector_search
 store.browse_nodes = reader.browse_nodes
 store.browse_page = reader.browse_page

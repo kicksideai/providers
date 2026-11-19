@@ -858,12 +858,19 @@ entries:
       test: wippy.test:test
       store: kickside.kb10.persist:store
 
+  - name: store_statistics_fixture_authority
+    kind: security.policy
+    policy:
+      resources: kickside.knowledge:kb_store_lifecycle
+      actions: knowledge.store.stats
+      effect: allow
+
   - name: store_document_counts_test
     kind: function.lua
     meta: {type: test, suite: kb10_store_document_counts}
     source: file://store_document_counts_test.lua
     method: run
-    modules: [sql, uuid]
+    modules: [sql, uuid, contract, security]
     imports:
       test: wippy.test:test
       store: kickside.kb10.persist:store
