@@ -51,6 +51,7 @@ const uploadsLoading = ref(false)
 const uploadsError = ref('')
 const filter = ref('')
 const selected = ref<Record<string, boolean>>({})
+const pendingReingest = ref<{ selection: string; key: string }>()
 
 const filteredUploads = computed(() => {
   const q = filter.value.trim().toLowerCase()
@@ -73,11 +74,22 @@ async function loadUploads() {
 function toggleSelect(uuid: string) {
   selected.value = { ...selected.value, [uuid]: !selected.value[uuid] }
 }
-async function addSelected() {
+async function addSelected(reingest = false) {
   const picked = uploads.value.filter((u) => selected.value[u.uuid]).map((u) => ({ uuid: u.uuid, name: u.filename }))
   if (!picked.length) return
-  await ing.ingestExistingUploads(picked)
-  if (!ing.errMsg.value) selected.value = {}
+  if (reingest) {
+    const selection = JSON.stringify([props.kbId, ...picked.map(({ uuid }) => uuid)])
+    if (pendingReingest.value?.selection !== selection) {
+      pendingReingest.value = { selection, key: crypto.randomUUID() }
+    }
+    await ing.ingestExistingUploads(picked, pendingReingest.value.key)
+  } else {
+    await ing.ingestExistingUploads(picked)
+  }
+  if (!ing.errMsg.value) {
+    selected.value = {}
+    pendingReingest.value = undefined
+  }
 }
 
 function fmtSize(n?: number): string {
@@ -158,9 +170,13 @@ watch(() => props.kbId, () => { ing.clearItems(); ing.reset() })
     <section v-else-if="mode === 'uploads'" class="ap-pane">
       <div class="ap-uploads-bar">
         <input v-model="filter" class="ap-input" type="text" placeholder="Filter your uploads…" autocomplete="off" />
-        <button class="ap-submit" :disabled="!selectedCount || ing.busy.value" @click="addSelected">
+        <button class="ap-submit" :disabled="!selectedCount || ing.busy.value" @click="addSelected()">
           <Icon :icon="ing.busy.value ? 'tabler:loader-2' : 'tabler:plus'" :class="ing.busy.value && 'spin'" aria-hidden="true" />
           {{ selectedCount ? `Add ${selectedCount} selected` : 'Add selected' }}
+        </button>
+        <button class="ap-submit" :disabled="!selectedCount || ing.busy.value" @click="addSelected(true)">
+          <Icon icon="tabler:refresh" aria-hidden="true" />
+          Re-ingest selected
         </button>
       </div>
       <div v-if="uploadsLoading" class="ap-uploads-state"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Loading your uploads…</div>

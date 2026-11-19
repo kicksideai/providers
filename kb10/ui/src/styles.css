@@ -267,7 +267,7 @@ select.ap-input { cursor: pointer; }
 .ap-submit svg { width: 16px; height: 16px; }
 
 /* My uploads picker */
-.ap-uploads-bar { display: flex; gap: 9px; align-items: center; }
+.ap-uploads-bar { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
 .ap-uploads-bar .ap-input { flex: 1; }
 .ap-uploads-state {
   display: flex; align-items: center; gap: 8px; padding: 22px 4px;
