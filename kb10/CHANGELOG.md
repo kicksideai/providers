@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.31](https://github.com/kicksideai/providers/compare/kb10-v0.2.30...kb10-v0.2.31) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** retry a rejected embedding provider instead of invalidating the source ([#178](https://github.com/kicksideai/providers/issues/178)) ([522d1f5](https://github.com/kicksideai/providers/commit/522d1f52c335f196dd5ef192be623afbbd48c066))
+
 ## [0.2.30](https://github.com/kicksideai/providers/compare/kb10-v0.2.29...kb10-v0.2.30) (2026-11-19)
 
 
