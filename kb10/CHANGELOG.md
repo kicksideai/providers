@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.28](https://github.com/kicksideai/providers/compare/kb10-v0.2.27...kb10-v0.2.28) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** retain queued sources through dependency outages ([#168](https://github.com/kicksideai/providers/issues/168)) ([e9b5476](https://github.com/kicksideai/providers/commit/e9b5476bc134528c28e069d5accc9ddbebbda7b1))
+
 ## [0.2.27](https://github.com/kicksideai/providers/compare/kb10-v0.2.26...kb10-v0.2.27) (2026-11-19)
 
 
