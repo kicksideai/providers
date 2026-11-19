@@ -32,7 +32,7 @@ end
 
 local function read_store(db, registration, id)
     return {
-        cursor = assert(db:query([[SELECT c.last_seq,c.last_error,j.attempts,j.status,j.scheduled_at,t.event_count,
+        cursor = assert(db:query([[SELECT c.last_seq,c.last_error,j.attempts,j.max_attempts,j.status,j.scheduled_at,t.event_count,
             j.last_error AS job_error FROM kickside_projection_cursor c
             JOIN kickside_job j ON j.id=c.job_id JOIN kickside_thread t ON t.id=c.thread_id WHERE c.id=$1]],
             {registration.cursor_id}))[1],
@@ -126,10 +126,10 @@ local function assert_replay_stays_bounded(db, registered, store_id, model)
     end
 end
 
-return {run = test.run_cases(function()
-    test.describe("scheduled KB10 source checkpoints", function()
+local function scenario(worker, ordinary)
+    test.describe("scheduled KB10 source worker", function()
         test.it("recovers the existing slot without losing or replaying accepted documents", function()
-            local id = uuid.v7()
+            local id, actor = uuid.v7(), uuid.v7()
             local model = "kb10-checkpoint-" .. id
             assert(models.upsert_card({name = model, provider_id = "app:checkpoint_model_provider", provider_model = model,
                 capabilities = {"embed"}, dimensions = 512, max_tokens = 4096}))
@@ -139,24 +139,43 @@ return {run = test.run_cases(function()
                 assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_checkpoint_model (
                     model TEXT PRIMARY KEY, online INTEGER NOT NULL, calls INTEGER NOT NULL, failures INTEGER NOT NULL)]]))
                 assert(db:execute("INSERT INTO kb10_checkpoint_model (model,online,calls,failures) VALUES ($1,0,0,0)", {model}))
-                assert(db:execute("INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test',$2)", {id, id}))
+                local identity
+                if ordinary then
+                    assert(db:execute("INSERT INTO app_users (user_id,email,password_hash) VALUES ($1,$2,'!fixture')",
+                        {actor, actor .. "@test.invalid"}))
+                    assert(db:execute("INSERT INTO app_user_groups (user_id,group_id) VALUES ($1,'app:user')", {actor}))
+                    assert(db:execute([[INSERT INTO kickside_components (component_id,impl_id,private_context)
+                        VALUES ($1,'kickside.kb10:embeddable','{}')]], {id}))
+                    assert(db:execute([[INSERT INTO kickside_component_access
+                        (access_id,subject_type,subject_id,component_id,source_component_id,access_mask)
+                        VALUES ($1,'user',$2,$3,$3,15)]], {uuid.v7(),actor,id}))
+                    identity = {version = 2, principal = {kind = "user", id = actor}, authorized_by = {kind = "user", id = actor},
+                        component_id = id, captured_at = time.now():utc():format(time.RFC3339)}
+                end
+                assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id)
+                    VALUES ($1,'kickside.knowledge.injection',$2)]], {id, id}))
                 append(db, id, "a", "1", {content = "Earlier good revision"})
                 append(db, id, "a", "2", {content = "queued replacement"})
-                return assert(projections.register_projection(db, id, {
-                    kind = "knowledge.injection.source", worker_input_mode = "prefetch_events", system_identity = true,
-                    worker_ref = "proc://kickside.kb10.injection:checkpoint_source_worker",
+                local registration = assert(projections.register_projection(db, id, {
+                    kind = "knowledge.injection.source", worker_input_mode = "prefetch_events", system_identity = not ordinary, execution_identity = identity,
+                    worker_ref = worker,
                     events = {input = {{type = UPSERT}, {type = DELETE}}},
                     worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
                 }))
+                if ordinary then
+                    assert(db:execute("UPDATE kickside_job SET max_attempts=1 WHERE id=$1", {registration.job_id}))
+                end
+                return registration
             end)
             local scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
             local ok, err = pcall(function()
                 assert(jobs.nudge_workers())
                 local outage = wait_state(registered, id, function(cursor)
-                    return cursor.status == "pending" and tonumber(cursor.attempts) > 0
+                    return cursor.status == "pending" and (tonumber(cursor.attempts) > 0 or caught_up(cursor))
                 end)
                 test.eq(tonumber(outage.cursor.last_seq), 1, tostring(outage.cursor.last_error or outage.cursor.job_error))
-                test.contains(outage.cursor.last_error, "knowledge source model unavailable")
+                test.contains(outage.cursor.last_error, ordinary and "fixture model provider cannot be reached" or "knowledge source model unavailable")
+                test.not_nil(outage.cursor.scheduled_at)
                 test.eq(#outage.roots, 1)
                 test.eq(outage.roots[1].content, "Earlier good revision")
 
@@ -171,6 +190,30 @@ return {run = test.run_cases(function()
                     append(db, id, "b", "1", missing)
                     append(db, id, "c", "1", {content = "Later good document"})
                     test.eq(read_store(db, registered, id).cursor.scheduled_at, outage.cursor.scheduled_at)
+                end)
+                if ordinary then
+                    time.sleep("250ms")
+                    local held = in_db(function(db) return read_store(db, registered, id) end)
+                    test.eq(held.cursor.attempts, outage.cursor.attempts)
+                    test.eq(held.cursor.scheduled_at, outage.cursor.scheduled_at)
+                    test.eq(assert(store.browse_page(id, {scope = "failures"})).total, 0)
+                    local retry = wait_state(registered, id, function(cursor)
+                        return cursor.status == "pending" and tonumber(cursor.attempts) == 2
+                    end)
+                    test.eq(tonumber(retry.cursor.max_attempts), 1)
+                    test.not_nil(retry.cursor.scheduled_at)
+                    test.eq(tonumber(retry.cursor.last_seq), 1)
+                    test.eq(#retry.roots, 1)
+                    test.eq(metadata(retry.roots[1]).status, "completed")
+                    test.is_true(tostring(retry.cursor.scheduled_at) > tostring(outage.cursor.scheduled_at))
+                    in_db(function(db)
+                        test.eq(#outputs(db, id).graph, 1)
+                        local counts = assert(db:query("SELECT calls,failures FROM kb10_checkpoint_model WHERE model=$1", {model}))[1]
+                        test.eq(tonumber(counts.calls), 4)
+                        test.eq(tonumber(counts.failures), 3)
+                    end)
+                end
+                in_db(function(db)
                     assert(db:execute("UPDATE kb10_checkpoint_model SET online=1 WHERE model=$1", {model}))
                 end)
                 local done = wait_state(registered, id, caught_up)
@@ -181,15 +224,21 @@ return {run = test.run_cases(function()
                 test.eq(metadata(done.roots[1]).status, "completed")
                 test.eq(metadata(done.roots[1]).source_rejection.code, "artifact_bytes_not_found")
                 test.eq(metadata(done.roots[2]).status, "failed")
+                test.eq(metadata(done.roots[2]).title, "Indexing failed")
+                test.contains(metadata(done.roots[2]).error, "stored content is missing")
                 test.eq(done.roots[3].content, "Later good document")
+                local failures = assert(store.browse_page(id, {scope = "failures"}))
+                test.eq(failures.total, 1)
+                test.eq(failures.nodes[1].id, done.roots[2].id)
+                test.contains(failures.nodes[1].metadata.error, "stored content is missing")
 
                 in_db(function(db)
                     local published = outputs(db, id)
                     test.eq(#published.graph, 5)
                     test.eq(#published.digest, 1)
                     test.eq(#published.treatment, 1)
-                    test.eq(published.digest[1].source_target_seq, published.graph[5].source_to_seq)
-                    test.eq(published.treatment[1].source_target_seq, published.graph[5].source_to_seq)
+                    test.eq(published.digest[1].source_to_seq, published.graph[5].source_to_seq)
+                    test.eq(published.treatment[1].source_target_seq, published.digest[1].source_target_seq)
                     test.eq(published.graph[2].document_delta, 0)
                     test.eq(published.graph[3].status, "degraded")
                     test.eq(published.graph[3].failed_delta, 0)
@@ -207,14 +256,17 @@ return {run = test.run_cases(function()
                     test.eq(embeddings, tonumber(assert(db:query([[SELECT COUNT(*) AS count
                         FROM kb10_embeddings WHERE store_id=$1]], {id}))[1].count))
                     local provider = assert(db:query("SELECT calls,failures FROM kb10_checkpoint_model WHERE model=$1", {model}))[1]
-                    test.eq(tonumber(provider.calls), 4)
-                    test.eq(tonumber(provider.failures), 1)
+                    test.eq(tonumber(provider.calls), ordinary and 6 or 4)
+                    test.eq(tonumber(provider.failures), ordinary and 3 or 1)
                     local runs = assert(db:query("SELECT status FROM kickside_job_run WHERE job_id=$1 ORDER BY execution_seq",
                         {registered.job_id}))
-                    test.eq(#runs, 3)
-                    test.eq(runs[1].status, "failed")
-                    test.eq(runs[2].status, "completed")
-                    test.eq(runs[3].status, "completed")
+                    local failed = 0
+                    for _, run in ipairs(runs) do
+                        if run.status == "failed" then failed = failed + 1
+                        else test.eq(run.status, "completed") end
+                    end
+                    test.eq(failed, ordinary and 2 or 1)
+                    test.eq(#runs, ordinary and 5 or 3)
                     assert_replay_stays_bounded(db, registered, id, model)
                 end)
                 local delete_seq = in_db(function(db) return delete(db, id, "system", "c", done.roots[3].id) end)
@@ -244,6 +296,12 @@ return {run = test.run_cases(function()
                 assert(db:execute("DELETE FROM kb10_checkpoint_model WHERE model=$1", {model}))
                 assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", {id}))
                 assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {id}))
+                if ordinary then
+                    assert(db:execute("DELETE FROM kickside_component_access WHERE component_id=$1", {id}))
+                    assert(db:execute("DELETE FROM kickside_components WHERE component_id=$1", {id}))
+                    assert(db:execute("DELETE FROM app_user_groups WHERE user_id=$1", {actor}))
+                    assert(db:execute("DELETE FROM app_users WHERE user_id=$1", {actor}))
+                end
             end)
             assert(store.delete_store(id))
             assert(models.delete_card(model))
@@ -252,4 +310,9 @@ return {run = test.run_cases(function()
             if not ok then error(err) end
         end)
     end)
-end)}
+end
+
+return {
+    run = test.run_cases(function() scenario("proc://kickside.kb10.injection:checkpoint_source_worker", false) end),
+    ordinary = test.run_cases(function() scenario("proc://kickside.kb10.injection:source_worker_proc", true) end),
+}

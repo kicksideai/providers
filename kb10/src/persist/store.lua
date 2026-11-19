@@ -35,6 +35,7 @@ store.insert_graph_node = writer.insert_graph_node
 store.update_node = writer.update_node
 store.write_node_with_embedding = writer.write_node_with_embedding
 store.replace_document = writer.replace_document
+store.reject_source_revision = writer.reject_source_revision
 store.insert_embedding = writer.insert_embedding
 store.insert_nodes = writer.insert_nodes
 store.insert_embeddings = writer.insert_embeddings
