@@ -223,7 +223,7 @@ watch([kbId, routeParam], async ([id, route]) => {
     </KbShell>
 
     <KbDrawer :open="addOpen" title="Add to library" icon="tabler:plus" @close="addOpen = false">
-      <AddPanel :kb-id="kbId" noun="document" @changed="addOpen = false; reload()" />
+      <AddPanel :kb-id="kbId" noun="document" @changed="closePanel => { if (closePanel) addOpen = false; reload() }" />
     </KbDrawer>
 
     <KbConfirm

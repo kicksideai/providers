@@ -2,7 +2,7 @@ import { ref as k, computed as x, onBeforeUnmount as ve, watch as Z, defineCompo
 import { Icon as V } from "@iconify/vue";
 import { api as re, host as me, loadByTagName as Ee } from "@wippy-fe/proxy";
 import { a as De, u as Ie } from "./wc-runtime-f54Bo-yJ.js";
-import { E as ke, i as be, f as Me, s as Le, c as Oe, _ as oe, u as Pe, a as Re, n as ie, b as Be, d as xe, e as qe, g as Ve, h as ge, j as je, k as Ue, l as Xe, m as ze, o as Ae, p as Ke } from "./AddPanel.vue_vue_type_script_setup_true_lang-DfhPpnfo.js";
+import { E as ke, i as be, f as Me, s as Le, c as Oe, _ as oe, u as Pe, a as Re, n as ie, b as Be, d as xe, e as qe, g as Ve, h as ge, j as je, k as Ue, l as Xe, m as ze, o as Ae, p as Ke } from "./AddPanel.vue_vue_type_script_setup_true_lang-U0Aq1ezl.js";
 import { _ as ye } from "./KbButton.vue_vue_type_script_setup_true_lang-tUNGjhRC.js";
 const _e = {
   "text/markdown": "MD",
@@ -821,7 +821,7 @@ const We = { class: "kx-railhead" }, Je = { class: "kx-railhead-title" }, Qe = {
             "kb-id": c.value,
             noun: "document",
             onChanged: u[5] || (u[5] = (m) => {
-              s.value = !1, e(X)();
+              m && (s.value = !1), e(X)();
             })
           }, null, 8, ["kb-id"])
         ]),
@@ -853,4 +853,4 @@ const We = { class: "kx-railhead" }, Je = { class: "kx-railhead-title" }, Qe = {
 export {
   nn as mountConfig
 };
-//# sourceMappingURL=document-mount-DBYSCjFv.js.map
+//# sourceMappingURL=document-mount-B5qHThLw.js.map

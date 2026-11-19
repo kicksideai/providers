@@ -120,7 +120,7 @@ function openHit(hit: SearchHit) {
 
 // ── Add page drawer ───────────────────────────────────────────────────────────
 const sheet = ref<'' | 'add'>('')
-function onAdded() { sheet.value = ''; emit('changed') }
+function onAdded(closePanel: boolean) { if (closePanel) sheet.value = ''; emit('changed') }
 </script>
 
 <template>

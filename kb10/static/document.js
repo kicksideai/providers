@@ -1,5 +1,5 @@
 import { W as e, u as i } from "./wc-runtime-f54Bo-yJ.js";
-import { a as t, b as a } from "./styles-BYepktE6.js";
+import { a as t, b as a } from "./styles-DkEYspC4.js";
 import { p as n } from "./package-BnnarOlp.js";
 import "@iconify/vue";
 import { define as p } from "@wippy-fe/proxy";
@@ -15,7 +15,7 @@ class r extends e {
   static get vueConfig() {
     return {
       lazyConfig: t(
-        () => import("./document-mount-DBYSCjFv.js").then((o) => o.mountConfig),
+        () => import("./document-mount-B5qHThLw.js").then((o) => o.mountConfig),
         "Could not load the document knowledge base. Reload the page to try again.",
         i
       )
