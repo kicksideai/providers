@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 -- LLM-based OCR. Transcribes the literal text of a page image via a vision model.
 -- Dependencies are injectable (new(runtime)) so the transcription seam can be tested
 -- without a live model, mirroring the converter libraries' new(runtime) shape.
@@ -178,7 +179,7 @@ local function new(runtime: any): any
             if type(out) ~= "string" then
                 return nil, "ocr: unexpected model result"
             end
-            if (out :: string):match("^%s*(.-)%s*$") == NO_TEXT_REPLY then
+            if trim(out) == NO_TEXT_REPLY then
                 return "", nil
             end
             return out, nil

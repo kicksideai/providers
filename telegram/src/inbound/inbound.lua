@@ -1,3 +1,4 @@
+local text_trim = require("text_trim").trim
 local contract = require("contract")
 local transport = require("transport")
 local types = require("types")
@@ -9,7 +10,7 @@ local CHANNEL_CONTRACT = "kickside.channel:receive"
 
 local function trim(value: any): string
     if type(value) ~= "string" then value = tostring(value or "") end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
+    return text_trim(value)
 end
 
 local function update_data(args: any): any

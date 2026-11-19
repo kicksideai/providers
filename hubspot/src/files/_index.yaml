@@ -8,6 +8,8 @@ entries:
     meta:
       comment: Parses a HubSpot form file property value into Files API ids without network or credentials.
     source: file://refs.lua
+    imports:
+      text_trim: kickside.provider_text:trim
 
   - name: fetcher
     kind: library.lua
@@ -16,6 +18,7 @@ entries:
     source: file://fetcher.lua
     modules: [http_client]
     imports:
+      text_trim: kickside.provider_text:trim
       transport: kickside.hubspot.client:transport
       types: kickside.hubspot.client:types
 

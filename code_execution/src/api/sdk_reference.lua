@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 -- SDK catalog: compact rows with limit/cursor paging. fields selects additional
 -- descriptor fields; the reference panel and generator explicitly request schemas.
 
@@ -11,7 +12,7 @@ local function csv_ids(raw: any): any
     if type(raw) ~= "string" or raw == "" then return {} end
     local out: { string } = {}
     for id in string.gmatch(raw :: string, "([^,]+)") do
-        local trimmed = id:match("^%s*(.-)%s*$")
+        local trimmed = trim(id)
         if trimmed ~= "" then out[#out + 1] = trimmed end
     end
     return out

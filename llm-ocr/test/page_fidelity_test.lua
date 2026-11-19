@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local trim = require("text_trim").trim
 local test = require("test")
 local fs = require("fs")
 local funcs = require("funcs")
@@ -13,6 +14,11 @@ local stage = require("stage")
 local ocr = require("ocr")
 local llm = require("llm")
 local doc2md = require("doc2md")
+
+local function primary_text(id: string): string
+    local primary = assert(parts.read_primary_content(id))
+    return assert(primary.content, "expected primary document text")
+end
 
 return { run = test.run_cases(function()
     test.describe("PDF page fidelity through extraction, rendering and OCR", function()
@@ -30,7 +36,7 @@ return { run = test.run_cases(function()
                     test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = key, value = value}).success)
                 end
                 test.is_true(processor.process(params).success)
-                local original = assert(parts.read_primary_content(id)).content
+                local original = primary_text(id)
                 assert(storage:remove(path))
                 local rendered, err = funcs.call("kickside.uploads.rasterize:stage", params)
                 test.is_nil(err)
@@ -62,7 +68,7 @@ return { run = test.run_cases(function()
                     test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "all"}).success)
                 end
                 test.is_true(processor.process(params).success)
-                local original = assert(parts.read_primary_content(id)).content
+                local original = primary_text(id)
                 local originals = doc2md.markers(original)
                 local rendered, render_err = funcs.call("kickside.uploads.rasterize:stage", params)
                 test.is_nil(render_err, tostring(render_err)); test.is_true(rendered.success)
@@ -79,13 +85,13 @@ return { run = test.run_cases(function()
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_page_selection", value = "sparse"}).success)
                 test.is_true(result.success)
                 test.eq(calls, selection == "all" and #kinds or 1)
-                local markdown = assert(parts.read_primary_content(id)).content
+                local markdown = primary_text(id)
                 local markers = doc2md.markers(markdown)
                 test.eq(#markers, #kinds)
                 for page, marker in ipairs(markers) do
                     local body = markdown:sub(marker.finish + 1, markers[page + 1] and markers[page + 1].start - 1 or #markdown)
                     if selection == "all" or kinds[page] == "scan" then
-                        test.eq(body:match("^%s*(.-)%s*$"), "OCR TEXT " .. page)
+                        test.eq(trim(body), "OCR TEXT " .. page)
                     else
                         local old = original:sub(originals[page].finish + 1, originals[page + 1] and originals[page + 1].start - 1 or #original)
                         test.eq(body, old, "the text layer stays byte-for-byte intact")
@@ -117,7 +123,7 @@ return { run = test.run_cases(function()
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_source_bytes", value = 0}).success)
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_min_page_bytes", value = (mode == "extracted" or mode == "uneven" or mode == "form" or mode == "inline") and 0 or 51200}).success)
                 test.is_true(processor.process(params).success)
-                local original = assert(parts.read_primary_content(id)).content
+                local original = primary_text(id)
                 local originals = doc2md.markers(original)
                 test.eq(#originals, count)
                 local rendered, render_err = funcs.call("kickside.uploads.rasterize:stage", params)
@@ -153,7 +159,7 @@ return { run = test.run_cases(function()
                 local result = stage.run(params, {batch_size = 1, transcribe = function(bytes, options) current_bytes = bytes; return model.transcribe(bytes, options) end})
                 test.is_true(result.success)
                 test.eq(calls, expected)
-                local markdown = assert(parts.read_primary_content(id)).content
+                local markdown = primary_text(id)
                 local markers = doc2md.markers(markdown)
                 test.eq(#markers, count)
                 for page, marker in ipairs(markers) do
@@ -163,7 +169,7 @@ return { run = test.run_cases(function()
                         local old = original:sub(originals[page].finish + 1, originals[page + 1] and originals[page + 1].start - 1 or #original)
                         test.eq(body, old, "the text layer stays byte-for-byte intact")
                     elseif kinds[page] == "blank" then test.is_nil(body:match("%S"))
-                    else test.eq(body:match("^%s*(.-)%s*$"), "SCANNED " .. page) end
+                    else test.eq(trim(body), "SCANNED " .. page) end
                 end
                 if mode == "text" then test.eq(markdown, original) end
                 if mode == "mixed" then
@@ -171,7 +177,7 @@ return { run = test.run_cases(function()
                         error("completed OCR pages do not call the model again")
                     end})
                     test.is_true(retried.success)
-                    test.eq(assert(parts.read_primary_content(id)).content, markdown, "retry keeps completed page work")
+                    test.eq(primary_text(id), markdown, "retry keeps completed page work")
                     test.is_true(processor.process(params).success)
                     local regenerated = assert(parts.read_primary_content(id))
                     test.eq(regenerated.content, original, "explicit conversion replaces earlier OCR content")

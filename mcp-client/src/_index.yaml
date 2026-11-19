@@ -2,6 +2,11 @@ version: "1.0"
 namespace: kickside.mcp_client
 
 entries:
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: definition
     kind: ns.definition
     readme: file://README.md
@@ -114,6 +119,7 @@ entries:
     source: file://http_client.lua
     modules: [http_client, json]
     imports:
+      text_trim: kickside.provider_text:trim
       protocol: kickside.mcp_client:protocol
 
   - name: broker

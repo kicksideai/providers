@@ -35,6 +35,7 @@ entries:
     source: file://transport.lua
     modules: [security]
     imports:
+      text_trim: kickside.provider_text:trim
       preconditions: kickside.discord.client:preconditions
       base: kickside.connection:base_connection
       reply_authorization: kickside.connection:reply_authorization

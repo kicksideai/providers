@@ -34,6 +34,7 @@ entries:
     method: main
     modules: [time, channel, logger, process]
     imports:
+      text_trim: kickside.provider_text:trim
       component: kickside.component:component
       api: kickside.telegram.client:api
 

@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local http_client = require("http_client")
 local config = require("config")
 local tool_result = require("tool_result")
@@ -25,7 +26,7 @@ end
 
 local function validate_public_url(url_value: unknown): (string?, string?)
     if type(url_value) ~= "string" then return nil, "URL must be a string" end
-    local url = (url_value:gsub("^%s*(.-)%s*$", "%1"))
+    local url = trim(url_value)
     if url == "" then return nil, "URL is required" end
     if #url > 8192 then return nil, "URL is too long" end
     if url:find("[%c%s]") then return nil, "URL must not contain whitespace or control characters" end

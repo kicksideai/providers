@@ -2,6 +2,11 @@ version: "1.0"
 namespace: kickside.phantombuster
 
 entries:
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: definition
     kind: ns.definition
     readme: file://README.md

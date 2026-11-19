@@ -33,10 +33,7 @@ local log = logger:named("discord.gateway.worker")
 -- user). The transport carries no routing -- it just forwards. An on_message hook
 -- short-circuits this for integration drivers. args.host is where dispatch
 -- processes spawn.
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function report(args: any, reason: string, message: any, state: string?)
     local ok, err = health.report(tostring(args.component_id or ""), reason, message, state)

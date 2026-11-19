@@ -32,10 +32,7 @@ local function list(value: unknown): JsonList return type(value) == "table" and 
 local function is_domain_error(value: unknown): boolean
     return type(value) == "table" and (value :: JsonMap).success == false
 end
-local function trim(value: unknown): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 local function bounded_text(value: unknown, maximum: number): string
     local text = trim(value)
     if #text <= maximum then return text end

@@ -104,10 +104,7 @@ M.KIND_SET = set_of(M.KIND)
 M.SCOPE_SET = set_of(M.SCOPE)
 M.CARDINALITY_SET = set_of(M.CARDINALITY)
 
-function M.trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+M.trim = require("text_trim").trim
 
 function M.now(): string
     return time.now():utc():format(time.RFC3339)
