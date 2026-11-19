@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/kicksideai/providers/compare/slack-v0.1.20...slack-v0.1.21) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
 ## [0.1.20](https://github.com/kicksideai/providers/compare/slack-v0.1.19...slack-v0.1.20) (2026-11-18)
 
 
