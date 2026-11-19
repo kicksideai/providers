@@ -173,6 +173,15 @@ export function useIngest(kbId: () => string, onDone: (closePanel: boolean) => v
     return {}
   }
 
+  function failureReason(data: unknown, fallback: string): string {
+    if (!isRecord(data)) return fallback
+    const details = data.details
+    const candidates = isRecord(details)
+      ? [details.details, details.message, details.error, data.error]
+      : [details, data.error]
+    return candidates.find((value): value is string => typeof value === 'string' && !!value.trim()) || fallback
+  }
+
   function uploadPath(uuid: string) {
     return `/api/v1/uploads/${encodeURIComponent(uuid)}`
   }
@@ -284,13 +293,12 @@ export function useIngest(kbId: () => string, onDone: (closePanel: boolean) => v
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       if (res?.success && res.uuid === uuid) trackUpload(key, uuid)
-      else await reconcileSubmission(key, uuid, res?.error || UNCONFIRMED_UPLOAD)
+      else await reconcileSubmission(key, uuid, failureReason(res, UNCONFIRMED_UPLOAD))
     } catch (e: any) {
       const data = e?.response?.data
       const status = e?.response?.status
       const rejected = status === 400
-      const reason = (rejected || status === 409) && typeof data?.details === 'string' && data.details.trim()
-        ? data.details : data?.error || e?.message || 'Upload failed'
+      const reason = failureReason(data, e?.message || 'Upload failed')
       if (rejected) pendingUploads.delete(key)
       await reconcileSubmission(key, uuid,
         rejected ? `${reason}. Select this file again to start a new upload.` : reason, rejected)
@@ -306,14 +314,14 @@ export function useIngest(kbId: () => string, onDone: (closePanel: boolean) => v
       if (!currentFile(key)) return
       if (!data?.success || typeof data.upload_token !== 'string' || !data.upload_token
           || typeof data.upload_id !== 'string' || !data.upload_id) {
-        failFile(key, data?.error || 'Could not get an upload token and file ID')
+        failFile(key, failureReason(data, 'Could not get an upload token and file ID'))
         return
       }
       pending.token = data.upload_token
       patch(key, { uuid: data.upload_id })
       await submitFile(key, data.upload_id, pending.file, data.upload_token)
     } catch (e: any) {
-      failFile(key, e?.response?.data?.error || e?.message || 'Could not get an upload token')
+      failFile(key, failureReason(e?.response?.data, e?.message || 'Could not get an upload token'))
       if (e?.response?.status === 401) host.handleError('auth-expired', e)
     }
   }
