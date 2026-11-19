@@ -5,6 +5,8 @@ local materializer_store = require("materializer_store")
 local uuid = require("uuid")
 local fs = require("fs")
 local doc2md = require("doc2md")
+local json = require("json")
+local tabular = require("tabular_chunker")
 
 local fixture = "## Products\n\n<!-- kickside:sheet header-row=4 -->\n| SKU | Name | Finish |\n| --- | --- | --- |\n| A-1 | " .. string.rep("Alpha ", 8) .. " | Zinc |\n| B-2 | " .. string.rep("Beta ", 8) .. " | Black |\n| C-3 | " .. string.rep("Gamma ", 8) .. " | Chrome |\n\n## Other\n\n<!-- kickside:sheet header-row=1 -->\n| SKU | Name | Finish |\n| --- | --- | --- |\n| D-4 | Delta | Copper |\n"
 local opts = { chunk_size = 240, chunk_overlap = 40, summary_max_chars = 0 }
@@ -14,6 +16,46 @@ end
 local function plan(doc, size)
     local options = { chunk_size = size or 240, chunk_overlap = 40, summary_max_chars = 0 }
     return source_materializer.plan_document_writes({ doc }, options)
+end
+
+local function block_reader(body: string, block: integer)
+    return function(offset: integer, requested: integer): (string?, any?)
+        return body:sub(offset + 1, offset + math.min(requested, block)), nil
+    end
+end
+
+local function assert_stream_parity(doc, size, block)
+    local expected, expected_meta, prepare_err = tabular.chunk_document(doc, size)
+    test.is_nil(prepare_err)
+    local texts = {}
+    local metadata = {}
+    local checkpoint: any = nil
+    local pauses = 0
+    local previous_offset = 0
+    repeat
+        local remaining = 3
+        local recognized, next_checkpoint, err = tabular.plan_document(doc, size, block_reader(doc.content, block),
+            function(text, meta)
+                texts[#texts + 1] = text
+                metadata[#metadata + 1] = meta
+            end,
+            { checkpoint = checkpoint, max_record_bytes = 128 * 1024, should_pause = function()
+                remaining = remaining - 1
+                return remaining == 0
+            end })
+        test.is_nil(err)
+        test.is_true(recognized)
+        checkpoint = nil
+        if next_checkpoint then
+            test.is_true(next_checkpoint.offset > previous_offset)
+            previous_offset = next_checkpoint.offset
+            pauses = pauses + 1
+            checkpoint = json.decode(assert(json.encode(next_checkpoint)))
+        end
+    until not checkpoint
+    test.is_true(pauses >= 1)
+    test.eq(assert(json.encode(texts)), assert(json.encode(expected)))
+    test.eq(assert(json.encode(metadata)), assert(json.encode(expected_meta)))
 end
 
 local function define_tests()
@@ -188,6 +230,107 @@ local function define_tests()
         test.it("rejects malformed tabular data instead of indexing arbitrary prose slices", function()
             local _, _, err = plan(document('SKU,Name\nA,"unterminated', "bad.csv"))
             test.not_nil(err)
+        end)
+    end)
+    test.describe("resumable spreadsheet planning", function()
+        test.it("preserves multiline CSV, UTF-8, quotes, BOM and CRLF across byte and checkpoint boundaries", function()
+            local csv = '\239\187\191SKU,Name,Notes\r\nA,"Étoile, Beta","say ""hi""\r\n🙂 next"\r\nB,Bravo,ok\r\nC,,'
+            for _, block in ipairs({1, 7, 65536}) do
+                assert_stream_parity(document(csv, "products.csv"), 240, block)
+            end
+        end)
+        test.it("preserves wide row fragments, empty columns and sheet transitions on resume", function()
+            local headers = {"SKU", "ATTR NAME1", "ATTR VALUE1", "Name"}
+            local cells = {"A", "Finish", "Zinc", "Étoile"}
+            for i = 5, 80 do
+                headers[i] = "Field" .. tostring(i)
+                cells[i] = ""
+            end
+            cells[80] = string.rep("🙂 escaped \\| pipe ", 4200)
+            local sheet = function(values) return "| " .. table.concat(values, " | ") .. " |\n" end
+            local md = "## Wide\n<!-- kickside:sheet header-row=9 column-start=3 -->\n"
+                .. sheet(headers) .. "| " .. string.rep("--- | ", 80) .. "\n"
+                .. sheet(cells) .. "\n## Empty\n| X |\n| --- |\n\n## Rows\n| SKU |\n| --- |\n| B |\n"
+            assert_stream_parity(document(md), 2200, 4093)
+        end)
+        test.it("stops both source reads and output when the sink cancels", function()
+            local csv = "SKU,Description\nA," .. string.rep("one ", 32) .. "\nB,"
+                .. string.rep("two ", 32) .. "\nC," .. string.rep("three ", 32)
+            local read = block_reader(csv, 8)
+            local reads = 0
+            local first_emit_reads = 0
+            local emitted = 0
+            local recognized, checkpoint, err = tabular.plan_document(document(csv, "cancel.csv"), 120,
+                function(offset, requested)
+                    reads = reads + 1
+                    return read(offset, requested)
+                end,
+                function()
+                    emitted = emitted + 1
+                    first_emit_reads = reads
+                    return "sink canceled"
+                end)
+            test.is_nil(recognized)
+            test.is_nil(checkpoint)
+            test.eq(err, "sink canceled")
+            test.eq(emitted, 1)
+            test.eq(reads, first_emit_reads)
+            test.is_true(reads * 8 < #csv)
+        end)
+        test.it("propagates a canceled read inside a logical record", function()
+            local csv = 'SKU,Name\nA,"quoted\nvalue"'
+            local doc = document(csv, "interrupted.csv")
+            local read = block_reader(csv, 4)
+            local _, checkpoint, err = tabular.plan_document(doc, 240, function(offset, requested)
+                if offset >= 16 then return nil, "read canceled" end
+                return read(offset, requested)
+            end, function() error("Unexpected incomplete record") end)
+            test.is_nil(checkpoint)
+            test.eq(err, "read canceled")
+        end)
+        test.it("enforces the checkpoint caller's record budget before emitting an oversized record", function()
+            local csv = 'SKU,Name\nA,"' .. string.rep("🙂\n", 1024) .. '"'
+            local doc = document(csv, "long.csv")
+            local read = block_reader(csv, 19)
+            local emitted = 0
+            local read_end = 0
+            local recognized, checkpoint, err = tabular.plan_document(doc, 2200, function(offset, requested)
+                local data = read(offset, requested) :: string
+                read_end = offset + #data
+                return data, nil
+            end, function() emitted = emitted + 1 end, { max_record_bytes = 128 })
+            test.is_nil(recognized)
+            test.is_nil(checkpoint)
+            test.eq(err, "spreadsheet record exceeds byte budget")
+            test.eq(emitted, 0)
+            test.is_true(read_end <= #"SKU,Name\n" + 128 + 19)
+            local chunks, _, whole_err = tabular.chunk_document(doc, 2200)
+            test.is_nil(whole_err)
+            test.is_true(#chunks > 1)
+        end)
+        test.it("rejects a changed record budget before opening the resumed source", function()
+            local csv = string.rep("Label", 24) .. ",Value\nA,B\n"
+            local doc = document(csv, "budget.csv")
+            local boundaries = 0
+            local recognized, checkpoint, err = tabular.plan_document(doc, 400, block_reader(csv, 8),
+                function() error("Header must not emit") end,
+                { max_record_bytes = 256, should_pause = function()
+                    boundaries = boundaries + 1
+                    return boundaries == 2
+                end })
+            test.is_true(recognized)
+            test.is_nil(err)
+            test.not_nil(checkpoint)
+            local reads = 0
+            local resumed, next_checkpoint, resume_err = tabular.plan_document(doc, 400, function()
+                reads = reads + 1
+                return "", nil
+            end, function() error("Rejected resume must not emit") end,
+                { checkpoint = checkpoint, max_record_bytes = 16 })
+            test.is_nil(resumed)
+            test.is_nil(next_checkpoint)
+            test.eq(resume_err, "spreadsheet checkpoint record budget changed")
+            test.eq(reads, 0)
         end)
     end)
     test.describe("spreadsheet ingestion into the engine store", function()
