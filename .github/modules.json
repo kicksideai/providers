@@ -463,6 +463,22 @@
       "pg_database": "kickside_test_phantombuster_v2",
       "extra_tests": []
     },
+    "provider-text": {
+      "path": "provider-text",
+      "organization": "kickside",
+      "module": "provider-text",
+      "type": "library",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lint",
+        "publish"
+      ],
+      "harness": null,
+      "profiles": [],
+      "pg_database": null,
+      "extra_tests": []
+    },
     "search-index": {
       "path": "search-index",
       "organization": "kickside",
