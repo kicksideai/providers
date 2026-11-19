@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.27](https://github.com/kicksideai/providers/compare/kb10-v0.2.26...kb10-v0.2.27) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** serve complete owned store statistics ([#166](https://github.com/kicksideai/providers/issues/166)) ([a99d910](https://github.com/kicksideai/providers/commit/a99d910eb07c94254d37a2e0e803117f2ebbd809))
+
 ## [0.2.26](https://github.com/kicksideai/providers/compare/kb10-v0.2.25...kb10-v0.2.26) (2026-11-19)
 
 
