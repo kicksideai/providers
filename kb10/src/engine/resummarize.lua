@@ -56,10 +56,7 @@ type RunCtx = {
     summarize: (string) -> (string?, string?),
 }
 
-local function trim(s: any): string
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 -- Same shape as ingestion's default_embedder (source_worker): one llm.embed round-trip.
 local function embedder(texts: any, model: any, dims: any): (any, string?)

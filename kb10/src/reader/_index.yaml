@@ -11,6 +11,7 @@ entries:
     meta: { name: kb_nodes, comment: kb10 node/graph reader — resolve(kb_id) + get_node/browse/graph over node_store. }
     source: file://kb_nodes.lua
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component
       node_store: kickside.kb10.persist:node_store
       engines: kickside.knowledge:engines

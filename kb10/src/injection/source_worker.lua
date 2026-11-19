@@ -33,7 +33,7 @@ local job_types = require("job_types")
 local registry = require("registry")
 local funcs = require("funcs")
 local uuid = require("uuid")
-local trim = require("provider_text").trim
+local trim = require("text_trim").trim
 
 local llm = require("llm")
 local prompt = require("prompt")

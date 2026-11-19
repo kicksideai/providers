@@ -24,10 +24,7 @@ local function arg_table(args: any): kb10.Map
     return {}
 end
 
-local function trim(value)
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function source_node_type(node_type)
     return type(node_type) == "string" and SOURCE_NODE_TYPES[node_type] == true

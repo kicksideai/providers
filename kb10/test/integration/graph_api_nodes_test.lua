@@ -45,6 +45,15 @@ local function define_tests()
                 test.eq("ML Fundamentals", node.metadata.label)
             end)
 
+            test.it("compares node identities with a megabyte of internal whitespace", function()
+                local node_id = "before" .. string.rep(" ", 1024 * 1024) .. "after"
+                local descendant, err = store():is_descendant({
+                    store_id = test_store_id, node_id = node_id, ancestor_id = node_id,
+                })
+                test.is_nil(err)
+                test.is_true(descendant)
+            end)
+
             test.it("preserves metadata fields on concept nodes", function()
                 local node_id, err = store():insert_node({ store_id = test_store_id, node = {
                     node_type = "concept",
@@ -79,6 +88,24 @@ local function define_tests()
                 test.eq("Introduction to neural networks", node.content)
                 test.eq("text/plain", node.content_type)
                 test.eq("Neural Networks Intro", node.metadata.title)
+            end)
+
+            test.it("rejects mismatched lineage with a megabyte of internal whitespace", function()
+                local event_id = "before" .. string.rep(" ", 1024 * 1024) .. "after"
+                local node_id, err = insert_materialized_node(test_store_id, {
+                    node_type = "document",
+                    content = "Document body",
+                    metadata = {
+                        thread_event_id = event_id,
+                        source_ref = {
+                            external_source = "fixture", external_id = "test-document",
+                            external_version = "v1", thread_event_id = "another-event",
+                        },
+                        external_id = "test-document", external_version = "v1",
+                    },
+                })
+                test.is_nil(node_id)
+                test.contains(tostring(err), "mismatched canonical thread event source_ref.thread_event_id")
             end)
 
             test.it("supports document nodes without content_type", function()

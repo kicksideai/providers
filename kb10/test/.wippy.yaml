@@ -21,7 +21,6 @@ workspace:
   replacements:
     kickside/kb10: ..
     kickside/search-index: ../../search-index
-    kickside/provider-text: ../../provider-text
     kickside/component: ../../../kickside/core/component
     kickside/contract: ../../../kickside/core/contract
     kickside/core: ../../../kickside/core/core
@@ -39,6 +38,8 @@ workspace:
 override:
   kickside.kb10.api:source:modules: [security]
   kickside.kb10.api:source:imports.http: app:key_owner_http
+  kickside.kb10.api:concepts_implementation:modules: [json, security, logger]
+  kickside.kb10.api:concepts_implementation:imports.http: app:key_owner_http
   kickside.core.jobs.service:worker.service:lifecycle.auto_start: false
   kickside.kb10.graph:enrichment_service.service:lifecycle.auto_start: false
 registry:

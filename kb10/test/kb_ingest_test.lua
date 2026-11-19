@@ -472,10 +472,11 @@ local function define_tests()
 
             test.it("rejects empty content", function()
                 local exec = new_executor(test_user_id):with_context({ kb_id = test_kb_id })
-                local result, err = exec:call("app:agent_embed_content", {})
-                test.is_nil(result)
-                test.not_nil(err)
-                test.is_true(tostring(err):find("content is required") ~= nil)
+                for _, request in ipairs({ {}, { content = "" }, { content = string.rep(" ", 1024 * 1024) } }) do
+                    local result, err = exec:call("app:agent_embed_content", request)
+                    test.is_nil(result)
+                    test.contains(tostring(err), "content is required")
+                end
             end)
 
             test.it("rejects missing kb_id when not in context", function()
@@ -498,6 +499,23 @@ local function define_tests()
                 test.not_nil(err)
                 test.is_true(tostring(err):find("cannot access KB") ~= nil)
             end)
+
+            for _, field in ipairs({ "title", "content" }) do
+                test.it("queues " .. field .. " with a megabyte of internal whitespace", function()
+                    local text = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+                    local request = { title = "Document title", content = "Document body" }
+                    request[field] = "\t" .. text .. "\n"
+                    local instance, open_err = open_embed(test_kb_id, test_user_id)
+                    test.is_nil(open_err)
+                    local result, embed_err = instance:embed_content(request)
+                    test.is_nil(embed_err, tostring(embed_err))
+                    test.is_true(result.success, tostring(result.error))
+                    local event = event_for_external(result.thread_id, result.external_id,
+                        "kickside.knowledge.events:content.upserted")
+                    local expected = field == "title" and text or request.content
+                    test.is_true(event.body[field] == expected)
+                end)
+            end
 
             test.it("embeds text content via contract", function()
                 local instance, open_err = open_embed(test_kb_id, test_user_id)
@@ -618,6 +636,57 @@ local function define_tests()
                 test.eq("custom.trait.source", event.body.source_ref.origin.type)
                 test.eq(external_id, event.body.source_ref.origin.id)
                 test.eq(external_id, event.body.source_ref.external_id)
+            end)
+
+            test.it("queues and materializes a large JSON upload through EmbedToKB", function()
+                local upload_id = uuid()
+                local filename = "records.json"
+                local mime = "application/json"
+                local content = '{"records":[\n' .. string.rep(" ", 16000)
+                    .. '{"name":"example","active":true}\n]}\n'
+                local _, upload_err = upload_record_repo.create(upload_id, test_user_id, #content,
+                    mime, "app:uploads", upload_id, "document", { filename = filename }, "completed")
+                test.is_nil(upload_err, tostring(upload_err))
+                local artifact, artifact_err = artifact_content_repo.create_artifact({
+                    upload_id = upload_id, kind = "text", role = "primary", mime_type = mime,
+                    content = content, metadata = { filename = filename },
+                })
+                test.is_nil(artifact_err, tostring(artifact_err))
+
+                local result, err = new_executor(test_user_id):call(TRAIT_EMBED_METHOD, {
+                    kb_id = test_kb_id, upload_id = upload_id,
+                })
+                test.is_nil(err, tostring(err))
+                test.eq(result.status, "queued")
+                test.eq(result.upload_id, upload_id)
+
+                local event = event_for_external(result.thread_id, "upload:" .. upload_id,
+                    "kickside.knowledge.events:content.upserted")
+                test.not_nil(event)
+                test.eq(event.body.content_type, mime)
+                test.eq(event.body.source_ref.artifact_id, artifact.artifact_id)
+                test.is_true(event.body.content == content, "the queued event retains every upload byte")
+
+                local materialized, worker_err = source_worker.run_with_deps({
+                    thread_id = test_kb_id,
+                    projection = { id = result.projection_id },
+                    events = { event }, range = { from_seq = event.seq, to_seq = event.seq },
+                    worker_config = { target_kb_ids = { test_kb_id } },
+                }, worker_fixtures.worker_deps({
+                    embedder = worker_fixtures.fake_embedder,
+                    summarizer = function() return "Example records", nil end,
+                    enricher = function() return "", nil end,
+                }))
+                test.is_nil(worker_err, tostring(worker_err))
+                test.eq(materialized.metrics.items_failed, 0)
+                test.eq(materialized.metrics.documents_inserted, 1)
+
+                local _, cleanup_err = artifact_cleanup_repo.delete_for_upload(upload_id)
+                test.is_nil(cleanup_err, tostring(cleanup_err))
+                local db = assert(sql.get("app:db"))
+                local _, delete_err = db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", { upload_id })
+                db:release()
+                test.is_nil(delete_err, tostring(delete_err))
             end)
 
             test.it("materializes an upload larger than the event row bound", function()

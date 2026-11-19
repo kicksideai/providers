@@ -29,6 +29,7 @@ entries:
       - ctx
       - json
     imports:
+      text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       store: kickside.kb10.persist:store
       kc: kickside.kb10:types
@@ -44,6 +45,7 @@ entries:
     modules:
       - ctx
     imports:
+      text_trim: kickside.contract:text_trim
       thread_ingest: kickside.knowledge.injection:thread_ingest
     method: handle
 
