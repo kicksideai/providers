@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.29](https://github.com/kicksideai/providers/compare/kb10-v0.2.28...kb10-v0.2.29) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** retry individual files in Knowledge uploads ([#171](https://github.com/kicksideai/providers/issues/171)) ([e675d08](https://github.com/kicksideai/providers/commit/e675d0871b1f993cbd0417ddc02ce62cb6afad7f))
+
 ## [0.2.28](https://github.com/kicksideai/providers/compare/kb10-v0.2.27...kb10-v0.2.28) (2026-11-19)
 
 
