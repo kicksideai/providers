@@ -19,7 +19,7 @@ const token = (id: string) => ({ data: { success: true, upload_token: `token-${i
 const admitted = (uuid: string) => ({ data: { success: true, uuid } })
 const upload = (uuid: string, status: string, error?: string) => ({ data: { upload: { uuid, status, error } } })
 const retryAccepted = (uuid: string) => ({ data: { success: true, upload_id: uuid } })
-const rejected = (status: number, error: string, details?: string) => ({ response: { status, data: { error, details } } })
+const rejected = (status: number, error: string, details?: unknown) => ({ response: { status, data: { error, details } } })
 const missing = rejected(404, 'Upload not found')
 
 async function selectFiles(wrapper: VueWrapper, filenames: string[]) {
@@ -114,6 +114,36 @@ describe('failed file retry in AddPanel', () => {
         expect((form as FormData).get('upload_token')).toBe('token-conflict-id')
         expect(((form as FormData).get('file') as File).name).toBe('conflict.txt')
       }
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('shows each admission failure first and can retry a file before an ID was issued', async () => {
+    const reason = 'wake job prelock failed: tx query: pq: deadlock detected (40P01)'
+    service.post.mockResolvedValueOnce(token('ready-id')).mockResolvedValueOnce(token('multipart-id'))
+      .mockRejectedValueOnce(rejected(409, 'Could not get an upload token', { message: 'Try issuing the token again' }))
+      .mockResolvedValueOnce(admitted('ready-id'))
+      .mockRejectedValueOnce(rejected(409, 'Failed to upload file', { message: reason }))
+      .mockResolvedValueOnce(token('new-id')).mockResolvedValueOnce(admitted('new-id'))
+    service.get.mockImplementation(async (path: string) => {
+      if (path.endsWith('/multipart-id')) throw missing
+      return upload(path.slice(uploadPath.length + 1), 'completed')
+    })
+    const wrapper = mount(AddPanel, { props: { kbId } })
+    try {
+      await selectFiles(wrapper, ['ready.md', 'multipart.tsv', 'token.csv'])
+      const rows = wrapper.findAll('.ap-item')
+      expect(rows.map(row => row.get('.ap-item-name').text())).toEqual(['multipart.tsv', 'token.csv', 'ready.md'])
+      expect(rows[0].get('.ap-item-status').text()).toBe(reason)
+      expect(rows[1].get('.ap-item-status').text()).toBe('Try issuing the token again')
+      await rows[1].get('button[aria-label="Retry token.csv"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.findAll('.ap-item.done').map(row => row.get('.ap-item-name').text())).toEqual(['ready.md', 'token.csv'])
+      expect(service.post.mock.calls.map(([path]) => path)).toEqual([
+        tokenPath, tokenPath, tokenPath, uploadPath, uploadPath, tokenPath, uploadPath,
+      ])
+      expect((service.post.mock.calls[6][1].get('file') as File).name).toBe('token.csv')
     } finally {
       wrapper.unmount()
     }
