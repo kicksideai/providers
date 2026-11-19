@@ -26,6 +26,8 @@ const props = useProps<P>()
 const emit = useEvents<E>()
 const kbId = computed(() => props.value.config?.kb_id || '')
 const routeParam = computed(() => props.value.config?.route || '')
+// The host can accept a navigation event without echoing it back through config.
+let routedId = ''
 let applyingRoute = false
 const scope = ref<DocumentScope>('documents')
 const tabs = [
@@ -72,7 +74,10 @@ function select(n: BrowseNode) {
   if (deleting.value[n.id]) return
   const changed = selectedId.value !== n.id
   selectedId.value = n.id
-  if (changed && !applyingRoute) emit('navigate', n.id)
+  if (changed && !applyingRoute) {
+    routedId = n.id
+    emit('navigate', n.id)
+  }
 }
 function selectById(id: string) {
   const n = findDoc(id)
@@ -96,6 +101,12 @@ async function doRemove() {
   const ok = await remove(n)
   if (ok) {
     if (selectedId.value === n.id) selectedId.value = ''
+    if (linkedDocument.value?.id === n.id) linkedDocument.value = null
+    if (routedId === n.id) {
+      routeRequest++
+      routedId = ''
+      emit('navigate', '')
+    }
     confirmTarget.value = null
   }
 }
@@ -120,7 +131,7 @@ watch(documents, (docs) => {
   if (linkedDocument.value && findDoc(linkedDocument.value.id)) linkedDocument.value = null
   if (selected.value) return
   const available = docs.filter((doc) => !deleting.value[doc.id])
-  const wanted = routeParam.value ? available.find((doc) => doc.id === routeParam.value) : null
+  const wanted = available.find((doc) => doc.id === routedId)
   const target = wanted || available[0]
   if (target) { applyingRoute = true; try { select(target) } finally { applyingRoute = false } }
   else if (!findDoc(selectedId.value)) selectedId.value = ''
@@ -129,6 +140,7 @@ watch(documents, (docs) => {
 watch(kbId, () => { selectedId.value = '' })
 
 watch([kbId, routeParam], async ([id, route]) => {
+  routedId = route
   const request = ++routeRequest
   if (linkedDocument.value?.id !== route) linkedDocument.value = null
   if (!id || !route || route === selectedId.value) return
