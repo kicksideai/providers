@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.21](https://github.com/kicksideai/providers/compare/kb10-v0.2.20...kb10-v0.2.21) (2026-11-19)
+
+
+### Features
+
+* **kb10:** checkpoint canonical source ingestion ([#147](https://github.com/kicksideai/providers/issues/147)) ([bca2b2d](https://github.com/kicksideai/providers/commit/bca2b2dec7ac3763e8d15128fd154c885159e061))
+
 ## [0.2.20](https://github.com/kicksideai/providers/compare/kb10-v0.2.19...kb10-v0.2.20) (2026-11-19)
 
 
