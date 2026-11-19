@@ -802,7 +802,9 @@ function writer.delete_store(component_id: any)
     cascade[#cascade + 1] = { sql = "DELETE FROM kb10_tuning_state WHERE store_id = $1", name = "kb10_tuning_state" }
     cascade[#cascade + 1] = { sql = "DELETE FROM kb10_embeddings WHERE store_id = $1", name = "kb10_embeddings" }
     cascade[#cascade + 1] = { sql = "DELETE FROM kb10_edges WHERE store_id = $1",      name = "kb10_edges" }
-    cascade[#cascade + 1] = { sql = "DELETE FROM kb10_nodes WHERE store_id = $1",      name = "kb10_nodes" }
+    if db_type == sql.type.POSTGRES then
+        cascade[#cascade + 1] = { sql = "DELETE FROM kb10_nodes WHERE store_id = $1", name = "kb10_nodes" }
+    end
     for _, t in ipairs(cascade) do
         local _, exec_err = tx:execute(t.sql, { store_id })
         if exec_err then return fail_tx(tx, db, "failed to delete from " .. t.name .. ": " .. tostring(exec_err)) end
@@ -815,6 +817,12 @@ function writer.delete_store(component_id: any)
 
     local _, store_err = tx:execute("DELETE FROM kb10_stores WHERE component_id = $1", { component_id })
     if store_err then return fail_tx(tx, db, store_err) end
+    -- SQLite counts live roots on the store row. Removing the row first avoids
+    -- updating it for each removed root. Explicit cleanup also covers FK-off pools.
+    if db_type == sql.type.SQLITE then
+        local _, nodes_err = tx:execute("DELETE FROM kb10_nodes WHERE store_id = $1", { store_id })
+        if nodes_err then return fail_tx(tx, db, errors.wrap(nodes_err, "failed to delete from kb10_nodes")) end
+    end
     return commit_tx(tx, db, "store delete")
 end
 

@@ -15,7 +15,13 @@ import { formatIndexingNotice } from './indexingNotice'
 // node disappears only after the engine materializes the delete and the component
 // meta refresh tells us to reconcile. A queued row stays visible (spinner) until
 // the browse read model no longer contains its node ID.
-export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; includeIndexing?: boolean } = {}) {
+export type DocumentScope = 'documents' | 'failures'
+
+export function useKbBrowse(kbId: () => string, opts: {
+  onChanged?: () => void
+  includeIndexing?: boolean
+  scope?: () => DocumentScope
+} = {}) {
   const loading = ref(false)
   const notice = ref('')
   const indexingNotice = ref('')
@@ -34,10 +40,12 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; 
   // delete that never materializes stops spinning and surfaces a retryable notice.
   const DELETE_TIMEOUT_MS = 20000
   const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const pendingTargets = new Map<string, { kbId: string; scope?: DocumentScope }>()
   function clearPending(nodeId: string) {
     const d = { ...deleting.value }; delete d[nodeId]; deleting.value = d
     const t = pendingTimers.get(nodeId)
     if (t) { clearTimeout(t); pendingTimers.delete(nodeId) }
+    pendingTargets.delete(nodeId)
   }
 
   const documents = nodes
@@ -62,7 +70,9 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; 
       // never pulls its whole node set into one list.
       const offset = page.value * pageSize.value
       const indexing = opts.includeIndexing ? '&include_indexing=true' : ''
-      const { data } = await api.get(`/api/v1/kb10/${id}/browse?node_type=document&limit=${pageSize.value}&offset=${offset}${indexing}`)
+      const scope = opts.scope?.()
+      const filter = scope ? `scope=${scope}` : 'node_type=document'
+      const { data } = await api.get(`/api/v1/kb10/${id}/browse?${filter}&limit=${pageSize.value}&offset=${offset}${indexing}`)
       if (seq !== loadSeq || kbId() !== id) return
       if (!data?.success) {
         notice.value = data?.error && isEngineMissing(data.error) ? ENGINE_NOTICE : data?.error || ''
@@ -71,6 +81,7 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; 
       nodes.value = (data.nodes || []) as BrowseNode[]
       total.value = Number(data.total) || 0
       indexingNotice.value = formatIndexingNotice(data.pending_source)
+      return true
     } catch (e: any) {
       if (seq !== loadSeq) return
       const msg = e?.response?.data?.error || e?.message || 'could not load contents'
@@ -97,6 +108,7 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; 
     const id = kbId()
     if (!id || deleting.value[n.id]) return false
     const payload = contentDeletePayload(n)
+    pendingTargets.set(n.id, { kbId: id, scope: opts.scope?.() })
     deleting.value = { ...deleting.value, [n.id]: true }
     let queued = false
     try {
@@ -131,7 +143,10 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; 
     const pending = Object.keys(deleting.value)
     if (pending.length === 0) return
     const liveNodeIds = new Set(nodes.value.map((node) => node.id))
-    const removed = pending.filter((nodeId) => !liveNodeIds.has(nodeId))
+    const removed = pending.filter((nodeId) => {
+      const target = pendingTargets.get(nodeId)
+      return target?.kbId === kbId() && target.scope === opts.scope?.() && !liveNodeIds.has(nodeId)
+    })
     if (!removed.length) return
     for (const nodeId of removed) clearPending(nodeId)
     if (!Object.keys(deleting.value).length) notice.value = ''
@@ -150,8 +165,7 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; 
     try {
       do {
         reconcileQueued = false
-        await load()
-        reconcilePendingDeletes()
+        if (await load()) reconcilePendingDeletes()
       } while (reconcileQueued)
     } finally {
       reconciling = false
@@ -181,13 +195,13 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void; 
     pendingTimers.clear()
   })
 
-  // A KB switch starts over on the first page; total is stale until the reload lands.
-  watch(kbId, (id) => {
+  watch([kbId, () => opts.scope?.()], ([id], [previousId]) => {
     page.value = 0
     total.value = 0
+    nodes.value = []
     indexingNotice.value = ''
-    load()
-    syncRealtime(id)
+    void load()
+    if (id !== previousId) syncRealtime(id)
   }, { immediate: true })
 
   return {

@@ -79,6 +79,7 @@ type VectorSearchOptions = {
 }
 
 type BrowseNodesOptions = {
+    scope: string?,
     parent_id: string?,
     top_level: boolean?,
     node_type: string?,
