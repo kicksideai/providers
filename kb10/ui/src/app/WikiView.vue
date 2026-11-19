@@ -24,7 +24,6 @@ const props = defineProps<{
   concepts: GraphConcept[]
   edges: GraphEdge[]
   selectedId: string
-  canAnswer: boolean
   loading: boolean
 }>()
 const emit = defineEmits<{
@@ -162,7 +161,7 @@ function onAdded() { sheet.value = ''; emit('changed') }
         <KbSearch
           :kb-id="kbId"
           layout="panel"
-          :ask="canAnswer"
+          ask
           placeholder="Search this wiki…"
           @open="openHit"
           @close="searchOpen = false"

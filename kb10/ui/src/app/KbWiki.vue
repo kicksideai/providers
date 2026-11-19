@@ -13,7 +13,6 @@ import { KbNotice, KbLoading } from './shared'
 import WikiView from './WikiView.vue'
 import GraphView from './GraphView.vue'
 import { subscribeComponentMeta } from './componentMeta'
-import { canGenerateAnswer } from './queryMode'
 
 // kx-kb-wiki — the kb10 concept-graph KB detail. This root owns everything the two
 // readings share: the single /graph data load, the realtime refresh, the deep-link
@@ -53,7 +52,6 @@ const notice = ref('')
 const concepts = ref<GraphConcept[]>([])
 const edges = ref<GraphEdge[]>([])
 const selectedId = ref('')
-const canAnswer = ref(false)
 
 // Enrichment attention state maintained by the backend on component meta and
 // carried on the /graph response: a failed graph pass (enrichment.error) or a
@@ -93,15 +91,6 @@ const conceptsById = computed(() => {
 })
 // The page the wiki reader opens by default: the first root of the hierarchy.
 const firstConceptId = computed(() => buildTree(concepts.value, edges.value)[0]?.concept.id || '')
-
-async function loadCapability() {
-  if (!kbId.value) { canAnswer.value = false; return }
-  try {
-    const { data } = await api.get(`/api/v1/knowledge/${kbId.value}`)
-    const cfg = (data?.config || data?.knowledge_base?.config || {}) as Record<string, unknown>
-    canAnswer.value = canGenerateAnswer(cfg)
-  } catch { canAnswer.value = false }
-}
 
 let loadRunId = 0
 async function load(quiet = false) {
@@ -191,7 +180,7 @@ watch(view, (v) => {
   }
 })
 
-watch(kbId, (id) => { selectedId.value = ''; load(); loadCapability(); syncRealtime(id) }, { immediate: true })
+watch(kbId, (id) => { selectedId.value = ''; load(); syncRealtime(id) }, { immediate: true })
 
 function onSelect(id: string) { if (id !== selectedId.value) selectedId.value = id }
 function onChanged() {
@@ -231,7 +220,6 @@ function onReload() { load() }
         :concepts="concepts"
         :edges="edges"
         :selected-id="selectedId"
-        :can-answer="canAnswer"
         :loading="loading"
         @select="onSelect"
         @changed="onChanged"
@@ -245,7 +233,6 @@ function onReload() { load() }
         :concepts="concepts"
         :edges="edges"
         :selected-id="selectedId"
-        :can-answer="canAnswer"
         :loading="loading"
         @select="onSelect"
         @changed="onChanged"

@@ -34,7 +34,6 @@ const props = defineProps<{
   concepts: GraphConcept[]
   edges: GraphEdge[]
   selectedId: string
-  canAnswer: boolean
   loading: boolean
 }>()
 const emit = defineEmits<{
@@ -391,7 +390,7 @@ watch(() => props.kbId, () => { hidden.value = new Set(); focusId.value = null; 
         <KbSearch
           :kb-id="kbId"
           layout="panel"
-          :ask="canAnswer"
+          ask
           @open="openHit"
           @close="searchOpen = false"
         />

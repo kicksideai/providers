@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import { loadByTagName, api } from '@wippy-fe/proxy'
+import { loadByTagName } from '@wippy-fe/proxy'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import { type BrowseNode, nodeLabel } from './types'
 import { docIcon, docBadge, relativeTime } from './docMeta'
@@ -12,7 +12,6 @@ import {
 import EmptyState from './EmptyState.vue'
 import DocReader from './DocReader.vue'
 import AddPanel from './AddPanel.vue'
-import { canGenerateAnswer } from './queryMode'
 
 // Document KB detail (kx-kb-document): a two-pane library composed on the shared
 // chrome — a compact document rail flush against an open reading area that
@@ -52,20 +51,6 @@ const rangeEnd = computed(() => Math.min((page.value + 1) * pageSize.value, tota
 
 const selectedId = ref('')
 const selected = computed(() => deleting.value[selectedId.value] ? null : findDoc(selectedId.value) || null)
-
-// Ask is enabled only when query analysis has an explicit model.
-const canAnswer = ref(false)
-async function loadCapability() {
-  if (!kbId.value) { canAnswer.value = false; return }
-  try {
-    const { data } = await api.get(`/api/v1/knowledge/${kbId.value}`)
-    const cfg = (data?.config || {}) as Record<string, unknown>
-    canAnswer.value = canGenerateAnswer(cfg)
-  } catch {
-    canAnswer.value = false
-  }
-}
-watch(kbId, loadCapability, { immediate: true })
 
 const addOpen = ref(false)
 const searchOpen = ref(false)
@@ -181,7 +166,7 @@ watch(routeParam, (r) => {
       </template>
 
       <div class="kx-main-scroll kd-reader">
-        <KbSearch v-if="searchOpen" :kb-id="kbId" layout="panel" :ask="canAnswer" @open="(h) => h.parent_id && selectById(h.parent_id)" @close="searchOpen = false" />
+        <KbSearch v-if="searchOpen" :kb-id="kbId" layout="panel" ask @open="(h) => h.parent_id && selectById(h.parent_id)" @close="searchOpen = false" />
         <DocReader v-else-if="selected" :kb-id="kbId" :node="selected" />
         <EmptyState
           v-else
