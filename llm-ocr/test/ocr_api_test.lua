@@ -1,5 +1,6 @@
 local test = require("test")
 local sql = require("sql")
+local process = require("process")
 local uuid_v4 = require("uuid").v4
 local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
@@ -10,10 +11,29 @@ local ocr = require("ocr")
 local stage = require("stage")
 local contract = require("contract")
 local jobs = require("jobs")
+local proc_supervisor = require("proc_supervisor")
 local pipeline = require("pipeline")
 local upload_type = require("upload_type")
 
 local STORAGE_ID = "app:temp_fs"
+
+local function with_heartbeat_owners(job_id: string, tokens: { string }, run): any
+    local channel = process.listen(proc_supervisor.CONTROL_TOPIC)
+    local names = {}
+    local ok, result = pcall(function()
+        for _, token in ipairs(tokens) do
+            local name = proc_supervisor.execution_name(job_id, token)
+            local registered, err = process.registry.register(name, nil, process.registry.CONSISTENT)
+            test.is_true(registered, tostring(err))
+            names[#names + 1] = name
+        end
+        return run()
+    end)
+    for _, name in ipairs(names) do process.registry.unregister(name, process.registry.CONSISTENT) end
+    process.unlisten(channel)
+    if not ok then error(result) end
+    return result
+end
 
 -- Fakes keep the model seam under test without requiring a live LLM.
 local function fake_prompt(): any
@@ -644,9 +664,11 @@ local function define_tests()
                     :run_with(db):exec()
                 test.is_nil(err)
                 local calls = 0
-                local result = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
-                    cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = sequence}}, {
-                    batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
+                local result = with_heartbeat_owners(job_id, { "ocr-lease" }, function()
+                    return stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                        cancel_ref = {job_id = job_id, lease_token = "ocr-lease", execution_seq = sequence}}, {
+                        batch_size = 1, transcribe = function() calls = calls + 1; return "Scanned words", nil end})
+                end)
                 test.eq(calls, sequence == 1 and 3 or 0)
                 test.eq(result.success, sequence == 1)
                 if sequence == 1 then
@@ -837,16 +859,18 @@ local function define_tests()
                 test.is_nil(err)
                 local params = {upload_id = upload_id, storage_id = STORAGE_ID,
                     cancel_ref = {job_id = job_id, lease_token = "old-lease", execution_seq = 1}}
-                local result = stage.run(params, {transcribe = function()
-                    local _, update_err = sql.builder.update("kickside_job"):set_map({lease_token = "new-lease", execution_seq = 2})
-                        :where("id = ?", job_id):run_with(db):exec()
-                    test.is_nil(update_err)
-                    local newer = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
-                        cancel_ref = {job_id = job_id, lease_token = "new-lease", execution_seq = 2}}, {
-                        transcribe = function() return "New attempt text", nil end})
-                    test.is_true(newer.success)
-                    return "Stale attempt text", nil
-                end})
+                local result = with_heartbeat_owners(job_id, { "old-lease", "new-lease" }, function()
+                    return stage.run(params, {transcribe = function()
+                        local _, update_err = sql.builder.update("kickside_job"):set_map({lease_token = "new-lease", execution_seq = 2})
+                            :where("id = ?", job_id):run_with(db):exec()
+                        test.is_nil(update_err)
+                        local newer = stage.run({upload_id = upload_id, storage_id = STORAGE_ID,
+                            cancel_ref = {job_id = job_id, lease_token = "new-lease", execution_seq = 2}}, {
+                            transcribe = function() return "New attempt text", nil end})
+                        test.is_true(newer.success)
+                        return "Stale attempt text", nil
+                    end})
+                end)
                 test.is_false(result.success)
                 test.eq(primary_text(upload_id), "<!-- page 1 -->\n\nNew attempt text")
                 local primary = assert(artifact_parts_repo.get_primary_content_artifact(upload_id))
