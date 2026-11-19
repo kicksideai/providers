@@ -181,7 +181,7 @@ local function handler()
     end
 
     local pending_source
-    if req:query("include_indexing") == "true" and thread_ingest.pending_source then
+    if req:query("include_indexing") == "true" then
         pending_source = thread_ingest.pending_source(kb_id, comp.impl_id)
     end
     res:set_status(http.STATUS.OK)
