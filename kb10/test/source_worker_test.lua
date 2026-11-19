@@ -551,6 +551,38 @@ local function define_tests()
             teardown_kb10_store(db, cid)
         end)
 
+        test.it("durably retries when the embedding provider rejects the call", function()
+            local cid = bootstrap_kb10_store(db)
+            local resolver = materialized_store_resolver_for({ [cid] = true })
+            local rejecting_embedder = function()
+                return nil, errors.new({ kind = errors.PERMISSION_DENIED, retryable = false,
+                    message = "OpenAI API key is required" })
+            end
+
+            local result, err = source_worker.run_with_deps({
+                thread_id = uuid(),
+                projection = { id = uuid() },
+                events = {
+                    build_event({
+                        seq = 1, type = "fixture.page",
+                        body = { page_id = "provider-rejects", title = "Provider rejects", text = "body text" },
+                    }),
+                },
+                worker_config = { target_kb_ids = { cid } },
+            }, worker_deps({ embedder = rejecting_embedder, dispatcher = doc_dispatcher,
+                 resolve_materialized_store = resolver }))
+
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.eq(err:retryable(), true)
+            test.contains(tostring(err), "OpenAI API key is required")
+
+            local nodes = fetch_kb10_nodes(db, cid) or {}
+            test.eq(#nodes, 0)
+
+            teardown_kb10_store(db, cid)
+        end)
+
         test.it("preserves extractor source_ref into kb10 metadata", function()
             local cid = bootstrap_kb10_store(db)
             local resolver = materialized_store_resolver_for({ [cid] = true })

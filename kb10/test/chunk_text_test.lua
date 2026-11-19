@@ -771,6 +771,28 @@ local function define_tests()
             end
         end)
 
+        test.it("reports a rejected provider call as a retryable outage so the source cursor stays active", function()
+            local target, replaced, rows = make_target(nil)
+            for _, kind in ipairs({ errors.PERMISSION_DENIED, errors.INVALID, errors.NOT_FOUND }) do
+                local function rejecting_embedder(_batch, _model, _dims)
+                    return nil, errors.new({ kind = kind, retryable = false, message = "OpenAI API key is required" })
+                end
+                local result, err = source_materializer.ingest_documents_into_store(
+                    "kb-1", target, docs(), rejecting_embedder, nil, nil, nil, {}, nil
+                )
+
+                test.not_nil(err)
+                test.eq(err:kind(), errors.UNAVAILABLE)
+                test.eq(err:retryable(), true)
+                test.contains(tostring(err), "OpenAI API key is required")
+                test.eq((err:details() or {}).cause_kind, kind)
+                test.eq(result.inserted, 0)
+                test.eq(result.system_failed, 3)
+            end
+            test.eq(#replaced, 0)
+            test.is_nil(rows.a)
+        end)
+
         test.it("does not write failed rows for malformed provider vectors before retry", function()
             local target, replaced, rows = make_target(nil)
             local function malformed_embedder(batch, _model, _dims)
