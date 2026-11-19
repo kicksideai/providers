@@ -14,7 +14,7 @@ entries:
       comment: LLM-based OCR transcription — a universal upload stage that OCRs rendered-page screenshots and fills empty primary content with transcribed text.
 
   - name: dep.kickside.jobs
-    version: '>=0.1.83'
+    version: '>=0.1.89'
     kind: ns.dependency
     component: kickside/jobs
 
