@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local capacity_http = require("capacity_http")
 local http_client = require("http_client")
 local json = require("json")
@@ -64,7 +65,7 @@ M.header_value = header_value
 local function header_integer(headers: any, name: string): integer?
     local value = header_value(headers, name)
     if value == nil then return nil end
-    local number = tonumber(((value :: string):gsub("^%s*(.-)%s*$", "%1")))
+    local number = tonumber(trim(value))
     if number == nil or number < 0 or number ~= math.floor(number) then return nil end
     return math.floor(number) :: integer
 end

@@ -31,14 +31,11 @@ entries:
     kind: function.lua
     source: file://analysis_provider.lua
     method: embed
-    modules: [time]
   - name: structured_output
     kind: function.lua
     source: file://analysis_provider.lua
     method: structured_output
-    modules: [time]
   - name: status
     kind: function.lua
     source: file://analysis_provider.lua
     method: status
-    modules: [time]

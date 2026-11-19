@@ -19,6 +19,7 @@ profiles:
       app:db:pool.max_idle: 8
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/webscout: ..
     kickside/blocks: ../../../kickside/platform/blocks
     kickside/component: ../../../kickside/core/component

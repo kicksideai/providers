@@ -10,7 +10,10 @@ local function key_denied()
     return key == nil and err ~= nil
 end
 function M.request()
-    return { param = function(_, name) return ctx.get(name == "id" and "component_id" or "node_id") end }
+    return {
+        param = function(_, name) return ctx.get(name == "id" and "component_id" or "node_id") end,
+        body = function() return ctx.get("request_body") end,
+    }
 end
 function M.response()
     local response = { before_denied = key_denied() }

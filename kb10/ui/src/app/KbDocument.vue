@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import { loadByTagName, api } from '@wippy-fe/proxy'
+import { loadByTagName } from '@wippy-fe/proxy'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import { type BrowseNode, nodeLabel } from './types'
 import { docIcon, docBadge, relativeTime } from './docMeta'
 import { useKbBrowse } from './useKbBrowse'
-import { useKbIndexing } from './useKbIndexing'
 import {
   KbShell, RailHeader, IconButton, SearchField, KbNotice, KbDrawer, KbConfirm, KbSearch,
 } from './shared'
 import EmptyState from './EmptyState.vue'
 import DocReader from './DocReader.vue'
 import AddPanel from './AddPanel.vue'
-import { canGenerateAnswer } from './queryMode'
 
 // Document KB detail (kx-kb-document): a two-pane library composed on the shared
 // chrome — a compact document rail flush against an open reading area that
@@ -29,14 +27,13 @@ const emit = useEvents<E>()
 const kbId = computed(() => props.value.config?.kb_id || '')
 const routeParam = computed(() => props.value.config?.route || '')
 let applyingRoute = false
-const { indexingNotice, onMeta } = useKbIndexing(() => kbId.value)
 
 // Browse + delete + realtime reconciliation come from the shared composable.
 // Pagination is server-side: documents holds only the current page, total is the
 // real match count, and the pager walks pages.
-const { loading, notice, documents, deleting, reload, remove, findDoc,
+const { loading, notice, indexingNotice, documents, deleting, reload, remove, findDoc,
   page, pageSize, total, hasPrev, hasNext, next, prev } =
-  useKbBrowse(() => kbId.value, { onMeta })
+  useKbBrowse(() => kbId.value, { includeIndexing: true })
 
 // The filter is page-local: it narrows the documents already loaded for the
 // current page, not the whole KB. Server-side search is out of scope, so this is
@@ -53,21 +50,7 @@ const rangeStart = computed(() => (total.value === 0 ? 0 : page.value * pageSize
 const rangeEnd = computed(() => Math.min((page.value + 1) * pageSize.value, total.value))
 
 const selectedId = ref('')
-const selected = computed(() => findDoc(selectedId.value) || null)
-
-// Ask is enabled only when query analysis has an explicit model.
-const canAnswer = ref(false)
-async function loadCapability() {
-  if (!kbId.value) { canAnswer.value = false; return }
-  try {
-    const { data } = await api.get(`/api/v1/knowledge/${kbId.value}`)
-    const cfg = (data?.config || {}) as Record<string, unknown>
-    canAnswer.value = canGenerateAnswer(cfg)
-  } catch {
-    canAnswer.value = false
-  }
-}
-watch(kbId, loadCapability, { immediate: true })
+const selected = computed(() => deleting.value[selectedId.value] ? null : findDoc(selectedId.value) || null)
 
 const addOpen = ref(false)
 const searchOpen = ref(false)
@@ -75,6 +58,7 @@ const confirmTarget = ref<BrowseNode | null>(null)
 const confirmBusy = computed(() => !!confirmTarget.value && !!deleting.value[confirmTarget.value.id])
 
 function select(n: BrowseNode) {
+  if (deleting.value[n.id]) return
   const changed = selectedId.value !== n.id
   selectedId.value = n.id
   if (changed && !applyingRoute) emit('navigate', n.id)
@@ -109,11 +93,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 // Honor a deep-linked doc id once the list lands; else keep the current one,
 // else open the first.
 watch(documents, (docs) => {
-  if (!docs.length) { if (selectedId.value && !findDoc(selectedId.value)) selectedId.value = ''; return }
-  if (selectedId.value && findDoc(selectedId.value)) return
-  const wanted = routeParam.value ? docs.find((d) => d.id === routeParam.value) : null
-  const target = wanted || docs[0]
+  if (selected.value) return
+  const available = docs.filter((doc) => !deleting.value[doc.id])
+  const wanted = routeParam.value ? available.find((doc) => doc.id === routeParam.value) : null
+  const target = wanted || available[0]
   if (target) { applyingRoute = true; try { select(target) } finally { applyingRoute = false } }
+  else if (!findDoc(selectedId.value)) selectedId.value = ''
 })
 
 watch(kbId, () => { selectedId.value = '' })
@@ -145,18 +130,19 @@ watch(routeParam, (r) => {
 
         <nav class="kd-list" aria-label="Documents">
           <div v-if="loading && !documents.length" class="kd-list-skel"><div v-for="i in 6" :key="i" class="kd-skel-row" /></div>
-          <button
+          <div
             v-for="n in filtered"
             :key="n.id"
             class="kd-row"
             :class="{ on: selectedId === n.id }"
-            @click="select(n)"
           >
-            <span class="kd-row-ic"><Icon :icon="docIcon(n)" aria-hidden="true" /></span>
-            <span class="kd-row-main">
-              <span class="kd-row-title">{{ nodeLabel(n) }}</span>
-              <span class="kd-row-sub">{{ docBadge(n) }}<template v-if="n.created_at"> · {{ relativeTime(n.created_at) }}</template></span>
-            </span>
+            <button class="kd-row-select" type="button" :disabled="!!deleting[n.id]" @click="select(n)">
+              <span class="kd-row-ic"><Icon :icon="docIcon(n)" aria-hidden="true" /></span>
+              <span class="kd-row-main">
+                <span class="kd-row-title">{{ nodeLabel(n) }}</span>
+                <span class="kd-row-sub">{{ docBadge(n) }}<template v-if="n.created_at"> · {{ relativeTime(n.created_at) }}</template></span>
+              </span>
+            </button>
             <IconButton
               class="kd-row-del"
               icon="tabler:trash"
@@ -167,7 +153,7 @@ watch(routeParam, (r) => {
               :disabled="!!deleting[n.id]"
               @click="askRemove(n)"
             />
-          </button>
+          </div>
           <div v-if="!loading && !filtered.length" class="kd-list-empty">
             {{ documents.length ? 'No documents match.' : 'No documents yet — add one with +.' }}
           </div>
@@ -181,7 +167,7 @@ watch(routeParam, (r) => {
       </template>
 
       <div class="kx-main-scroll kd-reader">
-        <KbSearch v-if="searchOpen" :kb-id="kbId" layout="panel" :ask="canAnswer" @open="(h) => h.parent_id && selectById(h.parent_id)" @close="searchOpen = false" />
+        <KbSearch v-if="searchOpen" :kb-id="kbId" layout="panel" ask @open="(h) => h.parent_id && selectById(h.parent_id)" @close="searchOpen = false" />
         <DocReader v-else-if="selected" :kb-id="kbId" :node="selected" />
         <EmptyState
           v-else

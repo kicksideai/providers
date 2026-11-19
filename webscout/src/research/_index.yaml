@@ -9,6 +9,7 @@ entries:
     source: file://source.lua
     modules: [funcs, json, hash]
     imports:
+      text_trim: kickside.provider_text:trim
       operation_policy: kickside.webscout.research:operation_policy
 
   - name: operation_policy
@@ -17,6 +18,8 @@ entries:
       name: webscout_source_operation_policy
       comment: Canonical SourceOperationPolicy/v1 validation against a host-installed SourceOperationControlBounds/v1; no settings, retries, or scheduling state.
     source: file://operation_policy.lua
+    imports:
+      text_trim: kickside.provider_text:trim
     modules: [json, hash]
 
   - name: run
@@ -26,6 +29,7 @@ entries:
     source: file://source.lua
     modules: [funcs, json, hash]
     imports:
+      text_trim: kickside.provider_text:trim
       operation_policy: kickside.webscout.research:operation_policy
     method: run
 

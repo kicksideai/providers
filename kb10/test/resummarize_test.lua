@@ -12,6 +12,7 @@ local json = require("json")
 local resummarize = require("resummarize")
 local kb10_store = require("kb10_store")
 local fixtures = require("source_worker_fixtures")
+local maintenance = require("maintenance_fixture")
 
 local function db(): any
     local d, err = sql.get("app:db")
@@ -25,12 +26,12 @@ local function zero_vector(): { number }
     return v
 end
 
-local function insert_document(store_id: string, content: string): string
+local function insert_document(store_id: string, content: string, external_id: string?): string
     local id, err = kb10_store.insert_node(store_id, {
         node_type = "document",
         content = content,
         content_type = "text/plain",
-        metadata = { external_source = "resummarize.test", external_id = "doc-1" },
+        metadata = { external_source = "resummarize.test", external_id = external_id or "doc-1" },
     })
     if err then error("insert document failed: " .. tostring(err)) end
     if not id then error("node insert returns no id") end
@@ -119,12 +120,12 @@ local function narrow_chunk_embedder(texts: any, model: any, dims: any): (any, s
     return fixtures.fake_embedder(texts, model, dims)
 end
 
-local function bootstrap(config: any): (string, any)
+local function bootstrap(config: any, kb_type: string?): (string, any)
     local component_id = fixtures.uuid()
     local d = db()
     local _, err = d:execute(
         "INSERT INTO kb10_stores (id, component_id, embedding_model, config, kb_type) VALUES ($1, $2, $3, $4, $5)",
-        { component_id, component_id, "class:embed", json.encode(config or {}), "document" }
+        { component_id, component_id, "class:embed", json.encode(config or {}), kb_type or "document" }
     )
     if err then error("insert kb10_store failed: " .. tostring(err)) end
     return component_id, d
@@ -138,17 +139,61 @@ local function define_tests()
             test.not_nil(err)
         end)
 
-        test.it("errors when the kb has no summary_model configured", function()
-            local component_id, d = bootstrap({ summary_model = "" })
-            local result, err = resummarize.run(component_id)
-            test.is_nil(result)
-            test.not_nil(err)
-            test.is_true(tostring(err):find("summary_model", 1, true) ~= nil, "error names summary_model: " .. tostring(err))
-            fixtures.teardown_kb10_store(d, component_id)
-        end)
+        for _, kb_type in ipairs({ "document", "wiki" }) do
+            for _, case in ipairs({
+                { name = "empty", summary = "", chunk = "", expected_summary = "class:fast", expected_chunk = "class:fast" },
+                { name = "missing", expected_summary = "class:fast", expected_chunk = "class:fast" },
+                { name = "named", summary = "summary-model", chunk = "chunk-model", expected_summary = "summary-model", expected_chunk = "chunk-model" },
+                { name = "disabled chunk", summary = "summary-model", chunk = false, expected_summary = "summary-model" },
+                { name = "disabled summary", summary = false, chunk = false },
+            }) do
+                test.it("schedules and regenerates a " .. kb_type .. " according to its " .. case.name .. " model settings", function()
+                    local id, d = bootstrap({ summary_model = case.summary, chunk_enrichment_model = case.chunk }, kb_type)
+                    local queue = maintenance.fake_jobs()
+                    maintenance.install(queue)
+                    maintenance.maintenance._get_store = kb10_store.get_store
+                    local receipt, schedule_err = maintenance.schedule_resummarize.run(id)
+                    maintenance.restore()
+                    local run_count = maintenance.run_count(d, id)
+                    maintenance.cleanup(d, id)
+                    local doc = insert_document(id, "A document with a stored summary and a chunk.")
+                    insert_summary(id, doc, "old summary")
+                    insert_chunk(id, doc, 1, "stored chunk")
+                    local summary_model, chunk_model
+                    local result, err = resummarize.run_with_deps(id, {
+                        summarizer = function(content, model, max_chars, prompt)
+                            summary_model = model
+                            return stub_summarizer(content, model, max_chars, prompt)
+                        end,
+                        enricher = function(content, summary, chunk, model)
+                            chunk_model = model
+                            return stub_enricher(content, summary, chunk, model)
+                        end,
+                        embedder = fixtures.fake_embedder,
+                    })
+                    fixtures.teardown_kb10_store(d, id)
+                    local enabled = case.expected_summary ~= nil
+                    test.is_nil(schedule_err)
+                    test.eq(receipt.scheduled, enabled)
+                    test.eq(#queue.calls, enabled and 1 or 0)
+                    test.eq(run_count, #queue.calls)
+                    if not enabled then
+                        test.is_nil(result)
+                        test.contains(tostring(err), "summary_model")
+                        test.is_nil(summary_model)
+                        test.is_nil(chunk_model)
+                        return
+                    end
+                    test.is_nil(err)
+                    test.eq(result.resummarized, 1)
+                    test.eq(summary_model, case.expected_summary)
+                    test.eq(chunk_model, case.expected_chunk)
+                end)
+            end
+        end
 
         test.it("regenerates a stored summary node's content and its embedding under new settings", function()
-            local component_id, d = bootstrap({ summary_max_chars = 40, chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ summary_max_chars = 40, chunk_enrichment_model = false })
             local doc_id = insert_document(component_id, "This is the full source document body, unchanged by resummarize.")
             local summary_id = insert_summary(component_id, doc_id, "stale summary from an old summary_max_chars")
 
@@ -173,7 +218,7 @@ local function define_tests()
         end)
 
         test.it("a summarizer failure keeps the old summary and counts skipped", function()
-            local component_id, d = bootstrap({ chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ chunk_enrichment_model = false })
             local doc_id = insert_document(component_id, "content the summarizer will fail to compress")
             local summary_id = insert_summary(component_id, doc_id, "the original summary, kept as-is")
 
@@ -231,7 +276,7 @@ local function define_tests()
         end)
 
         test.it("leaves chunks untouched without a configured chunk_enrichment_model", function()
-            local component_id, d = bootstrap({ chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ chunk_enrichment_model = false })
             local doc_id = insert_document(component_id, "document body that only needs a fresh summary")
             insert_summary(component_id, doc_id, "stale summary")
             local chunk_id = insert_chunk(component_id, doc_id, 1, "chunk content never re-derived", "original prefix")
@@ -297,7 +342,7 @@ local function define_tests()
         -- apart, a failed vector write leaves the new text scored on the words it
         -- replaced, and every search reads the node as something it no longer is.
         test.it("keeps a summary node's stored content when its embedding cannot be written", function()
-            local component_id, d = bootstrap({ summary_max_chars = 40, chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ summary_max_chars = 40, chunk_enrichment_model = false })
             local doc_id = insert_document(component_id, "This is the full source document body, unchanged by resummarize.")
             local summary_id = insert_summary(component_id, doc_id, "the stored summary, kept whole")
 
@@ -349,7 +394,7 @@ local function define_tests()
         end)
 
         test.it("propagates a document browse failure instead of reporting a successful partial run", function()
-            local component_id, d = bootstrap({ chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ chunk_enrichment_model = false })
             insert_document(component_id, "a document the browse will never return")
 
             local result, err = resummarize.run_with_deps(component_id, {
@@ -393,7 +438,7 @@ local function define_tests()
         end)
 
         test.it("creates the summary node and its embedding for a document that has none", function()
-            local component_id, d = bootstrap({ summary_max_chars = 0, chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ summary_max_chars = 0, chunk_enrichment_model = false })
             local doc_id = insert_document(component_id, "a document ingested with no summary child at all")
 
             local result, err = resummarize.run_with_deps(component_id, {
@@ -425,7 +470,7 @@ local function define_tests()
         end)
 
         test.it("stamps the regenerated summary node with the materialization it was produced under", function()
-            local component_id, d = bootstrap({ summary_max_chars = 1234, chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ summary_max_chars = 1234, chunk_enrichment_model = false })
             local doc_id = insert_document(component_id, "a document whose summary settings changed after ingest")
             local summary_id = insert_summary(component_id, doc_id, "stale summary from an old summary_max_chars")
 
@@ -612,9 +657,9 @@ local function define_tests()
         end
 
         test.it("publishes the document total before any work and a report after every document", function()
-            local component_id, d = bootstrap({ chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ chunk_enrichment_model = false })
             insert_document(component_id, "the first document of the regeneration")
-            insert_document(component_id, "the second document of the regeneration")
+            insert_document(component_id, "the second document of the regeneration", "doc-2")
 
             local reports: { ProgressSnapshot } = {}
             local result, err = resummarize.run_with_deps(component_id, {
@@ -641,7 +686,7 @@ local function define_tests()
         end)
 
         test.it("finishes the regeneration when a progress report fails", function()
-            local component_id, d = bootstrap({ chunk_enrichment_model = "" })
+            local component_id, d = bootstrap({ chunk_enrichment_model = false })
             local doc_id = insert_document(component_id, "the document a broken progress sink must not cost")
             local summary_id = insert_summary(component_id, doc_id, "stale summary")
 

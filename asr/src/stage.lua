@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local contract = require("contract")
 local fs = require("fs")
 local logger = require("logger")
@@ -244,7 +245,7 @@ local function run(params: any, deps: any): any
         return { success = true, metadata = { asr_error = false } }
     end
 
-    local trimmed = ((text :: string):match("^%s*(.-)%s*$")) :: string
+    local trimmed = trim(text)
     if #trimmed > max_transcript_bytes then
         log:warn("asr: transcript larger than the configured cap", {
             upload_id = upload_id,

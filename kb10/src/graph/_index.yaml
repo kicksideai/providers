@@ -121,6 +121,7 @@ entries:
     source: file://placement_tools.lua
     modules: [json, logger, ctx]
     imports:
+      text_trim: kickside.contract:text_trim
       tool_result: kickside.contract:tool_result
       graph_fn: kickside.kb10.graph:graph_functions
       llm: wippy.llm:llm

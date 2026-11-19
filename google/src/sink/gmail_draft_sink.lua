@@ -4,9 +4,7 @@ local transport = require("transport")
 local gmail = require("gmail")
 local hash = require("hash")
 local M = {}
-local function trim(v)
-    return type(v) == "string" and (v:gsub("^%s*(.-)%s*$", "%1")) or ""
-end
+local trim = require("text_trim").trim
 local function fail(message, retriable, code, scope)
     return {
         success = false,

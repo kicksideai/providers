@@ -1,15 +1,11 @@
 local M = {}
 local artifact_content_repo = require("artifact_content_repo")
 local hash = require("hash")
+local trim = require("text_trim").trim
 
 local EVENT_CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 local EVENT_CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 local EXTERNAL_SOURCE = "knowledge.kb"
-
-local function trim(value)
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function shallow_copy(input)
     local out = {}
@@ -19,14 +15,19 @@ local function shallow_copy(input)
     return out
 end
 
-local function external_tuple(event, body, metadata)
+local function external_tuple(event, metadata)
     local external = type(event.external) == "table" and event.external or {}
     local source = trim(external.external_source)
-    if source == "" then source = trim(metadata.external_source) end
+    local stored_source, stored_id = trim(metadata.external_source), trim(metadata.external_id)
+    local id = trim(external.external_id)
+    if (source ~= "" and stored_source ~= "" and source ~= stored_source) or
+        (id ~= "" and stored_id ~= "" and id ~= stored_id) then
+        return nil, nil, nil, "knowledge event contains contradictory external identity"
+    end
+    if source == "" then source = stored_source end
     if source == "" then source = EXTERNAL_SOURCE end
 
-    local id = trim(external.external_id)
-    if id == "" then id = trim(metadata.external_id) end
+    if id == "" then id = stored_id end
     if id == "" then
         local upload_id = trim(metadata.upload_id)
         if upload_id ~= "" then id = "upload:" .. upload_id end
@@ -45,6 +46,9 @@ end
 function M.run(input)
     input = type(input) == "table" and input or {}
     local event = type(input.event) == "table" and input.event or {}
+    if event.type ~= EVENT_CONTENT_UPSERTED and event.type ~= EVENT_CONTENT_DELETED then
+        return { documents = {}, deletes = {} }
+    end
     local body = type(event.body) == "table" and event.body or {}
     local metadata = shallow_copy(body.metadata)
     local source_ref = type(body.source_ref) == "table" and shallow_copy(body.source_ref) or nil
@@ -52,8 +56,9 @@ function M.run(input)
         metadata.source_ref = source_ref
     end
 
+    local source, external_id, external_version, tuple_err = external_tuple(event, metadata)
+    if tuple_err then return { documents = {}, deletes = {}, error = tuple_err } end
     if event.type == EVENT_CONTENT_DELETED then
-        local source, external_id, external_version = external_tuple(event, body, metadata)
         if external_id == "" then
             return { documents = {}, deletes = {}, error = "delete event missing external_id" }
         end
@@ -80,40 +85,31 @@ function M.run(input)
         }
     end
 
-    if event.type ~= EVENT_CONTENT_UPSERTED then
-        return { documents = {}, deletes = {} }
-    end
-
     local content = body.content
     if content == nil and body.content_omitted == true then
         local ref = source_ref or {}
         local read_err
         content, read_err = artifact_content_repo.read_artifact_content(ref.upload_id, ref.artifact_id)
-        if read_err or type(content) ~= "string" then
-            local message = "content artifact read failed: " .. tostring(read_err or "no bytes returned")
-            return { documents = {}, deletes = {}, error = message, retryable = true }
+        if read_err then
+            return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err), retryable = true }
         end
-        if #content ~= body.content_bytes then
-            return { documents = {}, deletes = {}, error = "content artifact byte length changed" }
+        if type(content) ~= "string" or #content ~= body.content_bytes then
+            return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
         end
         if body.content_sha256 ~= nil then
             local digest, digest_err = hash.sha256(content)
-            if digest_err then
-                return { documents = {}, deletes = {}, error = "content artifact hash failed: " .. tostring(digest_err), retryable = true }
-            end
-            if digest ~= body.content_sha256 then
-                return { documents = {}, deletes = {}, error = "content artifact digest changed" }
+            if digest_err or digest ~= body.content_sha256 then
+                return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
             end
         end
     end
-    if type(content) ~= "string" or trim(content) == "" then
+    if trim(content) == "" then
         return { documents = {}, deletes = {}, error = "content event missing content" }
     end
 
     local kb_id = trim(body.kb_id or metadata.kb_id)
     if kb_id ~= "" then metadata.kb_id = kb_id end
 
-    local source, external_id, external_version = external_tuple(event, body, metadata)
     if external_id == "" then
         return { documents = {}, deletes = {}, error = "content event missing external_id" }
     end

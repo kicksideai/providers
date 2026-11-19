@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local component = require("component")
 local base64 = require("base64")
 local api = require("api")
@@ -8,11 +9,7 @@ M._component = component
 
 local function credential_context(component_id: string): (any?, error?)
     local cmp = M._component
-    if cmp.get_private_context then
-        local ctx, err = cmp.get_private_context(component_id)
-        if not err and type(ctx) == "table" and next(ctx) ~= nil then return ctx, nil end
-    end
-    local ctx, err = cmp.get_context(component_id, cmp.ACCESS.READ)
+    local ctx, err = cmp.get_runtime_context(component_id, cmp.ACCESS.READ)
     if err then return nil, err end
     return ctx, nil
 end
@@ -20,7 +17,7 @@ end
 local function field(ctx: any, key: string): string?
     local value = ctx[key]
     if type(value) ~= "string" then return nil end
-    local trimmed = (value :: string):gsub("^%s*(.-)%s*$", "%1")
+    local trimmed = trim(value)
     if trimmed == "" then return nil end
     return trimmed
 end

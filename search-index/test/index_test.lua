@@ -138,6 +138,26 @@ local function define_tests()
             test.eq(dense[2].id, "second")
         end)
 
+        test.it("joins a dense vector only to its owner in the same partition", function()
+            local part, other_part = uuid.v7(), uuid.v7()
+            local local_node = insert(part, "fact", "current", "local owner")
+            local other_node = insert(other_part, "fact", "current", "other owner")
+            local db = open()
+            local tx = assert(db:begin())
+            local embedding = index.vector_literal(vector(1))
+            local insert_err = index.insert_rows_tx(tx, "si_vectors", {"row_id", "part", "kind", "embedding"}, {
+                {local_node, other_part, "fact", embedding},
+                {other_node, part, "fact", embedding},
+            })
+            test.is_nil(insert_err, tostring(insert_err))
+            local _, commit_err = tx:commit()
+            test.is_nil(commit_err, tostring(commit_err))
+            local rows, err = index.dense_search(db, SPEC, vector(1), {partition = part, limit = 1})
+            db:release()
+            test.is_nil(err, tostring(err))
+            test.eq(#rows, 0)
+        end)
+
         test.it("ranks by vector distance inside one partition", function()
             local part = uuid.v7()
             local near = insert(part, "fact", "current", "alpha", vector(1, 0))

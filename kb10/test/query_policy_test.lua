@@ -1,30 +1,31 @@
 local test = require("test")
 local policy = require("policy")
+local analysis_model = require("analysis_model")
 
 local function define_tests()
     test.describe("kb10 query policy", function()
-        test.it("uses raw retrieval when only the summary model is configured", function()
-            test.is_nil(policy.resolve_analysis_model({ summary_model = "class:fast" }))
+        test.it("keeps analysis off for omitted and empty settings", function()
+            test.is_nil(analysis_model.configured({ summary_model = "class:summary" }))
+            test.is_nil(analysis_model.configured({ analysis_model = "" }))
         end)
 
         test.it("uses an explicit analysis model instead of the summary model", function()
-            test.eq(policy.resolve_analysis_model({
+            test.eq(analysis_model.configured({
                 analysis_model = "model:query",
                 summary_model = "model:summary"
             }), "model:query")
         end)
 
         test.it("treats explicit false as raw vector retrieval", function()
-            test.is_nil(policy.resolve_analysis_model({
+            test.is_nil(analysis_model.configured({
                 analysis_model = false,
                 summary_model = "class:fast",
                 enable_reranking = true
             }))
         end)
 
-        test.it("fails closed to raw retrieval for malformed model values", function()
-            test.is_nil(policy.resolve_analysis_model({ analysis_model = true }))
-            test.is_nil(policy.resolve_analysis_model({ analysis_model = "" }))
+        test.it("requires a named model even when the setting is true", function()
+            test.is_nil(analysis_model.configured({ analysis_model = true }))
         end)
 
         test.it("hard-bounds document analysis", function()

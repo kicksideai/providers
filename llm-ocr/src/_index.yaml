@@ -2,6 +2,11 @@ version: "1.0"
 namespace: kickside.llm_ocr
 
 entries:
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: definition
     kind: ns.definition
     meta:
@@ -21,6 +26,7 @@ entries:
     source: file://ocr.lua
     modules: [base64]
     imports:
+      text_trim: kickside.provider_text:trim
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt
 
@@ -31,6 +37,7 @@ entries:
     source: file://stage.lua
     modules: [channel, contract, logger]
     imports:
+      text_trim: kickside.provider_text:trim
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       ocr: kickside.llm_ocr:ocr
@@ -189,10 +196,10 @@ entries:
     component: kickside/core
 
   - name: dep.kickside.uploads
-    version: '*'
+    version: '>=0.3.17'
     kind: ns.dependency
     meta:
-      comment: Reads uploaded page artifacts through the uploads repository.
+      comment: Reads page artifacts and uses the shared OCR page selection and Markdown helpers.
     component: kickside/uploads
 
   - name: dep.kickside.settings

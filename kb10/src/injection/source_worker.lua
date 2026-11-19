@@ -12,18 +12,18 @@
 --                              external_version, content, content_type,
 --                              title?, embed_text, metadata, node_type? }, ...] }
 --          | { documents = [], error = "...", retryable? = true }
--- Explicitly retryable extractor failures use the projection runner's retry policy;
--- validation failures on knowledge content events dead-letter that event.
+-- Explicitly retryable extractor failures use the existing bounded batch retry;
+-- ordinary extractor validation errors keep their existing skip behavior.
 --
 -- The worker:
 --   1. Builds an event_type → extractor_id map from the registry.
---   2. Dispatches events in order, bounding documents and deletes per run.
+--   2. Calls each extractor, collecting `documents`.
 --   3. For each target KB whose engine declares source materialization,
 --      atomically replaces each
 --      materialized source-document tree through the KB engine's declared
 --      internal materializer_store surface by canonical (external_source, external_id), so
 --      re-ingestion is an in-place replace, not an append.
---   4. Advances through events consumed by every target KB.
+--   4. One bulk `llm.embed` round-trip per target KB. No tool loops.
 
 local json = require("json")
 local time = require("time")
@@ -32,8 +32,9 @@ local logger = require("logger"):named("knowledge.injection.source_worker")
 local job_types = require("job_types")
 local registry = require("registry")
 local funcs = require("funcs")
+local uuid = require("uuid")
+local trim = require("text_trim").trim
 
-local component = require("component")
 local llm = require("llm")
 local prompt = require("prompt")
 local artifact_content_repo = require("artifact_content_repo")
@@ -42,6 +43,7 @@ local materializer_store = require("materializer_store")
 local execution_identity = require("execution_identity")
 local enrichment_consts = require("enrichment_consts")
 
+local CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 local EXTRACTOR_META_TYPE = "projection.extractor"
 
 -- Hard caps to keep a single batch from fanning a malformed projection or a
@@ -54,8 +56,6 @@ local MAX_PENDING_ITEMS_GUARD = 10000
 local MAX_DEAD_LETTERED_BATCHES = 50
 local DIGEST_REQUEST_EVENT_TYPE = "kickside.knowledge.events:digest.requested"
 local DIGEST_REQUEST_EXTERNAL_SOURCE = "knowledge.source.finalizer"
-local CONTENT_UPSERTED_EVENT_TYPE = "kickside.knowledge.events:content.upserted"
-local CONTENT_DELETED_EVENT_TYPE = "kickside.knowledge.events:content.deleted"
 local GRAPH_CHANGED_EVENT_TYPE = "kickside.knowledge.events:graph.changed"
 local GRAPH_CHANGED_EXTERNAL_SOURCE = "knowledge.graph.meta"
 -- Companion finalizer marker for graph treatment (concept dedup). Same shape and
@@ -63,14 +63,15 @@ local GRAPH_CHANGED_EXTERNAL_SOURCE = "knowledge.graph.meta"
 -- digest projection that already consumes the thread can drive treatment too.
 local TREATMENT_REQUEST_EVENT_TYPE = "kickside.knowledge.events:treatment.requested"
 
-local function is_knowledge_content_event(event_type: string): boolean
-    return event_type == CONTENT_UPSERTED_EVENT_TYPE or event_type == CONTENT_DELETED_EVENT_TYPE
-end
-
-local function trim(s: any): string
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+-- A batch whose materialization fails for a system-level reason (the store is
+-- down, the embedder is unreachable) is retried this many times before it is
+-- dead-lettered: the cursor advances past it and the batch is recorded failed.
+-- This caps head-of-line blocking — a genuinely stuck batch can never wedge the
+-- injection lane forever. Per-document content failures are isolated inside the
+-- materializer and never reach this path, so this is only for whole-batch system
+-- errors. The attempt count is kept in the projection's durable body, keyed by
+-- the batch's seq range, so it survives across scheduler cycles and crashes.
+local MAX_BATCH_ATTEMPTS = 3
 
 local function configured_pending_cap(worker_config: any, key: string, default_value: integer): integer
     local cfg = type(worker_config) == "table" and worker_config or {}
@@ -236,7 +237,25 @@ local function resolve_worker_config(input_worker_config: any, projection: any):
     return {}
 end
 
-local function dead_lettered_batches(body: table, entry: table): {table}
+-- The number of times the current batch (this exact seq range) has already been
+-- attempted, read from the projection's durable body. The worker records a
+-- failing batch's range and attempt count in its patch; the runtime persists it
+-- and replays it on the body of the next cycle. A new seq range resets the count
+-- to zero.
+local function prior_batch_attempts(projection: any, from_seq: any, to_seq: any): integer
+    local proj = type(projection) == "table" and projection or {}
+    local body = decode_object(proj.body)
+    local last = type(body.last_failed_batch) == "table" and body.last_failed_batch or nil
+    if not last then return 0 end
+    if tostring(last.from_seq) == tostring(from_seq) and tostring(last.to_seq) == tostring(to_seq) then
+        return math.floor(tonumber(last.attempts) or 0)
+    end
+    return 0
+end
+
+local function dead_lettered_batches(projection: any, entry: table): {table}
+    local proj = type(projection) == "table" and projection or {}
+    local body = decode_object(proj.body)
     local prior = type(body.dead_lettered_batches) == "table" and body.dead_lettered_batches or {}
     local out: {table} = {}
     local start = 1
@@ -322,7 +341,7 @@ local function default_dispatcher(event, deps)
     local extractor_map = deps._extractor_map
     if not extractor_map then
         local discovered, err = discover_extractors()
-        if err then return nil, err, true end
+        if err then return nil, err end
         extractor_map = discovered
         deps._extractor_map = extractor_map
     end
@@ -343,9 +362,7 @@ local function default_dispatcher(event, deps)
     end
 
     local result, call_err = funcs.call(extractor_id, { event = event })
-    if call_err then
-        return nil, "extractor call failed: " .. tostring(call_err), source_materializer.is_system_failure(call_err)
-    end
+    if call_err then return nil, "extractor call failed: " .. tostring(call_err) end
 
     if type(result) ~= "table" then
         return nil, "extractor returned invalid result"
@@ -370,8 +387,8 @@ end
 -- Resolve the kb10 materializer target for a KB component: load the component's
 -- store row and shape the engine from the row's kb_type for the graph/is_graph
 -- branches. Returns (nil, nil) when the kb10 store does not own the component so
--- the event reports "no source materializer".
-local function resolve_materialized_store(component_id: string, deps: any): (any?, any, boolean?)
+-- the batch reports "no source materializer".
+local function resolve_materialized_store(component_id: string, deps: any): (any?, string?)
     if type(deps.resolve_materialized_store) == "function" then
         return deps.resolve_materialized_store(component_id)
     end
@@ -379,8 +396,11 @@ local function resolve_materialized_store(component_id: string, deps: any): (any
     local store = materializer_store
     local row, row_err = store.get_store(store, { component_id = component_id })
     if row_err then
-        if errors.is(row_err, errors.NOT_FOUND) then return nil, nil end
-        return nil, row_err
+        logger:debug("kb10 materializer store did not own component", {
+            component_id = component_id,
+            error = row_err,
+        })
+        return nil, nil
     end
     if not row then return nil, nil end
 
@@ -397,8 +417,8 @@ end
 -- single tower request that never returns (a throttled free model, a pathological
 -- input) blocks the worker forever -- and because the proc lease heartbeat keeps
 -- renewing, the cursor never fails over and the runner slot is wedged. With a
--- timeout the call returns an error and the source cursor can resume at the
--- failed event.
+-- timeout the call returns an error, the document fails in isolation
+-- (materialize_one), and the batch proceeds.
 local EMBED_TIMEOUT_SECONDS = 90
 local SUMMARY_TIMEOUT_SECONDS = 60
 local ENRICH_TIMEOUT_SECONDS = 45
@@ -643,91 +663,54 @@ local function checked_result(result: any, default_component_id: string, kind: s
     return result, nil
 end
 
-local function source_key(external_source: any, external_id: any): string?
-    local source = trim(external_source)
-    local id = trim(external_id)
-    if id == "" then return nil end
+local function projection_source_key(external_source: any, external_id: any): (string?, string, string)
+    local source, id = trim(external_source), trim(external_id)
     if source == "" then source = "knowledge.kb" end
-    return source .. ":" .. id
+    return id ~= "" and source .. ":" .. id or nil, source, id
+end
+
+local function projection_body(projection: any): table
+    local body = decode_object(type(projection) == "table" and projection.body or nil)
+    body.kbs = type(body.kbs) == "table" and body.kbs or {}
+    return body
 end
 
 local function kb_state(body: table, kb_id: string): table
-    local kbs = type(body.kbs) == "table" and body.kbs or {}
-    body.kbs = kbs
+    local kbs = body.kbs :: table
     local state = type(kbs[kb_id]) == "table" and kbs[kb_id] or {}
     state.sources = type(state.sources) == "table" and state.sources or {}
     kbs[kb_id] = state
     return state
 end
 
--- The source body and its graph notice commit with the cursor. When a store
--- mutation writes ahead, only the committed body describes the published baseline.
-local function set_source_delta(n: table, prior: any, status: string)
-    n.document_delta = (status == "completed" and 1 or 0) - (prior.status == "completed" and 1 or 0)
-    n.failed_delta = (status == "failed" and 1 or 0) - (prior.status == "failed" and 1 or 0)
-    n.summary_delta = (tonumber(n.summary_count) or 0) - (tonumber(prior.summary_count) or 0)
-    n.chunk_delta = (tonumber(n.chunk_count) or 0) - (tonumber(prior.chunk_count) or 0)
-    n.embedding_delta = n.summary_delta + n.chunk_delta
-end
-
-local function apply_document_result(state: table, result: any, last_seq: number): ()
+local function apply_document_result(state: table, result: any): ()
     local sources = state.sources :: table
     for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
-        local key = source_key(n.external_source, n.external_id)
-        local prior_seq = tonumber(n.prior_source_seq)
-        n.prior_source_seq = nil
-        if key then
-            local prior = sources[key]
-            if n.persisted ~= false and (prior or (prior_seq and prior_seq > last_seq)) then
-                set_source_delta(n, prior or {}, trim(n.status))
-            end
-            if trim(n.status) == "completed" then
-                sources[key] = {
-                    external_source = trim(n.external_source) ~= "" and trim(n.external_source) or "knowledge.kb",
-                    external_id = trim(n.external_id),
-                    external_version = trim(n.external_version) ~= "" and trim(n.external_version) or nil,
-                    document_node_id = n.document_node_id,
-                    status = "completed",
-                    summary_count = tonumber(n.summary_count) or 0,
-                    chunk_count = tonumber(n.chunk_count) or 0,
-                    updated_at = time.now():utc():format(time.RFC3339),
-                }
-            elseif trim(n.status) == "failed" and n.persisted ~= false then
-                sources[key] = {
-                    external_source = trim(n.external_source) ~= "" and trim(n.external_source) or "knowledge.kb",
-                    external_id = trim(n.external_id),
-                    external_version = trim(n.external_version) ~= "" and trim(n.external_version) or nil,
-                    document_node_id = n.document_node_id,
-                    status = "failed",
-                    error = tostring(n.error or "document materialization failed"),
-                    summary_count = 0,
-                    chunk_count = 0,
-                    updated_at = time.now():utc():format(time.RFC3339),
-                }
-            end
+        local key, source, id = projection_source_key(n.external_source, n.external_id)
+        local status = trim(n.status)
+        local previous = key and sources[key]
+        if key and (type(previous) ~= "table" or (previous.external_source == source and previous.external_id == id)) and
+            (status == "completed" or (status == "failed" and n.persisted ~= false)) then
+            sources[key] = {
+                external_source = source,
+                external_id = id,
+                external_version = trim(n.external_version) ~= "" and trim(n.external_version) or nil,
+                document_node_id = n.document_node_id,
+                status = status,
+                error = status == "failed" and tostring(n.error or "document materialization failed") or nil,
+                summary_count = tonumber(n.summary_count) or 0,
+                chunk_count = tonumber(n.chunk_count) or 0,
+                updated_at = time.now():utc():format(time.RFC3339),
+            }
         end
     end
 end
 
-local function request_graph_placement(deps: any, kb_id: string, target: any, result: any, sources: table): (boolean?, string?)
+local function request_graph_placement(deps: any, kb_id: string, target: any, result: any): (boolean?, string?)
     local engine = type(target) == "table" and target.engine or nil
     if not (type(engine) == "table" and engine.is_graph == true) then
         return true, nil
     end
-
-    local remaining, selected = {}, {}
-    for i = #result.notifications, 1, -1 do
-        local notification = result.notifications[i]
-        local key = source_key(notification.external_source, notification.external_id)
-        local current = key and sources[key]
-        local node_id = trim(notification.document_node_id)
-        if trim(notification.status) == "completed" and current and current.status == "completed"
-            and current.document_node_id == notification.document_node_id and node_id ~= "" and not selected[node_id] then
-            selected[node_id] = true
-            remaining[#remaining + 1] = notification
-        end
-    end
-    if #remaining == 0 then return true, nil end
 
     local store_row = type(target.store_row) == "table" and target.store_row or {}
     local store_id = trim(store_row.id)
@@ -747,35 +730,43 @@ local function request_graph_placement(deps: any, kb_id: string, target: any, re
     end
 
     local send = (type(deps) == "table" and deps.send) or process.send
-    for i = #remaining, 1, -1 do
-        local notification = remaining[i]
-        local user_id = trim(notification.user_id)
-        local sent, send_err = send(enrichment_consts.PROCESS, enrichment_consts.TOPIC, {
-            store_id = store_id,
-            component_id = kb_id,
-            document_node_id = notification.document_node_id,
-            user_id = user_id ~= "" and user_id or nil,
-            execution_identity = identity_row,
-        })
-        if send_err or sent == false then
-            return nil, "graph placement request failed: " .. tostring(send_err or "process.send failed")
+    local requested = 0
+    for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
+        if trim(n.status) == "completed" then
+            local document_node_id = trim(n.document_node_id)
+            if document_node_id ~= "" then
+                local user_id = trim(n.user_id)
+                local sent, send_err = send(enrichment_consts.PROCESS, enrichment_consts.TOPIC, {
+                    store_id = store_id,
+                    component_id = kb_id,
+                    document_node_id = document_node_id,
+                    user_id = user_id ~= "" and user_id or nil,
+                    execution_identity = identity_row,
+                })
+                if send_err or sent == false then
+                    return nil, "graph placement request failed: " .. tostring(send_err or "process.send failed")
+                end
+                requested = requested + 1
+            end
         end
     end
 
-    logger:info("graph placement requested", {
-        kb_id = kb_id,
-        store_id = store_id,
-        documents = #remaining,
-    })
+    if requested > 0 then
+        logger:info("graph placement requested", {
+            kb_id = kb_id,
+            store_id = store_id,
+            documents = requested,
+        })
+    end
     return true, nil
 end
 
 local function apply_delete_result(state: table, result: any): ()
     local sources = state.sources :: table
     for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
-        local key = source_key(n.external_source, n.external_id)
-        if key and sources[key] then
-            set_source_delta(n, sources[key], "")
+        local key = projection_source_key(n.external_source, n.external_id)
+        local entry = key and sources[key]
+        if type(entry) == "table" and n.document_node_id and entry.document_node_id == n.document_node_id then
             sources[key] = nil
         end
     end
@@ -788,10 +779,13 @@ type IngestMetrics = {
     documents_removed: number, items_failed: number,
 }
 
-local function build_digest_request_writes(input: any, thread_id: string, projection_id: string, target_kb_ids: { string }, from_seq: number?, to_seq: number?): { table }?
+local function build_digest_request_writes(input: any, thread_id: string, projection_id: string, target_kb_ids: { string }, metrics: IngestMetrics, from_seq: number?, to_seq: number?): { table }?
+    if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
+        return nil
+    end
     local range = type(input.range) == "table" and input.range or {}
     local target_seq = tonumber(range.target_seq)
-    local range_to_seq = tonumber(to_seq)
+    local range_to_seq = tonumber(range.to_seq) or tonumber(to_seq)
     if not target_seq or not range_to_seq or range_to_seq < target_seq then
         return nil
     end
@@ -889,9 +883,24 @@ local function result_deltas(kb_id: string, results: { any }): table
     return delta
 end
 
-local function build_source_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, results: { any }, status: string, last_error: string?, from_seq: number?, to_seq: number?, processed_delta: number): { table }?
+local function has_materialized_delta(kb_id: string, result: any): boolean
+    local delta = result_deltas(kb_id, { result })
+    return (tonumber(delta.document_delta) or 0) ~= 0
+        or (tonumber(delta.chunk_delta) or 0) ~= 0
+        or (tonumber(delta.summary_delta) or 0) ~= 0
+        or (tonumber(delta.embedding_delta) or 0) ~= 0
+        or (tonumber(delta.failed_delta) or 0) ~= 0
+end
+
+local function build_source_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, results: { any }, status: string, last_error: string?, from_seq: number?, to_seq: number?): { table }?
     local events = {}
     local seq_key = tostring(math.floor(tonumber(to_seq) or 0))
+    local processed_delta = 0
+    local from_n = tonumber(from_seq)
+    local to_n = tonumber(to_seq)
+    if from_n and to_n and to_n >= from_n then
+        processed_delta = math.floor(to_n - from_n + 1)
+    end
     for _, kb_id in ipairs(target_kb_ids) do
         local delta = result_deltas(kb_id, results)
         local body = {
@@ -924,9 +933,15 @@ local function build_source_meta_writes(thread_id: string, projection_id: string
     return { { thread_id = thread_id, events = events } }
 end
 
-local function build_dead_letter_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, error_message: string, from_seq: number?, to_seq: number?, processed_delta: number): { table }?
+local function build_dead_letter_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, error_message: string, from_seq: number?, to_seq: number?): { table }?
     local events = {}
     local seq_key = tostring(math.floor(tonumber(to_seq) or 0))
+    local processed_delta = 0
+    local from_n = tonumber(from_seq)
+    local to_n = tonumber(to_seq)
+    if from_n and to_n and to_n >= from_n then
+        processed_delta = math.floor(to_n - from_n + 1)
+    end
     for _, kb_id in ipairs(target_kb_ids) do
         events[#events + 1] = {
             type = GRAPH_CHANGED_EVENT_TYPE,
@@ -988,7 +1003,7 @@ local function run_with_deps(input_raw, deps)
     if projection_id == "" then
         return nil, (errors.new({message = "projection.id is required", kind = errors.INVALID}) :: error)
     end
-    local body = decode_object(projection.body)
+    local body = projection_body(projection)
 
     local worker_config = resolve_worker_config(input.worker_config, projection)
     local max_pending_documents = configured_pending_cap(
@@ -1035,30 +1050,13 @@ local function run_with_deps(input_raw, deps)
         items_failed = 0,
     }
 
-    local kb_results, post_materialization_errors = {}, {}
-    local range = type(input.range) == "table" and input.range or {}
-    local from_seq
-    local function finalize_writes(last_seq: number?, changed: boolean)
-        if not changed and body.digest_pending ~= true then return nil end
-        -- The finalizers read the entire store. An outstanding request also
-        -- covers changes from earlier pages whose start is no longer in range.
-        local request_from = body.digest_pending == true and 1 or from_seq
-        return build_digest_request_writes(input, thread_id, projection_id, clean_targets, request_from, last_seq)
-    end
-
     if #raw_events == 0 then
-        local last_seq = tonumber(range.to_seq)
-        local append_events = finalize_writes(last_seq, false)
-        local patch = {
-            last_run_at = time.now():utc():format(time.RFC3339),
-            last_status = "skipped_no_events",
-        }
-        if append_events then patch.digest_pending = false end
         return {
-            patch = patch,
+            patch = {
+                last_run_at = time.now():utc():format(time.RFC3339),
+                last_status = "skipped_no_events",
+            },
             metrics = metrics,
-            append_events = append_events,
-            last_seq = last_seq,
         }, nil
     end
 
@@ -1066,36 +1064,195 @@ local function run_with_deps(input_raw, deps)
         return default_dispatcher(event, deps)
     end
 
-    local function dead_letter_event(seq: number, event_error: any, processed: number, final_seq: number?)
-        local message = tostring(event_error)
-        logger:error("source event dead-lettered", {
-            projection_id = projection_id, seq = seq, error = message,
+    local pending_documents = {}
+    local pending_deletes = {}
+    local kb_results = {}
+    local post_materialization_errors = {}
+    local from_seq, to_seq
+
+    local function batch_failure(batch_error: any)
+        local error_message = tostring(batch_error or "source batch failed")
+        local attempts = prior_batch_attempts(projection, from_seq, to_seq) + 1
+        if attempts < MAX_BATCH_ATTEMPTS then
+            logger:warn("source batch failed, retrying without advancing cursor", {
+                projection_id = projection_id,
+                from_seq = from_seq, to_seq = to_seq,
+                attempt = attempts, max_attempts = MAX_BATCH_ATTEMPTS,
+                error = error_message,
+            })
+            -- Record the attempt on the body and hold the cursor (no last_to_seq
+            -- advance) so the same batch is re-delivered next cycle with a higher
+            -- count. A success patch is returned (not a hard error) so the attempt
+            -- state is persisted rather than discarded.
+            return {
+                patch = {
+                    last_run_at = time.now():utc():format(time.RFC3339),
+                    last_status = "retrying",
+                    last_error = error_message,
+                    last_failed_batch = {
+                        from_seq = from_seq,
+                        to_seq = to_seq,
+                        attempts = attempts,
+                        error = error_message,
+                    },
+                    kb_results = kb_results,
+                },
+                metrics = metrics,
+            }, nil
+        end
+
+        logger:error("source batch dead-lettered after retry cap, advancing cursor", {
+            projection_id = projection_id,
+            from_seq = from_seq, to_seq = to_seq,
+            attempts = attempts, error = error_message,
         })
-        local entry = {
+        local dead_letter_entry = {
             dead_lettered_at = time.now():utc():format(time.RFC3339),
-            from_seq = seq,
-            to_seq = seq,
-            error = message,
+            from_seq = from_seq,
+            to_seq = to_seq,
+            attempts = attempts,
+            error = error_message,
             kb_results = kb_results,
         }
-        body.last_run_at = entry.dead_lettered_at
-        body.last_status = "dead_lettered"
-        body.last_from_seq = seq
-        body.last_to_seq = seq
-        body.last_error = message
-        body.dead_lettered_batches = dead_lettered_batches(body, entry)
-        body.kb_results = kb_results
-        body.last_failed_batch = nil
-        local requests = finalize_writes(final_seq, false)
-        if requests then body.digest_pending = nil end
+        local append_events = build_dead_letter_meta_writes(thread_id, projection_id, clean_targets, error_message, from_seq, to_seq)
         return {
-            body = body,
+            patch = {
+                last_run_at = time.now():utc():format(time.RFC3339),
+                last_status = "dead_lettered",
+                last_from_seq = from_seq,
+                last_to_seq = to_seq,
+                last_error = error_message,
+                last_failed_batch = nil,
+                dead_lettered_batches = dead_lettered_batches(projection, dead_letter_entry),
+                kb_results = kb_results,
+            },
             metrics = metrics,
-            append_events = merge_append_writes(
-                build_dead_letter_meta_writes(thread_id, projection_id, clean_targets, message, seq, seq, processed),
-                requests
-            ),
-            last_seq = seq,
+            append_events = append_events,
+        }, nil
+    end
+
+    local batch_error = nil
+
+    for _, raw_event in ipairs(raw_events) do
+        if batch_error then break end
+        if type(raw_event) == "table" then
+            local external = {
+                external_source = raw_event.external_source,
+                external_id = raw_event.external_id,
+                external_version = raw_event.external_version,
+            }
+
+            local event = {
+                id = tostring(raw_event.id or ""),
+                seq = tonumber(raw_event.seq) or 0,
+                type = trim(raw_event.type),
+                role = raw_event.role,
+                body = decode_object(raw_event.body),
+                created_at = raw_event.created_at,
+                external = external,
+            }
+
+            if not from_seq or event.seq < from_seq then from_seq = event.seq end
+            if not to_seq or event.seq > to_seq then to_seq = event.seq end
+
+            local meta = event.body.metadata
+            local selected_node_id
+            if event.type == CONTENT_DELETED and type(meta) == "table" and meta.node_id ~= nil then
+                if event.role ~= "system" or event.body.kb_id ~= thread_id or
+                    type(meta.node_id) ~= "string" or not uuid.validate(meta.node_id) then
+                    return nil, errors.new({kind = errors.INVALID, message = "invalid selected document delete"})
+                end
+                selected_node_id = meta.node_id
+            end
+            local items, dispatch_err, retryable = dispatcher(event)
+            if dispatch_err then
+                logger:warn("dispatcher error", {
+                    event_id = event.id, type = event.type, error = dispatch_err,
+                })
+                if retryable == true then
+                    batch_error = tostring(dispatch_err)
+                    break
+                end
+            elseif items == nil then
+                metrics.events_unsupported = metrics.events_unsupported + 1
+            else
+                local docs = type(items.documents) == "table" and items.documents or {}
+                local deletes = type(items.deletes) == "table" and items.deletes or {}
+                if #docs == 0 and #deletes == 0 then
+                    -- Extractor handled the event but emitted nothing.
+                else
+                    metrics.events_extracted = metrics.events_extracted + 1
+                    for _, doc in ipairs(docs) do
+                        if #pending_documents >= max_pending_documents then
+                            batch_error = "source worker document cap exceeded: " ..
+                                tostring(max_pending_documents) ..
+                                " documents pending; batch preserved for retry/dead-letter"
+                            logger:warn("documents cap hit", {
+                                cap = max_pending_documents, event_id = event.id,
+                            })
+                            break
+                        end
+                        local ok, lineage_err = ensure_source_lineage(doc, event, thread_id)
+                        if not ok then
+                            batch_error = lineage_err
+                            logger:warn("document lineage conflict", {
+                                event_id = event.id, error = lineage_err,
+                            })
+                            break
+                        end
+                        pending_documents[#pending_documents + 1] = {
+                            doc = doc, event_id = event.id,
+                        }
+                    end
+                    if batch_error then break end
+                    for _, d in ipairs(deletes) do
+                        if #pending_deletes >= max_pending_deletes then
+                            batch_error = "source worker delete cap exceeded: " ..
+                                tostring(max_pending_deletes) ..
+                                " deletes pending; batch preserved for retry/dead-letter"
+                            logger:warn("deletes cap hit", {
+                                cap = max_pending_deletes, event_id = event.id,
+                            })
+                            break
+                        end
+                        local ok, lineage_err = ensure_source_lineage(d, event, thread_id)
+                        if not ok then
+                            batch_error = lineage_err
+                            logger:warn("delete lineage conflict", {
+                                event_id = event.id, error = lineage_err,
+                            })
+                            break
+                        end
+                        d.selected_node_id = selected_node_id
+                        pending_deletes[#pending_deletes + 1] = {
+                            delete = d, event_id = event.id,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    metrics.documents_emitted = #pending_documents
+    metrics.deletes_emitted = #pending_deletes
+
+    if batch_error then
+        kb_results[#kb_results + 1] = {
+            component_id = "source_extraction",
+            error = tostring(batch_error),
+        }
+        return batch_failure(batch_error)
+    end
+
+    if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
+        return {
+            patch = {
+                last_run_at = time.now():utc():format(time.RFC3339),
+                last_status = "skipped_no_items",
+                last_from_seq = from_seq,
+                last_to_seq = to_seq,
+            },
+            metrics = metrics,
         }, nil
     end
 
@@ -1113,222 +1270,143 @@ local function run_with_deps(input_raw, deps)
         return default_captioner(image, context, model, image_loader)
     end
 
-    local targets, prepared = {}, {}
-    local function materialize_event(event, docs, deletes)
-        for _, items in ipairs({ docs, deletes }) do
-            for _, item in ipairs(items) do
-                local _, err = ensure_source_lineage(item, event, thread_id)
-                if err then return nil, err end
-            end
-        end
-
+    local deletes, source_deletes = {}, {}
+    for _, pending in ipairs(pending_deletes) do
+        local delete = pending.delete
+        deletes[#deletes + 1] = delete
+        if delete.selected_node_id == nil then source_deletes[#source_deletes + 1] = delete end
+    end
+    if metrics.documents_emitted == 0 and #deletes > 0 and #source_deletes == 0 then
+        local own_target = {}
         for _, kb_id in ipairs(clean_targets) do
-            local target = targets[kb_id]
-            if not target then
-                local target_err, store_unavailable
-                target, target_err, store_unavailable = resolve_materialized_store(kb_id, deps)
-                if not target then
-                    return nil, target_err or "no source materializer for KB engine",
-                        store_unavailable or source_materializer.is_system_failure(target_err)
-                end
-                targets[kb_id] = target
-            end
-            if #docs > 0 and not prepared[kb_id] then
-                local setup, err, retryable = source_materializer.prepare_document_ingest(target, worker_config)
-                if not setup then return nil, err, retryable end
-                prepared[kb_id] = setup
-            end
+            if kb_id == thread_id then own_target[1] = kb_id end
         end
-
-        local results = {}
-        for _, kb_id in ipairs(clean_targets) do
-            local target = targets[kb_id]
-            if #deletes > 0 then
-                local removed, err, retryable = source_materializer.delete_documents_from_store(target, deletes)
-                if err then return nil, err, retryable end
-                local result, shape_err = checked_result(removed, kb_id, "delete")
-                if shape_err then return nil, shape_err end
-                results[#results + 1] = result
-            end
-            if #docs > 0 then
-                local ingested, err, retryable = source_materializer.ingest_documents_into_store(
-                    kb_id, target, docs, embedder, summarizer, enricher, captioner, prepared[kb_id], batch_enricher
-                )
-                if err then return nil, err, retryable end
-                local result, shape_err = checked_result(ingested, kb_id, "document")
-                if shape_err then return nil, shape_err end
-                if result.consumed ~= #docs then
-                    return nil, "source materializer returned an invalid consumed document count"
-                end
-                results[#results + 1] = result
-            end
-        end
-        return results, nil
+        clean_targets = own_target
     end
 
-    local cursor = type(input.cursor) == "table" and input.cursor or {}
-    local prior_seq = tonumber(cursor.last_seq) or 0
-    local deadline = tonumber(input.execution_deadline_ns)
-    local started_ns = deadline and time.now():unix_nano() or 0
-    local longest_event_ns = 0
-    local consumed_seq, stopped_seq, failure, retryable
-    local processed, failed_processed = 0, 0
-    local failed_final_seq
-    local target_results: { [string]: any } = {}
-    local function apply_results(results: any)
-        for _, result in ipairs(results) do
-            local kb_id = result.component_id
-            local state = kb_state(body, kb_id)
-            if result.kind == "delete" then
-                metrics.documents_removed = metrics.documents_removed + (tonumber(result.removed) or 0)
-                apply_delete_result(state, result)
-            else
-                metrics.documents_inserted = metrics.documents_inserted + (tonumber(result.inserted) or 0)
-                metrics.documents_replaced = metrics.documents_replaced + (tonumber(result.replaced) or 0)
-                metrics.items_failed = metrics.items_failed + (tonumber(result.failed) or 0)
-                apply_document_result(state, result, prior_seq)
-                result.consumed = nil
-            end
-            local by_kind = target_results[kb_id] or {}
-            local aggregate = by_kind[result.kind]
-            if aggregate then
-                for _, field in ipairs({ "removed", "missing", "inserted", "replaced", "summary_count", "chunk_count", "failed", "system_failed" }) do
-                    if result[field] ~= nil then aggregate[field] = aggregate[field] + result[field] end
-                end
-                for _, notification in ipairs(result.notifications) do
-                    aggregate.notifications[#aggregate.notifications + 1] = notification
-                end
-            else
-                by_kind[result.kind] = result
-                target_results[kb_id] = by_kind
-            end
-        end
-    end
-
-    for index, raw in ipairs(raw_events) do
-        if type(raw) == "table" then
-            -- Keep time to finalize the prefix and return the proc result.
-            if consumed_seq and deadline and deadline - started_ns <= longest_event_ns + time.SECOND then
-                stopped_seq = tonumber(raw.seq)
-                break
-            end
-            local event = {
-                id = tostring(raw.id or ""),
-                seq = tonumber(raw.seq) or 0,
-                type = trim(raw.type),
-                role = raw.role,
-                body = decode_object(raw.body),
-                created_at = raw.created_at,
-                external = {
-                    external_source = raw.external_source,
-                    external_id = raw.external_id,
-                    external_version = raw.external_version,
-                },
-            }
-            from_seq = from_seq or event.seq
-            failed_processed = is_knowledge_content_event(event.type) and 1 or 0
-            -- Core can advance over a filtered tail without another worker call.
-            failed_final_seq = index == #raw_events and (tonumber(range.to_seq) or event.seq) or nil
-            local items, dispatch_err, dispatch_retryable = dispatcher(event)
-            if dispatch_err then
-                logger:warn("dispatcher error", { event_id = event.id, type = event.type, error = dispatch_err })
-                if dispatch_retryable == true or failed_processed == 1 then
-                    stopped_seq, failure, retryable = event.seq, dispatch_err, dispatch_retryable
-                    break
-                end
-                items = nil
-            elseif items == nil then
-                metrics.events_unsupported = metrics.events_unsupported + 1
-            end
-
-            local docs = type(items) == "table" and type(items.documents) == "table" and items.documents or {}
-            local deletes = type(items) == "table" and type(items.deletes) == "table" and items.deletes or {}
-            -- Individual source events are the indivisible unit of cursor progress.
-            if metrics.events_extracted > 0 and (
-                metrics.documents_emitted + #docs > max_pending_documents
-                or metrics.deletes_emitted + #deletes > max_pending_deletes
-            ) then
-                stopped_seq = event.seq
-                break
-            end
-
-            if #docs + #deletes > 0 then
-                local results, err, unavailable = materialize_event(event, docs, deletes)
-                if err then
-                    stopped_seq, failure, retryable = event.seq, err, unavailable
-                    break
-                end
-                -- Publish an event only after every target consumes it.
-                apply_results(results)
-                metrics.events_extracted = metrics.events_extracted + 1
-                metrics.documents_emitted = metrics.documents_emitted + #docs
-                metrics.deletes_emitted = metrics.deletes_emitted + #deletes
-            end
-            consumed_seq = event.seq
-            processed = processed + failed_processed
-            if deadline then
-                local finished_ns = time.now():unix_nano()
-                longest_event_ns = math.max(longest_event_ns, finished_ns - started_ns)
-                started_ns = finished_ns
-            end
-        end
-    end
-
-    if failure and (not consumed_seq or consumed_seq <= prior_seq) then
-        if retryable then
-            local message = tostring(failure)
-            local unavailable = errors.new({ kind = errors.UNAVAILABLE, retryable = true, message = message })
-            if message ~= cursor.last_error then
-                local updated, metadata_err = component.set_meta(thread_id, { status = "error", last_error = message })
-                if not updated then
-                    logger:warn("source status update failed", { thread_id = thread_id, error = tostring(metadata_err) })
-                end
-            end
-            return nil, unavailable
-        end
-        return dead_letter_event(stopped_seq :: number, failure, failed_processed, failed_final_seq)
-    end
-    local last_seq = consumed_seq
-    if not stopped_seq then last_seq = tonumber(range.to_seq) or consumed_seq end
-    local to_seq = consumed_seq
+    -- A whole-batch system error (store down, embedder unreachable, no
+    -- materializer for the KB). Per-document content failures are isolated inside
+    -- the materializer and do NOT surface here; only an error that fails the
+    -- batch as a unit does. Collected rather than returned immediately so the
+    -- retry/dead-letter decision is made once, after every target KB is tried.
     for _, kb_id in ipairs(clean_targets) do
-        local results = target_results[kb_id]
-        if results then
-            if results.delete then kb_results[#kb_results + 1] = results.delete end
-            if results.document then
-                kb_results[#kb_results + 1] = results.document
-                local placed, placement_err = request_graph_placement(deps, kb_id, targets[kb_id], results.document, body.kbs[kb_id].sources)
-                if not placed then
-                    logger:warn("graph placement request failed", { kb = kb_id, error = placement_err })
-                    post_materialization_errors[#post_materialization_errors + 1] = {
-                        component_id = kb_id, stage = "graph_placement", error = tostring(placement_err),
-                    }
+        local target_error = nil
+        local target, target_err = resolve_materialized_store(kb_id, deps)
+        if target_err then
+            logger:warn("target KB materializer resolution failed", { kb = kb_id, error = target_err })
+            kb_results[#kb_results + 1] = { component_id = kb_id, error = target_err }
+            target_error = target_err
+        elseif not target then
+            local missing = "no source materializer for KB engine"
+            logger:warn("target KB has no source materializer", { kb = kb_id })
+            kb_results[#kb_results + 1] = { component_id = kb_id, error = missing }
+            target_error = missing
+        else
+            target.source_thread_id = thread_id
+            local target_deletes = kb_id == thread_id and deletes or source_deletes
+            if #target_deletes > 0 then
+                local del, del_err = source_materializer.delete_documents_from_store(target, target_deletes)
+                if del_err and errors.is(del_err, errors.CONFLICT) then return nil, del_err end
+                local delete_result, shape_err = checked_result(del, kb_id, "delete")
+                if shape_err then
+                    logger:error("source materialization delete returned invalid result", { kb = kb_id, error = shape_err })
+                    kb_results[#kb_results + 1] = { component_id = kb_id, kind = "delete", error = shape_err }
+                    target_error = shape_err
+                elseif del_err then
+                    delete_result.error = del_err
+                    metrics.documents_removed = metrics.documents_removed + (tonumber(delete_result.removed) or 0)
+                    kb_results[#kb_results + 1] = delete_result
+                    logger:error("source materialization delete failed", { kb = kb_id, error = del_err })
+                    target_error = del_err
+                else
+                    metrics.documents_removed = metrics.documents_removed + (tonumber(delete_result.removed) or 0)
+                    kb_results[#kb_results + 1] = delete_result
+                    apply_delete_result(kb_state(body, kb_id), delete_result)
+                end
+            end
+
+            if not target_error then
+                if metrics.documents_emitted == 0 then
+                    if #target_deletes == 0 then
+                        kb_results[#kb_results + 1] = {
+                            component_id = kb_id, kind = "document",
+                            inserted = 0, replaced = 0, failed = 0,
+                            note = "no documents emitted by extractors",
+                        }
+                    end
+                else
+                    local docs = {}
+                    for _, p in ipairs(pending_documents) do docs[#docs + 1] = p.doc end
+                    local r, kb_err = source_materializer.ingest_documents_into_store(kb_id, target, docs, embedder, summarizer, enricher, captioner, worker_config, batch_enricher)
+                    if kb_err and errors.is(kb_err, errors.CONFLICT) then return nil, kb_err end
+                    local ingest_result, shape_err = checked_result(r, kb_id, "document")
+                    if shape_err then
+                        logger:error("source materialization returned invalid result", { kb = kb_id, error = shape_err })
+                        kb_results[#kb_results + 1] = { component_id = kb_id, kind = "document", error = shape_err }
+                        target_error = shape_err
+                    elseif kb_err then
+                        local r = ingest_result
+                        logger:error("source materialization failed", { kb = kb_id, error = kb_err })
+                        metrics.documents_inserted = metrics.documents_inserted + (tonumber(r.inserted) or 0)
+                        metrics.documents_replaced = metrics.documents_replaced + (tonumber(r.replaced) or 0)
+                        metrics.items_failed = metrics.items_failed + (tonumber(r.failed) or 0)
+                        r.error = kb_err
+                        kb_results[#kb_results + 1] = r
+                        if has_materialized_delta(kb_id, r) then
+                            -- Once the materializer has committed per-document
+                            -- read-model facts, the cursor must advance with a
+                            -- matching graph.changed delta. Retrying would replay
+                            -- committed side effects and strand public meta.
+                            apply_document_result(kb_state(body, kb_id), r)
+                            local placement_ok, placement_err = request_graph_placement(deps, kb_id, target, r)
+                            if not placement_ok then
+                                logger:warn("graph placement request failed", { kb = kb_id, error = placement_err })
+                            end
+                            post_materialization_errors[#post_materialization_errors + 1] = {
+                                component_id = kb_id,
+                                stage = "source_materialization",
+                                error = tostring(kb_err),
+                            }
+                        else
+                            target_error = kb_err
+                        end
+                    else
+                        local r = ingest_result
+                        metrics.documents_inserted = metrics.documents_inserted + (tonumber(r.inserted) or 0)
+                        metrics.documents_replaced = metrics.documents_replaced + (tonumber(r.replaced) or 0)
+                        metrics.items_failed = metrics.items_failed + (tonumber(r.failed) or 0)
+                        kb_results[#kb_results + 1] = r
+                        apply_document_result(kb_state(body, kb_id), r)
+                        local placement_ok, placement_err = request_graph_placement(deps, kb_id, target, r)
+                        if not placement_ok then
+                            logger:warn("graph placement request failed", { kb = kb_id, error = placement_err })
+                            post_materialization_errors[#post_materialization_errors + 1] = {
+                                component_id = kb_id,
+                                stage = "graph_placement",
+                                error = tostring(placement_err),
+                            }
+                        end
+                    end
                 end
             end
         end
-    end
-    local changed = metrics.documents_emitted > 0 or metrics.deletes_emitted > 0
-    local requests = finalize_writes(last_seq, changed)
-    if not changed then
-        local patch = {
-            last_run_at = time.now():utc():format(time.RFC3339),
-            last_status = "skipped_no_items",
-            last_from_seq = from_seq,
-            last_to_seq = to_seq,
-        }
-        if requests then patch.digest_pending = false end
-        local meta_writes
-        if processed > 0 then
-            meta_writes = build_source_meta_writes(
-                thread_id, projection_id, clean_targets, kb_results, "ready", "", from_seq, to_seq, processed
-            )
+        if target_error and not batch_error then
+            batch_error = target_error
         end
-        return {
-            patch = patch,
-            metrics = metrics,
-            append_events = merge_append_writes(meta_writes, requests),
-            last_seq = last_seq,
-        }, nil
+    end
+
+    -- Retry-then-dead-letter for a whole-batch system error (the store or embedder
+    -- is unreachable for the entire batch). Per-document content failures never
+    -- reach here: the materializer isolates them and returns a result, so this
+    -- path is only an instance-level fault. The worker keeps its own attempt count
+    -- across cycles in the projection's durable body (the live-window trigger can
+    -- re-fire a fresh run, which would otherwise reset a framework-level retry
+    -- count and let a stuck batch retry forever). Below the cap it returns the
+    -- error so the cursor stays put and the batch is replayed; at the cap it
+    -- dead-letters: advances the cursor and records the batch failed, so a
+    -- persistently stuck batch can never head-of-line-block the injection lane.
+    if batch_error then
+        return batch_failure(batch_error)
     end
 
     logger:info("source worker completed", {
@@ -1363,10 +1441,8 @@ local function run_with_deps(input_raw, deps)
         source_status = "error"
     end
     local append_events = merge_append_writes(
-        build_source_meta_writes(
-            thread_id, projection_id, clean_targets, kb_results, source_status, last_error, from_seq, to_seq, processed
-        ),
-        requests
+        build_source_meta_writes(thread_id, projection_id, clean_targets, kb_results, source_status, last_error, from_seq, to_seq),
+        build_digest_request_writes(input, thread_id, projection_id, clean_targets, metrics, from_seq, to_seq)
     )
 
     body.last_run_at = time.now():utc():format(time.RFC3339)
@@ -1380,16 +1456,14 @@ local function run_with_deps(input_raw, deps)
     body.last_from_seq = from_seq
     body.last_to_seq = to_seq
     body.last_error = last_error
-    body.kb_results = kb_results
-    body.digest_pending = requests == nil or nil
     body.last_failed_batch = nil
+    body.kb_results = kb_results
     body.post_materialization_errors = #post_materialization_errors > 0 and post_materialization_errors or nil
 
     return {
         body = body,
         metrics = metrics,
         append_events = append_events,
-        last_seq = last_seq,
     }, nil
 end
 
@@ -1416,4 +1490,6 @@ return {
     _discover_extractors = discover_extractors,
     _plan_document_writes = source_materializer.plan_document_writes,
     _materialization_options = source_materializer.materialization_options,
+    _prior_batch_attempts = prior_batch_attempts,
+    MAX_BATCH_ATTEMPTS = MAX_BATCH_ATTEMPTS,
 }

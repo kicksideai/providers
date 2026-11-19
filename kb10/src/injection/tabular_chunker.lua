@@ -29,9 +29,7 @@ local MIMES = {
     ["text/csv"] = "csv",
     ["application/csv"] = "csv",
 }
-local function trim(s: string): string
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 local function source_format(doc: any): (string?, string)
     local meta = type(doc.metadata) == "table" and doc.metadata or {}
     local filename = tostring(meta.original_filename or meta.filename or doc.title or "")

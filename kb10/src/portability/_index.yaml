@@ -25,5 +25,6 @@ entries:
     modules: [fs, uuid, ctx]
     imports:
       store: kickside.kb10.persist:store
+      ops: kickside.kb10.persist:ops
       portable_io: kickside.component.portability:portable_io
     method: handler

@@ -266,7 +266,7 @@ local function event_for_external(thread_id, external_id, event_type)
     local db, db_err = sql.get("app:db")
     if db_err then error("db unavailable: " .. tostring(db_err)) end
     local rows, qerr = db:query(
-        [[SELECT id, type, external_source, external_id, external_version, body, seq
+        [[SELECT id, type, role, external_source, external_id, external_version, body, seq
           FROM kickside_event
           WHERE thread_id = $1 AND external_id = $2 AND type = $3
           ORDER BY seq DESC
@@ -472,10 +472,11 @@ local function define_tests()
 
             test.it("rejects empty content", function()
                 local exec = new_executor(test_user_id):with_context({ kb_id = test_kb_id })
-                local result, err = exec:call("app:agent_embed_content", {})
-                test.is_nil(result)
-                test.not_nil(err)
-                test.is_true(tostring(err):find("content is required") ~= nil)
+                for _, request in ipairs({ {}, { content = "" }, { content = string.rep(" ", 1024 * 1024) } }) do
+                    local result, err = exec:call("app:agent_embed_content", request)
+                    test.is_nil(result)
+                    test.contains(tostring(err), "content is required")
+                end
             end)
 
             test.it("rejects missing kb_id when not in context", function()
@@ -498,6 +499,23 @@ local function define_tests()
                 test.not_nil(err)
                 test.is_true(tostring(err):find("cannot access KB") ~= nil)
             end)
+
+            for _, field in ipairs({ "title", "content" }) do
+                test.it("queues " .. field .. " with a megabyte of internal whitespace", function()
+                    local text = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+                    local request = { title = "Document title", content = "Document body" }
+                    request[field] = "\t" .. text .. "\n"
+                    local instance, open_err = open_embed(test_kb_id, test_user_id)
+                    test.is_nil(open_err)
+                    local result, embed_err = instance:embed_content(request)
+                    test.is_nil(embed_err, tostring(embed_err))
+                    test.is_true(result.success, tostring(result.error))
+                    local event = event_for_external(result.thread_id, result.external_id,
+                        "kickside.knowledge.events:content.upserted")
+                    local expected = field == "title" and text or request.content
+                    test.is_true(event.body[field] == expected)
+                end)
+            end
 
             test.it("embeds text content via contract", function()
                 local instance, open_err = open_embed(test_kb_id, test_user_id)
@@ -620,6 +638,57 @@ local function define_tests()
                 test.eq(external_id, event.body.source_ref.external_id)
             end)
 
+            test.it("queues and materializes a large JSON upload through EmbedToKB", function()
+                local upload_id = uuid()
+                local filename = "records.json"
+                local mime = "application/json"
+                local content = '{"records":[\n' .. string.rep(" ", 16000)
+                    .. '{"name":"example","active":true}\n]}\n'
+                local _, upload_err = upload_record_repo.create(upload_id, test_user_id, #content,
+                    mime, "app:uploads", upload_id, "document", { filename = filename }, "completed")
+                test.is_nil(upload_err, tostring(upload_err))
+                local artifact, artifact_err = artifact_content_repo.create_artifact({
+                    upload_id = upload_id, kind = "text", role = "primary", mime_type = mime,
+                    content = content, metadata = { filename = filename },
+                })
+                test.is_nil(artifact_err, tostring(artifact_err))
+
+                local result, err = new_executor(test_user_id):call(TRAIT_EMBED_METHOD, {
+                    kb_id = test_kb_id, upload_id = upload_id,
+                })
+                test.is_nil(err, tostring(err))
+                test.eq(result.status, "queued")
+                test.eq(result.upload_id, upload_id)
+
+                local event = event_for_external(result.thread_id, "upload:" .. upload_id,
+                    "kickside.knowledge.events:content.upserted")
+                test.not_nil(event)
+                test.eq(event.body.content_type, mime)
+                test.eq(event.body.source_ref.artifact_id, artifact.artifact_id)
+                test.is_true(event.body.content == content, "the queued event retains every upload byte")
+
+                local materialized, worker_err = source_worker.run_with_deps({
+                    thread_id = test_kb_id,
+                    projection = { id = result.projection_id },
+                    events = { event }, range = { from_seq = event.seq, to_seq = event.seq },
+                    worker_config = { target_kb_ids = { test_kb_id } },
+                }, worker_fixtures.worker_deps({
+                    embedder = worker_fixtures.fake_embedder,
+                    summarizer = function() return "Example records", nil end,
+                    enricher = function() return "", nil end,
+                }))
+                test.is_nil(worker_err, tostring(worker_err))
+                test.eq(materialized.metrics.items_failed, 0)
+                test.eq(materialized.metrics.documents_inserted, 1)
+
+                local _, cleanup_err = artifact_cleanup_repo.delete_for_upload(upload_id)
+                test.is_nil(cleanup_err, tostring(cleanup_err))
+                local db = assert(sql.get("app:db"))
+                local _, delete_err = db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", { upload_id })
+                db:release()
+                test.is_nil(delete_err, tostring(delete_err))
+            end)
+
             test.it("materializes an upload larger than the event row bound", function()
                 local upload_id = uuid()
                 local marker = "Large artifact searchable content"
@@ -671,10 +740,11 @@ local function define_tests()
                         summarizer=function() return "unused",nil end,
                         enricher=function() return "",nil end,
                     }))
-                test.is_nil(retry)
-                test.eq(retry_err:kind(), errors.UNAVAILABLE)
-                test.is_true(retry_err:retryable())
-                test.contains(tostring(retry_err), "artifact")
+                test.is_nil(retry_err)
+                test.eq(retry.patch.last_status,"retrying")
+                test.eq(retry.patch.last_failed_batch.attempts,1)
+                test.contains(retry.patch.last_error,"artifact")
+                test.eq(retry.metrics.documents_inserted,0)
                 local _, delete_err = db:execute("DELETE FROM kickside_uploads WHERE uuid=$1",{upload_id})
                 test.is_nil(delete_err)
                 db:release()
@@ -800,6 +870,100 @@ local function define_tests()
                 test.eq(test_kb_id, event.body.kb_id)
                 test.eq(external_id, event.body.metadata.external_id)
                 test.eq("knowledge.kb", event.body.metadata.external_source)
+            end)
+
+            test.it("deletes selected document UUIDs independently of their source pair and versions", function()
+                local external_id = "shared-delete-" .. uuid()
+                local incoming_thread = uuid()
+                local store = assert(kb10_store.get_store(test_kb_id))
+                local foreign_store = uuid()
+                assert(kb10_store.create_store(foreign_store, "class:embed", {}))
+                local foreign = assert(kb10_store.insert_node(foreign_store, {node_type = "document"}))
+                local function root(lineage, content)
+                    return assert(kb10_store.replace_document(store.id, {source_thread_id = lineage, document = {
+                        node_type = "document", content = content, metadata = {
+                            external_source = "knowledge.kb", external_id = external_id,
+                            source_ref = lineage and {thread_id = lineage} or nil,
+                        },
+                    }})).document_node_id
+                end
+                local incoming = root(incoming_thread, "incoming root")
+                local local_root = root(test_kb_id, "local root")
+                local unowned = uuid()
+                assert(kb10_store.insert_nodes(store.id, {{
+                    id = unowned, node_type = "document", content = "unbound root",
+                    metadata = {external_source = "knowledge.kb", external_id = external_id},
+                }}, {}))
+                local manual = assert(kb10_store.insert_node(store.id, {node_type = "document"}))
+                local concept = assert(kb10_store.insert_node(store.id, {node_type = "concept", content = "concept"}))
+                for _, id in ipairs({incoming, local_root, unowned}) do
+                    assert(kb10_store.insert_edge(store.id, {
+                        from_node_id = id, to_node_id = concept, edge_type = "categorized_as",
+                    }))
+                end
+                local child = assert(kb10_store.insert_node(store.id, {parent_id = local_root, node_type = "chunk"}))
+                local exec = new_executor(test_user_id):with_context({kb_id = test_kb_id})
+                local prior_version, projection_id
+                local function selected_delete(id, external)
+                    local queued, err = exec:call(DELETE_CONTENT_METHOD, {
+                        external_id = external,
+                        external_version = "same-content-version",
+                        metadata = {node_id = id},
+                        source_ref = {external_version = "same-content-version"},
+                    })
+                    test.is_nil(err)
+                    test.is_true(queued.success)
+                    test.eq(queued.external_id, external or id)
+                    local event = assert(event_for_external(test_kb_id, queued.external_id,
+                        "kickside.knowledge.events:content.deleted"))
+                    test.eq(event.body.metadata.node_id, id)
+                    test.is_true(queued.external_version ~= "same-content-version")
+                    test.is_true(queued.external_version ~= prior_version)
+                    prior_version, projection_id = queued.external_version, queued.projection_id
+                    local materialized, worker_err = source_worker.run_with_deps({
+                        thread_id = test_kb_id, projection = {id = queued.projection_id}, events = {event},
+                        worker_config = {target_kb_ids = {test_kb_id, foreign_store}},
+                    }, worker_fixtures.worker_deps())
+                    test.is_nil(worker_err)
+                    return materialized.metrics.documents_removed
+                end
+                for _, selection in ipairs({{id = incoming, external = external_id}, {id = unowned, external = external_id}, {id = manual}}) do
+                    local id = selection.id
+                    test.eq(selected_delete(id, selection.external), 1)
+                    test.is_nil(kb10_store.get_node(store.id, id))
+                    test.eq(#assert(kb10_store.get_edges(store.id, id, {direction = "out"})), 0)
+                    test.eq(assert(kb10_store.get_node(store.id, local_root)).content, "local root")
+                    test.eq(#assert(kb10_store.get_edges(store.id, local_root, {direction = "out"})), 1)
+                end
+                local recreated = root(incoming_thread, "recreated root")
+                test.is_true(recreated ~= incoming)
+                test.eq(selected_delete(incoming, external_id), 0)
+                test.eq(assert(kb10_store.get_node(store.id, recreated)).content, "recreated root")
+                test.eq(selected_delete(child, external_id), 0)
+                test.eq(selected_delete(foreign, external_id), 0)
+                test.not_nil(kb10_store.get_node(store.id, child))
+                test.not_nil(kb10_store.get_node(foreign_store, foreign))
+                local malformed, malformed_err = exec:call(DELETE_CONTENT_METHOD, {
+                    external_id = external_id, metadata = {node_id = "bad selector"},
+                })
+                test.is_nil(malformed)
+                test.not_nil(malformed_err)
+                local db = assert(sql.get("app:db"))
+                local rows = assert(db:query("SELECT body FROM kickside_projection WHERE id = $1", {projection_id}))
+                local original = rows[1].body
+                local body = assert(json.decode(original))
+                body.worker_config = {target_kb_ids = {foreign_store}}
+                assert(db:execute("UPDATE kickside_projection SET body = $1 WHERE id = $2",
+                    {json.encode(body), projection_id}))
+                local excluded, excluded_err = exec:call(DELETE_CONTENT_METHOD, {
+                    external_id = "excluded-selection", metadata = {node_id = local_root},
+                })
+                assert(db:execute("UPDATE kickside_projection SET body = $1 WHERE id = $2", {original, projection_id}))
+                db:release()
+                test.is_nil(excluded)
+                test.contains(tostring(excluded_err), "source projection excludes")
+                test.is_nil(event_for_external(test_kb_id, "excluded-selection", "kickside.knowledge.events:content.deleted"))
+                assert(kb10_store.delete_store(foreign_store))
             end)
 
             test.it("queues content deletes by upload_id as canonical external ids", function()

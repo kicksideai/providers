@@ -6,7 +6,7 @@ local client = require("client")
 local error_envelope = require("error_envelope")
 
 local function load_config(component_id: string): (any?, error?)
-    local rows, err = component.list_system({ component_ids = { component_id }, include = { private_context = true }, limit = 1 })
+    local rows, err = component.list_runtime_context({ component_ids = { component_id }, include = { private_context = true }, limit = 1 })
     if err then return nil, errors.wrap(err, "MCP connection read failed") end
     if not rows or not rows[1] then return nil, errors.new({ kind = errors.NOT_FOUND, message = "connection not found" }) end
     return rows[1].private_context or {}, nil

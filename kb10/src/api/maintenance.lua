@@ -34,6 +34,8 @@ local jobs = require("jobs")
 local job_types = require("job_types")
 local request = require("request")
 local runs = require("maintenance_runs")
+local store = require("store")
+local model_settings = require("model_settings")
 
 local M = {}
 
@@ -44,6 +46,7 @@ M._jobs = jobs :: any
 M._identity = execution_identity :: any
 M._runs = runs :: any
 M._validate_access = request.validate_access :: any
+M._get_store = store.get_store :: any
 
 local WORKER_REF = "func://kickside.kb10.engine:maintenance_worker"
 
@@ -182,6 +185,21 @@ function M.start(kb_id: string, run_type: string): (any?, string?, number?)
     local allowed, refusal, refusal_status = M._validate_access(kb_id, component.ACCESS.WRITE)
     if not allowed then
         return nil, tostring(refusal or "access denied"), refusal_status or http.STATUS.FORBIDDEN
+    end
+
+    if run_type == runs.RUN_TYPE.RESUMMARIZE then
+        local row, store_err = M._get_store(kb_id)
+        if store_err or not row then
+            return nil, "read knowledge base settings: " .. tostring(store_err or "store not found"),
+                http.STATUS.INTERNAL_ERROR
+        end
+        local summary_model, model_err = model_settings.resolve(row.config, row.kb_type, "summary_model")
+        if model_err then
+            return nil, tostring(model_err), http.STATUS.INTERNAL_ERROR
+        end
+        if not summary_model then
+            return { success = true, kb_id = kb_id, scheduled = false }, nil, http.STATUS.OK
+        end
     end
 
     local latest, latest_err = M._runs.latest_by_type(kb_id)

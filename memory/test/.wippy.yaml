@@ -36,6 +36,7 @@ profiles:
       app:migration_db:pool.max_idle: 2
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/memory: ..
 registry:
   dispatch_internal_kinds:

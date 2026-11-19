@@ -60,7 +60,7 @@ local function run_tests()
                 test.is_nil(create_err, tostring(create_err))
                 local lineage = { external_source = "test", external_id = id, external_version = "1",
                     thread_event_id = uuid.v7(), thread_event_seq = 1,
-                    source_ref = { external_source = "test", external_id = id, external_version = "1" }, upload_id = upload_id }
+                    source_ref = { thread_id = id, external_source = "test", external_id = id, external_version = "1" }, upload_id = upload_id }
                 lineage.source_ref.thread_event_id = lineage.thread_event_id
                 lineage.source_ref.thread_event_seq = lineage.thread_event_seq
                 local document, document_err = materializer.replace_document(materializer, { store_id = id,

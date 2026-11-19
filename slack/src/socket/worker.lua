@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local trim = require("text_trim").trim
 local component = require("component")
 local time = require("time")
 local channel = require("channel")
@@ -99,10 +100,10 @@ end
 
 local function main(args: any)
     args = type(args) == "table" and args or {}
-    local context, context_err = component.get_private_context(args.component_id)
+    local context, context_err = component.get_private_runtime_context(args.component_id)
     if context_err then return nil, context_err end
     local token = context and context.app_token
-    if type(token) == "string" then token = token:match("^%s*(.-)%s*$") end
+    if type(token) == "string" then token = trim(token) end
     if type(token) ~= "string" or token == "" then
         log:error("slack socket worker requires an app_token")
         return

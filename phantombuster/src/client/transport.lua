@@ -7,7 +7,7 @@ local M = {}
 local function context(component_id: string?): (any?, error?)
     local selected = type(component_id) == "string" and component_id or ""
     if selected == "" then return nil, errors.new({ kind = errors.INVALID, message = "PhantomBuster connection component_id is required" }) end
-    local ctx, err = component.get_context(selected, component.ACCESS.READ)
+    local ctx, err = component.get_runtime_context(selected, component.ACCESS.READ)
     if err then return nil, err end
     return ctx, nil
 end

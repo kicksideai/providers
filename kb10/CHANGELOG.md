@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.19](https://github.com/kicksideai/providers/compare/kb10-v0.2.18...kb10-v0.2.19) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** accept documents with long internal whitespace ([#132](https://github.com/kicksideai/providers/issues/132)) ([69f0007](https://github.com/kicksideai/providers/commit/69f000781ceb56acd802b11a619d6b9f22de90ba))
+* **kb10:** keep contextual embedding off after saving ([10b5d79](https://github.com/kicksideai/providers/commit/10b5d796414daf366a866eb0ef2dc7b58af6e7b8))
+* **kb10:** keep contextual embedding off after saving ([#131](https://github.com/kicksideai/providers/issues/131)) ([10b5d79](https://github.com/kicksideai/providers/commit/10b5d796414daf366a866eb0ef2dc7b58af6e7b8))
+* **kb10:** show query results in the Ask panel ([#133](https://github.com/kicksideai/providers/issues/133)) ([70efa23](https://github.com/kicksideai/providers/commit/70efa236082d8cc53da077a9dfb8caa2bc602c91))
+
+## [0.2.18](https://github.com/kicksideai/providers/compare/kb10-v0.2.17...kb10-v0.2.18) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** keep document deletion separate from selection ([#145](https://github.com/kicksideai/providers/issues/145)) ([ea2e37b](https://github.com/kicksideai/providers/commit/ea2e37bcc02e128cf2f476da4d4952216de1f8a1))
+* **kb10:** preserve document addresses and scope source bindings ([#137](https://github.com/kicksideai/providers/issues/137)) ([decb36e](https://github.com/kicksideai/providers/commit/decb36e93c1fbcc956f025be30dd8cc4781ba1b1))
+* **kb10:** resolve replacement scope from document lineage ([#144](https://github.com/kicksideai/providers/issues/144)) ([a853a9c](https://github.com/kicksideai/providers/commit/a853a9c9fcde539f52c3774ffd6a1a16da8f7d41))
+
+## [0.2.17](https://github.com/kicksideai/providers/compare/kb10-v0.2.16...kb10-v0.2.17) (2026-11-18)
+
+
+### Bug Fixes
+
+* **kb10:** admit owning secret operations without caller key access ([#110](https://github.com/kicksideai/providers/issues/110)) ([b46393b](https://github.com/kicksideai/providers/commit/b46393b1b03500aad9b1f886fe42b5dbc60bc107))
+
 ## [0.2.16](https://github.com/kicksideai/providers/compare/kb10-v0.2.15...kb10-v0.2.16) (2026-11-17)
 
 

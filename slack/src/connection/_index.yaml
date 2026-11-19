@@ -5,6 +5,9 @@ entries:
   - name: slack_connection
     kind: contract.binding
     meta:
+      secret_fields:
+        - {path: [bot_token], type: string}
+        - {path: [app_token], type: string}
       title: Slack
       comment: Connect a Slack bot to discover channels and send replies; the app-level token enables Socket Mode for live messages.
       icon: tabler:brand-slack
@@ -75,6 +78,8 @@ entries:
 
   - name: get_status
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta: { comment: "slack connection - get_status" }
     source: file://get_status.lua
     method: get_status
@@ -82,6 +87,8 @@ entries:
 
   - name: test_connection
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta: { comment: "slack connection - test_connection" }
     source: file://test_connection.lua
     method: test_connection
@@ -89,6 +96,8 @@ entries:
 
   - name: discover_resources
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta: { comment: "slack connection - discover_resources" }
     source: file://discover_resources.lua
     method: discover_resources
@@ -96,6 +105,8 @@ entries:
 
   - name: send_reply
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta: { comment: "slack reply_provider - send_reply" }
     source: file://send_reply.lua
     method: send_reply
@@ -103,6 +114,8 @@ entries:
 
   - name: update_reply
     kind: function.lua
+    security:
+      policies: [kickside.slack.security:secret_context_dispatch, kickside.slack.security:secret_context_read]
     meta: { comment: "slack reply_provider - update_reply" }
     source: file://update_reply.lua
     method: update_reply

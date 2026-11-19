@@ -61,13 +61,31 @@ local function define_tests()
                             external={external_id="upload:"..upload_id},body=body})
                         test.is_nil(stale_err)
                         test.eq(#stale.documents,0)
-                        local reason = corruption == "length" and "byte length" or "digest"
-                        test.eq(stale.error, "content artifact " .. reason .. " changed")
-                        test.is_false(stale.retryable == true)
+                        test.eq(stale.retryable,true)
                     end
                 end
             end)
         end
+        test.it("preserves document content and trims a title with a megabyte of internal whitespace", function()
+            local spaces = string.rep(" ", 1024 * 1024)
+            local title = "Before" .. spaces .. "after"
+            local event = {
+                type = "kickside.knowledge.events:content.upserted",
+                external = { external_id = "test-document" },
+                body = { title = "\t" .. title .. "\n", content = "\tBefore" .. spaces .. "after\n" },
+            }
+            local result, err = call(event)
+            test.is_nil(err, tostring(err))
+            test.is_nil(result.error)
+            test.is_true(result.documents[1].title == title)
+            test.is_true(result.documents[1].content == event.body.content)
+
+            event.body.content = spaces
+            local blank, blank_err = call(event)
+            test.is_nil(blank_err, tostring(blank_err))
+            test.eq(blank.error, "content event missing content")
+            test.eq(#blank.documents, 0)
+        end)
         test.it("retains inline events after their artifact is unavailable", function()
             local result, err = call({type="kickside.knowledge.events:content.upserted",
                 external={external_id="upload:missing"},body={content="Retained inline document",
@@ -101,6 +119,19 @@ local function define_tests()
             test.not_nil(result)
             test.eq(result.error, "content event missing external_id")
             test.eq(#result.documents, 0)
+        end)
+
+        test.it("rejects a delete whose event and metadata identify different source items", function()
+            local result, err = call({
+                id = "evt-contradictory",
+                seq = 1,
+                type = "kickside.knowledge.events:content.deleted",
+                external = {external_source = "knowledge.kb", external_id = "document-a"},
+                body = {metadata = {external_source = "knowledge.kb", external_id = "document-b"}},
+            })
+            test.is_nil(err)
+            test.contains(result.error, "contradictory external identity")
+            test.eq(#result.deletes, 0)
         end)
 
         test.it("propagates delete external version into delete records", function()

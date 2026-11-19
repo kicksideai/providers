@@ -19,6 +19,7 @@ profiles:
       app:db:pool.max_idle: 8
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/asr: ..
     kickside/component: ../../../kickside/core/component
     kickside/contract: ../../../kickside/core/contract

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+organization: kickside
+module: provider-text
+type: library
+description: Text normalization shared by KickSide providers.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+exclude_meta:
+  type: [test, test_helper, test_support]
+exclude:
+  - app:**
+  - app.**:**

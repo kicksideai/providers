@@ -2,6 +2,11 @@ version: "1.0"
 namespace: kickside.discord
 
 entries:
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: definition
     kind: ns.definition
     readme: file://README.md
@@ -10,7 +15,7 @@ entries:
       comment: Discord bot-token connection, reply provider, resource discovery, normalized inbound adapter for DM/channel bots, and data-sync source/sink for channel messages.
 
   - name: dep.kickside.component
-    version: '*'
+    version: '>=0.3.21'
     kind: ns.dependency
     meta:
       comment: Resolves Discord connection components for the gateway supervisor and transport.
@@ -24,7 +29,7 @@ entries:
     component: kickside/connection
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.8'
     kind: ns.dependency
     meta:
       comment: Implements the component and deletable contracts used by Discord connections.

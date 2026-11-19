@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/kicksideai/providers/compare/webscout-v0.1.35...webscout-v0.1.36) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
 ## [0.1.35](https://github.com/kicksideai/providers/compare/webscout-v0.1.34...webscout-v0.1.35) (2026-11-06)
 
 

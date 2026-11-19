@@ -17,10 +17,7 @@ local function list(value: unknown): JsonList
     return type(value) == "table" and value :: JsonList or {}
 end
 
-local function trim(value: unknown): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function subject_refs(subject: unknown): JsonList
     return type(subject) == "table" and { subject } or {}

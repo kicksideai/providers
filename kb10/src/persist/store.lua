@@ -38,6 +38,7 @@ store.insert_nodes = writer.insert_nodes
 store.insert_embeddings = writer.insert_embeddings
 store.insert_edges = writer.insert_edges
 store.delete_node = writer.delete_node
+store.delete_document = writer.delete_document
 store.delete_documents_by_external_id = writer.delete_documents_by_external_id
 store.set_descriptions = writer.set_descriptions
 store.insert_edge = writer.insert_edge

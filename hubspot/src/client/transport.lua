@@ -15,12 +15,12 @@ type Context = {
 -- single HubSpot connection in scope (trusted read of its private context).
 local function context(component_id: string?): (Context?, error?)
     if component_id and component_id ~= "" then
-        local stored, err = component.get_context(component_id, component.ACCESS.READ)
+        local stored, err = component.get_runtime_context(component_id, component.ACCESS.READ)
         if err then return nil, err end
         if type(stored) ~= "table" then return nil, errors.new({ kind = errors.INVALID, message = "HubSpot connection context is invalid" }) end
         return stored :: Context, nil
     end
-    local stored, err = component.get_context_by_meta({
+    local stored, err = component.get_runtime_context_by_meta({
         class = types.CONNECTION_CLASS,
         provider = types.PROVIDER,
     }, component.ACCESS.READ)

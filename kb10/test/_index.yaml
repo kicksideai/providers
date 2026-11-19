@@ -34,10 +34,6 @@ entries:
       comment: In-memory database for kb10 slice tests.
     file: ":memory:"
 
-  - name: kb10_migration_ledger
-    kind: db.sql.sqlite
-    file: ":memory:"
-
   - name: uploads
     kind: fs.directory
     meta:
@@ -181,7 +177,7 @@ entries:
       timeout: 120s
     source: file://graph_change_publish_test.lua
     method: run
-    modules: [sql, json, crypto, funcs, security, contract, registry]
+    modules: [sql, json, crypto, funcs, security, contract, registry, store]
     imports:
       test: wippy.test:test
       kb10_types: kickside.kb10:types
@@ -222,12 +218,36 @@ entries:
       suite: knowledge_injection
     source: file://source_worker_test.lua
     method: run
-    modules: [json, logger, sql]
+    modules: [json, logger, sql, process, channel, time, funcs]
     imports:
+      kb10_writer: kickside.kb10.persist:writer
+      materializer_store: kickside.kb10.injection:materializer_store
+      ops: kickside.kb10.persist:ops
+      projections: kickside.core.projections.persist:writer
+      invoke: kickside.core.projections:invoke
+      claim: kickside.core.jobs.persist:claim
       test: wippy.test:test
       source_worker_lib: kickside.kb10.injection:source_worker_lib
       kb10_store: kickside.kb10.persist:store
       source_worker_fixtures: app:source_worker_fixtures
+
+  - name: source_conflict_worker
+    kind: process.lua
+    meta: {type: projection.worker, kind: writer-conflict}
+    source: file://source_conflict_worker.lua
+    method: run
+    imports:
+      source_worker: kickside.kb10.injection:source_worker_lib
+      fixtures: app:source_worker_fixtures
+      job_types: kickside.core.jobs:types
+
+  - name: replace_race_writer
+    kind: process.lua
+    modules: [process]
+    source: file://replace_race_writer.lua
+    method: run
+    imports:
+      store: kickside.kb10.persist:store
 
   - name: source_worker_lineage_test
     kind: function.lua
@@ -262,7 +282,6 @@ entries:
       suite: knowledge_injection
     source: file://meta_projection_test.lua
     method: run
-    modules: [funcs, sql, uuid]
     imports:
       test: wippy.test:test
       meta_projection: kickside.kb10.injection:meta_projection
@@ -323,6 +342,7 @@ entries:
       resummarize: kickside.kb10.engine:resummarize
       kb10_store: kickside.kb10.persist:store
       source_worker_fixtures: app:source_worker_fixtures
+      maintenance_fixture: app:maintenance_fixture
 
   - name: knowledge_api_test
     kind: function.lua
@@ -483,6 +503,7 @@ entries:
     imports:
       test: wippy.test:test
       policy: kickside.kb10.binding:query_policy
+      analysis_model: kickside.knowledge.retrieval:analysis_model
 
   - name: query_service_test
     kind: function.lua
@@ -777,6 +798,23 @@ entries:
       test: wippy.test:test
       query_log: kickside.kb10.persist:query_log
       store: kickside.kb10.persist:store
+
+  - name: contextual_model_upgrade_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kb10_contextual_model_upgrade
+    source: file://contextual_model_upgrade_test.lua
+    method: run
+    modules: [uuid, sql, funcs]
+    imports:
+      test: wippy.test:test
+      store: kickside.kb10.persist:store
+      materializer: kickside.kb10.injection:source_materializer
+      analysis_model: kickside.knowledge.retrieval:analysis_model
+      query_service: kickside.kb10.binding:query_service
+      engines: kickside.knowledge:engines
+      models: kickside.models.persist:repo
 
   - name: enrichment_component_fixture
     kind: library.lua

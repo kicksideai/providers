@@ -16,10 +16,7 @@ local function decode_object(value: any): { [string]: any }
     return decoded :: { [string]: any }
 end
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function int_delta(value: any): integer
     local n = tonumber(value)
@@ -50,8 +47,6 @@ local function target_kb_id(input: any, projection: any, events: { any }): strin
     local cfg = worker_config(input, projection)
     local ids = type(cfg.target_kb_ids) == "table" and cfg.target_kb_ids or {}
     if type(ids[1]) == "string" and ids[1] ~= "" then return ids[1] end
-    local thread_id = trim(input.thread_id)
-    if thread_id ~= "" then return thread_id end
     for _, ev in ipairs(events) do
         local body = decode_object(type(ev) == "table" and (ev :: any).body or nil)
         local kb_id = trim(body.kb_id)
@@ -60,7 +55,7 @@ local function target_kb_id(input: any, projection: any, events: { any }): strin
     return nil
 end
 
-local function apply_change(counts: any, ev: any, kb_id: string): string?
+local function apply_change(counts: any, ev: any): string?
     if type(ev) ~= "table" then return nil end
     local event_type = tostring((ev :: any).type or "")
     if event_type == EVENT_CONTENT_UPSERTED or event_type == EVENT_CONTENT_DELETED then
@@ -71,7 +66,6 @@ local function apply_change(counts: any, ev: any, kb_id: string): string?
     end
     if event_type ~= EVENT_GRAPH_CHANGED then return nil end
     local body = decode_object((ev :: any).body)
-    if body.kb_id ~= nil and trim(body.kb_id) ~= kb_id then return nil end
     counts.pending_source_count = add_count(counts.pending_source_count, -int_delta(body.source_processed_delta))
     counts.document_count = add_count(counts.document_count, body.document_delta)
     counts.chunk_count = add_count(counts.chunk_count, body.chunk_delta)
@@ -87,14 +81,13 @@ local function apply_change(counts: any, ev: any, kb_id: string): string?
     return trim((ev :: any).created_at)
 end
 
-local function sync_public_meta(input: any, kb_id: string, counts: any, updated_at: string, previous_pending: number?): (boolean, string?)
+local function sync_public_meta(input: any, kb_id: string, counts: any, updated_at: string): (boolean, string?)
     local component_api = (type(input.component) == "table" and input.component) or component
     local status = trim(counts.status) ~= "" and trim(counts.status) or "ready"
-    local pending_source_count = clamp_count(counts.pending_source_count)
-    if pending_source_count > 0 then
+    if clamp_count(counts.pending_source_count) > 0 then
         status = "syncing"
     end
-    local fields: { [string]: any } = {
+    local ok, err = component_api.set_meta(kb_id, {
         status = status,
         last_error = counts.last_error ~= nil and tostring(counts.last_error or "") or "",
         document_count = clamp_count(counts.document_count),
@@ -107,11 +100,7 @@ local function sync_public_meta(input: any, kb_id: string, counts: any, updated_
         auto_description = counts.auto_description ~= nil and tostring(counts.auto_description or "") or "",
         last_materialized_at = updated_at,
         graph_updated_at = updated_at,
-    }
-    if previous_pending ~= pending_source_count then
-        fields.pending_source_count = pending_source_count
-    end
-    local ok, err = component_api.set_meta(kb_id, fields)
+    })
     if ok == true then return true, nil end
     return false, tostring(err or "component.set_meta failed")
 end
@@ -120,7 +109,6 @@ function M.run(input: any): any
     input = type(input) == "table" and input or {}
     local projection = type(input.projection) == "table" and input.projection or {}
     local body: any = decode_object(projection.body)
-    local previous_pending = type(body.counts) == "table" and tonumber(body.counts.pending_source_count) or nil
     body.counts = type(body.counts) == "table" and body.counts or {
         status = "ready",
         last_error = "",
@@ -141,7 +129,7 @@ function M.run(input: any): any
 
     local updated_at = trim(body.graph_updated_at)
     for _, ev in ipairs(events :: { any }) do
-        local event_time = apply_change(body.counts, ev, kb_id)
+        local event_time = apply_change(body.counts, ev)
         if event_time and event_time ~= "" then
             updated_at = event_time
         end
@@ -149,7 +137,7 @@ function M.run(input: any): any
     if updated_at == "" then updated_at = time.now():utc():format(time.RFC3339) end
     body.graph_updated_at = updated_at
 
-    local meta_ok, meta_err = sync_public_meta(input, kb_id, body.counts, updated_at, previous_pending)
+    local meta_ok, meta_err = sync_public_meta(input, kb_id, body.counts, updated_at)
     if not meta_ok then return nil, meta_err end
 
     local range = type(input.range) == "table" and input.range or {}

@@ -1,3 +1,4 @@
+local text_trim = require("text_trim").trim
 local component = require("component")
 local time = require("time")
 local channel = require("channel")
@@ -12,7 +13,7 @@ local log = logger:named("telegram.polling.worker")
 
 local function trim(value: any): string
     if type(value) ~= "string" then value = tostring(value or "") end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
+    return text_trim(value)
 end
 
 local function chat_type(update: any): string
@@ -42,7 +43,7 @@ end
 
 function M.main(args: any)
     args = type(args) == "table" and args or {}
-    local context, context_err = component.get_private_context(args.component_id)
+    local context, context_err = component.get_private_runtime_context(args.component_id)
     if context_err then return nil, context_err end
     local token = trim(context and context.bot_token)
     if token == "" then
