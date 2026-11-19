@@ -835,7 +835,7 @@ local function estimate_tokens(text: string): integer
     return math.ceil(#text / EMBED_BYTES_PER_TOKEN)
 end
 
-local function batch_embed(embedder: any, embed_texts: {string}, model: any, dims: any): (any, string?)
+local function batch_embed(embedder: any, embed_texts: {string}, model: any, dims: any): (any, string?, any?)
     local all: {any} = {}
     local i = 1
     local n = #embed_texts
@@ -870,7 +870,7 @@ local function batch_embed(embedder: any, embed_texts: {string}, model: any, dim
 
         local vectors, emb_err = embedder(batch, model, dims)
         if emb_err or type(vectors) ~= "table" or type(vectors.result) ~= "table" then
-            return nil, "embed failed: " .. tostring(emb_err)
+            return nil, "embed failed: " .. tostring(emb_err), emb_err
         end
         if #vectors.result ~= #batch then
             return nil, "embed returned " .. tostring(#vectors.result) .. " vectors for " .. tostring(#batch) .. " texts"
@@ -954,29 +954,8 @@ local function validate_vector(vec: any, dims: any, label: string): string?
     return nil
 end
 
-function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, worker_config, batch_enricher): (DocIngestResult, any?)
-    local store_row = target.store_row or target
-    local store_id = store_row.id
-    local store = target.store
-    local materialization, materialization_err = M.materialization_options(target, worker_config)
-    local result: DocIngestResult = {
-        component_id = component_id,
-        kind = "document",
-        inserted = 0,
-        replaced = 0,
-        summary_count = 0,
-        chunk_count = 0,
-        failed = 0,
-        materialization = materialization,
-        notifications = {},
-    }
-
-    if materialization_err then return result, materialization_err end
-    if not materialization then return result, "materialization options unavailable" end
-    local materialization_opts: MaterializationOptions = materialization
-    if not store then return result, "materializer store unavailable" end
-    if #documents == 0 then return result, nil end
-
+local function planner_callbacks(materialization_opts: MaterializationOptions, summarizer: any,
+        enricher: any, captioner: any, batch_enricher: any): (any, any, any, any)
     -- LLM-compress each document into its summary with the KB's summary model;
     -- without a summarizer or model the plan falls back to head-truncation.
     local summarize: any? = nil
@@ -1024,6 +1003,228 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         end
     end
 
+    return summarize, enrich, caption, enrich_batch
+end
+
+local function prepare_replacement(doc: any, target: any, materialization_opts: MaterializationOptions, dims: number,
+        summarize: any, enrich: any, caption: any, enrich_batch: any, embedder: any): (table?, string?, any?)
+    local store_row = target.store_row or target
+    local content = type(doc.content) == "string" and doc.content or ""
+    local max_doc_chars = tonumber(materialization_opts.max_document_content_chars)
+    if max_doc_chars and max_doc_chars > 0 and #content > max_doc_chars then
+        return nil, "document content too large: " .. tostring(#content) ..
+            " chars (max " .. tostring(math.floor(max_doc_chars)) .. ")"
+    end
+    local one_plans, one_embed_texts, plan_err = M.plan_document_writes({ doc }, materialization_opts, summarize, enrich, caption, enrich_batch)
+    if plan_err then return nil, plan_err end
+    if not one_plans or #one_plans == 0 then return nil, "no plan produced" end
+    local plan = one_plans[1]
+    local embed_texts = one_embed_texts or {}
+    if #embed_texts == 0 then
+        return nil, "no materialized summary or chunks"
+    end
+
+    local vectors, emb_err, cause = batch_embed(embedder, embed_texts, store_row.embedding_model, dims)
+    if emb_err or type(vectors) ~= "table" or type(vectors.result) ~= "table" then
+        return nil, emb_err or "embed failed", cause
+    end
+    if #vectors.result ~= #embed_texts then
+        return nil, "embed returned " .. tostring(#vectors.result) ..
+            " vectors for " .. tostring(#embed_texts) .. " texts"
+    end
+
+    local meta = {}
+    for k, v in pairs(doc.metadata or {}) do meta[k] = v end
+    meta.external_source = meta.external_source or doc.external_source
+    meta.external_id = meta.external_id or doc.external_id
+    meta.external_version = meta.external_version or doc.external_version
+    if type(doc.source_ref) == "table" and type(meta.source_ref) ~= "table" then
+        meta.source_ref = doc.source_ref
+    end
+    meta.materialization = meta.materialization or materialization_opts
+
+    local doc_meta = {}
+    for k, v in pairs(meta) do doc_meta[k] = v end
+    doc_meta.role = "document"
+    -- Source-document read-model status: the engine document node IS the
+    -- KB-owned read-model row keyed by canonical (external_source, external_id).
+    -- A materialized document records status=completed here; a poison document
+    -- records status=failed on the same row (see the failure path below), so
+    -- the doc's outcome is queryable on the KB and re-ingestion replaces it.
+    doc_meta.status = "completed"
+    doc_meta.error = nil
+
+    local children = {}
+    local invalid_vector = nil
+
+    if plan.summary_index then
+        local vec = vectors.result[plan.summary_index]
+        local vec_err = validate_vector(vec, dims, "summary")
+        if vec_err then
+            invalid_vector = vec_err
+        else
+            local s_meta = {}
+            for k, v in pairs(meta) do s_meta[k] = v end
+            s_meta.role = "summary"
+            children[#children + 1] = {
+                node = {
+                    node_type = kb_types.NODE_TYPE.SUMMARY,
+                    content = plan.summary_text,
+                    content_type = "text/plain",
+                    metadata = s_meta,
+                },
+                embedding = vec,
+            }
+        end
+    end
+
+    if not invalid_vector then
+        for chunk_idx, embed_index in ipairs(plan.chunk_indices) do
+            local vec = vectors.result[embed_index]
+            local vec_err = validate_vector(vec, dims, "chunk " .. tostring(chunk_idx))
+            if vec_err then
+                invalid_vector = vec_err
+                break
+            end
+            local c_meta = {}
+            for k, v in pairs(meta) do c_meta[k] = v end
+            c_meta.role = "chunk"
+            c_meta.chunk_index = chunk_idx
+            for key, value in pairs(plan.chunk_metadata[chunk_idx] or {}) do
+                c_meta[key] = value
+            end
+            local prefix = plan.chunk_prefixes and plan.chunk_prefixes[chunk_idx]
+            if type(prefix) == "string" and prefix ~= "" then
+                c_meta.contextual_prefix = prefix
+            end
+            children[#children + 1] = {
+                node = {
+                    node_type = kb_types.NODE_TYPE.CHUNK,
+                    content = plan.chunk_texts[chunk_idx],
+                    content_type = "text/plain",
+                    metadata = c_meta,
+                },
+                embedding = vec,
+            }
+        end
+    end
+
+    if not invalid_vector then
+        for _, image_plan in ipairs(plan.image_plans or {}) do
+            local vec = vectors.result[image_plan.embed_index]
+            local vec_err = validate_vector(vec, dims, "image")
+            if vec_err then
+                invalid_vector = vec_err
+                break
+            end
+            local image = type(image_plan.image) == "table" and image_plan.image or {}
+            local i_meta = {}
+            for k, v in pairs(meta) do i_meta[k] = v end
+            i_meta.role = "image"
+            i_meta.chunk_index = image_plan.chunk_index
+            i_meta.caption = image_plan.caption
+            i_meta.upload_id = image.upload_id
+            i_meta.artifact_id = image.artifact_id
+            i_meta.source_artifact_id = image.source_artifact_id
+            i_meta.image_name = image.name
+            i_meta.image_content_type = image.content_type
+            i_meta.image_checksum = image.checksum
+            -- One node per unique image; occurrences lists every place the same
+            -- bytes appear in the document so retrieval can map back to each.
+            i_meta.occurrences = image_plan.occurrences
+            local content_type = type(image.content_type) == "string" and image.content_type ~= ""
+                and image.content_type or "application/octet-stream"
+            -- A chunk-class node: it flows through chunk retrieval and concept
+            -- placement, while content_type + role mark it an image and the
+            -- metadata references the upload artifact the bytes live in.
+            children[#children + 1] = {
+                node = {
+                    node_type = kb_types.NODE_TYPE.CHUNK,
+                    content = image_plan.caption,
+                    content_type = content_type,
+                    metadata = i_meta,
+                },
+                embedding = vec,
+            }
+        end
+    end
+
+    if invalid_vector or #children == 0 then
+        return nil, invalid_vector or "no materialized summary or chunks"
+    end
+
+    return {
+        store_id = store_row.id,
+        source_thread_id = target.source_thread_id,
+        document = {
+            node_type = kb_types.NODE_TYPE.DOCUMENT,
+            content = doc.content or "",
+            content_type = doc.content_type or "text/plain",
+            metadata = doc_meta,
+        },
+        children = children,
+    }, nil
+end
+
+-- Preparation performs model work without acquiring or committing a write
+-- transaction. The checkpoint caller decides what to do with the result.
+function M.prepare_document(target: any, doc: any, adapters: table, worker_config: any): (table?, any?)
+    local options, options_err = M.materialization_options(target, worker_config)
+    if not options then
+        return nil, errors.new({kind = errors.INVALID, message = tostring(options_err or "materialization options unavailable")})
+    end
+    local dims, dim_err = target.store:vector_dimensions({})
+    if type(dims) ~= "number" then
+        return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true,
+            message = tostring(dim_err or "vector dimensions unavailable")})
+    end
+    local model_error
+    local function required(call)
+        if not call then return nil end
+        return function(...)
+            if model_error then return nil, model_error end
+            local result, err = call(...)
+            model_error = err
+            return result, err
+        end
+    end
+    local summarize, enrich, caption, enrich_batch = planner_callbacks(options,
+        required(adapters.summarize), required(adapters.enrich), required(adapters.caption), required(adapters.enrich_batch))
+    local prepared, prepare_err, cause = prepare_replacement(doc, target, options, dims, summarize,
+        enrich, caption, enrich_batch, required(adapters.embed))
+    if model_error or cause then return nil, model_error or cause end
+    if not prepared then
+        return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true,
+            message = prepare_err or "document preparation unavailable"})
+    end
+    return prepared, nil
+end
+
+function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, worker_config, batch_enricher): (DocIngestResult, any?)
+    local store_row = target.store_row or target
+    local store_id = store_row.id
+    local store = target.store
+    local materialization, materialization_err = M.materialization_options(target, worker_config)
+    local result: DocIngestResult = {
+        component_id = component_id,
+        kind = "document",
+        inserted = 0,
+        replaced = 0,
+        summary_count = 0,
+        chunk_count = 0,
+        failed = 0,
+        materialization = materialization,
+        notifications = {},
+    }
+
+    if materialization_err then return result, materialization_err end
+    if not materialization then return result, "materialization options unavailable" end
+    local materialization_opts: MaterializationOptions = materialization
+    if not store then return result, "materializer store unavailable" end
+    if #documents == 0 then return result, nil end
+
+    local summarize, enrich, caption, enrich_batch =
+        planner_callbacks(materialization_opts, summarizer, enricher, captioner, batch_enricher)
     local dims, dim_err = store:vector_dimensions({})
     if dim_err or type(dims) ~= "number" then
         return result, "vector_dimensions unavailable: " .. tostring(dim_err)
@@ -1036,161 +1237,11 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     -- summary/chunks/images are still planned and embedded together, preserving
     -- their order and node associations; documents simply no longer share a fate.
     local function materialize_one(doc: any): (boolean, any?)
-        local content = type(doc.content) == "string" and doc.content or ""
-        local max_doc_chars = tonumber(materialization_opts.max_document_content_chars)
-        if max_doc_chars and max_doc_chars > 0 and #content > max_doc_chars then
-            return false, "document content too large: " .. tostring(#content) ..
-                " chars (max " .. tostring(math.floor(max_doc_chars)) .. ")"
-        end
-        local one_plans, one_embed_texts, plan_err = M.plan_document_writes({ doc }, materialization_opts, summarize, enrich, caption, enrich_batch)
-        if plan_err then return false, plan_err end
-        if not one_plans or #one_plans == 0 then return false, "no plan produced" end
-        local plan = one_plans[1]
-        local embed_texts = one_embed_texts or {}
-        if #embed_texts == 0 then
-            return false, "no materialized summary or chunks"
-        end
-
-        local vectors, emb_err = batch_embed(embedder, embed_texts, store_row.embedding_model, dims)
-        if emb_err or type(vectors) ~= "table" or type(vectors.result) ~= "table" then
-            return false, emb_err or "embed failed"
-        end
-        if #vectors.result ~= #embed_texts then
-            return false, "embed returned " .. tostring(#vectors.result) ..
-                " vectors for " .. tostring(#embed_texts) .. " texts"
-        end
-
-        local meta = {}
-        for k, v in pairs(doc.metadata or {}) do meta[k] = v end
-        meta.external_source = meta.external_source or doc.external_source
-        meta.external_id = meta.external_id or doc.external_id
-        meta.external_version = meta.external_version or doc.external_version
-        if type(doc.source_ref) == "table" and type(meta.source_ref) ~= "table" then
-            meta.source_ref = doc.source_ref
-        end
-        meta.materialization = meta.materialization or materialization_opts
-
-        local doc_meta = {}
-        for k, v in pairs(meta) do doc_meta[k] = v end
-        doc_meta.role = "document"
-        -- Source-document read-model status: the engine document node IS the
-        -- KB-owned read-model row keyed by canonical (external_source, external_id).
-        -- A materialized document records status=completed here; a poison document
-        -- records status=failed on the same row (see the failure path below), so
-        -- the doc's outcome is queryable on the KB and re-ingestion replaces it.
-        doc_meta.status = "completed"
-        doc_meta.error = nil
-
-        local children = {}
-        local invalid_vector = nil
-
-        if plan.summary_index then
-            local vec = vectors.result[plan.summary_index]
-            local vec_err = validate_vector(vec, dims, "summary")
-            if vec_err then
-                invalid_vector = vec_err
-            else
-                local s_meta = {}
-                for k, v in pairs(meta) do s_meta[k] = v end
-                s_meta.role = "summary"
-                children[#children + 1] = {
-                    node = {
-                        node_type = kb_types.NODE_TYPE.SUMMARY,
-                        content = plan.summary_text,
-                        content_type = "text/plain",
-                        metadata = s_meta,
-                    },
-                    embedding = vec,
-                }
-            end
-        end
-
-        if not invalid_vector then
-            for chunk_idx, embed_index in ipairs(plan.chunk_indices) do
-                local vec = vectors.result[embed_index]
-                local vec_err = validate_vector(vec, dims, "chunk " .. tostring(chunk_idx))
-                if vec_err then
-                    invalid_vector = vec_err
-                    break
-                end
-                local c_meta = {}
-                for k, v in pairs(meta) do c_meta[k] = v end
-                c_meta.role = "chunk"
-                c_meta.chunk_index = chunk_idx
-                for key, value in pairs(plan.chunk_metadata[chunk_idx] or {}) do
-                    c_meta[key] = value
-                end
-                local prefix = plan.chunk_prefixes and plan.chunk_prefixes[chunk_idx]
-                if type(prefix) == "string" and prefix ~= "" then
-                    c_meta.contextual_prefix = prefix
-                end
-                children[#children + 1] = {
-                    node = {
-                        node_type = kb_types.NODE_TYPE.CHUNK,
-                        content = plan.chunk_texts[chunk_idx],
-                        content_type = "text/plain",
-                        metadata = c_meta,
-                    },
-                    embedding = vec,
-                }
-            end
-        end
-
-        if not invalid_vector then
-            for _, image_plan in ipairs(plan.image_plans or {}) do
-                local vec = vectors.result[image_plan.embed_index]
-                local vec_err = validate_vector(vec, dims, "image")
-                if vec_err then
-                    invalid_vector = vec_err
-                    break
-                end
-                local image = type(image_plan.image) == "table" and image_plan.image or {}
-                local i_meta = {}
-                for k, v in pairs(meta) do i_meta[k] = v end
-                i_meta.role = "image"
-                i_meta.chunk_index = image_plan.chunk_index
-                i_meta.caption = image_plan.caption
-                i_meta.upload_id = image.upload_id
-                i_meta.artifact_id = image.artifact_id
-                i_meta.source_artifact_id = image.source_artifact_id
-                i_meta.image_name = image.name
-                i_meta.image_content_type = image.content_type
-                i_meta.image_checksum = image.checksum
-                -- One node per unique image; occurrences lists every place the same
-                -- bytes appear in the document so retrieval can map back to each.
-                i_meta.occurrences = image_plan.occurrences
-                local content_type = type(image.content_type) == "string" and image.content_type ~= ""
-                    and image.content_type or "application/octet-stream"
-                -- A chunk-class node: it flows through chunk retrieval and concept
-                -- placement, while content_type + role mark it an image and the
-                -- metadata references the upload artifact the bytes live in.
-                children[#children + 1] = {
-                    node = {
-                        node_type = kb_types.NODE_TYPE.CHUNK,
-                        content = image_plan.caption,
-                        content_type = content_type,
-                        metadata = i_meta,
-                    },
-                    embedding = vec,
-                }
-            end
-        end
-
-        if invalid_vector or #children == 0 then
-            return false, invalid_vector or "no materialized summary or chunks"
-        end
-
-        local replacement, replace_err = store:replace_document({
-            store_id = store_id,
-            source_thread_id = target.source_thread_id,
-            document = {
-                node_type = kb_types.NODE_TYPE.DOCUMENT,
-                content = doc.content or "",
-                content_type = doc.content_type or "text/plain",
-                metadata = doc_meta,
-            },
-            children = children,
-        })
+        local prepared, prepare_err = prepare_replacement(doc, target, materialization_opts, dims,
+            summarize, enrich, caption, enrich_batch, embedder)
+        if not prepared then return false, prepare_err end
+        local meta = prepared.document.metadata
+        local replacement, replace_err = store:replace_document(prepared)
         if replace_err or not replacement then
             if errors.is(replace_err, errors.CONFLICT) then return false, replace_err end
             return false, "replace document failed: " .. tostring(replace_err or "no result")

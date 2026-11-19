@@ -56,6 +56,15 @@ entries:
       tabular_chunker: kickside.kb10.injection:tabular_chunker
       doc2md: kickside.convert.doc2md:doc2md
 
+  - name: artifact_input
+    kind: library.lua
+    meta:
+      internal: true
+      comment: Read the source artifact and preserve the producer's failure and verified absence.
+    source: file://artifact_input.lua
+    imports:
+      artifacts: kickside.uploads.persist:artifact_content_repo
+
   # Maps canonical kickside.knowledge content events into source_worker
   # documents/deletes. Discovered by the source worker at runtime via meta.type.
   - name: content_extractor
@@ -73,7 +82,37 @@ entries:
     modules: [hash]
     imports:
       text_trim: kickside.contract:text_trim
-      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      artifact_input: kickside.kb10.injection:artifact_input
+
+  - name: content_extractor_lib
+    kind: library.lua
+    source: file://content_extractor.lua
+    modules: [hash]
+    imports:
+      text_trim: kickside.contract:text_trim
+      artifact_input: kickside.kb10.injection:artifact_input
+
+  - name: checkpoint_source_worker
+    kind: process.lua
+    meta:
+      comment: Supervised checkpoint worker for the canonical single-target knowledge source.
+      type: projection.worker
+      kind: knowledge.injection.source
+      private: true
+      checkpointed_apply: true
+    source: file://checkpoint_source_worker.lua
+    method: run
+    modules: [time, logger, sql]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+      error_envelope: kickside.contract:error_envelope
+      extractor: kickside.kb10.injection:content_extractor_lib
+      legacy_worker: kickside.kb10.injection:source_worker_lib
+      materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      ops: kickside.kb10.persist:ops
+      writer: kickside.kb10.persist:writer
 
   # Deterministic, source-agnostic projection worker. Discovers extractors at
   # runtime via the registry (meta.type=projection.extractor) and materializes the

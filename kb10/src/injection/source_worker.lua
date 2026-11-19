@@ -112,6 +112,17 @@ local function decode_object(value: any): { [string]: any }
     return {}
 end
 
+local function selected_document_id(event: table, thread_id: string): (string?, error?)
+    local body = event.body
+    local meta = type(body) == "table" and body.metadata or nil
+    if event.type ~= CONTENT_DELETED or type(meta) ~= "table" or meta.node_id == nil then return nil, nil end
+    if event.role ~= "system" or body.kb_id ~= thread_id
+        or type(meta.node_id) ~= "string" or not uuid.validate(meta.node_id) then
+        return nil, errors.new({kind = errors.INVALID, message = "invalid selected document delete"})
+    end
+    return meta.node_id, nil
+end
+
 local function ensure_source_lineage(item: any, event: any, thread_id: string): (boolean?, string?)
     if type(item) ~= "table" then return nil, "source item must be an object" end
     local metadata = type(item.metadata) == "table" and item.metadata or {}
@@ -423,11 +434,11 @@ local EMBED_TIMEOUT_SECONDS = 90
 local SUMMARY_TIMEOUT_SECONDS = 60
 local ENRICH_TIMEOUT_SECONDS = 45
 
-local function default_embedder(texts, model, dims)
+local function default_embedder(texts, model, dims, timeout)
     return llm.embed(texts, {
         model = model,
         dimensions = dims,
-        timeout = EMBED_TIMEOUT_SECONDS,
+        timeout = timeout or EMBED_TIMEOUT_SECONDS,
     })
 end
 
@@ -468,7 +479,8 @@ end
 -- caller can report why; an input the summarizer does not apply to (no content,
 -- no model, no length budget) is (nil, nil), not a failure. The materializer
 -- falls back to the deterministic head summary in either case.
-local function default_summarizer(content: any, model: any, target_chars: any, summary_prompt: any): (string?, string?)
+local function default_summarizer(content: any, model: any, target_chars: any, summary_prompt: any,
+        budget: number?): (string?, any?)
     if type(content) ~= "string" or content == "" then return nil, nil end
     if type(model) ~= "string" or model == "" then return nil, nil end
     local target_raw = tonumber(target_chars)
@@ -498,9 +510,9 @@ local function default_summarizer(content: any, model: any, target_chars: any, s
         -- one token per target character -- the safe end of the range -- leaves
         -- real room to wind down after reaching the target.
         max_tokens = math.max(400, target),
-        timeout = SUMMARY_TIMEOUT_SECONDS,
+        timeout = budget or SUMMARY_TIMEOUT_SECONDS,
     })
-    if gen_err or not response then return nil, tostring(gen_err or "no response") end
+    if gen_err or not response then return nil, budget and gen_err or tostring(gen_err or "no response") end
     local out = (response :: any).result
     if type(out) ~= "string" or trim(out) == "" then return nil, "summary model returned no text" end
     -- target is guidance for the model, never a chop: a hard sub() to target
@@ -552,7 +564,7 @@ local function strip_json_fence(s: string): string
     return trim(out)
 end
 
-local function default_batch_enricher(content: any, summary: any, chunks: any, model: any): (any?, string?)
+local function default_batch_enricher(content: any, summary: any, chunks: any, model: any, budget: number?): (any?, any?)
     if type(chunks) ~= "table" or #chunks == 0 then return {}, nil end
     if type(model) ~= "string" or model == "" then return nil, nil end
     local doc_context = (type(summary) == "string" and summary ~= "") and summary or ""
@@ -581,9 +593,9 @@ local function default_batch_enricher(content: any, summary: any, chunks: any, m
         model = model,
         temperature = 0.2,
         max_tokens = math.max(256, math.min(1600, #chunks * 48)),
-        timeout = ENRICH_TIMEOUT_SECONDS,
+        timeout = budget or ENRICH_TIMEOUT_SECONDS,
     })
-    if gen_err or not response then return nil, tostring(gen_err or "no response") end
+    if gen_err or not response then return nil, budget and gen_err or tostring(gen_err or "no response") end
     local out = (response :: any).result
     if type(out) ~= "string" or trim(out) == "" then return nil, "empty enrichment batch response" end
 
@@ -1155,15 +1167,8 @@ local function run_with_deps(input_raw, deps)
             if not from_seq or event.seq < from_seq then from_seq = event.seq end
             if not to_seq or event.seq > to_seq then to_seq = event.seq end
 
-            local meta = event.body.metadata
-            local selected_node_id
-            if event.type == CONTENT_DELETED and type(meta) == "table" and meta.node_id ~= nil then
-                if event.role ~= "system" or event.body.kb_id ~= thread_id or
-                    type(meta.node_id) ~= "string" or not uuid.validate(meta.node_id) then
-                    return nil, errors.new({kind = errors.INVALID, message = "invalid selected document delete"})
-                end
-                selected_node_id = meta.node_id
-            end
+            local selected_node_id, select_err = selected_document_id(event, thread_id)
+            if select_err then return nil, select_err end
             local items, dispatch_err, retryable = dispatcher(event)
             if dispatch_err then
                 logger:warn("dispatcher error", {
@@ -1473,10 +1478,34 @@ local function run_proc(input_raw)
     return result
 end
 
+local function prepare_checkpoint_document(target, doc, config, deadline)
+    local function bounded(call, ceiling)
+        return function(...)
+            local seconds = math.floor((deadline - time.now():unix_nano()) / 1000000000)
+            if seconds < 1 then
+                return nil, errors.new({kind = errors.TIMEOUT, retryable = true,
+                    message = "projection deadline reached before model request"})
+            end
+            local count = select("#", ...) + 1
+            local args = {...}
+            args[count] = math.min(seconds, ceiling)
+            return call(unpack(args, 1, count))
+        end
+    end
+    return source_materializer.prepare_document(target, doc, {
+        embed = bounded(default_embedder, EMBED_TIMEOUT_SECONDS),
+        summarize = bounded(default_summarizer, SUMMARY_TIMEOUT_SECONDS),
+        enrich_batch = bounded(default_batch_enricher, ENRICH_TIMEOUT_SECONDS),
+    }, config)
+end
+
 return {
     run = run_with_deps,
     run_proc = run_proc,
     run_with_deps = run_with_deps,
+    ensure_source_lineage = ensure_source_lineage,
+    selected_document_id = selected_document_id,
+    prepare_checkpoint_document = prepare_checkpoint_document,
     -- Production seams reused outside the worker: resummarize (kb10 engine)
     -- regenerates a document's summary/chunk-enrichment from stored content
     -- with the same model calls ingestion makes, without duplicating them.

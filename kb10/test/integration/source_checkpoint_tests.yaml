@@ -1,0 +1,64 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: source_checkpoint_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint}
+    source: file://source_checkpoint_test.lua
+    method: run
+    modules: [sql, json, time, uuid, fs]
+    imports:
+      apply: kickside.core.projections:apply
+      artifact_input: kickside.kb10.injection:artifact_input
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
+      ops: kickside.kb10.persist:ops
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      uploads: kickside.uploads.persist:upload_record_repo
+      writer: kickside.kb10.persist:writer
+
+  - name: checkpoint_model_provider
+    kind: registry.entry
+    meta: {type: llm.provider, name: kb10-checkpoint-fixture}
+    driver: {id: app:checkpoint_model_driver}
+
+  - name: checkpoint_model_driver
+    kind: contract.binding
+    contracts:
+      - contract: wippy.llm:provider
+        methods: {status: app:checkpoint_model_status}
+      - contract: wippy.llm:embedder
+        methods: {embed: app:checkpoint_model_embed}
+
+  - name: checkpoint_model_status
+    kind: function.lua
+    source: file://source_checkpoint_provider.lua
+    method: status
+    modules: [sql]
+
+  - name: checkpoint_model_embed
+    kind: function.lua
+    source: file://source_checkpoint_provider.lua
+    method: embed
+    modules: [sql]
+
+  - name: source_checkpoint_outage_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_checkpoint_outage_test.lua
+    method: run
+    modules: [fs, hash, json, process, sql, time, uuid]
+    imports:
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer
+      uploads: kickside.uploads.persist:upload_record_repo

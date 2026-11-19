@@ -42,7 +42,7 @@ entries:
     component: kickside/core
     version: ">=0.3.25"
     meta:
-      comment: Event-sourced on the core thread engine (thread upsert, event append, status).
+      comment: Owns the knowledge thread and supervised source checkpoints.
 
   - name: dep.kickside.doc2md
     kind: ns.dependency
@@ -61,7 +61,7 @@ entries:
   - name: dep.kickside.jobs
     kind: ns.dependency
     component: kickside/jobs
-    version: "*"
+    version: ">=0.1.87"
     meta:
       comment: Whole-KB maintenance (resummarize, re-embed) runs as a durable job so the request answers immediately and the work carries the caller's frozen identity.
 
@@ -80,7 +80,7 @@ entries:
   - name: dep.kickside.uploads
     kind: ns.dependency
     component: kickside/uploads
-    version: ">=0.3.2"
+    version: ">=0.3.21"
     meta:
       comment: Stages files and resolves storage-aware original delivery through Uploads.
 
