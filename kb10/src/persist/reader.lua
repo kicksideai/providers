@@ -76,45 +76,32 @@ function reader.vector_search(store_id: any, query_vector: any, opts: any)
     return rows
 end
 
-function reader.browse_nodes(store_id: any, opts: any)
-    local browse_opts = (type(opts) == "table" and opts or {}) :: kb10.BrowseNodesOptions
-    local parent_id = browse_opts.parent_id
-    local top_level = browse_opts.top_level == true
-    local node_type = browse_opts.node_type
-    local limit = browse_opts.limit or 50
-    local offset = browse_opts.offset or 0
+-- A missing parent includes every parent unless the caller requests roots.
+-- Both the page and its total use the same predicate and bound parameters.
+local function browse_filter(store_id: any, opts: kb10.BrowseNodesOptions)
+    local clause = " FROM kb10_nodes WHERE store_id = $1"
+    local params = { store_id }
+    if opts.parent_id and opts.parent_id ~= "" then
+        table.insert(params, opts.parent_id)
+        clause = clause .. " AND parent_id = $" .. #params
+    elseif opts.top_level == true then
+        clause = clause .. " AND parent_id IS NULL"
+    end
+    if opts.node_type and opts.node_type ~= "" then
+        table.insert(params, opts.node_type)
+        clause = clause .. " AND node_type = $" .. #params
+    end
+    return clause, params
+end
 
+local function browse(store_id: any, opts: any, with_total: boolean)
+    local browse_opts = (type(opts) == "table" and opts or {}) :: kb10.BrowseNodesOptions
     local db, err = ops.get_db()
     if err then return nil, err end
-
     local db_type = ops.get_db_type(db)
-
     local fields = "id, store_id, parent_id, node_type, content_type, metadata, created_at, updated_at, external_source, external_id"
-    if browse_opts.include_content then
-        fields = fields .. ", content"
-    end
-    local query = "SELECT " .. fields .. " FROM kb10_nodes WHERE store_id = $1"
-    local params = { store_id }
-    local idx = 1
-
-    -- A non-empty parent_id scopes to that node's children. top_level restricts to
-    -- roots (parent IS NULL) and must be requested explicitly — an omitted parent_id
-    -- with only a node_type filter spans ALL parents, so node-type browses (summaries,
-    -- chunks, child concepts, all of which carry a non-null parent) return their rows
-    -- rather than being silently filtered to roots only.
-    if parent_id and parent_id ~= "" then
-        idx = idx + 1
-        query = query .. " AND parent_id = $" .. idx
-        table.insert(params, parent_id)
-    elseif top_level then
-        query = query .. " AND parent_id IS NULL"
-    end
-
-    if node_type and node_type ~= "" then
-        idx = idx + 1
-        query = query .. " AND node_type = $" .. idx
-        table.insert(params, node_type)
-    end
+    if browse_opts.include_content then fields = fields .. ", content" end
+    local clause, params = browse_filter(store_id, browse_opts)
 
     -- A document's chunks are all inserted in one transaction, so they share
     -- created_at (NOW()); ordering by it alone is non-deterministic. Order by the
@@ -131,51 +118,45 @@ function reader.browse_nodes(store_id: any, opts: any)
     else
         order_by = " ORDER BY (metadata::jsonb ->> 'chunk_index')::int ASC NULLS LAST, created_at ASC, id ASC"
     end
-    query = query .. order_by .. " LIMIT $" .. (idx + 1) .. " OFFSET $" .. (idx + 2)
-    table.insert(params, limit)
-    table.insert(params, offset)
+    local query = "SELECT " .. fields .. clause .. order_by .. " LIMIT $" .. (#params + 1) .. " OFFSET $" .. (#params + 2)
+    table.insert(params, browse_opts.limit or 50)
+    table.insert(params, browse_opts.offset or 0)
+    if with_total then
+        -- The count side supplies one row even on an empty or out-of-range page.
+        -- Keep the aggregate independent of the selected content columns.
+        query = "WITH page AS (" .. query .. "), totals AS (SELECT COUNT(*) AS total" .. clause .. ")"
+            .. " SELECT page.*, totals.total FROM totals LEFT JOIN page ON true" .. order_by
+    end
 
-    local results, query_err = db:query(query, params)
+    local rows, query_err = db:query(query, params)
     db:release()
-
     if query_err then return nil, query_err end
-
-    ops.decode_metadata(results)
-    return results or {}
+    rows = rows or {}
+    if with_total then
+        local total = tonumber(rows[1].total)
+        if rows[1].id == nil then rows = {} end
+        for _, row in ipairs(rows) do row.total = nil end
+        ops.decode_metadata(rows)
+        return { nodes = rows, total = total }
+    end
+    ops.decode_metadata(rows)
+    return rows
 end
 
--- Count the nodes a browse_nodes call with the same filter would match, ignoring
--- limit/offset. A single COUNT(*) with no row fetch, used to surface a real total
--- for server-side pagination (the browse page shows one window; this is the size
--- of the whole match). The parent_id/top_level/node_type predicates mirror
--- browse_nodes exactly so the total agrees with what paging walks.
+function reader.browse_nodes(store_id: any, opts: any)
+    return browse(store_id, opts, false)
+end
+
+function reader.browse_page(store_id: any, opts: any)
+    return browse(store_id, opts, true)
+end
+
 function reader.count_nodes(store_id: any, opts: any)
     local count_opts = (type(opts) == "table" and opts or {}) :: kb10.BrowseNodesOptions
-    local parent_id = count_opts.parent_id
-    local top_level = count_opts.top_level == true
-    local node_type = count_opts.node_type
-
+    local clause, params = browse_filter(store_id, count_opts)
     local db, err = ops.get_db()
     if err then return nil, err end
-
-    local query = "SELECT COUNT(*) AS total FROM kb10_nodes WHERE store_id = $1"
-    local params = { store_id }
-    local idx = 1
-
-    if parent_id and parent_id ~= "" then
-        idx = idx + 1
-        query = query .. " AND parent_id = $" .. idx
-        table.insert(params, parent_id)
-    elseif top_level then
-        query = query .. " AND parent_id IS NULL"
-    end
-
-    if node_type and node_type ~= "" then
-        idx = idx + 1
-        query = query .. " AND node_type = $" .. idx
-        table.insert(params, node_type)
-    end
-
+    local query = "SELECT COUNT(*) AS total" .. clause
     local rows, query_err = db:query(query, params)
     db:release()
 
