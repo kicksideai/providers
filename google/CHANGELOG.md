@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/kicksideai/providers/compare/google-v0.1.32...google-v0.1.33) (2026-11-19)
+
+
+### Features
+
+* **google:** enumerate versioned Drive attachments ([72a75cf](https://github.com/kicksideai/providers/commit/72a75cf765bfa8792a685191d440fe9fd058204a))
+
 ## [0.1.32](https://github.com/kicksideai/providers/compare/google-v0.1.31...google-v0.1.32) (2026-11-19)
 
 
