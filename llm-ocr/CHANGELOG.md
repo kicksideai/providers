@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.25...llm-ocr-v0.1.26) (2026-11-19)
+
+
+### Bug Fixes
+
+* **llm-ocr:** report batch progress through the Jobs heartbeat API ([#109](https://github.com/kicksideai/providers/issues/109)) ([6c37a35](https://github.com/kicksideai/providers/commit/6c37a352dcfb1a88143697819c1db40f7abcfb24))
+
 ## [0.1.25](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.24...llm-ocr-v0.1.25) (2026-11-19)
 
 
