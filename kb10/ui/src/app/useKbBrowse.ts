@@ -16,6 +16,7 @@ import { formatIndexingNotice } from './indexingNotice'
 // meta refresh tells us to reconcile. A queued row stays visible (spinner) until
 // the browse read model no longer contains its node ID.
 export type DocumentScope = 'documents' | 'failures'
+const RECONCILE_WINDOW_MS = 400
 
 export function useKbBrowse(kbId: () => string, opts: {
   onChanged?: () => void
@@ -54,10 +55,8 @@ export function useKbBrowse(kbId: () => string, opts: {
     return documents.value.find((n) => n.id === id)
   }
 
-  // Realtime reconciliation reloads on every meta event, so overlapping loads are
-  // routine. A per-call sequence guards the writes: only the latest-issued load may
-  // mutate state, so a slow earlier response can never clobber a newer one, and a
-  // load whose kb switched mid-flight is dropped.
+  // Navigation can supersede an in-flight background refresh. Only the latest
+  // request for the current KB can update the displayed window.
   let loadSeq = 0
   async function load() {
     const id = kbId()
@@ -98,6 +97,7 @@ export function useKbBrowse(kbId: () => string, opts: {
     const target = Math.max(0, Math.min(n, pageCount.value - 1))
     if (target === page.value) return
     page.value = target
+    cancelRefresh()
     void load()
   }
   function next() { if (hasNext.value) goToPage(page.value + 1) }
@@ -153,23 +153,33 @@ export function useKbBrowse(kbId: () => string, opts: {
     opts.onChanged?.()
   }
 
-  // Ingest emits a rapid burst of component.meta.changed events (one per stage of
-  // every file). Coalesce them: one load runs at a time, and any events that land
-  // while it is in flight collapse into a single trailing reload. A burst of N
-  // events costs at most two reads, and the read that wins is always the freshest.
+  // A 400ms window groups file-stage events even when individual GETs are fast.
+  // Keep one background read in flight and schedule another window if changes
+  // arrived during it. The AddPanel uses this same queue for its fallback reads.
+  let reconcileTimer: ReturnType<typeof setTimeout> | undefined
   let reconciling = false
   let reconcileQueued = false
-  async function reconcileAfterMeta() {
+  function cancelRefresh() {
+    if (reconcileTimer !== undefined) clearTimeout(reconcileTimer)
+    reconcileTimer = undefined
+    reconcileQueued = false
+  }
+  function scheduleRefresh() {
+    if (!kbId()) return
     if (reconciling) { reconcileQueued = true; return }
-    reconciling = true
-    try {
-      do {
-        reconcileQueued = false
+    if (reconcileTimer !== undefined) return
+    reconcileTimer = setTimeout(async () => {
+      reconcileTimer = undefined
+      reconciling = true
+      try {
         if (await load()) reconcilePendingDeletes()
-      } while (reconcileQueued)
-    } finally {
-      reconciling = false
-    }
+      } finally {
+        reconciling = false
+        const queued = reconcileQueued
+        reconcileQueued = false
+        if (queued) scheduleRefresh()
+      }
+    }, RECONCILE_WINDOW_MS)
   }
 
   let unbind: (() => void) | null = null
@@ -178,7 +188,9 @@ export function useKbBrowse(kbId: () => string, opts: {
     const run = ++realtimeRun
     if (unbind) { unbind(); unbind = null }
     if (!id) return
-    const off = subscribeComponentMeta(id, () => { void reconcileAfterMeta() })
+    const off = subscribeComponentMeta(id, () => {
+      if (run === realtimeRun) scheduleRefresh()
+    })
     if (run !== realtimeRun) {
       if (off) off()
       return
@@ -188,7 +200,7 @@ export function useKbBrowse(kbId: () => string, opts: {
 
   onBeforeUnmount(() => {
     realtimeRun++
-    // Halt any in-flight paginated load so it stops walking pages after teardown.
+    cancelRefresh()
     loadSeq++
     if (unbind) unbind()
     pendingTimers.forEach((t) => clearTimeout(t))
@@ -196,6 +208,7 @@ export function useKbBrowse(kbId: () => string, opts: {
   })
 
   watch([kbId, () => opts.scope?.()], ([id], [previousId]) => {
+    cancelRefresh()
     page.value = 0
     total.value = 0
     nodes.value = []
@@ -206,6 +219,6 @@ export function useKbBrowse(kbId: () => string, opts: {
 
   return {
     loading, notice, indexingNotice, nodes, documents, deleting, load, reload: load, remove, findDoc,
-    page, pageSize, total, pageCount, hasPrev, hasNext, next, prev, goToPage,
+    page, pageSize, total, pageCount, hasPrev, hasNext, next, prev, goToPage, scheduleRefresh,
   }
 }
