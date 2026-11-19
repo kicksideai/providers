@@ -80,9 +80,9 @@ entries:
   - name: dep.kickside.uploads
     kind: ns.dependency
     component: kickside/uploads
-    version: ">=0.3.21"
+    version: ">=0.3.29"
     meta:
-      comment: Stages files and resolves storage-aware original delivery through Uploads.
+      comment: Stages files, rejects invalid bound upload tokens before storage, and resolves original delivery through Uploads.
 
   - name: dep.wippy.agent
     kind: ns.dependency

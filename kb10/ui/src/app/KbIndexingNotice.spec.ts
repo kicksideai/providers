@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import AddPanel from './AddPanel.vue'
+import IconButton from './shared/IconButton.vue'
 import KbNotice from './shared/KbNotice.vue'
 import RailHeader from './shared/RailHeader.vue'
 
@@ -75,11 +77,40 @@ it('uses the accepted and failed page totals when switching document scopes', as
   expect(wrapper.findComponent(RailHeader).props()).toMatchObject({ title: 'Documents', count: 91 })
   expect(proxy.get).toHaveBeenLastCalledWith(expect.stringContaining('scope=documents&limit=50&offset=0'))
 
+  const send = proxy.on.mock.calls[0][1]
+  send({ event: 'component.meta.changed', component_id: 'kb', meta: {} })
   proxy.get.mockResolvedValueOnce({ data: { success: true, total: 2, nodes: [] } })
   await wrapper.findAll('[role="tab"]')[1].trigger('click')
   await flushPromises()
   expect(wrapper.findComponent(RailHeader).props()).toMatchObject({ title: 'Indexing failures', count: 2 })
   expect(proxy.get).toHaveBeenLastCalledWith(expect.stringContaining('scope=failures&limit=50&offset=0'))
+  await vi.advanceTimersByTimeAsync(400)
+  expect(proxy.get).toHaveBeenCalledTimes(2)
 
   wrapper.unmount()
+})
+
+it('coalesces spaced ingestion events and panel refreshes for the current document catalog', async () => {
+  const wrapper = shallowMount(KbDocument, {
+    global: { stubs: { KbShell: false, RailHeader: false, KbDrawer: false } },
+  })
+  try {
+    await flushPromises()
+    const add = wrapper.findAllComponents(IconButton).find(button => button.props('label') === 'Add document')!
+    add.vm.$emit('click', new MouseEvent('click'))
+    await flushPromises()
+    const panel = wrapper.findComponent(AddPanel)
+    expect(panel.exists()).toBe(true)
+    const send = proxy.on.mock.calls[0][1]
+
+    for (let index = 0; index < 50; index++) {
+      send({ event: 'component.meta.changed', component_id: 'kb', meta: { document_count: index + 1 } })
+      if (index === 10 || index === 30) panel.vm.$emit('changed', false)
+      await vi.advanceTimersByTimeAsync(16)
+    }
+    expect(proxy.get).toHaveBeenCalledTimes(3)
+    expect(proxy.get).toHaveBeenLastCalledWith(expect.stringContaining('scope=documents&limit=50&offset=0'))
+  } finally {
+    wrapper.unmount()
+  }
 })

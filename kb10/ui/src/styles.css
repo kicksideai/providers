@@ -312,8 +312,9 @@ select.ap-input { cursor: pointer; }
 .ap-item.done .ap-item-ic { color: var(--p-success-500); }
 .ap-item.error .ap-item-ic { color: var(--p-danger-500); }
 .ap-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--p-text-color); }
-.ap-item-status { flex: none; font-size: 11px; color: var(--p-text-muted-color); }
+.ap-item-status { max-width: 55%; overflow-wrap: anywhere; font-size: 11px; color: var(--p-text-muted-color); }
 .ap-item.error .ap-item-status { color: var(--p-danger-500); }
+.ap-item-retry { flex: none; color: var(--p-text-color); text-decoration: underline; }
 
 /* ── Settings panel ──────────────────────────────────────────────────────── */
 .st { max-width: 760px; }

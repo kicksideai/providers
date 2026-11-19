@@ -37,7 +37,7 @@ const listTitle = computed(() => scope.value === 'documents' ? 'Documents' : 'In
 // Browse + delete + realtime reconciliation come from the shared composable.
 // Pagination is server-side: documents holds only the current page, total is the
 // real match count, and the pager walks pages.
-const { loading, notice, indexingNotice, documents, deleting, reload, remove, findDoc,
+const { loading, notice, indexingNotice, documents, deleting, scheduleRefresh, remove, findDoc,
   page, pageSize, total, hasPrev, hasNext, next, prev } =
   useKbBrowse(() => kbId.value, { includeIndexing: true, scope: () => scope.value })
 
@@ -223,7 +223,7 @@ watch([kbId, routeParam], async ([id, route]) => {
     </KbShell>
 
     <KbDrawer :open="addOpen" title="Add to library" icon="tabler:plus" @close="addOpen = false">
-      <AddPanel :kb-id="kbId" noun="document" @changed="addOpen = false; reload()" />
+      <AddPanel :kb-id="kbId" noun="document" @changed="closePanel => { if (closePanel) addOpen = false; scheduleRefresh() }" />
     </KbDrawer>
 
     <KbConfirm

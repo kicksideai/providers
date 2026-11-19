@@ -23,7 +23,7 @@ local REQUIRED_DEPENDENCIES = {
     ["kickside.kb10:dep.kickside.knowledge"] = { "kickside/knowledge", ">=0.1.93" },
     ["kickside.kb10:dep.kickside.models"] = { "kickside/models", "*" },
     -- Checkpointing requires the typed artifact read failures introduced in 0.3.21.
-    ["kickside.kb10:dep.kickside.uploads"] = { "kickside/uploads", ">=0.3.21" },
+    ["kickside.kb10:dep.kickside.uploads"] = { "kickside/uploads", ">=0.3.29" },
     ["kickside.kb10:dep.wippy.agent"] = { "wippy/agent", "*" },
     ["kickside.kb10:dep.wippy.dataflow"] = { "wippy/dataflow", "*" },
     ["kickside.kb10:dep.wippy.llm"] = { "wippy/llm", "*" },
