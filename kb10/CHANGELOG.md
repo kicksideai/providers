@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.23](https://github.com/kicksideai/providers/compare/kb10-v0.2.22...kb10-v0.2.23) (2026-11-19)
+
+
+### Performance Improvements
+
+* **kb10:** bound and resume spreadsheet planning ([1f5a249](https://github.com/kicksideai/providers/commit/1f5a249750abaf41adb3c6d38f2fed9bc1dff774))
+
 ## [0.2.22](https://github.com/kicksideai/providers/compare/kb10-v0.2.21...kb10-v0.2.22) (2026-11-19)
 
 
