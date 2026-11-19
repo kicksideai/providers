@@ -51,16 +51,22 @@ end
 -- which release the retention pin, advance the generation and wake the slot.
 function M.repair(db: any): (table?, error?)
     local report = {repaired = {}, kept = 0, failed = {}}
-    local after = ""
+    local after_projection: string? = nil
+    local after_cursor: string? = nil
     while true do
-        local rows, err = db:query([[SELECT p.id AS projection_id, c.id AS cursor_id, c.thread_id, c.last_error
+        local query = [[SELECT p.id AS projection_id, c.id AS cursor_id, c.thread_id, c.last_error
             FROM kickside_projection p JOIN kickside_projection_cursor c ON c.projection_id = p.id
-            WHERE p.state = 'invalid' AND p.kind = $1 AND c.status = 'invalid' AND p.id > $2
-            ORDER BY p.id LIMIT $3]], {SOURCE_KIND, after, PAGE_SIZE})
+            WHERE p.state = 'invalid' AND p.kind = $1 AND c.status = 'invalid']]
+        local args = {SOURCE_KIND}
+        if after_projection and after_cursor then
+            query = query .. " AND (p.id, c.id) > ($2, $3)"
+            args[2], args[3] = after_projection, after_cursor
+        end
+        local rows, err = db:query(query .. " ORDER BY p.id, c.id LIMIT " .. PAGE_SIZE, args)
         if err then return nil, err end
         if type(rows) ~= "table" or #rows == 0 then break end
         for _, row in ipairs(rows) do
-            after = tostring(row.projection_id)
+            after_projection, after_cursor = tostring(row.projection_id), tostring(row.cursor_id)
             if M.is_provider_rejection(row.last_error) then
                 local params = {cursor_id = tostring(row.cursor_id)}
                 local _, pause_err = projection_writer.pause(db, tostring(row.thread_id), params)
