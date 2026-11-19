@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.24](https://github.com/kicksideai/providers/compare/kb10-v0.2.23...kb10-v0.2.24) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** read browse pages and totals in one snapshot ([#155](https://github.com/kicksideai/providers/issues/155)) ([fded628](https://github.com/kicksideai/providers/commit/fded628e484b503d20c3a557ac29dbf820b8d040))
+
 ## [0.2.23](https://github.com/kicksideai/providers/compare/kb10-v0.2.22...kb10-v0.2.23) (2026-11-19)
 
 
