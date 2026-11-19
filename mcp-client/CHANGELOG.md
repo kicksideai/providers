@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.8...mcp-client-v0.2.9) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
 ## [0.2.8](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.7...mcp-client-v0.2.8) (2026-11-19)
 
 

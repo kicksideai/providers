@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.18](https://github.com/kicksideai/providers/compare/kb10-v0.2.17...kb10-v0.2.18) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** keep document deletion separate from selection ([#145](https://github.com/kicksideai/providers/issues/145)) ([ea2e37b](https://github.com/kicksideai/providers/commit/ea2e37bcc02e128cf2f476da4d4952216de1f8a1))
+* **kb10:** preserve document addresses and scope source bindings ([#137](https://github.com/kicksideai/providers/issues/137)) ([decb36e](https://github.com/kicksideai/providers/commit/decb36e93c1fbcc956f025be30dd8cc4781ba1b1))
+* **kb10:** resolve replacement scope from document lineage ([#144](https://github.com/kicksideai/providers/issues/144)) ([a853a9c](https://github.com/kicksideai/providers/commit/a853a9c9fcde539f52c3774ffd6a1a16da8f7d41))
+
 ## [0.2.17](https://github.com/kicksideai/providers/compare/kb10-v0.2.16...kb10-v0.2.17) (2026-11-18)
 
 
