@@ -260,7 +260,7 @@ export function useIngest(kbId: () => string, onDone: () => void) {
     return { uploads, total: Number(data?.meta?.total ?? uploads.length) }
   }
 
-  async function ingestExistingUploads(uploads: { uuid: string; name?: string }[]) {
+  async function ingestExistingUploads(uploads: { uuid: string; name?: string }[], reingestKey?: string) {
     const id = kbId()
     if (!id || !uploads.length) return
     reset()
@@ -268,14 +268,20 @@ export function useIngest(kbId: () => string, onDone: () => void) {
     try {
       const { data } = await api.post(`/api/v1/knowledge/${id}/ingest-upload`, {
         upload_ids: uploads.map((u) => u.uuid),
-      })
+        ...(reingestKey ? { reingest: true } : {}),
+      }, reingestKey ? { headers: { 'Idempotency-Key': reingestKey } } : undefined)
+      if (reingestKey && data?.reingest !== true) {
+        errMsg.value = 'Re-ingest requires an updated Knowledge service'
+        return
+      }
       const results = Array.isArray(data?.results) ? data.results : []
       const nameOf = (uuid: string) => uploads.find((u) => u.uuid === uuid)?.name || uuid
       let any = false
       for (const r of results) {
         if (r?.success) { any = true; addQueued(nameOf(String(r.upload_id)), String(r.upload_id)) }
       }
-      if (!any) errMsg.value = data?.error || 'Could not ingest the selected uploads'
+      const failed = reingestKey ? results.find((r: any) => r?.success === false) : undefined
+      if (failed || !any) errMsg.value = failed?.error || data?.error || 'Could not ingest the selected uploads'
     } catch (e: any) {
       errMsg.value = e?.response?.data?.error || e?.message || 'Ingest error'
       host.handleError(e?.response?.status === 401 ? 'auth-expired' : 'other', e)

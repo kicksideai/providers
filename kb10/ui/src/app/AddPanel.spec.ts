@@ -11,7 +11,20 @@ const service = vi.hoisted(() => ({
 }))
 vi.mock('./useIngest', async () => {
   const { ref } = await import('vue')
-  return { useIngest: () => ({ ...service, errMsg: ref(''), busy: ref(false), items: ref([]) }) }
+  return {
+    useIngest: () => {
+      const errMsg = ref('')
+      return {
+        ...service,
+        errMsg,
+        busy: ref(false),
+        items: ref([]),
+        ingestExistingUploads: async (...args: unknown[]) => {
+          errMsg.value = (await service.ingestExistingUploads(...args)) || ''
+        },
+      }
+    },
+  }
 })
 
 async function openUploads() {
@@ -59,6 +72,25 @@ describe('existing upload selection', () => {
     expect(choice.attributes('aria-pressed')).toBe('false')
     expect(wrapper.get('.ap-submit').attributes('disabled')).toBeDefined()
     expect(service.ingestExistingUploads).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('keeps the same re-ingest key when a selected upload request is retried', async () => {
+    service.ingestExistingUploads.mockResolvedValueOnce('Connection interrupted')
+    const wrapper = await openUploads()
+    const selection = wrapper.get('button[aria-pressed]')
+    const retry = wrapper.findAll('.ap-submit').find(button => button.text() === 'Re-ingest selected')!
+    await selection.trigger('click')
+    await retry.trigger('click')
+    await flushPromises()
+    const [selected, key] = service.ingestExistingUploads.mock.calls[0]
+    expect(selected).toEqual([{ uuid: 'upload-a', name: 'first.txt' }])
+    expect(key).toEqual(expect.any(String))
+    expect(selection.attributes('aria-pressed')).toBe('true')
+    await retry.trigger('click')
+    await flushPromises()
+    expect(service.ingestExistingUploads).toHaveBeenNthCalledWith(2, selected, key)
+    expect(selection.attributes('aria-pressed')).toBe('false')
     wrapper.unmount()
   })
 })

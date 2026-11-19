@@ -20,7 +20,7 @@ local REQUIRED_DEPENDENCIES = {
     ["kickside.kb10:dep.kickside.doc2md"] = { "kickside/doc2md", ">=0.8.15" },
     ["kickside.kb10:dep.kickside.execution"] = { "kickside/execution", "*" },
     ["kickside.kb10:dep.kickside.jobs"] = { "kickside/jobs", ">=0.1.87" },
-    ["kickside.kb10:dep.kickside.knowledge"] = { "kickside/knowledge", ">=0.1.91" },
+    ["kickside.kb10:dep.kickside.knowledge"] = { "kickside/knowledge", ">=0.1.93" },
     ["kickside.kb10:dep.kickside.models"] = { "kickside/models", "*" },
     -- Checkpointing requires the typed artifact read failures introduced in 0.3.21.
     ["kickside.kb10:dep.kickside.uploads"] = { "kickside/uploads", ">=0.3.21" },
