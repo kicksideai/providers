@@ -13,7 +13,7 @@ modules:
     - name: kickside/connection
       version: 0.5.7
     - name: kickside/contract
-      version: 0.3.7
+      version: 0.3.8
     - name: kickside/core
       version: 0.3.19
     - name: kickside/dm
@@ -26,6 +26,8 @@ modules:
       version: 0.0.0
     - name: kickside/jobs
       version: 0.1.77
+    - name: kickside/provider-text
+      version: 0.0.0
     - name: kickside/realtime-dispatch
       version: 0.0.0
     - name: kickside/security
@@ -48,8 +50,8 @@ modules:
       version: 0.7.37
       hash: 10c09e1327244a67a8bb23aa0312da6b92012822f218426764e638125faa1fa9
     - name: wippy/llm
-      version: 0.5.20
-      hash: 7e998e27a8d543adcff7f77b99d9f71325124479251c46ce9f4933fcb028f473
+      version: 0.5.21
+      hash: 30124ba7cf941c9eea67cd79787ac6dafabba7350a61883632fd4849851f4249
     - name: wippy/migration
       version: 0.3.26
       hash: cf4848ad3f8ba8d31d944b2f3a7274bc2b7cf2888dd80f0db63b2c71a85f89c1
@@ -60,8 +62,8 @@ modules:
       version: 0.4.3
       hash: f636859979e88b23647a78fb9aa8a553799de18750b0fb5fb085cbe21542c86c
     - name: wippy/session
-      version: 0.6.21
-      hash: 57a25eb1135fc13e4104d60e5ae1ff277c82e3321efb61910cf28e02bbd1169d
+      version: 0.7.0
+      hash: b2bb958fa641716c8cceebb413754942245e2937ed05bc0c49b6f55861e4ae18
     - name: wippy/terminal
       version: 0.4.6
       hash: aa0c92b85c0dc2c96f00119a7eaa1ced569a2ac8899514d432aef0c910e73e63

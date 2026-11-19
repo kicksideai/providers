@@ -5,27 +5,9 @@ import { loadByTagName } from '@wippy-fe/proxy'
 import { useProps, useEvents } from '@wippy-fe/webcomponent-vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import KbButton from './shared/KbButton.vue'
-import { applyQueryModel } from './queryMode'
+import { DEFAULT_KB_MODEL, resolveModel } from './modelSettings'
 import { fitsHalfColumn } from './pairing'
 import { useMaintenance, type MaintenanceRunType } from './useMaintenance'
-
-// kb10 knowledge base configuration (kx-kb-create), mounted by the knowledge
-// create/edit dialog. Owns every kb10 type-specific choice the generic dialog
-// should not know about:
-//   • the embedding model (canonical <wc-model-picker capability="embed">),
-//   • contextual embedding — universal for kb10: always sets config.summary_model
-//     + config.chunk_enrichment_model so embed_func does document-summary +
-//     per-chunk enrichment for every type, together with the summary settings
-//     those models read (summary_prompt, summary_max_chars), and
-//   • the engine's own config_schema fields (e.g. wiki link depth).
-// It emits { embedding_model, config } via `config-changed` on mount (with
-// sensible defaults so creation works untouched) and on every change. Model
-// selection uses the shared widget so names/classes are unified everywhere.
-//
-// On edit the same element also carries kb10's maintenance actions — rewriting
-// the existing summaries or vectors of the knowledge base it is editing. They
-// are actions over stored content rather than configuration, and they belong to
-// the engine, so they live in the engine's own pane of the edit dialog.
 
 type ConfigValue = string | number | boolean
 interface EngineConfigField {
@@ -56,7 +38,6 @@ const emit = useEvents<E>()
 // Canonical class aliases — the runtime resolves these to the configured model
 // from the catalog, so the defaults follow the deployment instead of a pinned id.
 const PREFERRED_EMBED = 'class:embed'
-const DEFAULT_CONTEXT_MODEL = 'class:fast'
 
 const ctx = computed<CreateConfig>(() => props.value.config || {})
 const isEdit = computed(() => !!ctx.value.edit)
@@ -69,8 +50,8 @@ const contextRequired = computed(() => kbType.value !== 'document')
 
 const embeddingModel = ref('')
 const contextual = ref(true)
-const summaryModel = ref(DEFAULT_CONTEXT_MODEL)
-const chunkModel = ref(DEFAULT_CONTEXT_MODEL)
+const summaryModel = ref<string | false>()
+const chunkModel = ref<string | false>()
 // The two settings the summary model reads: standing instructions folded into
 // every document summary, and the length budget. Free text for the budget so an
 // empty box (the engine default applies) stays distinct from an explicit 0 (no
@@ -81,10 +62,11 @@ const summaryMaxChars = ref('')
 // On: source diagrams/figures become retrievable image nodes, captioned in
 // context and embedded alongside text.
 const embedImages = ref(false)
-const captionModel = ref(DEFAULT_CONTEXT_MODEL)
+const captionModel = ref(DEFAULT_KB_MODEL)
 const engineConfig = ref<Record<string, unknown>>({})
 // Retrieval / agentic RAG.
-const retrievalModel = ref('')
+const analysisSetting = ref<string | false>()
+const retrievalModel = computed(() => resolveModel(analysisSetting.value, ''))
 const enableReranking = ref(false)
 const hyde = ref(false)
 const selfTuning = ref(false)
@@ -119,14 +101,24 @@ const schemaFields = computed<EngineConfigField[]>(() => {
 })
 
 // Keys declared in config_schema that a dedicated control below renders and
-// writes: the summary settings in the contextual section, and the answer model,
+// writes: the summary settings in the contextual section, and the analysis model,
 // its strategy, tuning, reranking and instructions in the Ask section. The
 // generic options list renders only the remaining engine keys.
 const OWNED_KEYS = [
-  'summary_prompt', 'summary_max_chars',
+  'summary_model', 'chunk_enrichment_model', 'summary_prompt', 'summary_max_chars',
   'analysis_model', 'query_strategy', 'self_tuning', 'self_tuning_query_interval', 'enable_reranking', 'extra_prompt',
 ]
 const engineFields = computed(() => schemaFields.value.filter(f => !OWNED_KEYS.includes(f.key)))
+function resolveSetting(key: string, value: unknown): string {
+  const fallback = schemaFields.value.find(f => f.key === key)?.default
+  return resolveModel(value, typeof fallback === 'string' ? fallback : DEFAULT_KB_MODEL)
+}
+const selectedSummaryModel = computed(() => resolveSetting('summary_model', summaryModel.value))
+const selectedChunkModel = computed(() => resolveSetting('chunk_enrichment_model', chunkModel.value))
+
+function modelSetting(value: unknown): string | false | undefined {
+  if (typeof value === 'string' || value === false) return value
+}
 // Prose fields need the full row to be readable; the rest are placed by what
 // they render — see fitsHalfColumn.
 const engineProseFields = computed(() => engineFields.value.filter(f => f.format === 'textarea'))
@@ -172,14 +164,9 @@ const summaryCharsError = computed(() => {
 function seed() {
   const c = ctx.value.config || {}
   embeddingModel.value = ctx.value.embedding_model || PREFERRED_EMBED
-  const summary = typeof c.summary_model === 'string' ? c.summary_model : ''
-  const chunk = typeof c.chunk_enrichment_model === 'string' ? c.chunk_enrichment_model : ''
-  // Required types are always contextual. For document, reflect the stored config
-  // (models present = on); default a fresh KB to on (recommended).
-  const seeded = c.summary_model !== undefined || c.chunk_enrichment_model !== undefined
-  contextual.value = contextRequired.value ? true : (seeded ? !!chunk : true)
-  summaryModel.value = summary || DEFAULT_CONTEXT_MODEL
-  chunkModel.value = chunk || DEFAULT_CONTEXT_MODEL
+  summaryModel.value = modelSetting(c.summary_model)
+  chunkModel.value = modelSetting(c.chunk_enrichment_model)
+  contextual.value = contextRequired.value || !!(selectedSummaryModel.value || selectedChunkModel.value)
 
   summaryPrompt.value = typeof c.summary_prompt === 'string' ? c.summary_prompt : ''
   // A knowledge base being created holds no length of its own — the box stays
@@ -191,7 +178,7 @@ function seed() {
   embedImages.value = c.embed_images === true
   captionModel.value = typeof c.image_caption_model === 'string' && c.image_caption_model
     ? c.image_caption_model
-    : DEFAULT_CONTEXT_MODEL
+    : DEFAULT_KB_MODEL
 
   const cfg: Record<string, unknown> = {}
   for (const f of engineFields.value) {
@@ -200,11 +187,7 @@ function seed() {
   }
   engineConfig.value = cfg
 
-  // Retrieval / agentic RAG — off by default (plain vector search) until a query
-  // model is chosen. One picker drives both retrieval_model (graph/wiki) and
-  // analysis_model (document strategy).
-  retrievalModel.value = (typeof c.retrieval_model === 'string' ? c.retrieval_model : '')
-    || (typeof c.analysis_model === 'string' ? c.analysis_model : '')
+  analysisSetting.value = modelSetting(c.analysis_model)
   enableReranking.value = c.enable_reranking === true
   hyde.value = c.query_strategy === 'hyde'
   selfTuning.value = c.self_tuning === true
@@ -218,60 +201,23 @@ function seed() {
 }
 
 function buildConfig(): Record<string, unknown> {
-  // When contextual is on, publish the two models so embed_func runs the
-  // document-summary + per-chunk enrichment path. When off (document only), omit
-  // them — embed_func then embeds chunks as-is (plain, cheaper). Required types
-  // never reach the off branch.
   const cfg: Record<string, unknown> = { ...engineConfig.value }
-  if (contextual.value) {
-    cfg.summary_model = summaryModel.value || DEFAULT_CONTEXT_MODEL
-    cfg.chunk_enrichment_model = chunkModel.value || DEFAULT_CONTEXT_MODEL
-    // Always send so clearing the field unsets it (update_kb merges config keys).
-    cfg.summary_prompt = summaryPrompt.value.trim()
-    // A length is sent only when the knowledge base states one; otherwise the
-    // engine default the placeholder shows is what resolves at ingest.
-    if (summaryCharsValue.value !== null) cfg.summary_max_chars = summaryCharsValue.value
-    else delete cfg.summary_max_chars
-  } else {
-    delete cfg.summary_model
-    delete cfg.chunk_enrichment_model
-    delete cfg.summary_prompt
-    delete cfg.summary_max_chars
-  }
-  // Embed images: on publishes the flag + caption model so the materializer
-  // captions and embeds source images as nodes; off omits the flag (default).
-  if (embedImages.value) {
-    cfg.embed_images = true
-    cfg.image_caption_model = captionModel.value || DEFAULT_CONTEXT_MODEL
-  } else {
-    cfg.embed_images = false
-    delete cfg.image_caption_model
-  }
-  // Agentic retrieval: a query model turns it on (sets both retrieval_model +
-  // analysis_model); iterations apply to the graph/wiki concept retrieval.
-  applyQueryModel(cfg, retrievalModel.value)
+  cfg.summary_model = contextual.value ? summaryModel.value : false
+  cfg.chunk_enrichment_model = contextual.value ? chunkModel.value : false
+  cfg.summary_prompt = summaryPrompt.value.trim()
+  if (summaryCharsValue.value !== null) cfg.summary_max_chars = summaryCharsValue.value
+  cfg.embed_images = embedImages.value
+  cfg.image_caption_model = captionModel.value || DEFAULT_KB_MODEL
+  cfg.analysis_model = analysisSetting.value
   cfg.query_strategy = hyde.value ? 'hyde' : 'plain'
   cfg.self_tuning = selfTuning.value
-  if (selfTuning.value) cfg.self_tuning_query_interval = tuningInterval.value
-  // Rerank is a built-in-driver pass; the agentic driver reasons over rounds
-  // instead, so it does not apply there. Always sent so switching it off unsets it
-  // (update_kb merges config keys).
-  cfg.enable_reranking = enableReranking.value && queryDriver.value !== 'agentic'
-  // Always send so clearing the field unsets it (update_kb merges config keys).
+  cfg.self_tuning_query_interval = tuningInterval.value
+  cfg.enable_reranking = enableReranking.value
   cfg.extra_prompt = queryPrompt.value.trim()
-  // Iterations apply to the graph concept retrieval and to the agentic driver.
-  if (queryDriver.value === 'agentic' && retrievalIterations.value) {
-    cfg.max_retrieval_iterations = retrievalIterations.value
-  }
-  // Ask driver selection.
+  if (retrievalIterations.value) cfg.max_retrieval_iterations = retrievalIterations.value
   cfg.query_driver = queryDriver.value
-  if (queryDriver.value === 'agentic' && queryAgent.value) cfg.query_agent = queryAgent.value
-  else delete cfg.query_agent
+  cfg.query_agent = queryAgent.value
   return cfg
-}
-
-function publish() {
-  emit('config-changed', { embedding_model: embeddingModel.value, config: buildConfig() })
 }
 
 function pickValue(e: Event): string {
@@ -281,6 +227,14 @@ function pickValue(e: Event): string {
 function onEmbed(e: Event) { embeddingModel.value = pickValue(e) }
 function onSummary(e: Event) { summaryModel.value = pickValue(e) }
 function onChunk(e: Event) { chunkModel.value = pickValue(e) }
+
+function setContextual(enabled: boolean) {
+  if (enabled && !selectedSummaryModel.value && !selectedChunkModel.value) {
+    summaryModel.value = ''
+    chunkModel.value = ''
+  }
+  contextual.value = enabled
+}
 
 function setEngineField(f: EngineConfigField, raw: string) {
   if (f.type === 'integer') {
@@ -299,11 +253,17 @@ function engineFieldValue(key: string): string {
 }
 
 // ── Maintenance (edit only) ─────────────────────────────────────────────────
-// The knowledge base's saved configuration, as of the last seeding: the dialog
-// writes what this element publishes, so anything published since is an edit the
-// knowledge base has not been told about yet.
-const savedConfig = ref('')
-const dirty = computed(() => JSON.stringify(buildConfig()) !== savedConfig.value)
+const formConfig = computed(buildConfig)
+const initialConfig = ref<Record<string, unknown>>({})
+const configPatch = computed(() => Object.fromEntries(Object.entries(formConfig.value).filter(
+  ([key, value]) => value !== undefined && !Object.is(value, initialConfig.value[key]),
+)))
+const dirty = computed(() => Object.keys(configPatch.value).length > 0 ||
+  Object.keys(initialConfig.value).some(key => !(key in formConfig.value)))
+
+function publish() {
+  emit('config-changed', { embedding_model: embeddingModel.value, config: configPatch.value })
+}
 
 const {
   statusError: maintenanceError,
@@ -329,12 +289,12 @@ function startRun(runType: MaintenanceRunType) {
 
 function seedAndPublish() {
   seed()
-  savedConfig.value = JSON.stringify(buildConfig())
+  initialConfig.value = formConfig.value
   publish()
 }
 
 watch(() => props.value.config, seedAndPublish)
-watch([embeddingModel, contextual, summaryModel, chunkModel, summaryPrompt, summaryMaxChars, embedImages, captionModel, engineConfig, retrievalModel, enableReranking, hyde, selfTuning, tuningInterval, queryPrompt, retrievalIterations, queryDriver, queryAgent], publish, { deep: true })
+watch([embeddingModel, formConfig], publish)
 
 onMounted(() => {
   loadByTagName('wc-model-picker', { timeoutMs: 8000 }).catch(() => {})
@@ -411,7 +371,7 @@ onMounted(() => {
               <template v-if="contextRequired"> Required — the concept graph is built from these models.</template>
             </span>
           </span>
-          <ToggleSwitch v-if="!contextRequired" v-model="contextual" aria-label="Contextual embedding" />
+          <ToggleSwitch v-if="!contextRequired" :model-value="contextual" @update:model-value="setContextual" aria-label="Contextual embedding" />
           <span v-else class="cx-req">Required</span>
         </div>
 
@@ -419,12 +379,12 @@ onMounted(() => {
           <div class="cx-row">
             <div class="cx-field">
               <span class="cx-label">Summary model</span>
-              <wc-model-picker :value="summaryModel" capability="generate" @select="onSummary"></wc-model-picker>
+              <wc-model-picker :value="selectedSummaryModel" capability="generate" @select="onSummary"></wc-model-picker>
               <p class="st-hint">Summarises each document before chunking.</p>
             </div>
             <div class="cx-field">
               <span class="cx-label">Chunk enrichment model</span>
-              <wc-model-picker :value="chunkModel" capability="generate" @select="onChunk"></wc-model-picker>
+              <wc-model-picker :value="selectedChunkModel" capability="generate" @select="onChunk"></wc-model-picker>
               <p class="st-hint">Adds context to each chunk.</p>
             </div>
           </div>
@@ -484,27 +444,26 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Ask: one section — the answer model, how it answers, and standing rules. -->
     <div class="cx-group">
-      <div class="cx-group-h"><Icon icon="tabler:message-2" aria-hidden="true" /><span>Ask</span></div>
-      <p class="cx-lead">How this knowledge base answers questions on the Ask tab.</p>
+      <div class="cx-group-h"><Icon icon="tabler:message-2" aria-hidden="true" /><span>Search and Ask</span></div>
 
       <div class="cx-field">
-        <span class="cx-label">Answer model</span>
-        <wc-model-picker :value="retrievalModel" capability="generate" @select="retrievalModel = pickValue($event)"></wc-model-picker>
-        <p class="st-hint">Reads the retrieved passages and writes the answer. Leave empty to return passages only — plain vector search, no generated answer.</p>
+        <span class="cx-label">Search analysis model</span>
+        <wc-model-picker :value="retrievalModel" capability="generate" @select="analysisSetting = pickValue($event).trim() || false"></wc-model-picker>
+        <p v-if="analysisSetting === false" class="st-hint">Answers are disabled. Ask returns matching passages.</p>
+        <p v-else-if="!retrievalModel" class="st-hint">Search returns direct matches. Ask uses Fast when available.</p>
       </div>
 
       <label class="cx-toggle">
         <ToggleSwitch v-model="hyde" aria-label="Hypothetical answer retrieval" />
-        <span><span class="cx-label">Hypothetical answer retrieval</span><span class="st-hint">Generates a short hypothetical answer with the selected answer model before embedding each question. Off uses the raw question.</span></span>
+        <span><span class="cx-label">Hypothetical answer retrieval</span><span class="st-hint">Uses the Search analysis model to generate a short hypothetical answer before embedding each question.</span></span>
       </label>
       <label class="cx-toggle">
         <ToggleSwitch v-model="selfTuning" aria-label="Autonomous retrieval tuning" />
         <span><span class="cx-label">Autonomous retrieval tuning</span><span class="st-hint">Learns standing instructions from document summaries and retrieval outcomes. Applies changes when a caller has write access.</span></span>
       </label>
       <p v-if="lastTuning?.applied_at" class="st-hint">Last tuning: {{ lastTuning.applied_at }}. {{ lastTuning.rationale }}</p>
-      <p v-if="(hyde || selfTuning) && !retrievalModel" class="cx-err">Select an answer model for retrieval optimization.</p>
+      <p v-if="(hyde || selfTuning) && !retrievalModel" class="st-hint">HyDE and tuning stay off until a Search analysis model is available.</p>
       <label v-if="selfTuning" class="cx-field">
         <span class="cx-label">Tuning interval</span>
         <input class="cx-input" type="number" min="5" max="500" step="1" v-model.number="tuningInterval" />
@@ -572,7 +531,7 @@ onMounted(() => {
         <KbButton
           variant="soft"
           small
-          :disabled="maintenanceBlocked"
+          :disabled="maintenanceBlocked || !initialConfig.summary_model"
           :loading="maintenanceRunning('resummarize')"
           @click="startRun('resummarize')"
         >Regenerate summaries</KbButton>

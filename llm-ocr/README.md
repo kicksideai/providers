@@ -76,6 +76,9 @@ different request declares it in its `metadata.ocr` object; every field is optio
 | `image_first` | `true` sends the image before the instruction text |
 | `output_limit` | positive integer output token limit |
 
+A page whose generation stops at the output limit fails; its error detail carries the
+output length and its last 2 KB.
+
 A non-empty `ocr_prompt` setting takes precedence over the card's `prompt`. Each model
 the LLM attempts, including class members and fallbacks, receives the request its own
 card declares.

@@ -97,6 +97,23 @@ local function define_tests()
     -- endpoint handlers run, so what the seam mints proves the two share one
     -- code path rather than two copies of it.
     test.describe("kb10 maintenance library seam", function()
+        test.it("leaves resummarization unscheduled when the summary model is disabled", function()
+            local id = kb_id()
+            local queue = fake_jobs()
+            install(queue)
+            maintenance._get_store = function(): (any?, any?)
+                return { config = { summary_model = false } }, nil
+            end
+
+            local receipt, err = schedule_resummarize.run(id)
+            restore()
+            test.is_nil(err)
+            test.is_false((receipt :: any).scheduled)
+            test.eq(id, (receipt :: any).kb_id)
+            test.eq(0, #queue.calls)
+            test.eq(0, run_count(db(), id))
+        end)
+
         test.it("authorizes the library seam before it creates a run or job", function()
             local id = kb_id()
             local queue = fake_jobs()
@@ -243,9 +260,9 @@ local function define_tests()
         -- queue and the real run records rather than a case's stubbed wiring:
         -- what crosses the contract is exactly what the endpoint mints.
         test.it("mints a run per verb through the binding and reads both back through it", function()
-            local id = kb_id()
             local subject = "kb10-maintenance-owner-" .. fixtures.uuid()
             local d = db()
+            local id = fixtures.bootstrap_kb10_store(d)
             seed_component(d, id, subject, 15)
             test.is_nil(fixtures.seed_user(d, subject))
             test.is_nil(fixtures.seed_thread(d, id))
@@ -274,6 +291,7 @@ local function define_tests()
             cleanup(d, id)
             test.is_nil(fixtures.drop_thread(d, id))
             drop_component(d, id)
+            fixtures.teardown_kb10_store(d, id)
             test.is_nil(fixtures.drop_user(d, subject))
         end)
 

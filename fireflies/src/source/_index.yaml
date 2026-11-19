@@ -24,6 +24,8 @@ entries:
 
   - name: pull_transcripts
     kind: function.lua
+    security:
+      policies: [kickside.fireflies.security:secret_context_dispatch, kickside.fireflies.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for the transcripts source (full transcript shape).
     source: file://pull_transcripts.lua
@@ -33,6 +35,8 @@ entries:
 
   - name: pull_meetings
     kind: function.lua
+    security:
+      policies: [kickside.fireflies.security:secret_context_dispatch, kickside.fireflies.security:secret_context_read]
     meta:
       comment: kickside.data:pullable.pull for the meetings source (force_shape=event; metadata only, never enriches).
     source: file://pull_meetings.lua
@@ -42,6 +46,8 @@ entries:
 
   - name: pull_keys
     kind: function.lua
+    security:
+      policies: [kickside.fireflies.security:secret_context_dispatch, kickside.fireflies.security:secret_context_read]
     meta:
       comment: Keys-only Fireflies transcript listing used by Data Sync reconcile.
     source: file://pull_keys.lua

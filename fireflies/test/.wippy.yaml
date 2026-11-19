@@ -26,6 +26,7 @@ registry:
   history_type: memory
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/fireflies: ..
     kickside/security: ../../../kickside/platform/security
     kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch

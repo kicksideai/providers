@@ -5,10 +5,7 @@ local M = { _transport = transport }
 M.MAX_BYTES = 50 * 1024 * 1024
 M.MAX_REF_BYTES = 4096
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function valid_ref(value: any): (string?, string?)
     local ref = trim(value)

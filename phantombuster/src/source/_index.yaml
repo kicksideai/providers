@@ -6,6 +6,8 @@ entries:
     kind: library.lua
     meta: { name: operation_policy, comment: Closed validation and receipt for a resolved PhantomBuster SourceOperationPolicy/v1; it owns no settings or scheduling state. }
     source: file://operation_policy.lua
+    imports:
+      text_trim: kickside.provider_text:trim
     modules: [json, hash]
 
   - name: pull_core
@@ -14,12 +16,15 @@ entries:
     source: file://pull_core.lua
     modules: [ctx, json, time]
     imports:
+      text_trim: kickside.provider_text:trim
       capacity_http: kickside.connection:capacity_http
       transport: kickside.phantombuster.client:transport
       operation_policy: kickside.phantombuster.source:operation_policy
 
   - name: pull_candidates
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     meta: { comment: kickside.data:pullable.pull for PhantomBuster actor candidates. }
     source: file://pull_candidates.lua
     method: pull
@@ -28,6 +33,8 @@ entries:
 
   - name: pull_activities
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     meta: { comment: kickside.data:pullable.pull for raw LinkedIn post/activity rows. Policy belongs to the consuming composition. }
     source: file://pull_activities.lua
     method: pull_activities
@@ -36,12 +43,16 @@ entries:
 
   - name: pull_candidate_keys
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     source: file://pull_keys.lua
     method: pull_candidate_keys
     imports: { implementation: kickside.phantombuster.source:pull_core }
 
   - name: pull_activity_keys
     kind: function.lua
+    security:
+      policies: [kickside.phantombuster.security:secret_context_dispatch, kickside.phantombuster.security:secret_context_read]
     source: file://pull_keys.lua
     method: pull_activity_keys
     imports: { implementation: kickside.phantombuster.source:pull_core }

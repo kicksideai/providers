@@ -32,6 +32,8 @@ local logger = require("logger"):named("knowledge.injection.source_worker")
 local job_types = require("job_types")
 local registry = require("registry")
 local funcs = require("funcs")
+local uuid = require("uuid")
+local trim = require("text_trim").trim
 
 local llm = require("llm")
 local prompt = require("prompt")
@@ -41,6 +43,7 @@ local materializer_store = require("materializer_store")
 local execution_identity = require("execution_identity")
 local enrichment_consts = require("enrichment_consts")
 
+local CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 local EXTRACTOR_META_TYPE = "projection.extractor"
 
 -- Hard caps to keep a single batch from fanning a malformed projection or a
@@ -69,11 +72,6 @@ local TREATMENT_REQUEST_EVENT_TYPE = "kickside.knowledge.events:treatment.reques
 -- errors. The attempt count is kept in the projection's durable body, keyed by
 -- the batch's seq range, so it survives across scheduler cycles and crashes.
 local MAX_BATCH_ATTEMPTS = 3
-
-local function trim(s: any): string
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
 
 local function configured_pending_cap(worker_config: any, key: string, default_value: integer): integer
     local cfg = type(worker_config) == "table" and worker_config or {}
@@ -112,6 +110,17 @@ local function decode_object(value: any): { [string]: any }
     local decoded, err = json.decode(value :: string)
     if not err and type(decoded) == "table" then return decoded :: { [string]: any } end
     return {}
+end
+
+local function selected_document_id(event: table, thread_id: string): (string?, error?)
+    local body = event.body
+    local meta = type(body) == "table" and body.metadata or nil
+    if event.type ~= CONTENT_DELETED or type(meta) ~= "table" or meta.node_id == nil then return nil, nil end
+    if event.role ~= "system" or body.kb_id ~= thread_id
+        or type(meta.node_id) ~= "string" or not uuid.validate(meta.node_id) then
+        return nil, errors.new({kind = errors.INVALID, message = "invalid selected document delete"})
+    end
+    return meta.node_id, nil
 end
 
 local function ensure_source_lineage(item: any, event: any, thread_id: string): (boolean?, string?)
@@ -425,11 +434,11 @@ local EMBED_TIMEOUT_SECONDS = 90
 local SUMMARY_TIMEOUT_SECONDS = 60
 local ENRICH_TIMEOUT_SECONDS = 45
 
-local function default_embedder(texts, model, dims)
+local function default_embedder(texts, model, dims, timeout)
     return llm.embed(texts, {
         model = model,
         dimensions = dims,
-        timeout = EMBED_TIMEOUT_SECONDS,
+        timeout = timeout or EMBED_TIMEOUT_SECONDS,
     })
 end
 
@@ -470,7 +479,8 @@ end
 -- caller can report why; an input the summarizer does not apply to (no content,
 -- no model, no length budget) is (nil, nil), not a failure. The materializer
 -- falls back to the deterministic head summary in either case.
-local function default_summarizer(content: any, model: any, target_chars: any, summary_prompt: any): (string?, string?)
+local function default_summarizer(content: any, model: any, target_chars: any, summary_prompt: any,
+        budget: number?): (string?, any?)
     if type(content) ~= "string" or content == "" then return nil, nil end
     if type(model) ~= "string" or model == "" then return nil, nil end
     local target_raw = tonumber(target_chars)
@@ -500,9 +510,9 @@ local function default_summarizer(content: any, model: any, target_chars: any, s
         -- one token per target character -- the safe end of the range -- leaves
         -- real room to wind down after reaching the target.
         max_tokens = math.max(400, target),
-        timeout = SUMMARY_TIMEOUT_SECONDS,
+        timeout = budget or SUMMARY_TIMEOUT_SECONDS,
     })
-    if gen_err or not response then return nil, tostring(gen_err or "no response") end
+    if gen_err or not response then return nil, budget and gen_err or tostring(gen_err or "no response") end
     local out = (response :: any).result
     if type(out) ~= "string" or trim(out) == "" then return nil, "summary model returned no text" end
     -- target is guidance for the model, never a chop: a hard sub() to target
@@ -554,7 +564,7 @@ local function strip_json_fence(s: string): string
     return trim(out)
 end
 
-local function default_batch_enricher(content: any, summary: any, chunks: any, model: any): (any?, string?)
+local function default_batch_enricher(content: any, summary: any, chunks: any, model: any, budget: number?): (any?, any?)
     if type(chunks) ~= "table" or #chunks == 0 then return {}, nil end
     if type(model) ~= "string" or model == "" then return nil, nil end
     local doc_context = (type(summary) == "string" and summary ~= "") and summary or ""
@@ -583,9 +593,9 @@ local function default_batch_enricher(content: any, summary: any, chunks: any, m
         model = model,
         temperature = 0.2,
         max_tokens = math.max(256, math.min(1600, #chunks * 48)),
-        timeout = ENRICH_TIMEOUT_SECONDS,
+        timeout = budget or ENRICH_TIMEOUT_SECONDS,
     })
-    if gen_err or not response then return nil, tostring(gen_err or "no response") end
+    if gen_err or not response then return nil, budget and gen_err or tostring(gen_err or "no response") end
     local out = (response :: any).result
     if type(out) ~= "string" or trim(out) == "" then return nil, "empty enrichment batch response" end
 
@@ -665,12 +675,10 @@ local function checked_result(result: any, default_component_id: string, kind: s
     return result, nil
 end
 
-local function source_key(external_source: any, external_id: any): string?
-    local source = trim(external_source)
-    local id = trim(external_id)
-    if id == "" then return nil end
+local function projection_source_key(external_source: any, external_id: any): (string?, string, string)
+    local source, id = trim(external_source), trim(external_id)
     if source == "" then source = "knowledge.kb" end
-    return source .. ":" .. id
+    return id ~= "" and source .. ":" .. id or nil, source, id
 end
 
 local function projection_body(projection: any): table
@@ -690,32 +698,22 @@ end
 local function apply_document_result(state: table, result: any): ()
     local sources = state.sources :: table
     for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
-        local key = source_key(n.external_source, n.external_id)
-        if key then
-            if trim(n.status) == "completed" then
-                sources[key] = {
-                    external_source = trim(n.external_source) ~= "" and trim(n.external_source) or "knowledge.kb",
-                    external_id = trim(n.external_id),
-                    external_version = trim(n.external_version) ~= "" and trim(n.external_version) or nil,
-                    document_node_id = n.document_node_id,
-                    status = "completed",
-                    summary_count = tonumber(n.summary_count) or 0,
-                    chunk_count = tonumber(n.chunk_count) or 0,
-                    updated_at = time.now():utc():format(time.RFC3339),
-                }
-            elseif trim(n.status) == "failed" and n.persisted ~= false then
-                sources[key] = {
-                    external_source = trim(n.external_source) ~= "" and trim(n.external_source) or "knowledge.kb",
-                    external_id = trim(n.external_id),
-                    external_version = trim(n.external_version) ~= "" and trim(n.external_version) or nil,
-                    document_node_id = n.document_node_id,
-                    status = "failed",
-                    error = tostring(n.error or "document materialization failed"),
-                    summary_count = 0,
-                    chunk_count = 0,
-                    updated_at = time.now():utc():format(time.RFC3339),
-                }
-            end
+        local key, source, id = projection_source_key(n.external_source, n.external_id)
+        local status = trim(n.status)
+        local previous = key and sources[key]
+        if key and (type(previous) ~= "table" or (previous.external_source == source and previous.external_id == id)) and
+            (status == "completed" or (status == "failed" and n.persisted ~= false)) then
+            sources[key] = {
+                external_source = source,
+                external_id = id,
+                external_version = trim(n.external_version) ~= "" and trim(n.external_version) or nil,
+                document_node_id = n.document_node_id,
+                status = status,
+                error = status == "failed" and tostring(n.error or "document materialization failed") or nil,
+                summary_count = tonumber(n.summary_count) or 0,
+                chunk_count = tonumber(n.chunk_count) or 0,
+                updated_at = time.now():utc():format(time.RFC3339),
+            }
         end
     end
 end
@@ -778,8 +776,9 @@ end
 local function apply_delete_result(state: table, result: any): ()
     local sources = state.sources :: table
     for _, n in ipairs(type(result.notifications) == "table" and result.notifications or {}) do
-        local key = source_key(n.external_source, n.external_id)
-        if key and (tonumber(n.removed) or 0) > 0 then
+        local key = projection_source_key(n.external_source, n.external_id)
+        local entry = key and sources[key]
+        if type(entry) == "table" and n.document_node_id and entry.document_node_id == n.document_node_id then
             sources[key] = nil
         end
     end
@@ -1168,6 +1167,8 @@ local function run_with_deps(input_raw, deps)
             if not from_seq or event.seq < from_seq then from_seq = event.seq end
             if not to_seq or event.seq > to_seq then to_seq = event.seq end
 
+            local selected_node_id, select_err = selected_document_id(event, thread_id)
+            if select_err then return nil, select_err end
             local items, dispatch_err, retryable = dispatcher(event)
             if dispatch_err then
                 logger:warn("dispatcher error", {
@@ -1227,6 +1228,7 @@ local function run_with_deps(input_raw, deps)
                             })
                             break
                         end
+                        d.selected_node_id = selected_node_id
                         pending_deletes[#pending_deletes + 1] = {
                             delete = d, event_id = event.id,
                         }
@@ -1273,8 +1275,19 @@ local function run_with_deps(input_raw, deps)
         return default_captioner(image, context, model, image_loader)
     end
 
-    local deletes = {}
-    for _, p in ipairs(pending_deletes) do deletes[#deletes + 1] = p.delete end
+    local deletes, source_deletes = {}, {}
+    for _, pending in ipairs(pending_deletes) do
+        local delete = pending.delete
+        deletes[#deletes + 1] = delete
+        if delete.selected_node_id == nil then source_deletes[#source_deletes + 1] = delete end
+    end
+    if metrics.documents_emitted == 0 and #deletes > 0 and #source_deletes == 0 then
+        local own_target = {}
+        for _, kb_id in ipairs(clean_targets) do
+            if kb_id == thread_id then own_target[1] = kb_id end
+        end
+        clean_targets = own_target
+    end
 
     -- A whole-batch system error (store down, embedder unreachable, no
     -- materializer for the KB). Per-document content failures are isolated inside
@@ -1294,8 +1307,11 @@ local function run_with_deps(input_raw, deps)
             kb_results[#kb_results + 1] = { component_id = kb_id, error = missing }
             target_error = missing
         else
-            if #deletes > 0 then
-                local del, del_err = source_materializer.delete_documents_from_store(target, deletes)
+            target.source_thread_id = thread_id
+            local target_deletes = kb_id == thread_id and deletes or source_deletes
+            if #target_deletes > 0 then
+                local del, del_err = source_materializer.delete_documents_from_store(target, target_deletes)
+                if del_err and errors.is(del_err, errors.CONFLICT) then return nil, del_err end
                 local delete_result, shape_err = checked_result(del, kb_id, "delete")
                 if shape_err then
                     logger:error("source materialization delete returned invalid result", { kb = kb_id, error = shape_err })
@@ -1316,7 +1332,7 @@ local function run_with_deps(input_raw, deps)
 
             if not target_error then
                 if metrics.documents_emitted == 0 then
-                    if #deletes == 0 then
+                    if #target_deletes == 0 then
                         kb_results[#kb_results + 1] = {
                             component_id = kb_id, kind = "document",
                             inserted = 0, replaced = 0, failed = 0,
@@ -1327,6 +1343,7 @@ local function run_with_deps(input_raw, deps)
                     local docs = {}
                     for _, p in ipairs(pending_documents) do docs[#docs + 1] = p.doc end
                     local r, kb_err = source_materializer.ingest_documents_into_store(kb_id, target, docs, embedder, summarizer, enricher, captioner, worker_config, batch_enricher)
+                    if kb_err and errors.is(kb_err, errors.CONFLICT) then return nil, kb_err end
                     local ingest_result, shape_err = checked_result(r, kb_id, "document")
                     if shape_err then
                         logger:error("source materialization returned invalid result", { kb = kb_id, error = shape_err })
@@ -1461,10 +1478,34 @@ local function run_proc(input_raw)
     return result
 end
 
+local function prepare_checkpoint_document(target, doc, config, deadline)
+    local function bounded(call, ceiling)
+        return function(...)
+            local seconds = math.floor((deadline - time.now():unix_nano()) / 1000000000)
+            if seconds < 1 then
+                return nil, errors.new({kind = errors.TIMEOUT, retryable = true,
+                    message = "projection deadline reached before model request"})
+            end
+            local count = select("#", ...) + 1
+            local args = {...}
+            args[count] = math.min(seconds, ceiling)
+            return call(unpack(args, 1, count))
+        end
+    end
+    return source_materializer.prepare_document(target, doc, {
+        embed = bounded(default_embedder, EMBED_TIMEOUT_SECONDS),
+        summarize = bounded(default_summarizer, SUMMARY_TIMEOUT_SECONDS),
+        enrich_batch = bounded(default_batch_enricher, ENRICH_TIMEOUT_SECONDS),
+    }, config)
+end
+
 return {
     run = run_with_deps,
     run_proc = run_proc,
     run_with_deps = run_with_deps,
+    ensure_source_lineage = ensure_source_lineage,
+    selected_document_id = selected_document_id,
+    prepare_checkpoint_document = prepare_checkpoint_document,
     -- Production seams reused outside the worker: resummarize (kb10 engine)
     -- regenerates a document's summary/chunk-enrichment from stored content
     -- with the same model calls ingestion makes, without duplicating them.

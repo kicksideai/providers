@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.9](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.8...mcp-client-v0.2.9) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
+## [0.2.8](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.7...mcp-client-v0.2.8) (2026-11-19)
+
+
+### Bug Fixes
+
+* **mcp-client:** include the public package in release gates ([#140](https://github.com/kicksideai/providers/issues/140)) ([6633648](https://github.com/kicksideai/providers/commit/663364871f6ba7f6dc705b80eca897a33836e9c7))
+
+## [0.2.7](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.6...mcp-client-v0.2.7) (2026-11-18)
+
+
+### Bug Fixes
+
+* declare encrypted provider credentials and trusted runtime access ([#105](https://github.com/kicksideai/providers/issues/105)) ([42cab0e](https://github.com/kicksideai/providers/commit/42cab0e6f4ddd00da4d56e3d2ab48b18cabe41ba))
+
 ## [0.2.6](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.5...mcp-client-v0.2.6) (2026-11-17)
 
 

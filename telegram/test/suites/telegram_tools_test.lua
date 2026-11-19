@@ -92,6 +92,11 @@ local function define_tests()
             test.contains(err_of(telegram_write, { action = "send_reaction", chat_id = "42", message_id = "9" }), "emoji is required")
         end)
 
+        test.it("applies the message limit after a megabyte of internal whitespace", function()
+            local body = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+            test.contains(err_of(telegram_write, { action = "send_message", chat_id = "42", text = body }), "exceeds")
+        end)
+
         test.it("returns the sent message identity as a record", function()
             with(telegram_write, {
                 send_message = function(): any return { success = true, data = { message_id = 77, date = 1760518800,

@@ -19,7 +19,8 @@ local function define_tests()
             local expected = {["wippy/agent"] = true, ["wippy/llm"] = true,
                 ["kickside/component"] = true, ["kickside/contract"] = true,
                 ["wippy/migration"] = true, ["kickside/core"] = true, ["kickside/jobs"] = true,
-                ["kickside/execution"] = true, ["kickside/knowledge"] = true, ["kickside/search-index"] = true}
+                ["kickside/execution"] = true, ["kickside/knowledge"] = true, ["kickside/search-index"] = true,
+                ["kickside/provider-text"] = true}
             local total = 0
             for _, entry in ipairs(dependencies) do
                 if tostring(entry.id):sub(1, #"kickside.memory:") == "kickside.memory:" then
@@ -27,7 +28,7 @@ local function define_tests()
                     total = total + 1
                 end
             end
-            test.eq(total, 10)
+            test.eq(total, 11)
         end)
     end)
 end

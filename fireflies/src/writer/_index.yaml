@@ -33,6 +33,7 @@ entries:
     source: file://writer.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.provider_text:trim
       transport: kickside.fireflies.client:transport
       types: kickside.fireflies.client:types
 
@@ -46,6 +47,8 @@ entries:
 
   - name: update_record
     kind: function.lua
+    security:
+      policies: [kickside.fireflies.security:secret_context_dispatch, kickside.fireflies.security:secret_context_read]
     meta: { comment: "fireflies record writer - update_record" }
     source: file://update_record.lua
     method: update_record

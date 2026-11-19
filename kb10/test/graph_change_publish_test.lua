@@ -4,6 +4,7 @@
 
 local test = require("test")
 local sql = require("sql")
+local store = require("store")
 local json = require("json")
 local crypto = require("crypto")
 local funcs = require("funcs")
@@ -172,6 +173,27 @@ local function define_tests()
             test.eq(#events, 1)
             test.eq(events[1].reason, "concept.created")
             test.eq(events[1].kb_id, component_id)
+        end)
+
+        test.it("stores a concept description with a megabyte of internal whitespace", function()
+            local description = "Before" .. string.rep(" ", 1024 * 1024) .. "after"
+            local request_body = assert(json.encode({
+                label = "Long description", parent_id = root_id, description = "\t" .. description .. "\n",
+            }))
+            local exec = funcs.new():with_actor(security.new_actor(OWNER, {}))
+                :with_scope(security.named_scope("wippy.security:process"))
+                :with_context({ component_id = component_id, request_body = request_body })
+            local _, err = exec:call("kickside.kb10.api:concepts_create", {})
+            test.is_nil(err, tostring(err))
+            local responses = assert(store.get("app:key_owner_responses"))
+            local response = assert(json.decode(assert(responses:get(component_id))))
+            local _, delete_err = responses:delete(component_id)
+            responses:release()
+            test.is_nil(delete_err)
+            test.eq(response.status, 200)
+            local node, read_err = node_store:get_node({ store_id = store_id, node_id = response.body.node_id })
+            test.is_nil(read_err, tostring(read_err))
+            test.is_true(node.content == description)
         end)
 
         test.it("MergeConcept appends graph.changed", function()

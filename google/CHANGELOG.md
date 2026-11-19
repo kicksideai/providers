@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.32](https://github.com/kicksideai/providers/compare/google-v0.1.31...google-v0.1.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
+## [0.1.31](https://github.com/kicksideai/providers/compare/google-v0.1.30...google-v0.1.31) (2026-11-18)
+
+
+### Bug Fixes
+
+* **google:** include shared drive items in Drive reads ([#135](https://github.com/kicksideai/providers/issues/135)) ([09229bd](https://github.com/kicksideai/providers/commit/09229bd4bde0ef2aa6e3cab9ab7cdd59c38b0c51))
+
 ## [0.1.30](https://github.com/kicksideai/providers/compare/google-v0.1.29...google-v0.1.30) (2026-11-17)
 
 

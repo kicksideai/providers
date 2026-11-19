@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local logger = require("logger")
 local ctx = require("ctx")
 local json = require("json")
@@ -87,7 +88,7 @@ end
 -- deterministic key so create_concept can get-or-create instead of duplicating.
 local function normalize_label(s: any): string
     local t = type(s) == "string" and (s :: string):lower() or ""
-    t = t:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+    t = trim(t):gsub("%s+", " ")
     return t
 end
 

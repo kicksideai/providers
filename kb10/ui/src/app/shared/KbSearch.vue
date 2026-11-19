@@ -8,8 +8,7 @@ import IconButton from './IconButton.vue'
 
 // The one KB search surface, in two layouts:
 //   rail  — a compact field with an as-you-type results popover (the wiki nav).
-//   panel — a full surface with Search / Ask modes; Ask shows a synthesized,
-//           grounded answer over the same retrieval, with its sources.
+//   panel — Search and Ask show ranked passages. Ask adds an answer or a query notice.
 // Choosing a result emits the hit; the host maps it to a navigation target
 // (a concept in the wiki, the owning document in the library).
 const props = withDefaults(defineProps<{
@@ -20,20 +19,20 @@ const props = withDefaults(defineProps<{
 }>(), { layout: 'panel' })
 const emit = defineEmits<{ (e: 'open', hit: SearchHit): void; (e: 'close'): void }>()
 
-const { query, results, answer, analysisUnavailable, loading, error, performed, run, ask: askQuery, runDebounced, clear } = useKbSearch(() => props.kbId)
+const { query, results, answer, queryNotice, analysisUnavailable, loading, error, performed, run, ask: askQuery, runDebounced, clear } = useKbSearch(() => props.kbId)
 
 type Mode = 'search' | 'ask'
 const mode = ref<Mode>('search')
 const focused = ref(false)
 const queryRan = ref('')
 
-const canAsk = computed(() => props.ask && !analysisUnavailable.value)
-const isAsk = computed(() => props.layout === 'panel' && canAsk.value && mode.value === 'ask')
+const isAsk = computed(() => props.layout === 'panel' && props.ask && mode.value === 'ask')
+const showAnswer = computed(() => isAsk.value && !queryNotice.value)
 const submitIcon = computed(() => (
   loading.value ? 'tabler:hourglass' : (isAsk.value ? 'tabler:sparkles' : 'tabler:arrow-right')
 ))
 const top = computed(() => results.value[0])
-const rest = computed(() => (isAsk.value ? results.value.slice(1) : results.value))
+const rest = computed(() => (showAnswer.value ? results.value.slice(1) : results.value))
 const showPop = computed(() =>
   props.layout === 'rail' && focused.value && query.value.trim() !== ''
   && (loading.value || performed.value || !!error.value))
@@ -88,7 +87,7 @@ function pick(hit: SearchHit) {
   <!-- Panel: modes + field + results / answer -->
   <div v-else class="kc-search-panel">
     <div class="kc-search-bar">
-      <div v-if="canAsk" class="kc-search-modes">
+      <div v-if="ask" class="kc-search-modes">
         <button class="kc-search-mode" :class="{ on: mode === 'search' }" @click="pickMode('search')">
           <Icon icon="tabler:search" aria-hidden="true" /> Search
         </button>
@@ -107,17 +106,16 @@ function pick(hit: SearchHit) {
       <IconButton icon="tabler:x" label="Close search" @click="emit('close')" />
     </div>
 
-    <p v-if="!props.ask" class="kc-search-state">Select an Answer model in knowledge base settings to enable Ask.</p>
-
     <p v-if="analysisUnavailable" class="kc-search-state" role="status">Showing direct matches. No model is assigned to {{ analysisUnavailable.model }}.</p>
+    <p v-if="queryNotice" class="kc-search-state" role="status">{{ queryNotice }}</p>
 
     <div v-if="error" class="kc-search-err"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ error }}</span></div>
 
-    <div v-if="loading" class="kc-search-skel"><div v-for="i in 3" :key="i" class="kc-search-skel-row" /></div>
+    <div v-else-if="loading" class="kc-search-skel"><div v-for="i in 3" :key="i" class="kc-search-skel-row" /></div>
 
     <template v-else-if="results.length">
       <!-- Ask: synthesized grounded answer, else the best passage as a fallback -->
-      <div v-if="isAsk" class="kc-ans">
+      <div v-if="showAnswer" class="kc-ans">
         <div class="kc-ans-h"><Icon icon="tabler:sparkles" aria-hidden="true" /> {{ answer ? 'Answer' : 'Best match' }} for "{{ queryRan }}"</div>
         <p class="kc-ans-body">{{ answer || truncate(top?.content, 700) }}</p>
         <button v-if="top?.parent_id" class="kc-ans-src" @click="pick(top!)">
@@ -127,7 +125,7 @@ function pick(hit: SearchHit) {
       </div>
 
       <div class="kc-search-results">
-        <div v-if="isAsk && rest.length" class="kc-search-results-h">Sources</div>
+        <div v-if="showAnswer && rest.length" class="kc-search-results-h">Sources</div>
         <button v-for="r in rest" :key="r.id" class="kc-search-result" :class="{ link: !!r.parent_id }" @click="pick(r)">
           <div class="kc-search-r-h">
             <span v-if="hitDocTitle(r)" class="kc-search-r-doc"><Icon icon="tabler:file-text" aria-hidden="true" />{{ hitDocTitle(r) }}</span>

@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local contract = require("contract")
 local logger = require("logger")
 local channel = require("channel")
@@ -50,7 +51,7 @@ local SETTINGS_CONTRACT = "kickside.settings:settings"
 local SETTINGS_NS = "kickside.llm_ocr"
 local RASTERIZE_NS = "kickside.uploads.rasterize"
 local DEFAULT_MODEL = "class:fast"
-local MAX_ERROR_DETAIL_BYTES = 2000
+local MAX_ERROR_DETAIL_BYTES = 4096
 -- Pages are transcribed in small batches so a cancel/terminate is honored between
 -- batches and each batch's text is checkpointed as it completes -- a later failure
 -- or termination keeps the pages already transcribed.
@@ -221,6 +222,37 @@ local function build_should_continue(deps: any, params: any): () -> boolean
     return function(): boolean return true end
 end
 
+-- A failed page's error text; a length-cut generation adds the tail of its output.
+local function page_error_text(err: any): string
+    local text = tostring(err)
+    if errors.is(err, errors.INTERNAL) then
+        local tail = ((err :: error):details() or {}).output_tail
+        if type(tail) == "string" and tail ~= "" then text = text .. "\n" .. tail end
+    end
+    return text
+end
+
+-- The first `limit` bytes of text, ending on a UTF-8 character boundary.
+local function utf8_head(text: string, limit: integer): string
+    if limit <= 0 then return "" end
+    if #text <= limit then return text end
+    local stop = limit
+    while stop > 0 do
+        local byte = text:byte(stop + 1)
+        if byte < 0x80 or byte >= 0xC0 then break end
+        stop = stop - 1
+    end
+    return text:sub(1, stop)
+end
+
+-- Page errors in order up to the size cap; a checkpoint failure is kept whole after them.
+local function error_detail(page_errors: { string }, persist_error: string?): any
+    local checkpoint = persist_error and utf8_head("Transcript checkpoint: " .. persist_error, MAX_ERROR_DETAIL_BYTES) or nil
+    local pages = utf8_head(table.concat(page_errors, "\n"), MAX_ERROR_DETAIL_BYTES - (checkpoint and #checkpoint + 1 or 0))
+    if checkpoint then return pages == "" and checkpoint or pages .. "\n" .. checkpoint end
+    return pages ~= "" and pages or false
+end
+
 local function run(params: any, deps: any): any
     deps = type(deps) == "table" and deps or {}
     local transcribe = deps.transcribe
@@ -242,7 +274,7 @@ local function run(params: any, deps: any): any
     local configured_selection = get_setting(RASTERIZE_NS, "rasterize_page_selection")
     local selection: string? = type(configured_selection) == "string" and configured_selection or nil
     local declared = type(params.mime_type) == "string" and (params.mime_type :: string):lower() or ""
-    local mime = ((declared:match("^[^;]*") or ""):match("^%s*(.-)%s*$")) :: string
+    local mime = trim(declared:match("^[^;]*"))
     local pages: { any } = {}
     local original: string = ""
     if mime:sub(1, 6) == "image/" then
@@ -298,7 +330,7 @@ local function run(params: any, deps: any): any
         local outcome = by_page[item.index]
         local changed = outcome.status ~= "failed" or outcome.error ~= "transcription_failed"
         outcome.status, outcome.error = "failed", "transcription_failed"
-        page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. tostring(err)
+        page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. page_error_text(err)
         return changed
     end
     local function transcribe_page(item: any): any
@@ -396,9 +428,8 @@ local function run(params: any, deps: any): any
         elseif outcome.status == "failed" then failed = failed + 1 end
     end
     local code: any = persist_error and "persist_failed" or (failed > 0 and "transcription_failed" or false)
-    if persist_error then page_errors[#page_errors + 1] = "Transcript checkpoint: " .. persist_error end
     local metadata = {ocr_pages = transcribed, ocr_total_pages = #document_pages, ocr_page_outcomes = outcomes,
-        ocr_error = code, _ocr_error_detail = #page_errors > 0 and table.concat(page_errors, "\n"):sub(1, MAX_ERROR_DETAIL_BYTES) or false}
+        ocr_error = code, _ocr_error_detail = error_detail(page_errors, persist_error)}
     -- Failed pages are page outcomes. The stage fails only when it could not run
     -- (cancelled, checkpoint not stored) or when pages failed and the transcript
     -- holds no text at all: nothing was transcribed and no text layer remains.

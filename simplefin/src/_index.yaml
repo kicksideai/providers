@@ -10,7 +10,7 @@ entries:
       comment: SimpleFIN Bridge bank-feed connection provider with account, transaction and holding sources and an agent read tool.
 
   - name: dep.kickside.component
-    version: '*'
+    version: '>=0.3.21'
     kind: ns.dependency
     meta:
       comment: Connections register as component shells and resolve access through the component service.
@@ -24,7 +24,7 @@ entries:
     component: kickside/connection
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.8'
     kind: ns.dependency
     meta:
       comment: Shared component, deletable and data contracts.

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.25](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.24...llm-ocr-v0.1.25) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
+## [0.1.24](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.23...llm-ocr-v0.1.24) (2026-11-18)
+
+
+### Bug Fixes
+
+* **llm-ocr:** report the output tail when a reply stops at the limit ([#117](https://github.com/kicksideai/providers/issues/117)) ([0722d45](https://github.com/kicksideai/providers/commit/0722d454f4701fc6f5d326b8b714fd8292d02422))
+* **llm-ocr:** require Uploads page helpers at install time ([#136](https://github.com/kicksideai/providers/issues/136)) ([2039746](https://github.com/kicksideai/providers/commit/203974696cbc9d54b849ba1afa369052343cae03))
+* treat unknown model limits and dimensions as unknown ([#129](https://github.com/kicksideai/providers/issues/129)) ([22a9929](https://github.com/kicksideai/providers/commit/22a99290b75fb619b81402cddcff89bffae3d13c))
+
 ## [0.1.23](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.22...llm-ocr-v0.1.23) (2026-11-15)
 
 

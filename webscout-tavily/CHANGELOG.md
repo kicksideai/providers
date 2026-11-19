@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/kicksideai/providers/compare/webscout-tavily-v0.1.6...webscout-tavily-v0.1.7) (2026-11-19)
+
+
+### Bug Fixes
+
+* trim text without pattern backtracking ([#134](https://github.com/kicksideai/providers/issues/134)) ([c8189a8](https://github.com/kicksideai/providers/commit/c8189a834b10bee5832d9c67fbe32d12c0c2acad))
+
 ## [0.1.6](https://github.com/kicksideai/providers/compare/webscout-tavily-v0.1.5...webscout-tavily-v0.1.6) (2026-11-06)
 
 

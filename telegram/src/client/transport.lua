@@ -6,10 +6,7 @@ local reply_authorization = require("reply_authorization")
 
 local M = {}
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 local function denied(message: string): error
     return (errors.new({ message = message, kind = errors.PERMISSION_DENIED,
@@ -18,10 +15,10 @@ end
 
 local function reply_connection(component_id: string, outbound: boolean): (types.Conn?, any?)
     if outbound then
-        local allowed, access_err = component.get_context(component_id, component.ACCESS.WRITE)
+        local allowed, access_err = component.get_runtime_context(component_id, component.ACCESS.WRITE)
         if access_err or not allowed then return nil, access_err or "connection write denied" end
     end
-    local ctx, err = component.get_private_context(component_id)
+    local ctx, err = component.get_private_runtime_context(component_id)
     if err or type(ctx) ~= "table" then return nil, err or "reply connection unavailable" end
     local token = trim(ctx.bot_token)
     if token == "" then return nil, "Telegram connection is missing bot_token" end
@@ -110,11 +107,11 @@ end
 -- Reply operations above have their own sealed-proof or WRITE gate.
 local function context(component_id: string?): (any?, error?)
     if component_id and component_id ~= "" then
-        local ctx, err = component.get_private_context(component_id)
+        local ctx, err = component.get_private_runtime_context(component_id)
         if err then return nil, err end
         return ctx, nil
     end
-    local rows, err = component.list_system({
+    local rows, err = component.list_runtime_context({
         meta = { class = types.CONNECTION_CLASS, provider = types.PROVIDER },
         include = { private_context = true },
     })
@@ -142,7 +139,7 @@ function M.connect(component_id: string?): (types.Conn?, error?)
 end
 
 function M.connect_write(component_id: string): (types.Conn?, error?)
-    local allowed, access_err = component.get_context(component_id, component.ACCESS.WRITE)
+    local allowed, access_err = component.get_runtime_context(component_id, component.ACCESS.WRITE)
     if access_err then return nil, access_err end
     if not allowed then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "connection write denied" }) end
     return M.connect(component_id)

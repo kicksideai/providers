@@ -2,6 +2,11 @@ version: "1.0"
 namespace: kickside.phantombuster
 
 entries:
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: definition
     kind: ns.definition
     readme: file://README.md
@@ -12,7 +17,7 @@ entries:
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
-    version: "*"
+    version: '>=0.3.21'
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.
 
@@ -26,7 +31,7 @@ entries:
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
-    version: "*"
+    version: '>=0.3.8'
     meta:
       comment: Implements the shared component and deletable contracts.
 

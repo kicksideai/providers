@@ -9,6 +9,11 @@ namespace: kickside.google
 # scopes, and credentials. Adding a provider is a module, not an edit to oauth.
 
 entries:
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: definition
     kind: ns.definition
     readme: file://README.md

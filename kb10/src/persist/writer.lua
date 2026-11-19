@@ -69,58 +69,133 @@ end
 
 local insert_rows_tx = search_index.insert_rows_tx
 
-local function insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}): ({string}?, any?)
+function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}, bindings: any?): ({string}?, any?)
+    local sqlite = db_type == sql.type.SQLITE
+    local columns = { "id", "store_id", "parent_id", "node_type", "content", "content_type",
+        "external_source", "external_id", "source_scope" }
+    if sqlite then columns[#columns + 1] = "fts_rowid" end
+    columns[#columns + 1] = "metadata"
     local ids: {string} = {}
     local rows: {any} = {}
     local fts: {any} = {}
+    local last_fts_rowid: number? = nil
     for i, node in ipairs(nodes) do
         local input = node :: kb10.NodeInput
         local id = input.id or uuid.v7()
         ids[i] = id
-        rows[i] = { id, store_id, input.parent_id, input.node_type, input.content,
-            input.content_type, json.encode(input.metadata or {}) }
-        if db_type == sql.type.SQLITE and input.content then
-            fts[#fts + 1] = { id, input.content, input.node_type }
+        local binding
+        if input.node_type == kb10.NODE_TYPE.DOCUMENT and input.parent_id == nil then
+            if bindings then
+                binding = bindings[i]
+            else
+                local metadata = type(input.metadata) == "table" and input.metadata or {}
+                binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id)
+            end
         end
+        local fts_rowid: number? = nil
+        if sqlite and input.content then
+            if last_fts_rowid == nil then
+                local tail, tail_err = tx:query("SELECT rowid FROM kb10_nodes_fts ORDER BY rowid DESC LIMIT 1")
+                if tail_err then return nil, errors.wrap(tail_err, "fts rowid allocation failed") end
+                last_fts_rowid = #tail > 0 and tail[1].rowid or 0
+            end
+            fts_rowid = (last_fts_rowid :: number) + 1
+            last_fts_rowid = fts_rowid
+            fts[#fts + 1] = { fts_rowid, id, input.content, input.node_type }
+        end
+        local row = { id, store_id, input.parent_id, input.node_type, input.content,
+            input.content_type, binding and binding.external_source,
+            binding and binding.external_id, binding and binding.source_scope }
+        if sqlite then row[#columns - 1] = fts_rowid end
+        row[#columns] = json.encode(input.metadata or {})
+        rows[i] = row
     end
-    local err = insert_rows_tx(tx, "kb10_nodes", { "id", "store_id", "parent_id", "node_type", "content", "content_type", "metadata" }, rows)
-    if err then return nil, tostring(err) end
-    local fts_err = insert_rows_tx(tx, "kb10_nodes_fts", { "node_id", "content", "node_type" }, fts)
+    local err = insert_rows_tx(tx, "kb10_nodes", columns, rows)
+    if err then return nil, err end
+    local fts_err = insert_rows_tx(tx, "kb10_nodes_fts", { "rowid", "node_id", "content", "node_type" }, fts)
     if fts_err then return nil, errors.wrap(fts_err, "fts insert failed") end
     return ids, nil
 end
 
-local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any): (string?, any?)
-    local ids, err = insert_nodes_tx(tx, db_type, store_id, { type(node) == "table" and node or {} })
+local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any, binding: any?): (string?, any?)
+    local ids, err = writer.insert_nodes_tx(tx, db_type, store_id,
+        { type(node) == "table" and node or {} }, binding and {binding})
     if err or not ids then return nil, err end
     return ids[1], nil
 end
 
-local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}): ({string}?, any?)
+local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}, replace: boolean?): ({string}?, any?)
+    local sqlite = db_type == sql.type.SQLITE
     local ids: {string} = {}
     local rows: {any} = {}
+    local owners: {any} = {}
+    local owner_count = 0
     for i, input in ipairs(embeddings) do
         if type(input.embedding) ~= "table" then
             return nil, errors.new({ message = "embedding is required", kind = errors.INVALID })
         end
         local parent_id = input.parent_id
-        if db_type == sql.type.SQLITE and not parent_id then parent_id = "" end
         ids[i] = uuid.v7()
+        if sqlite then
+            if not is_str(input.node_id) then
+                return nil, errors.new({ message = "node_id is required", kind = errors.INVALID })
+            end
+            parent_id = parent_id or ""
+            local owner = owners[input.node_id]
+            if not owner then
+                owner = {}
+                owners[input.node_id] = owner
+                owner_count = owner_count + 1
+            end
+            owner[#owner + 1] = ids[i]
+        end
         rows[i] = { ids[i], input.node_id, store_id, input.node_type, parent_id, ops.vector_to_string(input.embedding) }
     end
     local err = insert_rows_tx(tx, "kb10_embeddings", { "id", "node_id", "store_id", "node_type", "parent_id", "embedding" }, rows)
-    if err then return nil, tostring(err) end
+    if err then return nil, err end
+    if owner_count > 0 then
+        local assignment = "owner.value"
+        if not replace then
+            assignment = [[CASE WHEN n.embedding_ids IS NULL THEN owner.value ELSE (
+                SELECT json_group_array(value) FROM (
+                    SELECT value FROM json_each(n.embedding_ids)
+                    UNION ALL SELECT value FROM json_each(owner.value)
+                )
+            ) END]]
+        end
+        local encoded, encode_err = json.encode(owners)
+        if encode_err then return nil, errors.wrap(encode_err, "embedding ownership encoding failed") end
+        local links, link_err = tx:execute("UPDATE kb10_nodes AS n SET embedding_ids = " .. assignment ..
+            " FROM json_each($1) AS owner WHERE n.id = owner.key AND n.store_id = $2",
+            { encoded, store_id })
+        if link_err then return nil, errors.wrap(link_err, "embedding ownership update failed") end
+        if tonumber(links and links.rows_affected) ~= owner_count then
+            return nil, errors.new({ message = "embedding node not found in store", kind = errors.NOT_FOUND })
+        end
+    end
     return ids, nil
+end
+
+local function delete_sqlite_embeddings_tx(tx: any, owners: string, params: {any}): any?
+    local _, err = tx:execute("DELETE FROM kb10_embeddings WHERE id IN (" ..
+        "SELECT key.value FROM (" .. owners .. ") n CROSS JOIN json_each(n.embedding_ids) key)", params)
+    return err
 end
 
 local function insert_embedding_tx(tx: any, db_type: any, store_id: any, node_id: any, node_type: any, parent_id: any, embedding: any): (string?, any?)
     if type(embedding) ~= "table" then return nil, errors.new({ message = "embedding is required", kind = errors.INVALID }) end
-    local _, clear_err = tx:execute(
-        "DELETE FROM kb10_embeddings WHERE store_id = $1 AND node_id = $2", { store_id, node_id })
-    if clear_err then return nil, tostring(clear_err) end
+    local clear_err
+    if db_type == sql.type.SQLITE then
+        clear_err = delete_sqlite_embeddings_tx(tx,
+            "SELECT embedding_ids FROM kb10_nodes WHERE store_id = $1 AND id = $2", { store_id, node_id })
+    else
+        _, clear_err = tx:execute(
+            "DELETE FROM kb10_embeddings WHERE store_id = $1 AND node_id = $2", { store_id, node_id })
+    end
+    if clear_err then return nil, clear_err end
     local ids, err = insert_embeddings_tx(tx, db_type, store_id, {
         { node_id = node_id, node_type = node_type, parent_id = parent_id, embedding = embedding },
-    })
+    }, true)
     if err or not ids then return nil, err end
     return ids[1], nil
 end
@@ -194,66 +269,68 @@ local function validate_edge_insert_tx(tx: any, store_id: any, edge: any, op: st
     return errors.new({ message = op .. " may only link source materialization through document categorized_as concept edges", kind = errors.INVALID })
 end
 
-local function descendant_cte_anchor(db_type: any): string
-    if db_type == sql.type.SQLITE then return "$1" end
-    return "$1::uuid"
+local function descendants_cte(db_type: any, include_root: boolean): string
+    local seed = "SELECT id FROM kb10_nodes WHERE parent_id = $1 AND store_id = $2"
+    if include_root then
+        seed = db_type == sql.type.POSTGRES and "SELECT $1::uuid"
+            or "SELECT id FROM kb10_nodes WHERE id = $1 AND store_id = $2"
+    end
+    -- SQLite drives each parent-index lookup from the current recursive row.
+    return "WITH RECURSIVE descendants(id) AS (" .. seed .. " UNION ALL " ..
+        "SELECT n.id FROM descendants d CROSS JOIN kb10_nodes n WHERE n.store_id = $2 AND n.parent_id = d.id) "
 end
 
-local function subtree_contains_root_concept_tx(tx: any, db_type: any, store_id: any, node_id: any): (boolean, any?)
-    if not is_str(node_id) then return false, errors.new({ message = "node_id is required", kind = errors.INVALID }) end
-    local anchor = descendant_cte_anchor(db_type)
-    local rows, err = tx:query(
-        "WITH RECURSIVE descendants(id) AS (" ..
-        "SELECT " .. anchor .. " UNION ALL " ..
-        "SELECT n.id FROM kb10_nodes n JOIN descendants d ON n.parent_id = d.id WHERE n.store_id = $2" ..
-        ") SELECT id, node_type, metadata FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
-        { node_id, store_id, store_id }
-    )
-    if err then return false, errors.wrap(err, "root concept guard lookup failed") end
+local function delete_sqlite_fts_tx(tx: any, owners: string, params: {any}): any?
+    local _, fts_err = tx:execute(
+        "DELETE FROM kb10_nodes_fts WHERE rowid IN (SELECT fts_rowid FROM (" .. owners ..
+        ") WHERE fts_rowid IS NOT NULL)", params)
+    if fts_err then return errors.wrap(fts_err, "failed to delete fts") end
+    return nil
+end
 
-    for _, row in ipairs(rows or {}) do
-        local metadata = decode_metadata(row.metadata)
-        if row.node_type == kb10.NODE_TYPE.CONCEPT
-            and kb10.is_root_metadata(metadata) then
-            return true, nil
-        end
-    end
-    return false, nil
+local function delete_sqlite_subtree_tx(tx: any, store_id: any, node_id: any, include_root: boolean): any?
+    local cte = descendants_cte(sql.type.SQLITE, include_root)
+    local params = { node_id, store_id }
+    local _, edge_err = tx:execute(cte .. [[DELETE FROM kb10_edges WHERE id IN (
+        SELECT e.id FROM descendants d CROSS JOIN kb10_edges e INDEXED BY idx_kb10_edges_from
+            WHERE e.from_node_id = d.id AND e.store_id = $2
+        UNION ALL
+        SELECT e.id FROM descendants d CROSS JOIN kb10_edges e INDEXED BY idx_kb10_edges_to
+            WHERE e.to_node_id = d.id AND e.store_id = $2)]], params)
+    if edge_err then return errors.wrap(edge_err, "failed to delete edges") end
+    local owners = cte .. [[SELECT n.fts_rowid, n.embedding_ids
+        FROM descendants d CROSS JOIN kb10_nodes n WHERE n.id = d.id]]
+    local emb_err = delete_sqlite_embeddings_tx(tx, owners, params)
+    if emb_err then return errors.wrap(emb_err, "failed to delete embeddings") end
+    local fts_err = delete_sqlite_fts_tx(tx, owners, params)
+    if fts_err then return fts_err end
+    local _, node_err = tx:execute(cte .. "DELETE FROM kb10_nodes WHERE id IN (SELECT id FROM descendants)", params)
+    if node_err then return errors.wrap(node_err, "failed to delete nodes") end
+    return nil
 end
 
 local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, node_id: any): (kb10.Map?, any?)
     if not is_str(node_id) then return nil, errors.new({ message = "node_id is required", kind = errors.INVALID }) end
-    local anchor = descendant_cte_anchor(db_type)
+    local failed, root
+    if db_type == sql.type.SQLITE then
+        failed = "json_extract(metadata, '$.status') = 'failed'"
+        root = "json_type(metadata, '$.is_root') = 'true' OR json_extract(metadata, '$.concept_type') = 'root'"
+    else
+        failed = "metadata->>'status' = 'failed'"
+        root = "metadata->'is_root' = 'true'::jsonb OR metadata->>'concept_type' = 'root'"
+    end
     local rows, err = tx:query(
-        "WITH RECURSIVE descendants(id) AS (" ..
-        "SELECT " .. anchor .. " UNION ALL " ..
-        "SELECT n.id FROM kb10_nodes n JOIN descendants d ON n.parent_id = d.id WHERE n.store_id = $2" ..
-        ") SELECT node_type, metadata FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
-        { node_id, store_id, store_id }
+        descendants_cte(db_type, true) ..
+        "SELECT count(*) FILTER (WHERE node_type = 'document' AND NOT COALESCE(" .. failed .. ", false)) AS document_count," ..
+        " count(*) FILTER (WHERE node_type = 'document' AND " .. failed .. ") AS failed_document_count," ..
+        " count(*) FILTER (WHERE node_type = 'chunk') AS chunk_count," ..
+        " count(*) FILTER (WHERE node_type = 'summary') AS summary_count," ..
+        " count(*) FILTER (WHERE node_type = 'concept' AND (" .. root .. ")) AS root_count" ..
+        " FROM descendants d CROSS JOIN kb10_nodes n WHERE n.id = d.id AND n.store_id = $2",
+        { node_id, store_id }
     )
     if err then return nil, errors.wrap(err, "source count lookup failed") end
-
-    local counts = {
-        document_count = 0,
-        failed_document_count = 0,
-        chunk_count = 0,
-        summary_count = 0,
-    }
-    for _, row in ipairs(rows or {}) do
-        if row.node_type == kb10.NODE_TYPE.DOCUMENT then
-            local metadata = decode_metadata(row.metadata)
-            if metadata.status == "failed" then
-                counts.failed_document_count = counts.failed_document_count + 1
-            else
-                counts.document_count = counts.document_count + 1
-            end
-        elseif row.node_type == kb10.NODE_TYPE.CHUNK then
-            counts.chunk_count = counts.chunk_count + 1
-        elseif row.node_type == kb10.NODE_TYPE.SUMMARY then
-            counts.summary_count = counts.summary_count + 1
-        end
-    end
-    return counts, nil
+    return rows[1], nil
 end
 
 -- Delete a node and its whole subtree (chunks/summaries) plus their embeddings,
@@ -263,39 +340,15 @@ end
 -- is 4 statements, not O(nodes) Lua round-trips. Postgres relies on its
 -- ON DELETE CASCADE: explicit edge cleanup for the node, then one node delete.
 local function delete_node_tx(tx: any, db_type: any, store_id: any, node_id: any): (boolean, any?, kb10.Map?)
-    local has_root, root_err = subtree_contains_root_concept_tx(tx, db_type, store_id, node_id)
-    if root_err then return false, root_err end
-    if has_root then return false, errors.new({ message = "root concept cannot be deleted", kind = errors.INVALID }) end
     local removed_counts, count_err = subtree_source_counts_tx(tx, db_type, store_id, node_id)
     if count_err then return false, count_err end
+    if tonumber(removed_counts.root_count) > 0 then
+        return false, errors.new({ message = "root concept cannot be deleted", kind = errors.INVALID })
+    end
 
     if db_type == sql.type.SQLITE then
-        -- WITH-prefixed DELETE; the CTE walks parent_id from node_id down, scoped
-        -- to the store. Each statement re-declares the CTE (cheap, subtree-bounded).
-        local cte = "WITH RECURSIVE descendants(id) AS (" ..
-            "SELECT " .. descendant_cte_anchor(db_type) .. " UNION ALL " ..
-            "SELECT n.id FROM kb10_nodes n JOIN descendants d ON n.parent_id = d.id WHERE n.store_id = $2" ..
-            ") "
-        local _, edge_err = tx:execute(
-            cte .. "DELETE FROM kb10_edges WHERE store_id = $3 AND (from_node_id IN (SELECT id FROM descendants) OR to_node_id IN (SELECT id FROM descendants))",
-            { node_id, store_id, store_id }
-        )
-        if edge_err then return false, errors.wrap(edge_err, "failed to delete edges") end
-        local _, emb_err = tx:execute(
-            cte .. "DELETE FROM kb10_embeddings WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if emb_err then return false, errors.wrap(emb_err, "failed to delete embeddings") end
-        local _, fts_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes_fts WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if fts_err then return false, errors.wrap(fts_err, "failed to delete fts") end
-        local _, node_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
-            { node_id, store_id, store_id }
-        )
-        if node_err then return false, errors.wrap(node_err, "failed to delete nodes") end
+        local err = delete_sqlite_subtree_tx(tx, store_id, node_id, true)
+        if err then return false, err end
         return true, nil, removed_counts
     end
 
@@ -308,7 +361,7 @@ local function delete_node_tx(tx: any, db_type: any, store_id: any, node_id: any
         "DELETE FROM kb10_nodes WHERE id = $1 AND store_id = $2",
         { node_id, store_id }
     )
-    if exec_err then return false, tostring(exec_err) end
+    if exec_err then return false, exec_err end
     return true, nil, removed_counts
 end
 
@@ -320,33 +373,7 @@ end
 -- their descendants, embeddings and edges.
 local function delete_children_tx(tx: any, db_type: any, store_id: any, node_id: any): any?
     if db_type == sql.type.SQLITE then
-        local cte = "WITH RECURSIVE descendants(id) AS (" ..
-            -- SQLite indexes a "$N" placeholder by first appearance, not by its
-            -- number, so every statement here names them in ascending order.
-            "SELECT id FROM kb10_nodes WHERE parent_id = $1 AND store_id = $2 UNION ALL " ..
-            "SELECT n.id FROM kb10_nodes n JOIN descendants d ON n.parent_id = d.id WHERE n.store_id = $2" ..
-            ") "
-        local _, edge_err = tx:execute(
-            cte .. "DELETE FROM kb10_edges WHERE store_id = $3 AND (from_node_id IN (SELECT id FROM descendants) OR to_node_id IN (SELECT id FROM descendants))",
-            { node_id, store_id, store_id }
-        )
-        if edge_err then return errors.wrap(edge_err, "failed to delete child edges") end
-        local _, emb_err = tx:execute(
-            cte .. "DELETE FROM kb10_embeddings WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if emb_err then return errors.wrap(emb_err, "failed to delete child embeddings") end
-        local _, fts_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes_fts WHERE node_id IN (SELECT id FROM descendants)",
-            { node_id, store_id }
-        )
-        if fts_err then return errors.wrap(fts_err, "failed to delete child fts") end
-        local _, node_err = tx:execute(
-            cte .. "DELETE FROM kb10_nodes WHERE store_id = $3 AND id IN (SELECT id FROM descendants)",
-            { node_id, store_id, store_id }
-        )
-        if node_err then return errors.wrap(node_err, "failed to delete child nodes") end
-        return nil
+        return delete_sqlite_subtree_tx(tx, store_id, node_id, false)
     end
 
     local _, exec_err = tx:execute(
@@ -354,6 +381,25 @@ local function delete_children_tx(tx: any, db_type: any, store_id: any, node_id:
         { store_id, node_id }
     )
     if exec_err then return errors.wrap(exec_err, "failed to delete child nodes") end
+    return nil
+end
+
+local function write_sqlite_fts_tx(tx: any, node_id: any, content: any, node_type: any): any?
+    if content == nil then
+        local _, del_err = tx:execute(
+            "DELETE FROM kb10_nodes_fts WHERE rowid = (SELECT fts_rowid FROM kb10_nodes WHERE id = $1)", { node_id })
+        if del_err then return errors.wrap(del_err, "fts delete failed") end
+        local _, link_err = tx:execute(
+            "UPDATE kb10_nodes SET fts_rowid = NULL WHERE id = $1 AND fts_rowid IS NOT NULL", { node_id })
+        if link_err then return errors.wrap(link_err, "fts ownership update failed") end
+    else
+        local _, write_err = tx:execute([[INSERT OR REPLACE INTO kb10_nodes_fts (rowid, node_id, content, node_type)
+            VALUES ((SELECT fts_rowid FROM kb10_nodes WHERE id = $1), $1, $2, $3)]], { node_id, content, node_type })
+        if write_err then return errors.wrap(write_err, "fts insert failed") end
+        local _, link_err = tx:execute([[UPDATE kb10_nodes SET fts_rowid = last_insert_rowid()
+            WHERE id = $1 AND fts_rowid IS NULL]], { node_id })
+        if link_err then return errors.wrap(link_err, "fts ownership update failed") end
+    end
     return nil
 end
 
@@ -370,34 +416,31 @@ local function overwrite_document_tx(tx: any, db_type: any, store_id: any, node_
         "UPDATE kb10_nodes SET content = $1, content_type = $2, metadata = $3, parent_id = $4, updated_at = CURRENT_TIMESTAMP WHERE store_id = $5 AND id = $6",
         { node_input.content, node_input.content_type, metadata_json, node_input.parent_id, store_id, node_id }
     )
-    if exec_err then return tostring(exec_err) end
+    if exec_err then return exec_err end
 
     if db_type == sql.type.SQLITE then
-        local _, del_err = tx:execute("DELETE FROM kb10_nodes_fts WHERE node_id = $1", { node_id })
-        if del_err then return errors.wrap(del_err, "fts delete failed") end
-        if node_input.content then
-            local _, fts_err = tx:execute(
-                "INSERT INTO kb10_nodes_fts (node_id, content, node_type) VALUES ($1, $2, $3)",
-                { node_id, node_input.content, node_input.node_type }
-            )
-            if fts_err then return errors.wrap(fts_err, "fts insert failed") end
-        end
+        return write_sqlite_fts_tx(tx, node_id, node_input.content, node_input.node_type)
     end
 
     return nil
 end
 
-local function source_identity_from_document(doc: any): (string?, string?, any?)
-    local metadata = type(doc.metadata) == "table" and doc.metadata or {}
-    local external_source = metadata.external_source
-    local external_id = metadata.external_id
-    if type(external_source) ~= "string" or external_source == "" then
-        return nil, nil, errors.new({ message = "document metadata.external_source is required", kind = errors.INVALID })
-    end
-    if type(external_id) ~= "string" or external_id == "" then
-        return nil, nil, errors.new({ message = "document metadata.external_id is required", kind = errors.INVALID })
-    end
-    return external_source, external_id, nil
+-- PostgreSQL serializes mutations on the store before taking node locks.
+-- SQLite checks existence in the same transaction as source replacement.
+local function lock_store_tx(tx: any, db_type: any, store_id: any, check_exists: boolean?): (any?, any?)
+    local postgres = db_type == sql.type.POSTGRES
+    if not postgres and not check_exists then return nil, nil end
+    local lock = postgres and " FOR NO KEY UPDATE" or ""
+    local rows, err = tx:query("SELECT id FROM kb10_stores WHERE id = $1" .. lock, {store_id})
+    if err then return nil, errors.wrap(err, "failed to lock document store") end
+    return rows[1], nil
+end
+
+local function require_store_tx(tx: any, db_type: any, store_id: any): any?
+    local locked, err = lock_store_tx(tx, db_type, store_id, true)
+    if err then return err end
+    if not locked then return errors.new({kind = errors.NOT_FOUND, message = "document store not found"}) end
+    return nil
 end
 
 -- Atomically replace the materialized tree for one canonical source document.
@@ -406,40 +449,29 @@ end
 --
 -- The document node's id is the document's identity, not the generation's:
 -- consumers fold it into their own rows and resolve the document by it long
--- after this write. So a replacement of the same (external_source, external_id)
+-- after this write. So a replacement of the same source in the same scope
 -- keeps the node that already carries that identity and swaps the generation
 -- underneath it — content, children, vectors. Children re-mint their ids; they
 -- are content. A caller-supplied document.id only seeds a first
 -- materialization: on replacement the stored identity wins.
-function writer.replace_document(store_id: any, replacement: any)
-    if not store_id or store_id == "" then return nil, errors.new({ message = "store_id is required", kind = errors.INVALID }) end
+function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any)
+    if not is_str(store_id) then return nil, errors.new({ message = "store_id is required", kind = errors.INVALID }) end
     local spec = type(replacement) == "table" and replacement or {}
     local document = type(spec.document) == "table" and spec.document or nil
     if not document then return nil, errors.new({ message = "document is required", kind = errors.INVALID }) end
-    if document.node_type ~= kb10.NODE_TYPE.DOCUMENT then return nil, errors.new({ message = "document node_type is required", kind = errors.INVALID }) end
-
-    local external_source, external_id, identity_err = source_identity_from_document(document)
-    if identity_err then return nil, identity_err end
-
-    local db, err = ops.get_db()
-    if err then return nil, err end
-    local db_type, db_type_err = ops.get_db_type(db)
-    if db_type_err then db:release(); return nil, db_type_err end
-
-    local tx, tx_err = db:begin()
-    if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-
-    local where_external
-    if db_type == sql.type.SQLITE then
-        where_external = "AND json_extract(metadata, '$.external_source') = $2 AND json_extract(metadata, '$.external_id') = $3"
-    else
-        where_external = "AND (metadata::jsonb ->> 'external_source') = $2 AND (metadata::jsonb ->> 'external_id') = $3"
+    if document.node_type ~= kb10.NODE_TYPE.DOCUMENT or document.parent_id ~= nil then
+        return nil, errors.new({ message = "document root is required", kind = errors.INVALID })
     end
-    local prior_rows, prior_err = tx:query(
-        "SELECT id FROM kb10_nodes WHERE store_id = $1 AND node_type = '" .. kb10.NODE_TYPE.DOCUMENT .. "' " .. where_external .. " ORDER BY id",
-        { store_id, external_source, external_id }
-    )
-    if prior_err then return fail_tx(tx, db, errors.wrap(prior_err, "failed to find prior documents")) end
+
+    local metadata = type(document.metadata) == "table" and document.metadata or {}
+    local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, spec.source_thread_id)
+    if not binding then
+        return nil, errors.new({ message = "document metadata.external_source and external_id are required", kind = errors.INVALID })
+    end
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local reused_id, ownership_err = ops.find_source_root_tx(tx, db_type, store_id, binding)
+    if ownership_err then return nil, ownership_err end
 
     local removed = 0
     local removed_completed_documents = 0
@@ -447,22 +479,13 @@ function writer.replace_document(store_id: any, replacement: any)
     local removed_summaries = 0
     local removed_chunks = 0
 
-    -- The oldest prior node wins, so once a store settles on an id for a document
-    -- that id never moves again. Postgres hands back a UUID column as a UUID
-    -- value, so the id is coerced to its string form here — the form every
-    -- consumer stores and every helper below matches on.
-    local reused_id: any = nil
-    if prior_rows and prior_rows[1] and prior_rows[1].id ~= nil then
-        reused_id = tostring(prior_rows[1].id)
-    end
-
     local doc_id: any
     if reused_id then
         -- The generation being replaced still counts as a removed document: the
         -- deltas the caller derives from these counts describe the knowledge
         -- base's document population, not node identity.
         local reused_counts, count_err = subtree_source_counts_tx(tx, db_type, store_id, reused_id)
-        if count_err then return fail_tx(tx, db, count_err) end
+        if count_err then return nil, count_err end
         removed = removed + 1
         removed_completed_documents = removed_completed_documents + (tonumber(reused_counts and reused_counts.document_count) or 0)
         removed_failed_documents = removed_failed_documents + (tonumber(reused_counts and reused_counts.failed_document_count) or 0)
@@ -470,13 +493,13 @@ function writer.replace_document(store_id: any, replacement: any)
         removed_chunks = removed_chunks + (tonumber(reused_counts and reused_counts.chunk_count) or 0)
 
         local children_err = delete_children_tx(tx, db_type, store_id, reused_id)
-        if children_err then return fail_tx(tx, db, errors.wrap(children_err, "delete prior generation failed")) end
+        if children_err then return nil, errors.wrap(children_err, "delete prior generation failed") end
         local overwrite_err = overwrite_document_tx(tx, db_type, store_id, reused_id, document)
-        if overwrite_err then return fail_tx(tx, db, errors.wrap(overwrite_err, "replace document failed")) end
+        if overwrite_err then return nil, errors.wrap(overwrite_err, "replace document failed") end
         doc_id = reused_id
     else
-        local new_id, doc_err = insert_node_tx(tx, db_type, store_id, document)
-        if doc_err or not new_id then return fail_tx(tx, db, errors.wrap(doc_err, "insert document failed")) end
+        local new_id, doc_err = insert_node_tx(tx, db_type, store_id, document, binding)
+        if doc_err or not new_id then return nil, errors.wrap(doc_err, "insert document failed") end
         doc_id = new_id
     end
 
@@ -494,32 +517,15 @@ function writer.replace_document(store_id: any, replacement: any)
             chunk_count = chunk_count + 1
         end
     end
-    local child_ids, child_err = insert_nodes_tx(tx, db_type, store_id, nodes)
-    if child_err or not child_ids then return fail_tx(tx, db, errors.wrap(child_err, "insert child failed")) end
+    local child_ids, child_err = writer.insert_nodes_tx(tx, db_type, store_id, nodes)
+    if child_err or not child_ids then return nil, errors.wrap(child_err, "insert child failed") end
     local embeddings: {any} = {}
     for i, child_spec in ipairs(children) do
         embeddings[i] = { node_id = child_ids[i], node_type = nodes[i].node_type,
             parent_id = doc_id, embedding = child_spec.embedding }
     end
     local _, emb_err = insert_embeddings_tx(tx, db_type, store_id, embeddings)
-    if emb_err then return fail_tx(tx, db, errors.wrap(emb_err, "insert child embedding failed")) end
-
-    -- Any further node carrying the same external identity is a duplicate the
-    -- reused node supersedes; it goes with its whole subtree.
-    for _, row in ipairs(prior_rows or {}) do
-        if tostring(row.id) ~= tostring(doc_id) then
-            local ok, del_err, removed_counts = delete_node_tx(tx, db_type, store_id, row.id)
-            if not ok then return fail_tx(tx, db, errors.wrap(del_err, "delete prior document failed")) end
-            removed = removed + 1
-            removed_completed_documents = removed_completed_documents + (tonumber(removed_counts and removed_counts.document_count) or 0)
-            removed_failed_documents = removed_failed_documents + (tonumber(removed_counts and removed_counts.failed_document_count) or 0)
-            removed_summaries = removed_summaries + (tonumber(removed_counts and removed_counts.summary_count) or 0)
-            removed_chunks = removed_chunks + (tonumber(removed_counts and removed_counts.chunk_count) or 0)
-        end
-    end
-
-    local committed, commit_err = commit_tx(tx, db, "document replacement")
-    if not committed then return nil, commit_err end
+    if emb_err then return nil, errors.wrap(emb_err, "insert child embedding failed") end
 
     return {
         document_node_id = doc_id,
@@ -531,6 +537,84 @@ function writer.replace_document(store_id: any, replacement: any)
         summary_count = summary_count,
         chunk_count = chunk_count,
     }, nil
+end
+
+function writer.replace_document(store_id: any, replacement: any)
+    local db, err = ops.get_db()
+    if err then return nil, err end
+    local db_type, db_type_err = ops.get_db_type(db)
+    if db_type_err then db:release(); return nil, db_type_err end
+    local tx, tx_err = db:begin()
+    if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+
+    local result, replace_err = writer.replace_document_tx(tx, db_type, store_id, replacement)
+    if replace_err then return fail_tx(tx, db, replace_err) end
+    local ok, commit_err = commit_tx(tx, db, "document replacement")
+    if not ok then return nil, commit_err end
+    return result, nil
+end
+
+-- Record an attempted immutable revision without rewriting an accepted tree.
+-- The owning checkpoint supplies the transaction and the canonical lineage.
+function writer.reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
+        metadata: kb10.Map, code: string): (any?, any?)
+    local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, source_thread_id)
+    if not binding then
+        return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a source identity"})
+    end
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local id, lookup_err = ops.find_source_root_tx(tx, db_type, store_id, binding)
+    if lookup_err then return nil, lookup_err end
+
+    local outcomes = {
+        artifact_reference_not_found = "The selected artifact is missing.",
+        artifact_bytes_not_found = "The selected artifact's stored content is missing.",
+    }
+    local reason = outcomes[code]
+    local position = tonumber(metadata.thread_event_seq)
+    if not reason or not position or not is_str(metadata.thread_event_id) then
+        return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a verified source revision"})
+    end
+    local rejection = {code = code, kind = errors.NOT_FOUND, message = reason, thread_event_seq = position,
+        thread_event_id = metadata.thread_event_id, external_version = metadata.external_version}
+    local stored = {}
+    if id then
+        local rows, read_err = tx:query("SELECT metadata FROM kb10_nodes WHERE store_id=$1 AND id=$2", {store_id, id})
+        if read_err then return nil, errors.wrap(read_err, "failed to read source revision") end
+        if not rows[1] then return nil, errors.new({kind = errors.CONFLICT, message = "source document changed"}) end
+        stored = decode_metadata(rows[1].metadata)
+        local prior = stored.source_rejection
+        local previous_seq = math.max(tonumber(stored.thread_event_seq) or 0,
+            tonumber(type(prior) == "table" and prior.thread_event_seq) or 0)
+        if previous_seq >= position then
+            return nil, errors.new({kind = errors.CONFLICT, message = "source rejection no longer owns this revision"})
+        end
+    end
+    if not id or stored.status == "failed" then
+        stored = metadata
+        stored.role = kb10.NODE_TYPE.DOCUMENT
+        stored.status = "failed"
+        stored.source_title = stored.title
+        stored.title = "Indexing failed"
+        stored.error = reason
+    end
+    stored.source_rejection = rejection
+    if not id then
+        return insert_node_tx(tx, db_type, store_id, {
+            node_type = kb10.NODE_TYPE.DOCUMENT, content_type = "text/plain", metadata = stored,
+        }, binding)
+    end
+
+    local encoded, encode_err = json.encode(stored)
+    if encode_err then return nil, errors.wrap(encode_err, "failed to encode source rejection") end
+    local updated, update_err = tx:execute([[UPDATE kb10_nodes SET metadata=$1, updated_at=CURRENT_TIMESTAMP
+        WHERE store_id=$2 AND id=$3]], {encoded, store_id, id})
+    if update_err then return nil, errors.wrap(update_err, "failed to record source rejection") end
+    if not updated or updated.rows_affected ~= 1 then
+        return nil, errors.new({kind = errors.CONFLICT, message = "source document changed"})
+    end
+    return id, nil
 end
 
 -- Create the per-component store row. The store id equals the component_id so
@@ -606,10 +690,13 @@ function writer.delete_store(component_id: any)
     local db, err = ops.get_db()
     if err then return nil, err end
 
+    local db_type, dt_err = ops.get_db_type(db)
+    if dt_err then db:release(); return nil, dt_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
 
-    local rows, q_err = tx:query("SELECT id FROM kb10_stores WHERE component_id = $1", { component_id })
+    local lock = db_type == sql.type.POSTGRES and " FOR UPDATE" or ""
+    local rows, q_err = tx:query("SELECT id FROM kb10_stores WHERE component_id = $1" .. lock, { component_id })
     if q_err then return fail_tx(tx, db, q_err) end
     if not rows or #rows == 0 then
         local ok, commit_err = commit_tx(tx, db, "store delete")
@@ -618,14 +705,10 @@ function writer.delete_store(component_id: any)
     end
     local store_id = rows[1].id
 
-    local db_type, dt_err = ops.get_db_type(db)
-    if dt_err then return fail_tx(tx, db, dt_err) end
-
     local cascade = {}
-    -- kb10_nodes_fts is a SQLite fts5 virtual table; PostgreSQL uses the
-    -- search_vector tsvector column on kb10_nodes, so it only exists on SQLite.
     if db_type == sql.type.SQLITE then
-        cascade[#cascade + 1] = { sql = "DELETE FROM kb10_nodes_fts WHERE node_id IN (SELECT id FROM kb10_nodes WHERE store_id = $1)", name = "kb10_nodes_fts" }
+        local fts_err = delete_sqlite_fts_tx(tx, "SELECT fts_rowid FROM kb10_nodes WHERE store_id = $1", { store_id })
+        if fts_err then return fail_tx(tx, db, fts_err) end
     end
     cascade[#cascade + 1] = { sql = "DELETE FROM kb10_query_log WHERE store_id = $1", name = "kb10_query_log" }
     cascade[#cascade + 1] = { sql = "DELETE FROM kb10_tuning_state WHERE store_id = $1", name = "kb10_tuning_state" }
@@ -656,6 +739,8 @@ function writer.insert_node(store_id: any, node: any)
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
 
     local id, insert_err = insert_node_tx(tx, db_type, store_id, node_input)
     if insert_err or not id then return fail_tx(tx, db, insert_err) end
@@ -673,6 +758,8 @@ function writer.insert_graph_node(store_id: any, node: any, parent_edge: any)
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
 
     local id, insert_err = insert_node_tx(tx, db_type, store_id, node_input)
     if insert_err or not id then return fail_tx(tx, db, insert_err) end
@@ -762,13 +849,8 @@ local function update_node_tx(tx: any, db_type: any, store_id: any, node_id: any
     if exec_err then return nil, tostring(exec_err) end
 
     if db_type == sql.type.SQLITE and node_patch.content ~= nil then
-        local _, del_err = tx:execute("DELETE FROM kb10_nodes_fts WHERE node_id = $1", { node_id })
-        if del_err then return nil, errors.wrap(del_err, "fts delete failed") end
-        local _, fts_err = tx:execute(
-            "INSERT INTO kb10_nodes_fts (node_id, content, node_type) VALUES ($1, $2, $3)",
-            { node_id, node_patch.content, node.node_type }
-        )
-        if fts_err then return nil, errors.wrap(fts_err, "fts insert failed") end
+        local fts_err = write_sqlite_fts_tx(tx, node_id, node_patch.content, node.node_type)
+        if fts_err then return nil, fts_err end
     end
 
     return node, nil
@@ -786,6 +868,8 @@ function writer.update_node(store_id: any, node_id: any, patch: any)
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
 
     local _, update_err = update_node_tx(tx, db_type, store_id, node_id, patch)
     if update_err then return fail_tx(tx, db, update_err) end
@@ -818,6 +902,8 @@ function writer.write_node_with_embedding(store_id: any, node: any, embedding: a
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
 
     local node_id: any = input.id
     local node_type: any = input.node_type
@@ -846,42 +932,16 @@ function writer.insert_embedding(store_id: any, node_id: any, node_type: any, pa
     local db, err = ops.get_db()
     if err then return nil, err end
 
-    local db_type = ops.get_db_type(db)
-    local id = uuid.v7()
-
-    -- SQLite vec0 metadata columns require TEXT, cannot be NULL
-    local safe_parent_id = parent_id
-    if db_type == sql.type.SQLITE and not safe_parent_id then
-        safe_parent_id = ""
-    end
-
-    -- One current vector per node: clear the node's existing rows before
-    -- inserting, or a re-embed leaves the stale vector behind to compete with
-    -- the fresh one in every search.
-    local _, clear_err = db:execute(
-        "DELETE FROM kb10_embeddings WHERE store_id = $1 AND node_id = $2",
-        { store_id, node_id }
-    )
-    if clear_err then
-        db:release()
-        return nil, clear_err
-    end
-
-    local exec_err
-    if db_type == sql.type.SQLITE then
-        _, exec_err = db:execute(
-            "INSERT INTO kb10_embeddings (id, node_id, store_id, node_type, parent_id, embedding) VALUES ($1, $2, $3, $4, $5, $6)",
-            { id, node_id, store_id, node_type, safe_parent_id, ops.vector_to_string(embedding) }
-        )
-    else
-        _, exec_err = db:execute(
-            "INSERT INTO kb10_embeddings (id, node_id, store_id, node_type, parent_id, embedding) VALUES ($1, $2, $3, $4, $5, $6)",
-            { id, node_id, store_id, node_type, parent_id, ops.vector_to_string(embedding) }
-        )
-    end
-
-    db:release()
-    if exec_err then return nil, exec_err end
+    local db_type, dt_err = ops.get_db_type(db)
+    if dt_err then db:release(); return nil, dt_err end
+    local tx, tx_err = db:begin()
+    if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
+    local id, insert_err = insert_embedding_tx(tx, db_type, store_id, node_id, node_type, parent_id, embedding)
+    if insert_err then return fail_tx(tx, db, insert_err) end
+    local ok, commit_err = commit_tx(tx, db, "embedding insert")
+    if not ok then return nil, commit_err end
     return id
 end
 
@@ -893,6 +953,11 @@ function writer.delete_node(store_id: any, node_id: any)
     if db_type_err then db:release(); return false, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return false, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then
+        local _, err = fail_tx(tx, db, lock_err)
+        return false, err
+    end
 
     local ok, del_err = delete_node_tx(tx, db_type, store_id, node_id)
     if not ok then
@@ -904,57 +969,21 @@ function writer.delete_node(store_id: any, node_id: any)
     return true
 end
 
--- Replace any prior ingest of the same source artifact, keyed on the canonical
--- (external_source, external_id) identity a thread event carries. Same external_id
--- => replace, not append; this is what makes a projection re-run (after a crash or
--- a re-dispatch) idempotent. Deletes the matching document nodes, cascading to
--- their chunks/summaries/embeddings via delete_node.
-function writer.delete_documents_by_external_id(store_id: any, external_source: any, external_id: any)
-    if not is_str(store_id) or not is_str(external_id) then
-        return 0, errors.new({ kind = errors.INVALID, retryable = false,
-            message = "store_id and external_id are required" })
-    end
-    local db, err = ops.get_db()
-    if err then return 0, err end
-
-    local db_type, db_type_err = ops.get_db_type(db)
-    if db_type_err then db:release(); return 0, db_type_err end
-    local tx, tx_err = db:begin()
-    if tx_err then db:release(); return 0, errors.wrap(tx_err, "failed to begin transaction") end
-
-    local query
-    if db_type == sql.type.SQLITE then
-        query = "SELECT id FROM kb10_nodes WHERE store_id = $1 AND node_type = '" .. kb10.NODE_TYPE.DOCUMENT ..
-            "' AND json_extract(metadata, '$.external_source') = $2 AND json_extract(metadata, '$.external_id') = $3"
-    else
-        query = "SELECT id FROM kb10_nodes WHERE store_id = $1 AND node_type = '" .. kb10.NODE_TYPE.DOCUMENT ..
-            "' AND (metadata::jsonb ->> 'external_source') = $2 AND (metadata::jsonb ->> 'external_id') = $3"
-    end
-    local rows, q_err = tx:query(query, { store_id, external_source or "", external_id })
-    if q_err then
-        local _, msg = fail_tx(tx, db, errors.wrap(q_err, "failed to find documents by external id"))
-        return 0, msg
-    end
-
+local function delete_documents_tx(tx: any, db_type: any, store_id: any, rows: any)
     local removed = 0
     local removed_completed_documents = 0
     local removed_failed_documents = 0
     local removed_summaries = 0
     local removed_chunks = 0
-    for _, row in ipairs(rows or {}) do
-        local ok, del_err, removed_counts = delete_node_tx(tx, db_type, store_id, row.id)
-        if not ok then
-            local _, msg = fail_tx(tx, db, errors.wrap(del_err, "delete document failed"))
-            return 0, msg
-        end
+    for _, row in ipairs(rows) do
+        local ok, del_err, removed_counts = delete_node_tx(tx, db_type, store_id, tostring(row.id))
+        if not ok then return nil, errors.wrap(del_err, "delete document failed") end
         removed = removed + 1
         removed_completed_documents = removed_completed_documents + (tonumber(removed_counts and removed_counts.document_count) or 0)
         removed_failed_documents = removed_failed_documents + (tonumber(removed_counts and removed_counts.failed_document_count) or 0)
         removed_summaries = removed_summaries + (tonumber(removed_counts and removed_counts.summary_count) or 0)
         removed_chunks = removed_chunks + (tonumber(removed_counts and removed_counts.chunk_count) or 0)
     end
-    local committed, commit_err = commit_tx(tx, db, "document delete")
-    if not committed then return 0, commit_err end
     return {
         removed = removed,
         removed_document_count = removed_completed_documents,
@@ -962,6 +991,67 @@ function writer.delete_documents_by_external_id(store_id: any, external_source: 
         removed_summary_count = removed_summaries,
         removed_chunk_count = removed_chunks,
     }
+end
+
+function writer.delete_documents_by_external_id_tx(tx: any, db_type: any, store_id: any, external_source: any, external_id: any)
+    if not is_str(store_id) or not is_str(external_id) then
+        return nil, errors.new({ kind = errors.INVALID, retryable = false, message = "store_id and external_id are required" })
+    end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local rows, query_err = ops.find_source_nodes_tx(tx, db_type, store_id, external_source, external_id, true)
+    if query_err then return nil, errors.wrap(query_err, "failed to find documents by external id") end
+    return delete_documents_tx(tx, db_type, store_id, rows)
+end
+
+function writer.delete_document_tx(tx: any, db_type: any, store_id: any, selector: any)
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local id, root, err
+    if selector.node_id ~= nil then
+        if type(selector.node_id) ~= "string" or not uuid.validate(selector.node_id) then
+            return nil, errors.new({kind = errors.INVALID, message = "invalid document node ID"})
+        end
+        root, err = ops.find_document_root_tx(tx, store_id, selector.node_id)
+        id = root and tostring(root.id)
+    else
+        local binding = ops.source_binding(store_id, selector.external_source, selector.external_id, selector.source_thread_id)
+        if not binding then return nil, errors.new({kind = errors.INVALID, message = "invalid source binding"}) end
+        id, err = ops.find_source_root_tx(tx, db_type, store_id, binding)
+    end
+    if err then return nil, err end
+    local result, delete_err = delete_documents_tx(tx, db_type, store_id, id and {{id = id}} or {})
+    if delete_err then return nil, delete_err end
+    result.document_node_id = id
+    result.external_source = root and root.external_source
+    result.external_id = root and root.external_id
+    return result, nil
+end
+
+local function delete_documents(store_id: any, mutate: any, ...)
+    local db, err = ops.get_db()
+    if err then return 0, err end
+    local db_type, db_type_err = ops.get_db_type(db)
+    if db_type_err then db:release(); return 0, db_type_err end
+    local tx, tx_err = db:begin()
+    if tx_err then db:release(); return 0, errors.wrap(tx_err, "failed to begin transaction") end
+
+    local result, delete_err = mutate(tx, db_type, store_id, ...)
+    if delete_err then
+        local _, message = fail_tx(tx, db, delete_err)
+        return 0, message
+    end
+    local ok, commit_err = commit_tx(tx, db, "document delete")
+    if not ok then return 0, commit_err end
+    return result, nil
+end
+
+function writer.delete_documents_by_external_id(store_id: any, external_source: any, external_id: any)
+    return delete_documents(store_id, writer.delete_documents_by_external_id_tx, external_source, external_id)
+end
+
+function writer.delete_document(store_id: any, selector: any)
+    return delete_documents(store_id, writer.delete_document_tx, selector)
 end
 
 -- Persist the digest service's generated KB-level summary/description.
@@ -983,8 +1073,12 @@ function writer.insert_edge(store_id: any, edge: any)
     local db, err = ops.get_db()
     if err then return nil, err end
 
+    local db_type, db_type_err = ops.get_db_type(db)
+    if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
 
     local validation_err = validate_edge_insert_tx(tx, store_id, edge, "insert_edge")
     if validation_err then return fail_tx(tx, db, validation_err) end
@@ -1021,7 +1115,7 @@ end
 -- (uuid v7 == insert order), and a child's parent always pre-existed it, so the parent
 -- carries the smaller id and lands in this batch or an earlier one -- the self-FK is
 -- satisfied within the transaction without any per-row deferral.
-function writer.insert_nodes(store_id: any, nodes: any): (boolean?, any?)
+function writer.insert_nodes(store_id: any, nodes: any, bindings: any?): (boolean?, any?)
     local list = (type(nodes) == "table" and nodes or {}) :: { any }
     if #list == 0 then return true end
     local db, err = ops.get_db()
@@ -1030,14 +1124,14 @@ function writer.insert_nodes(store_id: any, nodes: any): (boolean?, any?)
     if dt_err then db:release(); return nil, dt_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-    local _, insert_err = insert_nodes_tx(tx, db_type, store_id, list)
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
+    local _, insert_err = writer.insert_nodes_tx(tx, db_type, store_id, list, bindings)
     if insert_err then return fail_tx(tx, db, insert_err) end
     return commit_tx(tx, db, "node batch insert")
 end
 
--- Insert embeddings for newly imported nodes. Replacement writes use the
--- single-row path; probing vec0 for every absent row makes a large import
--- quadratic on SQLite. rows: { { node_id, node_type, parent_id, embedding }, ... }.
+-- Insert embeddings for newly imported nodes in one transaction.
 function writer.insert_embeddings(store_id: any, rows: any): (boolean?, any?)
     local list = (type(rows) == "table" and rows or {}) :: { any }
     if #list == 0 then return true end
@@ -1047,6 +1141,8 @@ function writer.insert_embeddings(store_id: any, rows: any): (boolean?, any?)
     if dt_err then db:release(); return nil, dt_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
     local _, insert_err = insert_embeddings_tx(tx, db_type, store_id, list)
     if insert_err then return fail_tx(tx, db, insert_err) end
     return commit_tx(tx, db, "embedding batch insert")
@@ -1061,8 +1157,12 @@ function writer.insert_edges(store_id: any, edges: any): (boolean?, any?)
     if #list == 0 then return true end
     local db, err = ops.get_db()
     if err then return nil, err end
+    local db_type, db_type_err = ops.get_db_type(db)
+    if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
     for _, edge in ipairs(list) do
         local _, ierr = insert_edge_tx(tx, store_id, edge)
         if ierr then return fail_tx(tx, db, ierr) end
@@ -1087,6 +1187,8 @@ function writer.apply_graph_patch(store_id: any, patch: any)
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
+    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    if lock_err then return fail_tx(tx, db, lock_err) end
 
     local deleted_edges = 0
     for _, edge_id in ipairs(delete_edge_ids) do

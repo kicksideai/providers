@@ -15,8 +15,11 @@ profiles:
       app:db:username: ${pg_username}
       app:db:password: ${pg_password}
       app:db:options.sslmode: disable
+      app:db:pool.max_open: 16
+      app:db:pool.max_idle: 8
 workspace:
   replacements:
+    kickside/provider-text: ../../provider-text
     kickside/llm-ocr: ..
     kickside/component: ../../../kickside/core/component
     kickside/contract: ../../../kickside/core/contract
