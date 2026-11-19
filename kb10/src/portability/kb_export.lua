@@ -72,19 +72,16 @@ local function write_paged(storage: any, path: string, page_query: any, cursor_f
             if options.strip then
                 for _, k in ipairs(options.strip :: { any }) do (r :: any)[k] = nil end
             end
-            local binding = (r :: any).source_scope ~= nil and {
-                source_scope = (r :: any).source_scope,
-                external_source = (r :: any).external_source,
-                external_id = (r :: any).external_id,
-            } or nil
-            local document = options.source_bindings and (r :: any).node_type == "document" and (r :: any).parent_id == nil
-            if document then
-                (r :: any).source_scope, (r :: any).external_source, (r :: any).external_id = nil, nil, nil
-                (r :: any).source_binding = binding
+            local row: any = r
+            if options.source_bindings and row.node_type == "document" and row.parent_id == nil then
+                row.source_binding = {
+                    source_scope = row.source_scope or json.null,
+                    external_source = row.external_source,
+                    external_id = row.external_id,
+                }
+                row.source_scope, row.external_source, row.external_id = nil, nil, nil
             end
-            local encoded = json.encode(r)
-            lines[#lines + 1] = document and not binding
-                and ('{"source_binding":{"source_scope":null},' .. encoded:sub(2)) or encoded
+            lines[#lines + 1] = json.encode(r)
         end
         f:write(table.concat(lines, "\n") .. "\n")
         total = total + n
