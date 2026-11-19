@@ -15,7 +15,7 @@ entries:
       comment: Telegram bot-token connection, reply provider, chat-id discovery, normalized inbound adapter, and agent traits.
 
   - name: dep.kickside.component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
     kind: ns.dependency
     meta:
       comment: Resolves Telegram connection components for the polling supervisor and transport.

@@ -17,7 +17,7 @@ entries:
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.
 

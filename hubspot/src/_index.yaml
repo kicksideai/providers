@@ -34,7 +34,7 @@ entries:
         path: .meta.default_field_mapping_ref
 
   - name: dep.kickside.component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
     kind: ns.dependency
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.

@@ -169,7 +169,7 @@ entries:
       help: OAuth app client credentials for Jira and Confluence.
 
   - name: dep.kickside.component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
     kind: ns.dependency
     meta:
       comment: Resolves provider connection components through the component service.
