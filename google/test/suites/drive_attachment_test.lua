@@ -52,6 +52,44 @@ local function fixture()
     return state, deps, config, {component_id = "connection", ref = ref}
 end
 
+local function browse_fixture()
+    local function folder(id, name, parent, drive_id, can_list)
+        return {id = id, name = name, mimeType = FOLDER, parents = parent and {parent} or nil,
+            driveId = drive_id, capabilities = {canListChildren = can_list}}
+    end
+    local state = {scope = "https://www.googleapis.com/auth/drive.readonly", provider = "google", requests = {}}
+    local parents = {
+        root = folder("my-root", "My Drive", nil, nil, true),
+        ["personal-folder"] = folder("personal-folder", "Personal folder", "my-root", nil, true),
+        team = folder("team", "Team Drive", nil, "team", true),
+        ["team-folder"] = folder("team-folder", "Team folder", "team", "team", true),
+    }
+    local api = {
+        get_file = function(_, id, fields)
+            state.requests[#state.requests + 1] = {id = id, fields = fields}
+            return {success = true, data = assert(parents[id])}
+        end,
+        list_files = function(_, q, limit, token, fields, corpus)
+            state.requests[#state.requests + 1] = {q = q, limit = limit, token = token, fields = fields, corpus = corpus}
+            if state.files then return {success = true, data = state.files} end
+            if corpus == "team" then return {success = true, data = {files = {parents["team-folder"]}}} end
+            if token then return {success = true, data = {files = {folder("another", "Another", "my-root", nil, true)}}} end
+            return {success = true, data = {nextPageToken = "next-folders",
+                files = {parents["personal-folder"], folder("locked", "Locked", "my-root", nil, false)}}}
+        end,
+        list_shared_drives = function(_, limit, token)
+            state.requests[#state.requests + 1] = {limit = limit, token = token}
+            if token then return {success = true, data = {drives = {}}} end
+            return {success = true, data = {drives = {{id = "team", name = "Team Drive"}}, nextPageToken = "next-drives"}}
+        end,
+    }
+    local deps = {drive = api, connect = function(id)
+        test.eq(id, "connection")
+        return {get_info = function() return {provider = state.provider, scopes_granted = state.scope} end}
+    end}
+    return state, deps
+end
+
 return {run = test.run_cases(function()
     test.describe("Google Drive versioned folder attachments", function()
         test.it("lists a versioned descriptor without downloading and exports the exact Docs revision", function()
@@ -121,6 +159,84 @@ return {run = test.run_cases(function()
             local stable = assert(source.pull_keys({config = config, cursor = restart.next_cursor}, deps))
             test.is_false(stable.has_more)
             test.eq(#stable.keys, 0)
+        end)
+    end)
+
+    test.describe("Google Drive folder discovery", function()
+        test.it("resolves the My Drive root, filters inaccessible folders and resumes its page", function()
+            local state, deps = browse_fixture()
+            local input = {action = "list_folders", connection_id = "connection", limit = 2}
+            local page = assert(source.browse(input, deps))
+            test.eq(page.parent.id, "my-root")
+            test.eq(page.parent.name, "My Drive")
+            test.eq(#page.items, 1)
+            test.eq(page.items[1].id, "personal-folder")
+            test.eq(state.requests[1].id, "root")
+            test.eq(state.requests[2].q, "'my-root' in parents and mimeType = '" .. FOLDER .. "'")
+            test.eq(state.requests[2].corpus, "")
+            input.cursor = page.next_cursor
+            local next_page = assert(source.browse(input, deps))
+            test.eq(next_page.items[1].id, "another")
+            test.eq(state.requests[4].token, "next-folders")
+            test.is_nil(next_page.next_cursor)
+        end)
+
+        test.it("pages shared drives and scopes their folders to the selected drive", function()
+            local state, deps = browse_fixture()
+            local drives = assert(source.browse({action = "list_shared_drives", connection_id = "connection"}, deps))
+            test.eq(drives.items[1].id, "team")
+            test.eq(drives.items[1].name, "Team Drive")
+            local last = assert(source.browse({action = "list_shared_drives", connection_id = "connection",
+                cursor = drives.next_cursor}, deps))
+            test.eq(#last.items, 0)
+            test.eq(state.requests[2].token, "next-drives")
+            local folders = assert(source.browse({action = "list_folders", connection_id = "connection", drive_id = "team"}, deps))
+            test.eq(folders.parent.id, "team")
+            test.eq(folders.items[1].id, "team-folder")
+            test.eq(folders.items[1].drive_id, "team")
+            test.eq(state.requests[4].corpus, "team")
+        end)
+
+        test.it("rejects a page from a different connection, parent, action or drive", function()
+            local state, deps = browse_fixture()
+            local input = {action = "list_folders", connection_id = "connection"}
+            local page = assert(source.browse(input, deps))
+            input.cursor = page.next_cursor
+            input.connection_id = "other"
+            local result, err = source.browse(input, deps)
+            test.is_nil(result)
+            test.eq(err:details().code, "google_drive_cursor_scope")
+            input.connection_id, input.drive_id = "connection", "team"
+            result, err = source.browse(input, deps)
+            test.is_nil(result)
+            test.eq(err:details().code, "google_drive_cursor_scope")
+            input.action, input.drive_id = "list_shared_drives", nil
+            result, err = source.browse(input, deps)
+            test.is_nil(result)
+            test.eq(err:details().code, "google_drive_cursor_scope")
+            input.action, input.parent_id = "list_folders", "personal-folder"
+            result, err = source.browse(input, deps)
+            test.is_nil(result)
+            test.eq(err:details().code, "google_drive_cursor_scope")
+            test.eq(#state.requests, 3, "only the new parent is resolved before rejecting the cursor")
+        end)
+
+        test.it("refuses mismatched OAuth scopes and incomplete child pages", function()
+            local state, deps = browse_fixture()
+            local input = {action = "list_folders", connection_id = "connection"}
+            state.scope = "https://www.googleapis.com/auth/gmail.readonly"
+            local result, err = source.browse(input, deps)
+            test.is_nil(result)
+            test.eq(err:details().code, "google_drive_scope")
+            state.scope, state.provider = "https://www.googleapis.com/auth/drive.readonly", "github"
+            result, err = source.browse(input, deps)
+            test.is_nil(result)
+            test.eq(err:details().code, "google_drive_connection")
+            test.eq(#state.requests, 0)
+            state.provider, state.files = "google", {files = {}, incompleteSearch = true}
+            result, err = source.browse(input, deps)
+            test.is_nil(result)
+            test.eq(err:details().code, "google_drive_incomplete_listing")
         end)
     end)
 end)}

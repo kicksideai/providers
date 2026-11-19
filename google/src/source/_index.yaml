@@ -116,6 +116,15 @@ entries:
     modules: [ctx]
     imports: *drive_imports
 
+  - name: browse_drive_folders
+    kind: function.lua
+    meta:
+      comment: List accessible shared drives or eligible direct child folders for the selected Google connection.
+    source: file://drive_folder.lua
+    method: browse
+    modules: [ctx]
+    imports: *drive_imports
+
   - name: pull_drive_folder_keys
     kind: function.lua
     source: file://drive_folder.lua

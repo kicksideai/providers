@@ -54,6 +54,12 @@ function drive.get_file(conn: google_types.Connection, file_id: string, fields: 
     return transport.get(conn, api() .. "/files/" .. id, { fields = fields or "*", supportsAllDrives = true })
 end
 
+function drive.list_shared_drives(conn: google_types.Connection, max_results: number, page_token: string?): (google_types.Result?, error?)
+    return transport.get(conn, api() .. "/drives", {
+        fields = "nextPageToken,drives(id,name)", pageSize = max_results, pageToken = page_token,
+    })
+end
+
 function drive.create_folder(conn: google_types.Connection, name: string, parent_id: string?): (google_types.Result?, error?)
     local body: { [string]: any } = { name = name, mimeType = "application/vnd.google-apps.folder" }
     if parent_id and parent_id ~= "" then body.parents = { parent_id } end
