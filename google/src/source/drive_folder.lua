@@ -66,6 +66,44 @@ local function answer(result: any, err: error?, operation: string): (Map?, error
     return nil, failure(errors.UNAVAILABLE, "google_drive_provider_error", operation .. ": Google Drive returned no valid result", true)
 end
 
+local function open_drive(connection: string, connect: any): (any?, error?)
+    local conn, conn_err = connect(connection)
+    if conn_err then return nil, conn_err end
+    if not conn then
+        return nil, failure(errors.PERMISSION_DENIED, "google_drive_connection", "Google connection is unavailable", false)
+    end
+    -- Verify the OAuth provider before using the token against a Google host.
+    local info, info_err = conn:get_info({})
+    if info_err then return nil, info_err end
+    if type(info) ~= "table" or info.provider ~= "google" then
+        return nil, failure(errors.INVALID, "google_drive_connection", "Select a Google OAuth connection", false)
+    end
+    local readable = false
+    for scope in tostring(info.scopes_granted or ""):gmatch("%S+") do
+        if scope == DRIVE_SCOPE or scope == DRIVE_SCOPE .. ".readonly" then readable = true; break end
+    end
+    if not readable then
+        return nil, failure(errors.PERMISSION_DENIED, "google_drive_scope", "Grant View Google Drive to this connection", false)
+    end
+    return conn, nil
+end
+
+local function read_folder(api: any, conn: any, folder: string, fields: string, root_alias: boolean?): (Map?, error?)
+    local result, request_err = api.get_file(conn, folder, fields)
+    local meta, meta_err = answer(result, request_err, "Read selected folder")
+    if meta_err or not meta then return nil, meta_err end
+    if not drive_id(meta.id) or (not root_alias and meta.id ~= folder) or meta.mimeType ~= FOLDER or meta.trashed == true then
+        return nil, failure(errors.INVALID, "google_drive_folder", "The selected ID must name a live Drive folder", false)
+    end
+    if type(meta.capabilities) ~= "table" or meta.capabilities.canListChildren ~= true then
+        return nil, failure(errors.PERMISSION_DENIED, "google_drive_folder", "The selected connection cannot list the folder", false)
+    end
+    if meta.driveId ~= nil and not drive_id(meta.driveId) then
+        return nil, failure(errors.UNAVAILABLE, "google_drive_folder", "Drive returned an invalid shared drive ID", true)
+    end
+    return meta, nil
+end
+
 local function selected(req: Map, api: any, connect: any): (any?, Map?, error?)
     local config: Map = type(req.config) == "table" and req.config or {}
     local connection = nonempty(config.connection_id)
@@ -75,38 +113,11 @@ local function selected(req: Map, api: any, connect: any): (any?, Map?, error?)
         return nil, nil, failure(errors.INVALID, "google_drive_config",
             "Select a Google connection and enter the exact Drive folder ID", false)
     end
-    local conn, conn_err = connect(connection)
-    if conn_err then return nil, nil, conn_err end
-    if not conn then
-        return nil, nil, failure(errors.PERMISSION_DENIED, "google_drive_connection", "Google connection is unavailable", false)
-    end
-    -- Verify the OAuth provider before using the token against a Google host.
-    local info, info_err = conn:get_info({})
-    if info_err then return nil, nil, info_err end
-    if type(info) ~= "table" or info.provider ~= "google" then
-        return nil, nil, failure(errors.INVALID, "google_drive_connection", "Select a Google OAuth connection", false)
-    end
-    local readable = false
-    for scope in tostring(info.scopes_granted or ""):gmatch("%S+") do
-        if scope == DRIVE_SCOPE or scope == DRIVE_SCOPE .. ".readonly" then readable = true; break end
-    end
-    if not readable then
-        return nil, nil, failure(errors.PERMISSION_DENIED, "google_drive_scope", "Grant View Google Drive to this connection", false)
-    end
-    local result, request_err = api.get_file(conn, folder, FOLDER_FIELDS)
-    local meta, meta_err = answer(result, request_err, "Read selected folder")
+    local conn, conn_err = open_drive(connection, connect)
+    if conn_err or not conn then return nil, nil, conn_err end
+    local meta, meta_err = read_folder(api, conn, folder, FOLDER_FIELDS)
     if meta_err or not meta then return nil, nil, meta_err end
-    if meta.id ~= folder or meta.mimeType ~= FOLDER or meta.trashed == true then
-        return nil, nil, failure(errors.INVALID, "google_drive_folder", "The selected ID must name a live Drive folder", false)
-    end
-    if type(meta.capabilities) ~= "table" or meta.capabilities.canListChildren ~= true then
-        return nil, nil, failure(errors.PERMISSION_DENIED, "google_drive_folder", "The selected connection cannot list the folder", false)
-    end
-    local shared_drive = drive_id(meta.driveId)
-    if meta.driveId ~= nil and not shared_drive then
-        return nil, nil, failure(errors.UNAVAILABLE, "google_drive_folder", "Drive returned an invalid shared drive ID", true)
-    end
-    local selection: Map = {connection_id = connection, folder_id = folder, drive_id = shared_drive or ""}
+    local selection: Map = {connection_id = connection, folder_id = folder, drive_id = meta.driveId or ""}
     local cursor = req.cursor
     if type(cursor) == "table" and (cursor.connection_id ~= connection or cursor.folder_id ~= folder
             or cursor.drive_id ~= selection.drive_id) then
@@ -144,6 +155,81 @@ local function same_folder(file: Map, selection: Map): boolean
     if file.trashed == true or (file.driveId or "") ~= selection.drive_id or type(file.parents) ~= "table" then return false end
     for _, id in ipairs(file.parents) do if id == selection.folder_id then return true end end
     return false
+end
+
+function M.browse(input: any, deps: any?): (Map?, error?)
+    local request: Map = type(input) == "table" and input or {}
+    local action = request.action
+    local connection = nonempty(request.connection_id)
+    local bound = ctx.get("component_id")
+    if not connection or (bound ~= nil and bound ~= connection)
+        or (action ~= "list_folders" and action ~= "list_shared_drives") then
+        return nil, failure(errors.INVALID, "google_drive_browse", "Select a Google connection and a Drive listing action", false)
+    end
+    local shared = request.drive_id == nil and "" or request.drive_id
+    local parent = request.parent_id
+    if (shared ~= "" and not drive_id(shared)) or (parent ~= nil and not drive_id(parent))
+        or (action == "list_shared_drives" and (shared ~= "" or parent ~= nil)) then
+        return nil, failure(errors.INVALID, "google_drive_browse", "Invalid Drive listing location", false)
+    end
+    local cursor = request.cursor
+    local page_token: string?
+    if cursor ~= nil then
+        if type(cursor) ~= "table" or cursor.action ~= action or cursor.connection_id ~= connection
+            or cursor.drive_id ~= shared or not nonempty(cursor.page_token) or #cursor.page_token > 4096
+            or (action == "list_shared_drives" and cursor.parent_id ~= nil) then
+            return nil, failure(errors.INVALID, "google_drive_cursor_scope", "The page belongs to another Drive listing", false)
+        end
+        page_token = cursor.page_token
+    end
+
+    local api = deps and deps.drive or drive
+    local conn, conn_err = open_drive(connection, deps and deps.connect or transport.connect)
+    if conn_err or not conn then return nil, conn_err end
+    local limit = page_limit(request.limit)
+    local page, read_err, parent_ref
+    if action == "list_folders" then
+        local id = parent or (shared ~= "" and shared or "root")
+        local folder, folder_err = read_folder(api, conn, id, FOLDER_FIELDS .. ",name", id == "root" and shared == "")
+        if folder_err or not folder then return nil, folder_err end
+        if (folder.driveId or "") ~= shared or (cursor and cursor.parent_id ~= folder.id) then
+            return nil, failure(errors.INVALID, "google_drive_cursor_scope", "The folder belongs to another Drive listing", false)
+        end
+        if not nonempty(folder.name) then
+            return nil, failure(errors.UNAVAILABLE, "google_drive_folder", "Drive returned an unnamed folder", true)
+        end
+        parent_ref = {id = folder.id, name = folder.name, drive_id = shared}
+        local query = "'" .. folder.id .. "' in parents and mimeType = '" .. FOLDER .. "'"
+        local result, err = api.list_files(conn, query, limit, page_token, FOLDER_FIELDS .. ",name,parents", shared)
+        page, read_err = answer(result, err, "List Drive folders")
+    else
+        local result, err = api.list_shared_drives(conn, limit, page_token)
+        page, read_err = answer(result, err, "List shared drives")
+    end
+    if read_err or not page then return nil, read_err end
+    local rows = page[action == "list_folders" and "files" or "drives"]
+    if rows == nil then rows = {} end
+    local next_token = page.nextPageToken
+    local invalid_page = failure(errors.UNAVAILABLE, "google_drive_incomplete_listing", "Drive returned an incomplete discovery page", true)
+    if page.incompleteSearch == true or type(rows) ~= "table" or #rows > limit
+        or (next_token ~= nil and (not nonempty(next_token) or #next_token > 4096)) then
+        return nil, invalid_page
+    end
+    local items: { Map } = {}
+    local selection: Map = {folder_id = parent_ref and parent_ref.id, drive_id = shared}
+    for _, row in ipairs(rows) do
+        if type(row) ~= "table" or not drive_id(row.id) or not nonempty(row.name) then return nil, invalid_page end
+        if not parent_ref then
+            items[#items + 1] = {id = row.id, name = row.name}
+        elseif row.mimeType ~= FOLDER or not same_folder(row, selection) then
+            return nil, invalid_page
+        elseif type(row.capabilities) == "table" and row.capabilities.canListChildren == true then
+            items[#items + 1] = {id = row.id, name = row.name, drive_id = shared}
+        end
+    end
+    local next_cursor = next_token and {connection_id = connection, action = action, drive_id = shared,
+        parent_id = selection.folder_id, page_token = next_token} or nil
+    return {items = items, parent = parent_ref, next_cursor = next_cursor}, nil
 end
 
 local function item_key(id: string): string
