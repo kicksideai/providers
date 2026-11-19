@@ -14,6 +14,7 @@ local store = {}
 store.get_store = reader.get_store
 store.vector_search = reader.vector_search
 store.browse_nodes = reader.browse_nodes
+store.browse_page = reader.browse_page
 store.count_nodes = reader.count_nodes
 store.get_summaries = reader.get_summaries
 store.list_document_summaries = reader.list_document_summaries
