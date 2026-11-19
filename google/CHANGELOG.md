@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/kicksideai/providers/compare/google-v0.1.30...google-v0.1.31) (2026-11-18)
+
+
+### Bug Fixes
+
+* **google:** include shared drive items in Drive reads ([#135](https://github.com/kicksideai/providers/issues/135)) ([09229bd](https://github.com/kicksideai/providers/commit/09229bd4bde0ef2aa6e3cab9ab7cdd59c38b0c51))
+
 ## [0.1.30](https://github.com/kicksideai/providers/compare/google-v0.1.29...google-v0.1.30) (2026-11-17)
 
 
