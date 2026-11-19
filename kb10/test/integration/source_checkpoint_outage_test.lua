@@ -148,7 +148,7 @@ local function scenario(worker, ordinary)
                         VALUES ($1,'kickside.kb10:embeddable','{}')]], {id}))
                     assert(db:execute([[INSERT INTO kickside_component_access
                         (access_id,subject_type,subject_id,component_id,source_component_id,access_mask)
-                        VALUES ($1,'user',$2,$3,$3,15)]], {uuid.v7(),actor,id}))
+                        VALUES ($1,'user',$2,$3,$4,15)]], {uuid.v7(),actor,id,id}))
                     identity = {version = 2, principal = {kind = "user", id = actor}, authorized_by = {kind = "user", id = actor},
                         component_id = id, captured_at = time.now():utc():format(time.RFC3339)}
                 end
