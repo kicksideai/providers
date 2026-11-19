@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.32](https://github.com/kicksideai/providers/compare/kb10-v0.2.31...kb10-v0.2.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** surface batch upload failures in the library drawer ([#182](https://github.com/kicksideai/providers/issues/182)) ([4d74641](https://github.com/kicksideai/providers/commit/4d74641c2437a0439c3dd44a583b92ddbffc9e97))
+
 ## [0.2.31](https://github.com/kicksideai/providers/compare/kb10-v0.2.30...kb10-v0.2.31) (2026-11-19)
 
 
