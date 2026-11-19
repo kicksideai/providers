@@ -43,7 +43,7 @@ local function external_tuple(event, metadata)
     return source, id, version
 end
 
-function M.run(input)
+local function extract(input, verified_rejection)
     input = type(input) == "table" and input or {}
     local event = type(input.event) == "table" and input.event or {}
     if event.type ~= EVENT_CONTENT_UPSERTED and event.type ~= EVENT_CONTENT_DELETED then
@@ -86,24 +86,29 @@ function M.run(input)
     end
 
     local content = body.content
+    local rejection
     if content == nil and body.content_omitted == true then
         local ref = source_ref or {}
         local read_err
-        content, read_err = artifact_input.read(ref.upload_id, ref.artifact_id)
+        content, read_err, rejection = artifact_input.read(ref.upload_id, ref.artifact_id)
+        rejection = verified_rejection and rejection or nil
         if read_err then
-            return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err), retryable = true }
+            if not verified_rejection then
+                return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err), retryable = true }
+            end
+            if not rejection then return nil, read_err end
         end
-        if type(content) ~= "string" or #content ~= body.content_bytes then
+        if not rejection and (type(content) ~= "string" or #content ~= body.content_bytes) then
             return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
         end
-        if body.content_sha256 ~= nil then
+        if not rejection and body.content_sha256 ~= nil then
             local digest, digest_err = hash.sha256(content)
             if digest_err or digest ~= body.content_sha256 then
                 return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
             end
         end
     end
-    if trim(content) == "" then
+    if not rejection and trim(content) == "" then
         return { documents = {}, deletes = {}, error = "content event missing content" }
     end
 
@@ -123,21 +128,26 @@ function M.run(input)
 
     local title = trim(body.title or metadata.title or metadata.filename or metadata.source_url)
 
-    return {
-        documents = {
-            {
-                external_source = source,
-                external_id = external_id,
-                external_version = external_version ~= "" and external_version or nil,
-                content = content,
-                content_type = trim(body.content_type) ~= "" and trim(body.content_type) or "text/plain",
-                title = title ~= "" and title or nil,
-                metadata = metadata,
-                source_ref = source_ref,
-            },
-        },
-        deletes = {},
+    local document = {
+        external_source = source,
+        external_id = external_id,
+        external_version = external_version ~= "" and external_version or nil,
+        content = content,
+        content_type = trim(body.content_type) ~= "" and trim(body.content_type) or "text/plain",
+        title = title ~= "" and title or nil,
+        metadata = metadata,
+        source_ref = source_ref,
     }
+    if rejection then return {rejection = {document = document, code = rejection}} end
+    return {documents = {document}, deletes = {}}
 end
 
-return { run = M.run }
+function M.run(input)
+    return extract(input, false)
+end
+
+function M.checkpoint_input(event)
+    return extract({event = event}, true)
+end
+
+return M

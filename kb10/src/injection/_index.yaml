@@ -84,6 +84,36 @@ entries:
       text_trim: kickside.contract:text_trim
       artifact_input: kickside.kb10.injection:artifact_input
 
+  - name: content_extractor_lib
+    kind: library.lua
+    source: file://content_extractor.lua
+    modules: [hash]
+    imports:
+      text_trim: kickside.contract:text_trim
+      artifact_input: kickside.kb10.injection:artifact_input
+
+  - name: checkpoint_source_worker
+    kind: process.lua
+    meta:
+      comment: Supervised checkpoint worker for the canonical single-target knowledge source.
+      type: projection.worker
+      kind: knowledge.injection.source
+      private: true
+      checkpointed_apply: true
+    source: file://checkpoint_source_worker.lua
+    method: run
+    modules: [time, logger]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+      error_envelope: kickside.contract:error_envelope
+      extractor: kickside.kb10.injection:content_extractor_lib
+      legacy_worker: kickside.kb10.injection:source_worker_lib
+      materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      ops: kickside.kb10.persist:ops
+      writer: kickside.kb10.persist:writer
+
   # Deterministic, source-agnostic projection worker. Discovers extractors at
   # runtime via the registry (meta.type=projection.extractor) and materializes the
   # emitted documents into the kb10 store. func:// variant for inline dispatch;
