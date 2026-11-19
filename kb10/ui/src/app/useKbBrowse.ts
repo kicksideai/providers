@@ -5,7 +5,6 @@ import {
   isEngineMissing,
   ENGINE_NOTICE,
   contentDeletePayload,
-  canonicalSourceKey,
 } from './types'
 import { subscribeComponentMeta } from './componentMeta'
 
@@ -14,7 +13,7 @@ import { subscribeComponentMeta } from './componentMeta'
 // knowledge-thread path, and one realtime reconciliation. Delete is durable: the
 // node disappears only after the engine materializes the delete and the component
 // meta refresh tells us to reconcile. A queued row stays visible (spinner) until
-// the browse read model no longer contains its durable external id.
+// the browse read model no longer contains its node ID.
 export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void } = {}) {
   const loading = ref(false)
   const notice = ref('')
@@ -29,44 +28,17 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
   const hasPrev = computed(() => page.value > 0)
   const hasNext = computed(() => page.value < pageCount.value - 1)
   const deleting = ref<Record<string, boolean>>({})
-  const deletingExternalIds = ref<Record<string, string>>({})
   // A queued delete waits on materialization to clear its spinner. Bound that wait so a
   // delete that never materializes stops spinning and surfaces a retryable notice.
   const DELETE_TIMEOUT_MS = 20000
   const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
   function clearPending(nodeId: string) {
     const d = { ...deleting.value }; delete d[nodeId]; deleting.value = d
-    const ids = { ...deletingExternalIds.value }; delete ids[nodeId]; deletingExternalIds.value = ids
     const t = pendingTimers.get(nodeId)
     if (t) { clearTimeout(t); pendingTimers.delete(nodeId) }
   }
 
-  // Concept/edge nodes belong to the graph; chunks/summaries are indexing detail.
-  const EXCLUDED = new Set(['concept', 'edge', 'chunk', 'summary'])
-
-  function docTime(n: BrowseNode): number {
-    return Date.parse(n.updated_at || n.created_at || '') || 0
-  }
-
-  // Collapse document nodes that share a canonical source identity to one row —
-  // the newest — so an in-flight replace or a redelivered ingest never shows the
-  // same file twice. Nodes without a canonical identity cannot be duplicates and
-  // are kept individually. First-seen position is preserved so the list is stable.
-  function dedupeDocuments(list: BrowseNode[]): BrowseNode[] {
-    const indexByKey = new Map<string, number>()
-    const out: BrowseNode[] = []
-    for (const n of list) {
-      const key = canonicalSourceKey(n)
-      if (!key) { out.push(n); continue }
-      const at = indexByKey.get(key)
-      if (at === undefined) { indexByKey.set(key, out.length); out.push(n); continue }
-      if (docTime(n) >= docTime(out[at])) out[at] = n
-    }
-    return out
-  }
-
-  const documents = computed(() =>
-    dedupeDocuments(nodes.value.filter((n) => !EXCLUDED.has(n.node_type || ''))))
+  const documents = nodes
 
   function findDoc(id: string): BrowseNode | undefined {
     return documents.value.find((n) => n.id === id)
@@ -87,7 +59,7 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
       // Fetch only the current page. total comes from the API count, so a large KB
       // never pulls its whole node set into one list.
       const offset = page.value * pageSize.value
-      const { data } = await api.get(`/api/v1/kb10/${id}/browse?limit=${pageSize.value}&offset=${offset}`)
+      const { data } = await api.get(`/api/v1/kb10/${id}/browse?node_type=document&limit=${pageSize.value}&offset=${offset}`)
       if (seq !== loadSeq || kbId() !== id) return
       if (!data?.success) {
         notice.value = data?.error && isEngineMissing(data.error) ? ENGINE_NOTICE : data?.error || ''
@@ -116,19 +88,12 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
   function next() { if (hasNext.value) goToPage(page.value + 1) }
   function prev() { if (hasPrev.value) goToPage(page.value - 1) }
 
-  // Queue a delete through the knowledge content thread by the node's durable
-  // external identity. Returns true when the request was accepted (the row then
-  // waits for materialization), false when it could not be queued.
+  // A queued delete waits for materialization on the Knowledge content thread.
   async function remove(n: BrowseNode): Promise<boolean> {
     const id = kbId()
     if (!id || deleting.value[n.id]) return false
     const payload = contentDeletePayload(n)
-    if (!payload) {
-      notice.value = 'This document has no durable source identity and cannot be deleted here.'
-      return false
-    }
     deleting.value = { ...deleting.value, [n.id]: true }
-    deletingExternalIds.value = { ...deletingExternalIds.value, [n.id]: String(payload.external_id || '') }
     let queued = false
     try {
       const { data } = await api.delete(`/api/v1/knowledge/${id}/content`, { data: payload })
@@ -158,33 +123,14 @@ export function useKbBrowse(kbId: () => string, opts: { onChanged?: () => void }
     return queued
   }
 
-  function externalIdOf(n: BrowseNode): string {
-    return String(contentDeletePayload(n)?.external_id || '')
-  }
-
-  // A queued delete clears once the browse read model no longer carries its durable
-  // external id. Runs after a fresh load against the reconciled document set — the
-  // reconciliation is per-page (documents holds the current page), and total
-  // decrements naturally as the reload reports the smaller count.
   function reconcilePendingDeletes() {
-    if (Object.keys(deletingExternalIds.value).length === 0) return
-    const liveExternalIds = new Set(documents.value.map(externalIdOf).filter(Boolean))
-    const nextDeleting = { ...deleting.value }
-    const nextExternalIds = { ...deletingExternalIds.value }
-    let matched = false
-    for (const [nodeId, externalId] of Object.entries(deletingExternalIds.value)) {
-      if (externalId && !liveExternalIds.has(externalId)) {
-        delete nextDeleting[nodeId]
-        delete nextExternalIds[nodeId]
-        const t = pendingTimers.get(nodeId)
-        if (t) { clearTimeout(t); pendingTimers.delete(nodeId) }
-        matched = true
-      }
-    }
-    if (!matched) return
-    deleting.value = nextDeleting
-    deletingExternalIds.value = nextExternalIds
-    if (!Object.keys(nextDeleting).length) notice.value = ''
+    const pending = Object.keys(deleting.value)
+    if (pending.length === 0) return
+    const liveNodeIds = new Set(nodes.value.map((node) => node.id))
+    const removed = pending.filter((nodeId) => !liveNodeIds.has(nodeId))
+    if (!removed.length) return
+    for (const nodeId of removed) clearPending(nodeId)
+    if (!Object.keys(deleting.value).length) notice.value = ''
     opts.onChanged?.()
   }
 

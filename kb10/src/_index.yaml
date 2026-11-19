@@ -30,6 +30,11 @@ entries:
     meta:
       comment: Implements the shared component and deletable contracts.
 
+  - name: dep.kickside.provider_text
+    kind: ns.dependency
+    component: kickside/provider-text
+    version: "*"
+
   - name: dep.kickside.search_index
     kind: ns.dependency
     component: kickside/search-index
@@ -68,7 +73,7 @@ entries:
   - name: dep.kickside.knowledge
     kind: ns.dependency
     component: kickside/knowledge
-    version: "*"
+    version: ">=0.1.88"
     meta:
       comment: Reads and writes knowledge bases through the knowledge contract.
 
@@ -179,6 +184,14 @@ entries:
       - entry: kickside.kb10.migrations:06_source_text_index
         path: .meta.target_db
       - entry: kickside.kb10.migrations:07_preserve_answer_settings
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:08_source_identity_schema
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:09_source_identity_backfill
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:10_sqlite_search_row_keys
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:11_sqlite_search_row_backfill
         path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id

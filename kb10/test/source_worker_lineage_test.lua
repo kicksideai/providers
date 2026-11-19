@@ -72,8 +72,54 @@ local function define_tests()
             teardown_kb10_store(db, cid)
         end)
 
+        test.it("keeps the surviving UUID in a colliding legacy projection slot", function()
+            local cid = bootstrap_kb10_store(db)
+            local resolver = materialized_store_resolver_for({ [cid] = true })
+            local function item(event)
+                return {
+                    external_source = event.body.source,
+                    external_id = event.body.id,
+                    content = "document content",
+                    content_type = "text/plain",
+                }
+            end
+            local dispatcher = dispatcher_for({
+                ["fixture.upsert"] = function(event) return {documents = {item(event)}} end,
+                ["fixture.remove"] = function(event) return {deletes = {item(event)}} end,
+            })
+            local deps = worker_deps({embedder = fake_embedder, dispatcher = dispatcher,
+                resolve_materialized_store = resolver})
+            local projection_id = uuid()
+            local function run(events, body)
+                return assert(source_worker.run_with_deps({
+                    thread_id = cid, projection = {id = projection_id, body = body},
+                    events = events, worker_config = {target_kb_ids = {cid}},
+                }, deps))
+            end
+            local function event(seq, operation, source, id)
+                return build_event({seq = seq, type = operation, body = {source = source, id = id}})
+            end
+            local created = run({
+                event(1, "fixture.upsert", "feed:part", "key"),
+                event(2, "fixture.upsert", "feed", "part:key"),
+            })
+            test.eq(created.metrics.documents_inserted, 2)
+            local state = created.body.kbs[cid]
+            local survivor = state.sources["feed:part:key"]
+            test.eq(survivor.external_source, "feed:part")
+            local deleted = run({event(3, "fixture.remove", "feed", "part:key")}, {kbs = created.body.kbs})
+            test.eq(deleted.metrics.documents_removed, 1)
+            test.eq(deleted.body.kbs[cid].sources["feed:part:key"].document_node_id, survivor.document_node_id)
+            local nodes = fetch_kb10_nodes(db, cid)
+            local root
+            for _, node in ipairs(nodes) do if node.node_type == "document" then root = node.id end end
+            test.eq(tostring(root), survivor.document_node_id)
+            teardown_kb10_store(db, cid)
+        end)
+
         test.it("promotes delete canonical key from source_ref", function()
             local cid = bootstrap_kb10_store(db)
+            local thread_id = uuid()
             local resolver = materialized_store_resolver_for({ [cid] = true })
             local ref_delete_handler = function(event)
                 local body = event.body or {}
@@ -94,7 +140,7 @@ local function define_tests()
             })
 
             source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({
@@ -113,7 +159,7 @@ local function define_tests()
             test.is_true(#before >= 1)
 
             local result, err = source_worker.run_with_deps({
-                thread_id = uuid(),
+                thread_id = thread_id,
                 projection = { id = uuid() },
                 events = {
                     build_event({

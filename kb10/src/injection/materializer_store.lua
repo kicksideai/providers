@@ -8,6 +8,7 @@
 -- DTO/colon-methods so the engine-agnostic source_materializer planner drives it.
 
 local kb10_store = require("kb10_store")
+local trim = require("provider_text").trim
 
 local M = {}
 
@@ -16,11 +17,6 @@ local SOURCE_NODE_TYPES: { [string]: boolean } = { document = true, summary = tr
 local function arg_table(args: any): { [string]: any }
     if type(args) == "table" then return args :: { [string]: any } end
     return {}
-end
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 local function source_node_type(node_type: any): boolean
@@ -103,6 +99,11 @@ local function validate_replace_document(args: { [string]: any }): string?
     if not ok then return lineage_err end
 
     local doc_metadata = type(document.metadata) == "table" and document.metadata or {}
+    local doc_thread = doc_metadata.source_ref.thread_id
+    if type(doc_thread) ~= "string" or doc_thread == "" then
+        local _, err = reject_missing_lineage("replace_document", "source_ref.thread_id")
+        return err
+    end
     local doc_source = trim(doc_metadata.external_source)
     local doc_external_id = trim(doc_metadata.external_id)
     local doc_external_version = trim(doc_metadata.external_version)
@@ -117,6 +118,10 @@ local function validate_replace_document(args: { [string]: any }): string?
         local child_ok, child_lineage_err = require_source_lineage("replace_document", {}, node.metadata)
         if not child_ok then return child_lineage_err end
         local child_metadata = type(node.metadata) == "table" and node.metadata or {}
+        if child_metadata.source_ref.thread_id ~= doc_thread then
+            local _, err = reject_mismatched_lineage("replace_document", "child.source_ref.thread_id")
+            return err
+        end
         if trim(child_metadata.external_source) ~= doc_source then
             local _, err = reject_mismatched_lineage("replace_document", "child.external_source")
             return err
@@ -183,21 +188,22 @@ function M.insert_embedding(_self: any, args: any): (any, string?)
     return kb10_store.insert_embedding(a.store_id, a.node_id, a.node_type, a.parent_id, a.embedding)
 end
 
-function M.replace_document(_self: any, args: any): (any, string?)
+function M.replace_document(_self: any, args: any): (any, any?)
     local a = arg_table(args)
     local validation_err = validate_replace_document(a)
     if validation_err then return nil, validation_err end
     return kb10_store.replace_document(a.store_id, {
         document = a.document,
         children = a.children,
+        source_thread_id = a.source_thread_id,
     })
 end
 
-function M.delete_documents_by_external_id(_self: any, args: any): (any, string?)
+function M.delete_documents_by_external_id(_self: any, args: any): (any, any?)
     local a = arg_table(args)
     local ok, lineage_err = require_source_lineage("delete_documents_by_external_id", a, a.metadata)
     if not ok then return nil, lineage_err end
-    return kb10_store.delete_documents_by_external_id(a.store_id, a.external_source, a.external_id)
+    return kb10_store.delete_document(a.store_id, a)
 end
 
 return M

@@ -77,3 +77,57 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 08_source_identity_schema
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-18T17:00:00Z"
+    source: file://08_source_identity_schema.lua
+    modules: [sql]
+    imports:
+      migration: wippy.migration:migration
+      ops: kickside.kb10.persist:ops
+    method: migrate
+
+  - name: 09_source_identity_backfill
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-18T17:01:00Z"
+    source: file://09_source_identity_backfill.lua
+    modules: [sql]
+    imports:
+      migration: wippy.migration:migration
+      ops: kickside.kb10.persist:ops
+    method: migrate
+
+  - name: 10_sqlite_search_row_keys
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-18T17:02:00Z"
+    source: file://10_sqlite_search_row_keys.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
+  - name: 11_sqlite_search_row_backfill
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-18T17:03:00Z"
+    source: file://11_sqlite_search_row_backfill.lua
+    modules: [json]
+    imports:
+      migration: wippy.migration:migration
+      ops: kickside.kb10.persist:ops
+    method: migrate
