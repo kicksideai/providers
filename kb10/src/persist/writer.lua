@@ -309,7 +309,8 @@ local function delete_sqlite_subtree_tx(tx: any, store_id: any, node_id: any, in
     return nil
 end
 
-local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, node_id: any): (kb10.Map?, any?)
+local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, node_id: any,
+        count_embeddings: boolean?): (kb10.Map?, any?)
     if not is_str(node_id) then return nil, errors.new({ message = "node_id is required", kind = errors.INVALID }) end
     local failed, root
     if db_type == sql.type.SQLITE then
@@ -319,18 +320,55 @@ local function subtree_source_counts_tx(tx: any, db_type: any, store_id: any, no
         failed = "metadata->>'status' = 'failed'"
         root = "metadata->'is_root' = 'true'::jsonb OR metadata->>'concept_type' = 'root'"
     end
+    local embeddings = ""
+    if count_embeddings then
+        local count = db_type == sql.type.SQLITE and "COALESCE(json_array_length(n.embedding_ids),0)"
+            or "(SELECT count(*) FROM kb10_embeddings e WHERE e.node_id=n.id AND e.store_id=$2)"
+        embeddings = ", COALESCE(sum(" .. count .. "),0) AS embedding_count" ..
+            ", COALESCE(sum(" .. count .. ") FILTER (WHERE n.id<>$1),0) AS child_embedding_count"
+    end
     local rows, err = tx:query(
         descendants_cte(db_type, true) ..
         "SELECT count(*) FILTER (WHERE node_type = 'document' AND NOT COALESCE(" .. failed .. ", false)) AS document_count," ..
         " count(*) FILTER (WHERE node_type = 'document' AND " .. failed .. ") AS failed_document_count," ..
         " count(*) FILTER (WHERE node_type = 'chunk') AS chunk_count," ..
         " count(*) FILTER (WHERE node_type = 'summary') AS summary_count," ..
-        " count(*) FILTER (WHERE node_type = 'concept' AND (" .. root .. ")) AS root_count" ..
+        " count(*) FILTER (WHERE node_type = 'concept' AND (" .. root .. ")) AS root_count" .. embeddings ..
         " FROM descendants d CROSS JOIN kb10_nodes n WHERE n.id = d.id AND n.store_id = $2",
         { node_id, store_id }
     )
     if err then return nil, errors.wrap(err, "source count lookup failed") end
     return rows[1], nil
+end
+
+local function source_checkpoint_state(db: any, dialect: string, store_id: string, selector: table,
+        count_subtree: boolean): (table?, any?)
+    local id, err
+    if selector.node_id then
+        local selected
+        selected, err = ops.find_document_root_tx(db, store_id, selector.node_id)
+        id = selected and tostring(selected.id)
+    else
+        local binding = ops.source_binding(store_id, selector.external_source, selector.external_id, selector.source_thread_id)
+        if not binding then return nil, errors.new({kind = errors.INVALID, message = "invalid source binding"}) end
+        id, err = ops.find_source_root_tx(db, dialect, store_id, binding)
+    end
+    if err then return nil, err end
+    if not id then return {}, nil end
+    local rows, read_err = db:query([[SELECT CAST(updated_at AS TEXT) AS updated_at,CAST(metadata AS TEXT) AS revision
+        FROM kb10_nodes WHERE store_id=$1 AND id=$2]], {store_id, id})
+    if read_err then return nil, read_err end
+    local root = rows[1]
+    if not root then
+        return nil, errors.new({kind = errors.CONFLICT, retryable = true, message = "source document changed while preparing checkpoint"})
+    end
+    local counts
+    if count_subtree then
+        counts, err = subtree_source_counts_tx(db, dialect, store_id, id, true)
+        if err then return nil, err end
+    end
+    return {id = id, updated_at = root.updated_at, revision = root.revision,
+        status = decode_metadata(root.revision).status, counts = counts}, nil
 end
 
 -- Delete a node and its whole subtree (chunks/summaries) plus their embeddings,
@@ -556,6 +594,11 @@ end
 
 -- Record an attempted immutable revision without rewriting an accepted tree.
 -- The owning checkpoint supplies the transaction and the canonical lineage.
+local SOURCE_REJECTIONS = {
+    artifact_reference_not_found = "The selected artifact is missing.",
+    artifact_bytes_not_found = "The selected artifact's stored content is missing.",
+}
+
 function writer.reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
         metadata: kb10.Map, code: string): (any?, any?)
     local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, source_thread_id)
@@ -567,11 +610,7 @@ function writer.reject_source_revision_tx(tx: any, db_type: any, store_id: any, 
     local id, lookup_err = ops.find_source_root_tx(tx, db_type, store_id, binding)
     if lookup_err then return nil, lookup_err end
 
-    local outcomes = {
-        artifact_reference_not_found = "The selected artifact is missing.",
-        artifact_bytes_not_found = "The selected artifact's stored content is missing.",
-    }
-    local reason = outcomes[code]
+    local reason = SOURCE_REJECTIONS[code]
     local position = tonumber(metadata.thread_event_seq)
     if not reason or not position or not is_str(metadata.thread_event_id) then
         return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a verified source revision"})
@@ -1026,6 +1065,75 @@ function writer.delete_document_tx(tx: any, db_type: any, store_id: any, selecto
     result.external_source = root and root.external_source
     result.external_id = root and root.external_id
     return result, nil
+end
+
+-- Core authorizes appends before opening the shared write transaction. Read
+-- the affected subtree's contribution so the caller can declare those appends
+-- and prove the same facts under the store lock before consuming the event.
+function writer.source_checkpoint_before(store_id: string, selector: table, kind: string): (table?, any?)
+    local db, err = ops.get_db()
+    if err then return nil, err end
+    local dialect, type_err = ops.get_db_type(db)
+    if type_err then db:release(); return nil, type_err end
+    local before, read_err = source_checkpoint_state(db, dialect, store_id, selector, kind ~= "reject")
+    local _, release_err = db:release()
+    if read_err or release_err then return nil, read_err or release_err end
+    return before, nil
+end
+
+function writer.source_checkpoint_outcome(before: table, change: table): table
+    local delta: table = {status = "ready", document_delta = 0, failed_delta = 0, summary_delta = 0,
+        chunk_delta = 0, embedding_delta = 0}
+    if change.kind == "reject" then
+        delta.status = before.id and before.status ~= "failed" and "degraded" or "error"
+        delta.last_error = SOURCE_REJECTIONS[change.code]
+        delta.failed_delta = before.id and 0 or 1
+        return delta
+    end
+    local counts = before.counts or {}
+    delta.document_delta = -(tonumber(counts.document_count) or 0)
+    delta.failed_delta = -(tonumber(counts.failed_document_count) or 0)
+    delta.summary_delta = -(tonumber(counts.summary_count) or 0)
+    delta.chunk_delta = -(tonumber(counts.chunk_count) or 0)
+    if change.kind == "delete" then
+        delta.embedding_delta = -(tonumber(counts.embedding_count) or 0)
+        return delta
+    end
+    local children = change.replacement.children
+    delta.embedding_delta = #children - (tonumber(counts.child_embedding_count) or 0)
+    delta.document_delta = delta.document_delta + 1
+    for _, child in ipairs(children) do
+        if child.node.node_type == kb10.NODE_TYPE.SUMMARY then delta.summary_delta = delta.summary_delta + 1 end
+        if child.node.node_type == kb10.NODE_TYPE.CHUNK then delta.chunk_delta = delta.chunk_delta + 1 end
+    end
+    return delta
+end
+
+function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: string, selector: table,
+        before: table, change: table): (boolean?, any?)
+    local lock_err = require_store_tx(tx, dialect, store_id)
+    if lock_err then return nil, lock_err end
+    local current, err = source_checkpoint_state(tx, dialect, store_id, selector, change.kind ~= "reject")
+    if not current then return nil, err end
+    local function changed(): (nil, error)
+        return nil, errors.new({kind = errors.CONFLICT, retryable = true, message = "source document changed before checkpoint"})
+    end
+    if current.id ~= before.id or current.revision ~= before.revision or current.updated_at ~= before.updated_at then
+        return changed()
+    end
+    for key, count in pairs(before.counts or {}) do
+        if not current.counts or tonumber(current.counts[key]) ~= tonumber(count) then return changed() end
+    end
+    local written, write_err
+    if change.kind == "reject" then
+        written, write_err = writer.reject_source_revision_tx(tx, dialect, store_id, selector.source_thread_id,
+            change.metadata, change.code)
+    elseif change.kind == "delete" then
+        written, write_err = writer.delete_document_tx(tx, dialect, store_id, selector)
+    else
+        written, write_err = writer.replace_document_tx(tx, dialect, store_id, change.replacement)
+    end
+    return written ~= nil, write_err
 end
 
 local function delete_documents(store_id: any, mutate: any, ...)

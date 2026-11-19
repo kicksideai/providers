@@ -18,6 +18,7 @@ local uuid = require("uuid")
 local writer = require("writer")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
+local GRAPH = "kickside.knowledge.events:graph.changed"
 local DATABASE = "app:db"
 
 local function row(statement, args)
@@ -190,6 +191,44 @@ return {run = test.run_cases(function()
                 test.eq(persisted.child_id, accepted.child_id)
                 test.eq(persisted.content, accepted.content)
                 test.eq(tonumber(snapshot(current.id).last_seq), 1)
+            end)
+        end)
+
+        test.it("rejects stale output facts and rolls back owner writes when publishing fails", function()
+            with_registration(function(kb_id, events, job, current)
+                local selector = {source_thread_id = kb_id, external_source = "knowledge.kb", external_id = "same-document"}
+                local change = {kind = "replace", replacement = replacement(kb_id, events[1], 1)}
+                local empty = assert(writer.source_checkpoint_before(kb_id, selector, change.kind))
+                assert(writer.replace_document(kb_id, replacement(kb_id, events[2], 2)))
+                local existing = assert(document(kb_id))
+                local write = function(before)
+                    return function(tx, dialect)
+                        return writer.write_source_checkpoint_tx(tx, dialect, kb_id, selector, before, change)
+                    end
+                end
+                local stale, stale_err = apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1,
+                    append_events = {{thread_id = kb_id, events = {{type = GRAPH}}}}}, write(empty))
+                test.is_nil(stale)
+                test.is_true(errors.is(stale_err, errors.CONFLICT), tostring(stale_err))
+                test.eq(document(kb_id).child_id, existing.child_id)
+                test.eq(tonumber(snapshot(current.id).last_seq), 0)
+
+                local before = assert(writer.source_checkpoint_before(kb_id, selector, change.kind))
+                local moved = false
+                local execute = write(before)
+                local refused, refusal = apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1,
+                    append_events = {{thread_id = kb_id, events = {{type = GRAPH}}},
+                        {thread_id = uuid.v7(), events = {{type = GRAPH}}}}}, function(tx, dialect)
+                    local wrote, err = execute(tx, dialect)
+                    moved = wrote == true
+                    return wrote, err
+                end)
+                test.is_true(moved, tostring(refusal))
+                test.is_nil(refused)
+                test.is_true(errors.is(refusal, errors.NOT_FOUND), tostring(refusal))
+                test.eq(document(kb_id).child_id, existing.child_id)
+                test.eq(tonumber(snapshot(current.id).last_seq), 0)
+                test.is_nil((row("SELECT id FROM kickside_event WHERE thread_id=$1 AND type=$2", {kb_id, GRAPH})))
             end)
         end)
 

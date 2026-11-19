@@ -791,17 +791,8 @@ type IngestMetrics = {
     documents_removed: number, items_failed: number,
 }
 
-local function build_digest_request_writes(input: any, thread_id: string, projection_id: string, target_kb_ids: { string }, metrics: IngestMetrics, from_seq: number?, to_seq: number?): { table }?
-    if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
-        return nil
-    end
-    local range = type(input.range) == "table" and input.range or {}
-    local target_seq = tonumber(range.target_seq)
-    local range_to_seq = tonumber(range.to_seq) or tonumber(to_seq)
-    if not target_seq or not range_to_seq or range_to_seq < target_seq then
-        return nil
-    end
-
+local function digest_request_writes(thread_id: string, projection_id: string, target_kb_ids: { string },
+        target_seq: number, from_seq: number?, to_seq: number?): { table }?
     local events = {}
     for _, kb_id in ipairs(target_kb_ids) do
         local body = {
@@ -837,6 +828,19 @@ local function build_digest_request_writes(input: any, thread_id: string, projec
 
     if #events == 0 then return nil end
     return { { thread_id = thread_id, events = events } }
+end
+
+local function build_digest_request_writes(input: any, thread_id: string, projection_id: string, target_kb_ids: { string }, metrics: IngestMetrics, from_seq: number?, to_seq: number?): { table }?
+    if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
+        return nil
+    end
+    local range = type(input.range) == "table" and input.range or {}
+    local target_seq = tonumber(range.target_seq)
+    local range_to_seq = tonumber(range.to_seq) or tonumber(to_seq)
+    if not target_seq or not range_to_seq or range_to_seq < target_seq then
+        return nil
+    end
+    return digest_request_writes(thread_id, projection_id, target_kb_ids, target_seq, from_seq, to_seq)
 end
 
 local function result_deltas(kb_id: string, results: { any }): table
@@ -999,6 +1003,18 @@ local function merge_append_writes(...): { table }?
     end
     if #merged == 0 then return nil end
     return merged
+end
+
+local function checkpoint_writes(cursor: table, sequence: number, outcome: table,
+        finalize: boolean): {table}?
+    local thread_id, projection_id = cursor.thread_id, cursor.projection_id
+    local targets = {thread_id}
+    local notification = {{component_id = thread_id, notifications = {outcome}}}
+    local graph = build_source_meta_writes(thread_id, projection_id, targets, notification,
+        outcome.status, outcome.last_error, sequence, sequence)
+    if not finalize then return graph end
+    local domain = digest_request_writes(thread_id, projection_id, targets, sequence, sequence, sequence)
+    return merge_append_writes(graph, domain)
 end
 
 local function run_with_deps(input_raw, deps)
@@ -1506,6 +1522,7 @@ return {
     ensure_source_lineage = ensure_source_lineage,
     selected_document_id = selected_document_id,
     prepare_checkpoint_document = prepare_checkpoint_document,
+    checkpoint_writes = checkpoint_writes,
     -- Production seams reused outside the worker: resummarize (kb10 engine)
     -- regenerates a document's summary/chunk-enrichment from stored content
     -- with the same model calls ingestion makes, without duplicating them.
