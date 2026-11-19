@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.7...mcp-client-v0.2.8) (2026-11-19)
+
+
+### Bug Fixes
+
+* **mcp-client:** include the public package in release gates ([#140](https://github.com/kicksideai/providers/issues/140)) ([6633648](https://github.com/kicksideai/providers/commit/663364871f6ba7f6dc705b80eca897a33836e9c7))
+
 ## [0.2.7](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.6...mcp-client-v0.2.7) (2026-11-18)
 
 
