@@ -59,6 +59,10 @@ variables in the harness configuration for your test server.
 
 Install the OCR processor and PDF rasterizer requirements, configure the generation model, and upload a scanned or image-only document through Uploads. OCR processes selected pages; original content and derived artifacts stay owned by Uploads.
 
+For processing jobs, OCR reports progress through Jobs 0.1.83 or later before
+each page batch. Each report uses the active execution's lease, and OCR stops
+before the next batch if that lease has been revoked.
+
 ### Model request shape
 
 Each page is sent as a system prompt, then a user message with the instruction text
