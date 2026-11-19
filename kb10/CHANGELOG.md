@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.33](https://github.com/kicksideai/providers/compare/kb10-v0.2.32...kb10-v0.2.33) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** clear the document link after its deletion is accepted ([#186](https://github.com/kicksideai/providers/issues/186)) ([dc23cb8](https://github.com/kicksideai/providers/commit/dc23cb883e5e18fd0e8c03f2f2539c094b75ce91))
+
 ## [0.2.32](https://github.com/kicksideai/providers/compare/kb10-v0.2.31...kb10-v0.2.32) (2026-11-19)
 
 
