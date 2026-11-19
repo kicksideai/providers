@@ -26,6 +26,7 @@ type Checkpoint = {
     format: string,
     size: integer,
     offset: integer,
+    max_record_bytes: integer?,
     sheet: Sheet?,
     name: string,
     header_row: integer,
@@ -197,10 +198,23 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
     local format, filename = source_format(doc)
     if not format then return false, nil, nil end
     local checkpoint = options and options.checkpoint
-    if checkpoint and (checkpoint.format ~= format or checkpoint.size ~= size) then
-        return nil, nil, "spreadsheet checkpoint format or chunk size changed"
+    local max_record_bytes = options and options.max_record_bytes
+    if max_record_bytes ~= nil and (type(max_record_bytes) ~= "number" or max_record_bytes < 1
+        or math.tointeger(max_record_bytes) == nil) then
+        return nil, nil, "spreadsheet record byte budget must be a positive integer"
     end
-    local input = records.open(read, checkpoint and checkpoint.offset or 0, options and options.max_record_bytes)
+    local offset = 0
+    if checkpoint then
+        if checkpoint.format ~= format or checkpoint.size ~= size then
+            return nil, nil, "spreadsheet checkpoint format or chunk size changed"
+        end
+        if checkpoint.max_record_bytes ~= max_record_bytes then return nil, nil, "spreadsheet checkpoint record budget changed" end
+        if type(checkpoint.offset) ~= "number" or checkpoint.offset < 0 or math.tointeger(checkpoint.offset) == nil then
+            return nil, nil, "invalid spreadsheet checkpoint offset"
+        end
+        offset = checkpoint.offset
+    end
+    local input = records.open(read, offset, max_record_bytes)
     local current: Sheet? = checkpoint and checkpoint.sheet or nil
     local group: {string} = checkpoint and copy_strings(checkpoint.group) or {}
     local group_bytes = checkpoint and checkpoint.group_bytes or 0
@@ -366,7 +380,8 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
 
     while true do
         if should_pause and should_pause() then
-            return true, { format = format, size = size, offset = input.offset(), sheet = current, name = name,
+            return true, { format = format, size = size, offset = input.offset(), max_record_bytes = max_record_bytes,
+                sheet = current, name = name,
                 header_row = header_row, column_offset = column_offset, pending = pending, row = row,
                 group = group, group_bytes = group_bytes, group_start = group_start, group_end = group_end }, nil
         end

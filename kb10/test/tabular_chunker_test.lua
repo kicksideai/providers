@@ -308,6 +308,30 @@ local function define_tests()
             test.is_nil(whole_err)
             test.is_true(#chunks > 1)
         end)
+        test.it("rejects a changed record budget before opening the resumed source", function()
+            local csv = string.rep("Label", 24) .. ",Value\nA,B\n"
+            local doc = document(csv, "budget.csv")
+            local boundaries = 0
+            local recognized, checkpoint, err = tabular.plan_document(doc, 400, block_reader(csv, 8),
+                function() error("Header must not emit") end,
+                { max_record_bytes = 256, should_pause = function()
+                    boundaries = boundaries + 1
+                    return boundaries == 2
+                end })
+            test.is_true(recognized)
+            test.is_nil(err)
+            test.not_nil(checkpoint)
+            local reads = 0
+            local resumed, next_checkpoint, resume_err = tabular.plan_document(doc, 400, function()
+                reads = reads + 1
+                return "", nil
+            end, function() error("Rejected resume must not emit") end,
+                { checkpoint = checkpoint, max_record_bytes = 16 })
+            test.is_nil(resumed)
+            test.is_nil(next_checkpoint)
+            test.eq(resume_err, "spreadsheet checkpoint record budget changed")
+            test.eq(reads, 0)
+        end)
     end)
     test.describe("spreadsheet ingestion into the engine store", function()
         test.it("persists sheet and row metadata on searchable chunk nodes on both databases", function()
