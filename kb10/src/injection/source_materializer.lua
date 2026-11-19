@@ -9,6 +9,7 @@ local text = require("text")
 local logger = require("logger"):named("knowledge.injection.source_materializer")
 
 local kb_types = require("kb_types")
+local model_settings = require("model_settings")
 local engines = require("engines")
 local tabular_chunker = require("tabular_chunker")
 
@@ -154,8 +155,9 @@ end
 
 function M.materialization_options(target, worker_config): (MaterializationOptions?, string?)
     local store_row = target and (target.store_row or target)
-    local config = store_config(store_row)
-    config = engines.apply_default_config(config, target and target.engine)
+    local stored = store_config(store_row)
+    local engine = target and target.engine
+    local config = engines.apply_default_config(stored, engine)
     local worker_materialization = {}
     if type(worker_config) == "table" and type(worker_config.materialization) == "table" then
         worker_materialization = worker_config.materialization
@@ -185,10 +187,10 @@ function M.materialization_options(target, worker_config): (MaterializationOptio
     )
     if summary_err then return nil, summary_err end
 
-    local summary_model = worker_materialization.summary_model or config.summary_model
-    if type(summary_model) ~= "string" then summary_model = nil end
-    local chunk_enrichment_model = worker_materialization.chunk_enrichment_model or config.chunk_enrichment_model
-    if type(chunk_enrichment_model) ~= "string" then chunk_enrichment_model = nil end
+    local summary_model, summary_model_err = model_settings.resolve(stored, engine, "summary_model", worker_materialization)
+    if summary_model_err then return nil, tostring(summary_model_err) end
+    local chunk_enrichment_model, chunk_model_err = model_settings.resolve(stored, engine, "chunk_enrichment_model", worker_materialization)
+    if chunk_model_err then return nil, tostring(chunk_model_err) end
     local max_doc_chars, max_doc_err = optional_int_between(
         worker_materialization.max_document_content_chars or config.max_document_content_chars,
         "max_document_content_chars",
@@ -981,7 +983,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     -- LLM-compress each document into its summary with the KB's summary model;
     -- without a summarizer or model the plan falls back to head-truncation.
     local summarize: any? = nil
-    if summarizer and materialization_opts.summary_model and materialization_opts.summary_model ~= "" then
+    if summarizer and materialization_opts.summary_model then
         summarize = function(doc: any): (string?, string?)
             local summary, summary_err = summarizer(doc.content or "", materialization_opts.summary_model,
                 materialization_opts.summary_max_chars, materialization_opts.summary_prompt)
@@ -993,7 +995,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     -- Contextual retrieval: situate each chunk within its document with the KB's
     -- chunk-enrichment model. Skipped without an enricher or model.
     local enrich: any? = nil
-    if enricher and materialization_opts.chunk_enrichment_model and materialization_opts.chunk_enrichment_model ~= "" then
+    if enricher and materialization_opts.chunk_enrichment_model then
         enrich = function(doc: any, summary_text: any, chunk: any): (string?, string?)
             local prefix, err = enricher(doc.content or "", summary_text or "", chunk or "", materialization_opts.chunk_enrichment_model)
             if type(prefix) == "string" then return prefix :: string end
@@ -1001,7 +1003,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         end
     end
     local enrich_batch: any? = nil
-    if batch_enricher and materialization_opts.chunk_enrichment_model and materialization_opts.chunk_enrichment_model ~= "" then
+    if batch_enricher and materialization_opts.chunk_enrichment_model then
         enrich = nil
         enrich_batch = function(doc: any, summary_text: any, chunks: any): (any?, string?)
             local prefixes, err = batch_enricher(doc.content or "", summary_text or "", chunks or {}, materialization_opts.chunk_enrichment_model)

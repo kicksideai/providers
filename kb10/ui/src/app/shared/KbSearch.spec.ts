@@ -9,7 +9,7 @@ const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@wippy-fe/proxy', () => ({ api: { get, post }, host: { handleError: vi.fn() } }))
 vi.mock('@iconify/vue', () => ({ Icon: { render: () => null } }))
 
-const bundles = import.meta.glob('../../../../static/AddPanel.vue_vue_type_script_setup_true_lang-*.js', { eager: true })
+const bundles = import.meta.glob('../../../../static/queryMode-*.js', { eager: true })
 const packed = Object.values(bundles).flatMap((module) => Object.values(module as object))
   .find((value) => value?.__name === 'KbSearch') as Component
 
@@ -22,7 +22,7 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     post.mockResolvedValue({ data: { success: true, answer: 'Grounded answer', results: [{ id: 'passage', content: 'Answer source' }] } })
   })
 
-  it.each([{}, { analysis_model: false }, { analysis_model: ' ' }, { summarization_model: 'summary' }])(
+  it.each([{ analysis_model: false }, { analysis_model: ' ' }])(
     'hides Ask and explains setup without an Answer model: %j', async (config) => {
       const wrapper = mount(component, { props: { kbId: 'kb', ask: canGenerateAnswer(config) } })
       expect(wrapper.find('.kc-search-modes').exists()).toBe(false)
@@ -36,17 +36,19 @@ describe.each([['source', KbSearch], ['served bundle', packed]] as const)('%s As
     },
   )
 
-  it('uses the answer endpoint and question placeholder with an Answer model', async () => {
-    const wrapper = mount(component, { props: { kbId: 'kb', ask: canGenerateAnswer({ analysis_model: 'answer' }) } })
-    await wrapper.get('.kc-search-mode:last-child').trigger('click')
-    expect(wrapper.get('input').attributes('placeholder')).toBe('Ask this knowledge base a question…')
-    await wrapper.get('input').setValue('question')
-    await wrapper.get('button[aria-label="Ask"]').trigger('click')
-    await flushPromises()
-    expect(post).toHaveBeenCalledWith('/api/v1/knowledge/kb/ask', { query: 'question', limit: 8 })
-    expect(get).not.toHaveBeenCalled()
-    expect(wrapper.get('.kc-ans-body').text()).toBe('Grounded answer')
-  })
+  it.each([{}, { analysis_model: '' }, { analysis_model: 'answer' }, { summary_model: 'summary' }])(
+    'uses the answer endpoint and question placeholder with the effective Answer model: %j', async (config) => {
+      const wrapper = mount(component, { props: { kbId: 'kb', ask: canGenerateAnswer(config) } })
+      await wrapper.get('.kc-search-mode:last-child').trigger('click')
+      expect(wrapper.get('input').attributes('placeholder')).toBe('Ask this knowledge base a question…')
+      await wrapper.get('input').setValue('question')
+      await wrapper.get('button[aria-label="Ask"]').trigger('click')
+      await flushPromises()
+      expect(post).toHaveBeenCalledWith('/api/v1/knowledge/kb/ask', { query: 'question', limit: 8 })
+      expect(get).not.toHaveBeenCalled()
+      expect(wrapper.get('.kc-ans-body').text()).toBe('Grounded answer')
+    },
+  )
 
   it('shows relevance and result navigation without retrieval jargon', async () => {
     get.mockResolvedValue({ data: { success: true, results: [

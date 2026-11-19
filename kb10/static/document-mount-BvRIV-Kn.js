@@ -1,10 +1,10 @@
-import { ref as b, computed as C, onBeforeUnmount as ie, watch as F, defineComponent as re, openBlock as o, createElementBlock as v, createElementVNode as r, createTextVNode as N, toDisplayString as g, createCommentVNode as S, renderSlot as pe, createBlock as Y, Transition as ye, withCtx as H, withModifiers as ge, normalizeClass as ne, createVNode as f, unref as e, nextTick as ce, Fragment as ae, renderList as se, onMounted as _e } from "vue";
+import { ref as b, computed as C, onBeforeUnmount as ie, watch as F, defineComponent as re, openBlock as o, createElementBlock as v, createElementVNode as r, createTextVNode as N, toDisplayString as g, createCommentVNode as S, renderSlot as he, createBlock as Y, Transition as ye, withCtx as H, withModifiers as ge, normalizeClass as ne, createVNode as f, unref as e, nextTick as ce, Fragment as ae, renderList as se, onMounted as _e } from "vue";
 import { Icon as B } from "@iconify/vue";
 import { api as le, host as de, loadByTagName as we } from "@wippy-fe/proxy";
 import { a as $e, u as xe } from "./wc-runtime-f54Bo-yJ.js";
-import { E as ve, i as fe, s as Ce, c as Te, _ as ee, u as Ee, a as Se, n as te, b as De, d as Ne, e as Le, f as Me, g as Oe, h as Ie, j as Pe, k as Be, l as Re, m as Ve, o as je } from "./AddPanel.vue_vue_type_script_setup_true_lang-BGy7c1Rc.js";
-import { _ as me, c as Xe } from "./queryMode-B1MoVAIk.js";
-const he = {
+import { E as ve, i as fe, s as Ce, c as Te, _ as ee, u as Ee, a as Se, n as te, b as De, d as Ne, e as Le, f as Me, g as Oe, h as Ie, j as Pe, k as Be, l as Re, m as Ve, o as je, p as Xe } from "./queryMode-DzQwfDvP.js";
+import { _ as me } from "./modelSettings-Bkdghd0O.js";
+const pe = {
   "text/markdown": "MD",
   "text/plain": "TXT",
   "text/html": "HTML",
@@ -20,7 +20,7 @@ const he = {
 };
 function qe(n) {
   const t = n.content_type || "";
-  if (he[t]) return he[t];
+  if (pe[t]) return pe[t];
   const _ = n.metadata || {}, s = String(_.filename || _.source_url || _.title || ""), m = s.lastIndexOf(".");
   if (m > 0 && m < s.length - 1) {
     const d = s.slice(m + 1).split(/[?#]/)[0];
@@ -40,9 +40,9 @@ function be(n) {
   if (m < 45) return "just now";
   const d = Math.round(m / 60);
   if (d < 60) return `${d}m ago`;
-  const h = Math.round(d / 60);
-  if (h < 24) return `${h}h ago`;
-  const T = Math.round(h / 24);
+  const p = Math.round(d / 60);
+  if (p < 24) return `${p}h ago`;
+  const T = Math.round(p / 24);
   return T < 7 ? `${T}d ago` : t.toLocaleDateString(void 0, { year: "numeric", month: "short", day: "numeric" });
 }
 function ze(n) {
@@ -57,7 +57,7 @@ function ze(n) {
   });
 }
 function Ae(n, t = {}) {
-  const _ = b(!1), s = b(""), m = b([]), d = b(0), h = b(50), T = b(0), L = C(() => Math.max(1, Math.ceil(T.value / h.value))), D = C(() => d.value > 0), R = C(() => d.value < L.value - 1), E = b({}), A = 2e4, M = /* @__PURE__ */ new Map();
+  const _ = b(!1), s = b(""), m = b([]), d = b(0), p = b(50), T = b(0), L = C(() => Math.max(1, Math.ceil(T.value / p.value))), D = C(() => d.value > 0), R = C(() => d.value < L.value - 1), E = b({}), A = 2e4, M = /* @__PURE__ */ new Map();
   function q(a) {
     const x = { ...E.value };
     delete x[a], E.value = x;
@@ -75,7 +75,7 @@ function Ae(n, t = {}) {
     const x = ++V;
     _.value = !0, s.value = "";
     try {
-      const y = d.value * h.value, { data: $ } = await le.get(`/api/v1/kb10/${a}/browse?node_type=document&limit=${h.value}&offset=${y}`);
+      const y = d.value * p.value, { data: $ } = await le.get(`/api/v1/kb10/${a}/browse?node_type=document&limit=${p.value}&offset=${y}`);
       if (x !== V || n() !== a) return;
       if (!$?.success) {
         s.value = $?.error && fe($.error) ? ve : $?.error || "";
@@ -175,7 +175,7 @@ function Ae(n, t = {}) {
     remove: oe,
     findDoc: Z,
     page: d,
-    pageSize: h,
+    pageSize: p,
     total: T,
     pageCount: L,
     hasPrev: D,
@@ -198,7 +198,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
         n.count !== void 0 ? (o(), v("b", Ge, g(n.count), 1)) : S("", !0)
       ]),
       r("div", He, [
-        pe(t.$slots, "actions")
+        he(t.$slots, "actions")
       ])
     ]));
   }
@@ -225,12 +225,12 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
     }
     return F(() => _.open, (d) => {
       d ? window.addEventListener("keydown", m) : window.removeEventListener("keydown", m);
-    }), ie(() => window.removeEventListener("keydown", m)), (d, h) => (o(), Y(ye, { name: "kx-modal" }, {
+    }), ie(() => window.removeEventListener("keydown", m)), (d, p) => (o(), Y(ye, { name: "kx-modal" }, {
       default: H(() => [
         n.open ? (o(), v("div", {
           key: 0,
           class: "kx-modal-mask",
-          onClick: h[3] || (h[3] = ge((T) => !n.busy && s("cancel"), ["self"]))
+          onClick: p[3] || (p[3] = ge((T) => !n.busy && s("cancel"), ["self"]))
         }, [
           r("div", {
             class: ne(["kx-modal", { danger: n.danger }]),
@@ -253,17 +253,17 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
                 icon: "tabler:x",
                 label: "Close",
                 disabled: n.busy,
-                onClick: h[0] || (h[0] = (T) => s("cancel"))
+                onClick: p[0] || (p[0] = (T) => s("cancel"))
               }, null, 8, ["disabled"])
             ]),
             r("div", tt, [
-              pe(d.$slots, "default")
+              he(d.$slots, "default")
             ]),
             r("div", nt, [
               f(me, {
                 variant: "ghost",
                 disabled: n.busy,
-                onClick: h[1] || (h[1] = (T) => s("cancel"))
+                onClick: p[1] || (p[1] = (T) => s("cancel"))
               }, {
                 default: H(() => [
                   N(g(n.cancelLabel), 1)
@@ -274,7 +274,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
                 variant: n.danger ? "danger" : "primary",
                 loading: n.busy,
                 disabled: n.busy,
-                onClick: h[2] || (h[2] = (T) => s("confirm"))
+                onClick: p[2] || (p[2] = (T) => s("confirm"))
               }, {
                 default: H(() => [
                   N(g(n.confirmLabel), 1)
@@ -294,10 +294,10 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
 }, vt = {
   key: 1,
   class: "dr-fact"
-}, ft = ["title"], mt = ["href"], ht = {
+}, ft = ["title"], mt = ["href"], pt = {
   key: 0,
   class: "dr-skel"
-}, pt = {
+}, ht = {
   key: 1,
   class: "dr-state err"
 }, kt = {
@@ -326,11 +326,11 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
     node: {}
   },
   setup(n) {
-    const t = n, _ = b(!1), s = b(""), m = b(""), d = b(""), h = b([]), T = b(0), L = b(""), D = b("read"), R = b(!1), E = b({});
+    const t = n, _ = b(!1), s = b(""), m = b(""), d = b(""), p = b([]), T = b(0), L = b(""), D = b("read"), R = b(!1), E = b({});
     function A(i) {
       return String((i.metadata || {}).contextual_prefix || "");
     }
-    const M = C(() => t.node.metadata || {}), q = C(() => M.value.source_url), z = C(() => d.value || t.node.content_type || "text/markdown"), Z = C(() => String(M.value.original_mime_type || M.value.source_mime || "")), V = C(() => Ee(M.value) ? Se(Z.value || t.node.content_type || "") : !1), U = C(() => `/api/v1/kb10/${t.kbId}/nodes/${t.node.id}/source`), K = C(() => String(M.value.filename || M.value.original_filename || "")), j = C(() => m.value ? m.value : h.value.map((i) => i.content).filter(Boolean).join(`
+    const M = C(() => t.node.metadata || {}), q = C(() => M.value.source_url), z = C(() => d.value || t.node.content_type || "text/markdown"), Z = C(() => String(M.value.original_mime_type || M.value.source_mime || "")), V = C(() => Ee(M.value) ? Se(Z.value || t.node.content_type || "") : !1), U = C(() => `/api/v1/kb10/${t.kbId}/nodes/${t.node.id}/source`), K = C(() => String(M.value.filename || M.value.original_filename || "")), j = C(() => m.value ? m.value : p.value.map((i) => i.content).filter(Boolean).join(`
 
 `)), W = C(() => {
       const i = j.value.trim();
@@ -359,25 +359,25 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
     async function x() {
       if (!t.kbId || !t.node?.id) return;
       const i = ++a;
-      _.value = !0, s.value = "", m.value = "", d.value = "", h.value = [], T.value = 0, L.value = "", D.value = "read", E.value = {}, w.value = !1, O.value = !1;
+      _.value = !0, s.value = "", m.value = "", d.value = "", p.value = [], T.value = 0, L.value = "", D.value = "read", E.value = {}, w.value = !1, O.value = !1;
       try {
-        const [{ data: p }, { data: k }, { data: u }] = await Promise.all([
+        const [{ data: h }, { data: k }, { data: u }] = await Promise.all([
           le.get(`/api/v1/kb10/${t.kbId}/browse?node_id=${t.node.id}`),
           le.get(`/api/v1/kb10/${t.kbId}/browse?parent_id=${t.node.id}&node_type=chunk&include_content=true&limit=200`),
           le.get(`/api/v1/kb10/${t.kbId}/browse?parent_id=${t.node.id}&node_type=summary&include_content=true&limit=1`)
         ]);
         if (i !== a) return;
-        if (p?.success && p.node && (m.value = String(p.node.content || ""), d.value = String(p.node.content_type || "")), k?.success) {
+        if (h?.success && h.node && (m.value = String(h.node.content || ""), d.value = String(h.node.content_type || "")), k?.success) {
           if (!Number.isInteger(k.total) || k.total < 0) throw new Error("Invalid chunk total");
           T.value = k.total;
           const l = k.nodes;
-          if (h.value = l.filter((c) => c.node_type === "chunk").sort((c, Q) => Number((c.metadata || {}).index ?? (c.metadata || {}).chunk_index ?? 0) - Number((Q.metadata || {}).index ?? (Q.metadata || {}).chunk_index ?? 0)), !u?.success) throw new Error(u?.error || "could not load summary");
+          if (p.value = l.filter((c) => c.node_type === "chunk").sort((c, Q) => Number((c.metadata || {}).index ?? (c.metadata || {}).chunk_index ?? 0) - Number((Q.metadata || {}).index ?? (Q.metadata || {}).chunk_index ?? 0)), !u?.success) throw new Error(u?.error || "could not load summary");
           L.value = u.nodes[0]?.content || "", m.value || (m.value = L.value || t.node.content || "");
         }
-        !p?.success && !k?.success && (s.value = p?.error || k?.error || "could not load document");
-      } catch (p) {
+        !h?.success && !k?.success && (s.value = h?.error || k?.error || "could not load document");
+      } catch (h) {
         if (i !== a) return;
-        s.value = p?.response?.data?.error || p?.message || "could not load document", de.handleError(p?.response?.status === 401 ? "auth-expired" : "other", p);
+        s.value = h?.response?.data?.error || h?.message || "could not load document", de.handleError(h?.response?.status === 401 ? "auth-expired" : "other", h);
       } finally {
         i === a && (_.value = !1);
       }
@@ -395,7 +395,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
       i || (R.value = !1);
     }), F(() => t.node?.id, () => x(), { immediate: !0 }), ie(() => {
       I?.disconnect();
-    }), (i, p) => (o(), v("div", lt, [
+    }), (i, h) => (o(), v("div", lt, [
       r("header", ot, [
         r("span", st, [
           f(e(B), {
@@ -438,7 +438,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
               rel: "noopener"
             }, [
               f(e(B), { icon: "tabler:external-link" }),
-              p[3] || (p[3] = N("Source", -1))
+              h[3] || (h[3] = N("Source", -1))
             ], 8, mt)) : S("", !0)
           ])
         ])
@@ -446,14 +446,14 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
       f(e(Ne), {
         tabs: y.value,
         active: D.value,
-        onSelect: p[0] || (p[0] = (k) => D.value = k)
+        onSelect: h[0] || (h[0] = (k) => D.value = k)
       }, null, 8, ["tabs", "active"]),
-      _.value ? (o(), v("div", ht, [
+      _.value ? (o(), v("div", pt, [
         (o(), v(ae, null, se(6, (k) => r("div", {
           key: k,
           class: "dr-skel-line"
         })), 64))
-      ])) : s.value ? (o(), v("div", pt, [
+      ])) : s.value ? (o(), v("div", ht, [
         f(e(B), {
           icon: "tabler:alert-circle",
           "aria-hidden": "true"
@@ -489,7 +489,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
               type: "button",
               class: "dr-more",
               "aria-expanded": w.value,
-              onClick: p[1] || (p[1] = (k) => w.value = !w.value)
+              onClick: h[1] || (h[1] = (k) => w.value = !w.value)
             }, [
               f(e(B), {
                 icon: w.value ? "tabler:chevron-up" : "tabler:chevron-down",
@@ -502,18 +502,18 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
                 icon: "tabler:file-off",
                 "aria-hidden": "true"
               }),
-              p[4] || (p[4] = N(" No readable content was indexed for this document.", -1))
+              h[4] || (h[4] = N(" No readable content was indexed for this document.", -1))
             ]))
           ])
         ])) : (o(), v("div", $t, [
-          h.value.length ? S("", !0) : (o(), v("div", xt, [
+          p.value.length ? S("", !0) : (o(), v("div", xt, [
             f(e(B), {
               icon: "tabler:layout-grid",
               "aria-hidden": "true"
             }),
-            p[5] || (p[5] = N(" This document has no chunks.", -1))
+            h[5] || (h[5] = N(" This document has no chunks.", -1))
           ])),
-          (o(!0), v(ae, null, se(h.value, (k, u) => (o(), v("div", {
+          (o(!0), v(ae, null, se(p.value, (k, u) => (o(), v("div", {
             key: k.id,
             class: ne(["dr-chunk", { open: E.value[k.id] }])
           }, [
@@ -551,7 +551,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
         "content-type": Z.value || n.node.content_type || "",
         "source-url": U.value,
         filename: K.value,
-        onClose: p[2] || (p[2] = (k) => R.value = !1)
+        onClose: h[2] || (h[2] = (k) => R.value = !1)
       }, null, 8, ["open", "title", "content-type", "source-url", "filename"])
     ]));
   }
@@ -573,7 +573,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
     const t = $e(), _ = xe(), s = C(() => t.value.config?.kb_id || ""), m = C(() => t.value.config?.route || "");
     let d = !1;
     const {
-      loading: h,
+      loading: p,
       notice: T,
       documents: L,
       deleting: D,
@@ -617,7 +617,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
     function i(u) {
       a.value = u;
     }
-    async function p() {
+    async function h() {
       const u = a.value;
       if (!u) return;
       await E(u) && (w.value === u.id && (w.value = ""), a.value = null);
@@ -692,7 +692,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
             }, null, 8, ["modelValue"])
           ]),
           r("nav", Ot, [
-            e(h) && !e(L).length ? (o(), v("div", It, [
+            e(p) && !e(L).length ? (o(), v("div", It, [
               (o(), v(ae, null, se(6, (c) => r("div", {
                 key: c,
                 class: "kd-skel-row"
@@ -735,7 +735,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
                 onClick: (Q) => i(c)
               }, null, 8, ["label", "spin", "disabled", "onClick"])
             ], 2))), 128)),
-            !e(h) && !W.value.length ? (o(), v("div", Xt, g(e(L).length ? "No documents match." : "No documents yet — add one with +."), 1)) : S("", !0)
+            !e(p) && !W.value.length ? (o(), v("div", Xt, g(e(L).length ? "No documents match." : "No documents yet — add one with +."), 1)) : S("", !0)
           ]),
           e(z) > e(q) ? (o(), v("div", qt, [
             f(e(ee), {
@@ -806,7 +806,7 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
         "confirm-label": "Delete",
         busy: x.value,
         onCancel: l[7] || (l[7] = (c) => a.value = null),
-        onConfirm: p
+        onConfirm: h
       }, {
         default: H(() => [
           l[8] || (l[8] = N(" Remove ", -1)),
@@ -823,4 +823,4 @@ const Ue = { class: "kx-railhead" }, Ke = { class: "kx-railhead-title" }, Ge = {
 export {
   Qt as mountConfig
 };
-//# sourceMappingURL=document-mount-a4aHJo2O.js.map
+//# sourceMappingURL=document-mount-BvRIV-Kn.js.map

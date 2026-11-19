@@ -16,4 +16,5 @@ entries:
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt
       engines: kickside.knowledge:engines
+      model_settings: kickside.kb10:model_settings
       node_store: kickside.kb10.persist:node_store

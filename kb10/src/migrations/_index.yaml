@@ -131,3 +131,15 @@ entries:
       migration: wippy.migration:migration
       ops: kickside.kb10.persist:ops
     method: migrate
+
+  - name: 12_preserve_contextual_model_settings
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-18T17:04:00Z"
+    source: file://12_preserve_contextual_model_settings.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

@@ -7,7 +7,7 @@ local kc = require("kc")
 local query_policy = require("query_policy")
 local tuner = require("tuner")
 local model_failure = require("model_failure")
-local model_catalog = require("model_catalog")
+local analysis = require("analysis_model")
 
 local VECTOR_DIMENSIONS = store.VECTOR_DIMENSIONS
 local M = { _ctx = ctx, _llm = llm, _store = store, _tuner = tuner }
@@ -317,18 +317,21 @@ local function handle(request)
 
     local embedding_model = kb_store.embedding_model :: string?
     local config = (kb_store.config :: table?) or {}
-    local analysis_model = query_policy.resolve_analysis_model(config)
+    local strategy, strategy_err = query_policy.query_strategy(config)
+    if strategy_err then return nil, strategy_err end
+    local analysis_model = analysis.configured(config)
     local analysis_unavailable = nil
-    local model_class = analysis_model and analysis_model:match("^class:(.+)$")
-    if model_class then
-        local models, models_err = model_catalog.get_by_class(model_class)
-        if models_err then return nil, model_failure.wrap("analysis model lookup", models_err) end
-        if #models == 0 then
+    if analysis_model and analysis_model:match("^class:(.+)$") then
+        local available, lookup_err = analysis.class_available(analysis_model)
+        if lookup_err then return nil, model_failure.wrap("analysis model lookup", lookup_err) end
+        if not available then
             analysis_unavailable = { status = "unavailable", reason = "no_models_for_class", model = analysis_model }
+            analysis_model = nil
         end
     end
+    local self_tuning = analysis_model ~= nil and config.self_tuning == true
+    local effective_strategy = analysis_model and strategy or "plain"
     local extra_prompt = config.extra_prompt or ""
-    local enable_reranking = config.enable_reranking
 
     -- The page of ranked rows at [offset + 1, offset + limit], formatted, with
     -- next_offset when the ranking holds a row past the page.
@@ -340,10 +343,9 @@ local function handle(request)
         local result = { success = true, items = items, count = #items,
             next_offset = #ranked > offset + limit and offset + limit or nil }
         if analysis_unavailable or config.query_strategy == "hyde" or config.self_tuning == true then
-            result.retrieval = { strategy = analysis_unavailable and "plain" or (config.query_strategy or "plain"),
-                analysis = analysis_unavailable }
+            result.retrieval = { strategy = effective_strategy, analysis = analysis_unavailable }
         end
-        if config.self_tuning == true and not analysis_unavailable then
+        if self_tuning then
             local outcome, err = M._tuner.observe(component_id, kb_store, request, items)
             if err then return nil, err end
             result.retrieval.tuning = outcome
@@ -351,18 +353,12 @@ local function handle(request)
         return result, nil
     end
 
-    local hyde_model, mode_err = query_policy.resolve_hyde_model(config)
-    if mode_err then return nil, mode_err end
     local entry_text = query_text
-    if hyde_model and not analysis_unavailable then
-        local hypothetical, hyde_err = hyde_query_text(query_text, hyde_model)
+    if effective_strategy == "hyde" then
+        local hypothetical, hyde_err = hyde_query_text(query_text, analysis_model)
         if hyde_err then return nil, hyde_err end
         entry_text = hypothetical
     end
-    if config.self_tuning == true and not analysis_model then
-        return nil, errors.new({ kind = errors.INVALID, message = "autonomous tuning requires the KB analysis_model" })
-    end
-
     local input_vector, embed_err = embed_query(entry_text, embedding_model)
     if embed_err then return nil, embed_err end
 
@@ -384,7 +380,7 @@ local function handle(request)
         return complete(chunk_results)
     end
 
-    if not analysis_model or analysis_unavailable then
+    if not analysis_model then
         local all_results, all_err = M._store.vector_search(kb_store.id :: string, input_vector, {
             query_text = query_text,
             limit = window,
@@ -491,7 +487,7 @@ local function handle(request)
     end
 
     local final_results = all_results
-    if enable_reranking and analysis_model then
+    if analysis_model and config.query_driver ~= "agentic" and config.enable_reranking == true then
         local reranked_results, rerank_err = rerank_results(query_text, all_results, analysis_model)
         if rerank_err then return nil, rerank_err end
         final_results = reranked_results

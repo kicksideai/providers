@@ -70,9 +70,11 @@ Tuning updates guidance for future retrieval and ingestion. Existing documents, 
 
 ## Use
 
-Install with Knowledge and select an embedding model, then create a document or wiki knowledge base. New bases use `class:fast` for analysis and grounded answers. An explicitly empty or false `analysis_model` keeps analysis and answering disabled. Wiki offers Wiki and Graph views. Ingest through Knowledge’s content interfaces and inspect processing before query. KB10 owns materialization, retrieval, graph views, and maintenance; Knowledge owns base lifecycle.
+Install with Knowledge and select an embedding model, then create a document or wiki knowledge base. For `summary_model` and `chunk_enrichment_model`, an omitted or empty value uses the engine default and `false` disables that model. On upgrade, KB10 converts previously stored empty summary and chunk enrichment settings to `false` to preserve generation behavior. Wiki offers Wiki and Graph views. Ingest through Knowledge’s content interfaces and inspect processing before query. KB10 owns materialization, retrieval, graph views, and maintenance. Knowledge owns base lifecycle and answer generation.
 
-When an explicit analysis class has no enabled models, search returns plain matches and `retrieval.analysis = { status: "unavailable", reason: "no_models_for_class", model: "<configured class>" }` with `retrieval.strategy = "plain"`. Model-backed query enhancements stay inactive until the class has a model. Catalog and provider failures remain errors, and Ask still requires an available model. This search behavior does not change ingestion or its independently configured summary model.
+Search uses the named `analysis_model` for query analysis. Empty, false, and omitted settings leave analysis off. Reranking applies in Single-shot mode. Agentic mode retains the stored reranking preference for use when switching back.
+
+When an explicit analysis class has no enabled models, search returns plain matches and `retrieval.analysis = { status: "unavailable", reason: "no_models_for_class", model: "<configured class>" }` with `retrieval.strategy = "plain"`. HyDE and autonomous tuning stay inactive when Search has no available model. Catalog and provider failures remain errors. Knowledge uses Fast for Ask when `analysis_model` is omitted or empty. With `analysis_model: false` or an unassigned Fast class, Ask returns ranked passages with an explanation.
 
 ## Reference
 
