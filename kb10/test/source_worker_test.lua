@@ -44,12 +44,13 @@ local function define_tests()
                     worker_config={target_kb_ids={uuid()}},
                 },worker_deps({embedder=fake_embedder,
                     dispatcher=function() return nil,"artifact unavailable",retryable end}))
-                test.is_nil(err)
                 if retryable then
-                    test.eq(result.patch.last_status,"retrying")
-                    test.eq(result.patch.last_failed_batch.attempts,1)
-                    test.contains(result.patch.last_error,"artifact unavailable")
+                    test.is_nil(result)
+                    test.is_true(errors.is(err, errors.UNAVAILABLE))
+                    test.eq(err:retryable(), true)
+                    test.contains(tostring(err), "artifact unavailable")
                 else
+                    test.is_nil(err)
                     test.eq(result.patch.last_status,"skipped_no_items")
                 end
             end)
@@ -289,11 +290,26 @@ local function define_tests()
             }, worker_deps({ embedder = fake_embedder, dispatcher = doc_dispatcher,
                  resolve_materialized_store = function() return nil, nil end }))
 
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.eq(err:retryable(), true)
+            test.contains(tostring(err), "no source materializer")
+        end)
+
+        test.it("publishes committed deltas when a custom target fan-out partially succeeds", function()
+            local cid, missing = bootstrap_kb10_store(db), uuid()
+            local result, err = source_worker.run_with_deps({
+                thread_id = uuid(), projection = {id = uuid()},
+                events = {build_event({seq = 1, type = "fixture.page", body = {page_id = "one", title = "One", text = "Body"}})},
+                worker_config = {target_kb_ids = {cid, missing}},
+            }, worker_deps({embedder = fake_embedder, dispatcher = doc_dispatcher,
+                resolve_materialized_store = materialized_store_resolver_for({[cid] = true})}))
             test.is_nil(err)
-            test.not_nil(result)
-            test.eq(result.patch.last_status, "retrying")
-            test.is_true(string.find(tostring(result.patch.last_error), "no source materializer", 1, true) ~= nil)
-            test.eq(result.patch.last_failed_batch.attempts, 1)
+            test.eq(result.body.last_status, "completed_with_warnings")
+            test.eq(result.append_events[1].events[1].body.document_delta, 1)
+            test.eq(result.append_events[1].events[2].body.document_delta, 0)
+            test.contains(result.body.last_error, "no source materializer")
+            teardown_kb10_store(db, cid)
         end)
 
         test.it("inserts a document into a kb10 KB", function()
@@ -463,10 +479,9 @@ local function define_tests()
             }, worker_deps({ embedder = bad_embedder, dispatcher = doc_dispatcher,
                  resolve_materialized_store = resolver }))
 
-            test.is_nil(err)
-            test.eq(result.patch.last_status, "retrying")
-            test.eq(result.metrics.documents_inserted, 0)
-            test.eq(result.metrics.items_failed, 1)
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.eq(err:retryable(), true)
 
             local nodes = fetch_kb10_nodes(db, cid) or {}
             test.eq(#nodes, 0, "retryable vector failures must not leave materialized graph nodes")
@@ -525,11 +540,10 @@ local function define_tests()
             }, worker_deps({ embedder = failing_embedder, dispatcher = doc_dispatcher,
                  resolve_materialized_store = resolver }))
 
-            test.is_nil(err)
-            test.not_nil(result)
-            test.eq(result.patch.last_status, "retrying")
-            test.is_true(string.find(tostring(result.patch.last_error), "embed failed", 1, true) ~= nil)
-            test.eq(result.metrics.items_failed, 1)
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.eq(err:retryable(), true)
+            test.contains(tostring(err), "embed failed")
 
             local nodes = fetch_kb10_nodes(db, cid) or {}
             test.eq(#nodes, 0, "retryable embedding failures must not leave materialized graph nodes")
@@ -847,11 +861,10 @@ local function define_tests()
                 }, worker_deps({ embedder = fake_embedder, dispatcher = del_dispatcher,
                      resolve_materialized_store = resolver }))
 
-                test.is_nil(err)
-                test.not_nil(result)
-                test.eq(result.patch.last_status, "retrying")
-                test.is_true(string.find(tostring(result.patch.last_error), "delete_documents_by_external_id failed", 1, true) ~= nil)
-                test.eq(result.patch.last_failed_batch.attempts, 1)
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.UNAVAILABLE))
+                test.eq(err:retryable(), true)
+                test.contains(tostring(err), "delete_documents_by_external_id failed")
 
                 teardown_kb10_store(db, cid)
             end)

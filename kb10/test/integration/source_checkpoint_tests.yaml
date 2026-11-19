@@ -62,3 +62,20 @@ entries:
       test: wippy.test:test
       threads: kickside.core.threads.persist:writer
       uploads: kickside.uploads.persist:upload_record_repo
+
+  - name: source_worker_outage_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_checkpoint_outage_test.lua
+    method: ordinary
+    modules: [fs, hash, json, process, sql, time, uuid]
+    imports:
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer
+      uploads: kickside.uploads.persist:upload_record_repo

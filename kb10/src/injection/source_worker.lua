@@ -12,7 +12,8 @@
 --                              external_version, content, content_type,
 --                              title?, embed_text, metadata, node_type? }, ...] }
 --          | { documents = [], error = "...", retryable? = true }
--- Explicitly retryable extractor failures use the existing bounded batch retry;
+-- Verified immutable absences return {rejection = {document, code}}.
+-- Retryable extractor failures return to the projection job;
 -- ordinary extractor validation errors keep their existing skip behavior.
 --
 -- The worker:
@@ -62,16 +63,6 @@ local GRAPH_CHANGED_EXTERNAL_SOURCE = "knowledge.graph.meta"
 -- source as digest.requested; emitted on the same post-materialization batch so the
 -- digest projection that already consumes the thread can drive treatment too.
 local TREATMENT_REQUEST_EVENT_TYPE = "kickside.knowledge.events:treatment.requested"
-
--- A batch whose materialization fails for a system-level reason (the store is
--- down, the embedder is unreachable) is retried this many times before it is
--- dead-lettered: the cursor advances past it and the batch is recorded failed.
--- This caps head-of-line blocking — a genuinely stuck batch can never wedge the
--- injection lane forever. Per-document content failures are isolated inside the
--- materializer and never reach this path, so this is only for whole-batch system
--- errors. The attempt count is kept in the projection's durable body, keyed by
--- the batch's seq range, so it survives across scheduler cycles and crashes.
-local MAX_BATCH_ATTEMPTS = 3
 
 local function configured_pending_cap(worker_config: any, key: string, default_value: integer): integer
     local cfg = type(worker_config) == "table" and worker_config or {}
@@ -248,22 +239,6 @@ local function resolve_worker_config(input_worker_config: any, projection: any):
     return {}
 end
 
--- The number of times the current batch (this exact seq range) has already been
--- attempted, read from the projection's durable body. The worker records a
--- failing batch's range and attempt count in its patch; the runtime persists it
--- and replays it on the body of the next cycle. A new seq range resets the count
--- to zero.
-local function prior_batch_attempts(projection: any, from_seq: any, to_seq: any): integer
-    local proj = type(projection) == "table" and projection or {}
-    local body = decode_object(proj.body)
-    local last = type(body.last_failed_batch) == "table" and body.last_failed_batch or nil
-    if not last then return 0 end
-    if tostring(last.from_seq) == tostring(from_seq) and tostring(last.to_seq) == tostring(to_seq) then
-        return math.floor(tonumber(last.attempts) or 0)
-    end
-    return 0
-end
-
 local function dead_lettered_batches(projection: any, entry: table): {table}
     local proj = type(projection) == "table" and projection or {}
     local body = decode_object(proj.body)
@@ -298,7 +273,7 @@ end
 -- so plugins that don't declare meta.source still work.
 local function discover_extractors()
     local entries, err = registry.find({ [".kind"] = "function.lua" })
-    if err then return nil, "registry.find failed: " .. tostring(err) end
+    if err then return nil, err end
 
     local by_source_type = {}
     local by_type = {}
@@ -352,7 +327,7 @@ local function default_dispatcher(event, deps)
     local extractor_map = deps._extractor_map
     if not extractor_map then
         local discovered, err = discover_extractors()
-        if err then return nil, err end
+        if err then return nil, err, true end
         extractor_map = discovered
         deps._extractor_map = extractor_map
     end
@@ -373,7 +348,7 @@ local function default_dispatcher(event, deps)
     end
 
     local result, call_err = funcs.call(extractor_id, { event = event })
-    if call_err then return nil, "extractor call failed: " .. tostring(call_err) end
+    if call_err then return nil, call_err, true end
 
     if type(result) ~= "table" then
         return nil, "extractor returned invalid result"
@@ -383,6 +358,9 @@ local function default_dispatcher(event, deps)
         return nil, "extractor error: " .. tostring(result.error), result.retryable == true
     end
 
+    if type(result.rejection) == "table" and type(result.rejection.document) == "table" then
+        return {documents = {result.rejection.document}, rejection = result.rejection}, nil
+    end
     return {
         documents = type(result.documents) == "table" and result.documents or {},
         deletes = type(result.deletes) == "table" and result.deletes or {},
@@ -399,20 +377,14 @@ end
 -- store row and shape the engine from the row's kb_type for the graph/is_graph
 -- branches. Returns (nil, nil) when the kb10 store does not own the component so
 -- the batch reports "no source materializer".
-local function resolve_materialized_store(component_id: string, deps: any): (any?, string?)
+local function resolve_materialized_store(component_id: string, deps: any): (any?, any?)
     if type(deps.resolve_materialized_store) == "function" then
         return deps.resolve_materialized_store(component_id)
     end
 
     local store = materializer_store
     local row, row_err = store.get_store(store, { component_id = component_id })
-    if row_err then
-        logger:debug("kb10 materializer store did not own component", {
-            component_id = component_id,
-            error = row_err,
-        })
-        return nil, nil
-    end
+    if row_err then return nil, row_err end
     if not row then return nil, nil end
 
     local engine, engine_err = source_materializer.resolve_engine(row)
@@ -702,7 +674,7 @@ local function apply_document_result(state: table, result: any): ()
         local status = trim(n.status)
         local previous = key and sources[key]
         if key and (type(previous) ~= "table" or (previous.external_source == source and previous.external_id == id)) and
-            (status == "completed" or (status == "failed" and n.persisted ~= false)) then
+            (status == "completed" or (status == "failed" and n.persisted ~= false and n.retained ~= true)) then
             sources[key] = {
                 external_source = source,
                 external_id = id,
@@ -899,13 +871,12 @@ local function result_deltas(kb_id: string, results: { any }): table
     return delta
 end
 
-local function has_materialized_delta(kb_id: string, result: any): boolean
-    local delta = result_deltas(kb_id, { result })
-    return (tonumber(delta.document_delta) or 0) ~= 0
-        or (tonumber(delta.chunk_delta) or 0) ~= 0
-        or (tonumber(delta.summary_delta) or 0) ~= 0
-        or (tonumber(delta.embedding_delta) or 0) ~= 0
-        or (tonumber(delta.failed_delta) or 0) ~= 0
+local function has_committed_source_write(result: any): boolean
+    if (tonumber(result.removed) or 0) > 0 then return true end
+    for _, notice in ipairs(result.notifications or {}) do
+        if notice.persisted == true then return true end
+    end
+    return false
 end
 
 local function build_source_meta_writes(thread_id: string, projection_id: string, target_kb_ids: { string }, results: { any }, status: string, last_error: string?, from_seq: number?, to_seq: number?): { table }?
@@ -1098,47 +1069,14 @@ local function run_with_deps(input_raw, deps)
     local post_materialization_errors = {}
     local from_seq, to_seq
 
-    local function batch_failure(batch_error: any)
-        local error_message = tostring(batch_error or "source batch failed")
-        local attempts = prior_batch_attempts(projection, from_seq, to_seq) + 1
-        if attempts < MAX_BATCH_ATTEMPTS then
-            logger:warn("source batch failed, retrying without advancing cursor", {
-                projection_id = projection_id,
-                from_seq = from_seq, to_seq = to_seq,
-                attempt = attempts, max_attempts = MAX_BATCH_ATTEMPTS,
-                error = error_message,
-            })
-            -- Record the attempt on the body and hold the cursor (no last_to_seq
-            -- advance) so the same batch is re-delivered next cycle with a higher
-            -- count. A success patch is returned (not a hard error) so the attempt
-            -- state is persisted rather than discarded.
-            return {
-                patch = {
-                    last_run_at = time.now():utc():format(time.RFC3339),
-                    last_status = "retrying",
-                    last_error = error_message,
-                    last_failed_batch = {
-                        from_seq = from_seq,
-                        to_seq = to_seq,
-                        attempts = attempts,
-                        error = error_message,
-                    },
-                    kb_results = kb_results,
-                },
-                metrics = metrics,
-            }, nil
-        end
-
-        logger:error("source batch dead-lettered after retry cap, advancing cursor", {
-            projection_id = projection_id,
-            from_seq = from_seq, to_seq = to_seq,
-            attempts = attempts, error = error_message,
-        })
+    -- Extraction caps and contradictory lineage are deterministic input errors.
+    -- Record the rejected batch before advancing to subsequent source events.
+    local function reject_batch(error_message: string)
         local dead_letter_entry = {
             dead_lettered_at = time.now():utc():format(time.RFC3339),
             from_seq = from_seq,
             to_seq = to_seq,
-            attempts = attempts,
+            attempts = 1,
             error = error_message,
             kb_results = kb_results,
         }
@@ -1191,8 +1129,8 @@ local function run_with_deps(input_raw, deps)
                     event_id = event.id, type = event.type, error = dispatch_err,
                 })
                 if retryable == true then
-                    batch_error = tostring(dispatch_err)
-                    break
+                    return nil, job_types.native_error(dispatch_err) or errors.new({kind = errors.UNAVAILABLE,
+                        retryable = true, message = tostring(dispatch_err)})
                 end
             elseif items == nil then
                 metrics.events_unsupported = metrics.events_unsupported + 1
@@ -1207,7 +1145,7 @@ local function run_with_deps(input_raw, deps)
                         if #pending_documents >= max_pending_documents then
                             batch_error = "source worker document cap exceeded: " ..
                                 tostring(max_pending_documents) ..
-                                " documents pending; batch preserved for retry/dead-letter"
+                                " documents pending"
                             logger:warn("documents cap hit", {
                                 cap = max_pending_documents, event_id = event.id,
                             })
@@ -1221,6 +1159,7 @@ local function run_with_deps(input_raw, deps)
                             })
                             break
                         end
+                        doc.rejection_code = items.rejection and items.rejection.document == doc and items.rejection.code or nil
                         pending_documents[#pending_documents + 1] = {
                             doc = doc, event_id = event.id,
                         }
@@ -1230,7 +1169,7 @@ local function run_with_deps(input_raw, deps)
                         if #pending_deletes >= max_pending_deletes then
                             batch_error = "source worker delete cap exceeded: " ..
                                 tostring(max_pending_deletes) ..
-                                " deletes pending; batch preserved for retry/dead-letter"
+                                " deletes pending"
                             logger:warn("deletes cap hit", {
                                 cap = max_pending_deletes, event_id = event.id,
                             })
@@ -1262,7 +1201,7 @@ local function run_with_deps(input_raw, deps)
             component_id = "source_extraction",
             error = tostring(batch_error),
         }
-        return batch_failure(batch_error)
+        return reject_batch(tostring(batch_error))
     end
 
     if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
@@ -1309,13 +1248,13 @@ local function run_with_deps(input_raw, deps)
     -- materializer for the KB). Per-document content failures are isolated inside
     -- the materializer and do NOT surface here; only an error that fails the
     -- batch as a unit does. Collected rather than returned immediately so the
-    -- retry/dead-letter decision is made once, after every target KB is tried.
+    -- worker can report the outcome after every target KB is tried.
     for _, kb_id in ipairs(clean_targets) do
         local target_error = nil
         local target, target_err = resolve_materialized_store(kb_id, deps)
         if target_err then
             logger:warn("target KB materializer resolution failed", { kb = kb_id, error = target_err })
-            kb_results[#kb_results + 1] = { component_id = kb_id, error = target_err }
+            kb_results[#kb_results + 1] = { component_id = kb_id, error = tostring(target_err) }
             target_error = target_err
         elseif not target then
             local missing = "no source materializer for KB engine"
@@ -1334,7 +1273,7 @@ local function run_with_deps(input_raw, deps)
                     kb_results[#kb_results + 1] = { component_id = kb_id, kind = "delete", error = shape_err }
                     target_error = shape_err
                 elseif del_err then
-                    delete_result.error = del_err
+                    delete_result.error = tostring(del_err)
                     metrics.documents_removed = metrics.documents_removed + (tonumber(delete_result.removed) or 0)
                     kb_results[#kb_results + 1] = delete_result
                     logger:error("source materialization delete failed", { kb = kb_id, error = del_err })
@@ -1371,9 +1310,9 @@ local function run_with_deps(input_raw, deps)
                         metrics.documents_inserted = metrics.documents_inserted + (tonumber(r.inserted) or 0)
                         metrics.documents_replaced = metrics.documents_replaced + (tonumber(r.replaced) or 0)
                         metrics.items_failed = metrics.items_failed + (tonumber(r.failed) or 0)
-                        r.error = kb_err
+                        r.error = tostring(kb_err)
                         kb_results[#kb_results + 1] = r
-                        if has_materialized_delta(kb_id, r) then
+                        if has_committed_source_write(r) then
                             -- Once the materializer has committed per-document
                             -- read-model facts, the cursor must advance with a
                             -- matching graph.changed delta. Retrying would replay
@@ -1411,23 +1350,27 @@ local function run_with_deps(input_raw, deps)
                 end
             end
         end
-        if target_error and not batch_error then
-            batch_error = target_error
+        if target_error then
+            batch_error = batch_error or target_error
+            post_materialization_errors[#post_materialization_errors + 1] = {
+                component_id = kb_id, stage = "source_materialization", error = tostring(target_error),
+            }
         end
     end
 
-    -- Retry-then-dead-letter for a whole-batch system error (the store or embedder
-    -- is unreachable for the entire batch). Per-document content failures never
-    -- reach here: the materializer isolates them and returns a result, so this
-    -- path is only an instance-level fault. The worker keeps its own attempt count
-    -- across cycles in the projection's durable body (the live-window trigger can
-    -- re-fire a fresh run, which would otherwise reset a framework-level retry
-    -- count and let a stuck batch retry forever). Below the cap it returns the
-    -- error so the cursor stays put and the batch is replayed; at the cap it
-    -- dead-letters: advances the cursor and records the batch failed, so a
-    -- persistently stuck batch can never head-of-line-block the injection lane.
     if batch_error then
-        return batch_failure(batch_error)
+        -- A failed ordinary worker leaves Core's cursor at its committed
+        -- position. Jobs owns the scheduled retry and its backoff.
+        -- A custom extractor can fan out one event. Preserve its existing
+        -- partial-write outcome and publish the deltas already committed.
+        local committed = false
+        for _, result in ipairs(kb_results) do
+            if has_committed_source_write(result) then committed = true break end
+        end
+        if not committed then
+            return nil, job_types.native_error(batch_error) or errors.new({kind = errors.UNAVAILABLE,
+                retryable = true, message = tostring(batch_error)})
+        end
     end
 
     logger:info("source worker completed", {
@@ -1460,6 +1403,11 @@ local function run_with_deps(input_raw, deps)
         -- The upload UI already displays canonical component errors. A batch
         -- with no successful documents must not look like a degraded success.
         source_status = "error"
+        for _, result in ipairs(kb_results) do
+            for _, notice in ipairs(result.notifications or {}) do
+                if notice.retained then source_status = "degraded" end
+            end
+        end
     end
     local append_events = merge_append_writes(
         build_source_meta_writes(thread_id, projection_id, clean_targets, kb_results, source_status, last_error, from_seq, to_seq),
@@ -1488,8 +1436,78 @@ local function run_with_deps(input_raw, deps)
     }, nil
 end
 
+-- Keep a healthy run's graph output proportional to its page count. A
+-- rejection has its own event so its source range and reason remain visible.
+local function append_source_outputs(events, ready_by_kb, writes)
+    for _, write in ipairs(writes or {}) do
+        for _, event in ipairs(write.events) do
+            local body = event.body
+            local kb = body.kb_id
+            local ready = event.type == GRAPH_CHANGED_EVENT_TYPE and body.status == "ready"
+            local previous = ready and ready_by_kb[kb]
+            if previous then
+                previous.body.source_to_seq = body.source_to_seq
+                previous.external = event.external
+                for _, key in ipairs({"document_delta", "failed_delta", "chunk_delta", "summary_delta",
+                        "embedding_delta", "source_processed_delta"}) do
+                    previous.body[key] = previous.body[key] + body[key]
+                end
+            else
+                events[#events + 1] = event
+            end
+            if event.type == GRAPH_CHANGED_EVENT_TYPE then
+                ready_by_kb[kb] = ready and (previous or event) or nil
+            end
+        end
+    end
+end
+
+local function run_page(input_raw, deps)
+    local input = decode_object(input_raw)
+    deps = deps or {}
+    local page = input.events
+    if type(page) ~= "table" or #page <= 1 or type(input.projection) ~= "table" then return run_with_deps(input, deps) end
+    local targets = {}
+    local resolver = {resolve_materialized_store = deps.resolve_materialized_store}
+    local page_deps = {}
+    for key, value in pairs(deps) do page_deps[key] = value end
+    page_deps.resolve_materialized_store = function(id)
+        if targets[id] then return targets[id] end
+        local target, err = resolve_materialized_store(id, resolver)
+        targets[id] = target
+        return target, err
+    end
+    local range = input.range or {}
+    local events, ready_by_kb, metrics = {}, {}, {}
+    local body = projection_body(input.projection)
+    input.projection.body = body
+    local last_seq
+    for index, event in ipairs(page) do
+        input.events = {event}
+        input.range = {from_seq = event.seq, to_seq = event.seq, target_seq = range.target_seq}
+        -- Core may prefetch nonmatching events past the last eligible source.
+        -- Finalize at the source boundary when the complete page succeeds.
+        if index == #page then
+            input.range.to_seq = range.to_seq
+        end
+        local result, err = run_with_deps(input, page_deps)
+        if err then
+            if not last_seq then return nil, err end
+            break
+        end
+        for key, value in pairs(result.patch or {}) do body[key] = value end
+        for key, value in pairs(result.metrics) do metrics[key] = (metrics[key] or 0) + value end
+        append_source_outputs(events, ready_by_kb, result.append_events)
+        last_seq = tonumber(event.seq)
+        if index == #page then last_seq = tonumber(range.to_seq) or last_seq end
+    end
+    body.last_from_seq = page[1].seq
+    return {last_seq = last_seq, body = body, metrics = metrics,
+        append_events = #events > 0 and {{thread_id = input.thread_id, events = events}} or nil}, nil
+end
+
 local function run_proc(input_raw)
-    local result, err = run_with_deps(input_raw, {})
+    local result, err = run_page(input_raw)
     if err then return {ok = false, error_native = job_types.error_to_data(err)} end
     return result
 end
@@ -1516,7 +1534,7 @@ local function prepare_checkpoint_document(target, doc, config, deadline)
 end
 
 return {
-    run = run_with_deps,
+    run = run_page,
     run_proc = run_proc,
     run_with_deps = run_with_deps,
     ensure_source_lineage = ensure_source_lineage,
@@ -1536,6 +1554,4 @@ return {
     _discover_extractors = discover_extractors,
     _plan_document_writes = source_materializer.plan_document_writes,
     _materialization_options = source_materializer.materialization_options,
-    _prior_batch_attempts = prior_batch_attempts,
-    MAX_BATCH_ATTEMPTS = MAX_BATCH_ATTEMPTS,
 }

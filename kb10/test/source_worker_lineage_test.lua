@@ -62,9 +62,9 @@ local function define_tests()
 
             test.is_nil(err)
             test.not_nil(result)
-            test.eq(result.patch.last_status, "retrying")
+            test.eq(result.patch.last_status, "dead_lettered")
             test.is_true(string.find(tostring(result.patch.last_error), "source_ref.thread_id mismatch", 1, true) ~= nil)
-            test.eq(result.patch.last_failed_batch.attempts, 1)
+            test.eq(result.patch.last_to_seq, 1)
 
             local nodes = fetch_kb10_nodes(db, cid)
             test.eq(#nodes, 0)

@@ -95,14 +95,13 @@ local function define_tests()
             test.eq(#result.documents,1)
             test.eq(result.documents[1].content,"Retained inline document")
         end)
-        test.it("surfaces an unreadable omitted artifact", function()
+        test.it("rejects a verified missing artifact reference", function()
             local result, err = call({type="kickside.knowledge.events:content.upserted",
                 external={external_id="upload:missing"}, body={content_omitted=true,content_bytes=5000000,
                     source_ref={kind="upload",upload_id="missing",artifact_id="missing"}}})
             test.is_nil(err)
-            test.eq(#result.documents,0)
-            test.contains(tostring(result.error), "artifact")
-            test.eq(result.retryable, true)
+            test.eq(result.rejection.code, "artifact_reference_not_found")
+            test.eq(result.rejection.document.external_id, "upload:missing")
         end)
         test.it("rejects upserts without natural external identity", function()
             local result, err = call({

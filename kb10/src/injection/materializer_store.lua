@@ -203,6 +203,13 @@ function M.replace_document(_self: any, args: any): (any, any?)
     })
 end
 
+function M.reject_source_revision(_self: any, args: any): (any, any?)
+    local a = arg_table(args)
+    local ok, err = require_source_lineage("reject_source_revision", a, a.metadata)
+    if not ok then return nil, err end
+    return kb10_store.reject_source_revision(a.store_id, a.metadata.source_ref.thread_id, a.metadata, a.code)
+end
+
 function M.delete_documents_by_external_id(_self: any, args: any): (any, any?)
     local a = arg_table(args)
     local ok, lineage_err = require_source_lineage("delete_documents_by_external_id", a, a.metadata)

@@ -1236,14 +1236,32 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     -- isolation and the rest of the batch still materializes. A single document's
     -- summary/chunks/images are still planned and embedded together, preserving
     -- their order and node associations; documents simply no longer share a fate.
-    local function materialize_one(doc: any): (boolean, any?)
-        local prepared, prepare_err = prepare_replacement(doc, target, materialization_opts, dims,
+    local function materialize_one(doc: any): (boolean, any?, boolean?)
+        local rejection = doc.rejection_code
+        if rejection then
+            local meta = doc.metadata
+            meta.title = meta.title or doc.title or meta.original_filename
+            local receipt, err = store:reject_source_revision({store_id = store_id, metadata = meta, code = rejection})
+            if not receipt then return false, err, true end
+            result.failed = result.failed + 1
+            result.notifications[#result.notifications + 1] = {
+                external_source = meta.external_source, external_id = meta.external_id, external_version = meta.external_version,
+                document_node_id = receipt.document_node_id, status = "failed", error = receipt.error,
+                retained = receipt.retained, persisted = true, failed_delta = receipt.failed_delta,
+            }
+            return true, nil
+        end
+        local prepared, prepare_err, cause = prepare_replacement(doc, target, materialization_opts, dims,
             summarize, enrich, caption, enrich_batch, embedder)
-        if not prepared then return false, prepare_err end
+        if not prepared then
+            if type(cause) == "userdata" then return false, cause, true end
+            return false, prepare_err
+        end
         local meta = prepared.document.metadata
         local replacement, replace_err = store:replace_document(prepared)
         if replace_err or not replacement then
             if errors.is(replace_err, errors.CONFLICT) then return false, replace_err end
+            if type(replace_err) == "userdata" and replace_err:retryable() == true then return false, replace_err, true end
             return false, "replace document failed: " .. tostring(replace_err or "no result")
         end
 
@@ -1317,14 +1335,10 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             })
         end)
         if not ok then
-            if errors.is(replacement, errors.CONFLICT) then return nil, replacement end
-            logger:warn("dead-letter persist raised", { external_id = meta.external_id, error = tostring(replacement) })
-            return nil
+            return nil, replacement
         end
         if replace_err or type(replacement) ~= "table" then
-            if errors.is(replace_err, errors.CONFLICT) then return nil, replace_err end
-            logger:warn("dead-letter persist failed", { external_id = meta.external_id, error = tostring(replace_err) })
-            return nil
+            return nil, replace_err or "failed to persist source document failure"
         end
         return replacement
     end
@@ -1339,13 +1353,13 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
     local first_system_failure = nil
     for _, doc in ipairs(documents) do
         -- pcall returns (call_ok, materialize_one's first return, second return).
-        local call_ok, doc_ok, doc_err = pcall(materialize_one, doc)
+        local call_ok, doc_ok, doc_err, dependency_failed = pcall(materialize_one, doc)
         if not call_ok or doc_ok ~= true then
             local failure = call_ok and doc_err or doc_ok
             if errors.is(failure, errors.CONFLICT) then return result, failure end
             local failure_message = tostring(failure or "document materialization failed")
             result.failed = result.failed + 1
-            local system_level = is_system_failure(failure_message)
+            local system_level = dependency_failed == true or is_system_failure(failure_message)
             logger:warn("document materialization failed", {
                 error = failure_message,
                 external_id = doc.external_id,
@@ -1360,7 +1374,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
             local dead_letter_node_id = type(dead_letter_result) == "table" and dead_letter_result.document_node_id or nil
             if system_level then
                 system_failures = system_failures + 1
-                if not first_system_failure then first_system_failure = failure_message end
+                if not first_system_failure then first_system_failure = failure end
             end
             local removed_documents = tonumber(dead_letter_result and dead_letter_result.removed_document_count) or tonumber(dead_letter_result and dead_letter_result.removed) or 0
             local removed_failed_documents = tonumber(dead_letter_result and dead_letter_result.removed_failed_document_count) or 0
@@ -1393,6 +1407,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
 
     result.system_failed = system_failures
     if result.failed > 0 and result.inserted == 0 and system_failures == result.failed then
+        if type(first_system_failure) == "userdata" then return result, first_system_failure end
         return result, "system-level document materialization failed for all documents: " ..
             tostring(first_system_failure or "unknown")
     end

@@ -43,7 +43,7 @@ local function external_tuple(event, metadata)
     return source, id, version
 end
 
-local function extract(input, verified_rejection)
+local function extract(input)
     input = type(input) == "table" and input or {}
     local event = type(input.event) == "table" and input.event or {}
     if event.type ~= EVENT_CONTENT_UPSERTED and event.type ~= EVENT_CONTENT_DELETED then
@@ -91,12 +91,13 @@ local function extract(input, verified_rejection)
         local ref = source_ref or {}
         local read_err
         content, read_err, rejection = artifact_input.read(ref.upload_id, ref.artifact_id)
-        rejection = verified_rejection and rejection or nil
-        if read_err then
-            if not verified_rejection then
-                return { documents = {}, deletes = {}, error = "content artifact read failed: " .. tostring(read_err), retryable = true }
+        if read_err and not rejection then
+            -- A missing storage binding or locator configuration cannot prove
+            -- that the selected immutable artifact is gone.
+            if errors.is(read_err, errors.NOT_FOUND) then
+                return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true, message = tostring(read_err)})
             end
-            if not rejection then return nil, read_err end
+            return nil, read_err
         end
         if not rejection and (type(content) ~= "string" or #content ~= body.content_bytes) then
             return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
@@ -143,11 +144,11 @@ local function extract(input, verified_rejection)
 end
 
 function M.run(input)
-    return extract(input, false)
+    return extract(input)
 end
 
 function M.checkpoint_input(event)
-    return extract({event = event}, true)
+    return extract({event = event})
 end
 
 return M

@@ -611,7 +611,7 @@ function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replac
     return replace_document_tx(tx, db_type, store_id, replacement)
 end
 
-function writer.replace_document(store_id: any, replacement: any)
+local function mutate_source_document(store_id: any, mutate: any, ...)
     local db, err = ops.get_db()
     if err then return nil, err end
     local db_type, db_type_err = ops.get_db_type(db)
@@ -619,22 +619,25 @@ function writer.replace_document(store_id: any, replacement: any)
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
 
-    local result, replace_err = writer.replace_document_tx(tx, db_type, store_id, replacement)
-    if replace_err then return fail_tx(tx, db, replace_err) end
+    local result, write_err = mutate(tx, db_type, store_id, ...)
+    if write_err then return fail_tx(tx, db, write_err) end
     local ok, commit_err = commit_tx(tx, db, "document replacement")
     if not ok then return nil, commit_err end
     return result, nil
 end
 
+function writer.replace_document(store_id: any, replacement: any)
+    return mutate_source_document(store_id, writer.replace_document_tx, replacement)
+end
+
 -- Record an attempted immutable revision without rewriting an accepted tree.
--- The owning checkpoint supplies the transaction and the canonical lineage.
 local SOURCE_REJECTIONS = {
     artifact_reference_not_found = "The selected artifact is missing.",
     artifact_bytes_not_found = "The selected artifact's stored content is missing.",
 }
 
 local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
-        metadata: kb10.Map, code: string, before: table?): (any?, any?)
+        metadata: kb10.Map, code: string, before: table?): (any?, any?, table?)
     local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, source_thread_id)
     if not binding then
         return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a source identity"})
@@ -670,11 +673,19 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
         local prior = stored.source_rejection
         local previous_seq = math.max(tonumber(stored.thread_event_seq) or 0,
             tonumber(type(prior) == "table" and prior.thread_event_seq) or 0)
+        if type(prior) == "table" and prior.thread_event_id == metadata.thread_event_id
+            and tonumber(prior.thread_event_seq) == position and prior.code == code then
+            return id, nil, {document_node_id = id, retained = stored.status ~= "failed", error = reason,
+                failed_delta = tonumber(prior.failed_delta) or 0}
+        end
         if previous_seq >= position then
             return nil, errors.new({kind = errors.CONFLICT, message = "source rejection no longer owns this revision"})
         end
     end
-    if not id or stored.status == "failed" then
+    local retained = id ~= nil and stored.status ~= "failed"
+    local failed_delta = id and 0 or 1
+    rejection.failed_delta = failed_delta
+    if not retained then
         stored = metadata
         stored.role = kb10.NODE_TYPE.DOCUMENT
         stored.status = "failed"
@@ -684,20 +695,29 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
     end
     stored.source_rejection = rejection
     if not id then
-        return insert_node_tx(tx, db_type, store_id, {
+        local insert_err
+        id, insert_err = insert_node_tx(tx, db_type, store_id, {
             node_type = kb10.NODE_TYPE.DOCUMENT, content_type = "text/plain", metadata = stored,
         }, binding)
+        if insert_err then return nil, insert_err end
+    else
+        local encoded, encode_err = json.encode(stored)
+        if encode_err then return nil, errors.wrap(encode_err, "failed to encode source rejection") end
+        local updated, update_err = tx:execute([[UPDATE kb10_nodes SET metadata=$1, updated_at=CURRENT_TIMESTAMP
+            WHERE store_id=$2 AND id=$3]], {encoded, store_id, id})
+        if update_err then return nil, errors.wrap(update_err, "failed to record source rejection") end
+        if not updated or updated.rows_affected ~= 1 then
+            return nil, errors.new({kind = errors.CONFLICT, message = "source document changed"})
+        end
     end
+    return id, nil, {document_node_id = id, retained = retained, error = reason, failed_delta = failed_delta}
+end
 
-    local encoded, encode_err = json.encode(stored)
-    if encode_err then return nil, errors.wrap(encode_err, "failed to encode source rejection") end
-    local updated, update_err = tx:execute([[UPDATE kb10_nodes SET metadata=$1, updated_at=CURRENT_TIMESTAMP
-        WHERE store_id=$2 AND id=$3]], {encoded, store_id, id})
-    if update_err then return nil, errors.wrap(update_err, "failed to record source rejection") end
-    if not updated or updated.rows_affected ~= 1 then
-        return nil, errors.new({kind = errors.CONFLICT, message = "source document changed"})
-    end
-    return id, nil
+function writer.reject_source_revision(store_id: string, source_thread_id: string, metadata: kb10.Map, code: string)
+    return mutate_source_document(store_id, function(tx, dialect, id)
+        local _, err, receipt = reject_source_revision_tx(tx, dialect, id, source_thread_id, metadata, code)
+        return receipt, err
+    end)
 end
 
 function writer.reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
