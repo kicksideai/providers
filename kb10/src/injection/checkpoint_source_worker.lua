@@ -74,6 +74,7 @@ local function prepare(target: any, event: any, deadline: number): (CheckpointWr
         local selected, select_err = legacy_worker.selected_document_id(event, target.source_thread_id)
         if select_err then return nil, select_err, nil end
         selector.node_id = selected
+        selector.expected_publication_id = doc.expected_publication_id
         change.kind = "delete"
     end
     local before, before_err = writer.source_checkpoint_before(store_id, selector, change.kind)

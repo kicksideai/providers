@@ -101,11 +101,18 @@ function ops.source_root_key(db_type: any, prefix: string?): string
         p .. "external_source, " .. p .. "external_id", "kb10_source_key")
 end
 
-function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, binding: any)
+function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, binding: any, expected_publication: string?)
+    local args = {store_id, binding.source_scope, binding.external_source, binding.external_id}
+    local version = ""
+    if expected_publication ~= nil then
+        local column = db_type == sql.type.POSTGRES and "metadata->>'upload_publication_id'"
+            or "json_extract(metadata, '$.upload_publication_id')"
+        version = " AND " .. column .. " = $5"
+        args[5] = expected_publication
+    end
     local rows, err = tx:query("SELECT id FROM kb10_nodes WHERE " .. ops.SOURCE_BOUND ..
         " AND " .. ops.source_root_key(db_type) .. " = " ..
-        index_tuple(db_type, "$1, $2, $3, $4", "kb10_source_key"),
-        {store_id, binding.source_scope, binding.external_source, binding.external_id})
+        index_tuple(db_type, "$1, $2, $3, $4", "kb10_source_key") .. version, args)
     if err then return nil, errors.wrap(err, "failed to find source document") end
     return rows[1] and tostring(rows[1].id), nil
 end

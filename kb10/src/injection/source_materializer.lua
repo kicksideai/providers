@@ -782,6 +782,7 @@ function M.delete_documents_from_store(target, deletes): (any, any?)
                 external_source = d.external_source,
                 external_id = d.external_id,
                 external_version = d.external_version,
+                expected_publication_id = d.expected_publication_id,
                 source_ref = d.source_ref,
                 metadata = d.metadata,
                 thread_event_id = d.thread_event_id,

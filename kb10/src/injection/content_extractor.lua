@@ -1,11 +1,13 @@
 local M = {}
 local artifact_input = require("artifact_input")
 local hash = require("hash")
+local uuid = require("uuid")
 local trim = require("text_trim").trim
 
 local EVENT_CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 local EVENT_CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 local EXTERNAL_SOURCE = "knowledge.kb"
+local VERSIONED_DELETE_SOURCE = "knowledge.kb.versioned_delete"
 
 local function shallow_copy(input)
     local out = {}
@@ -18,6 +20,7 @@ end
 local function external_tuple(event, metadata)
     local external = type(event.external) == "table" and event.external or {}
     local source = trim(external.external_source)
+    if event.type == EVENT_CONTENT_DELETED and source == VERSIONED_DELETE_SOURCE then source = EXTERNAL_SOURCE end
     local stored_source, stored_id = trim(metadata.external_source), trim(metadata.external_id)
     local id = trim(external.external_id)
     if (source ~= "" and stored_source ~= "" and source ~= stored_source) or
@@ -59,6 +62,13 @@ local function extract(input)
     local source, external_id, external_version, tuple_err = external_tuple(event, metadata)
     if tuple_err then return { documents = {}, deletes = {}, error = tuple_err } end
     if event.type == EVENT_CONTENT_DELETED then
+        local expected
+        if type(event.external) == "table" and event.external.external_source == VERSIONED_DELETE_SOURCE then
+            expected = body.expected_publication_id
+            if type(expected) ~= "string" or not uuid.validate(expected) then
+                return {documents = {}, deletes = {}, error = "versioned delete requires an upload publication ID"}
+            end
+        end
         if external_id == "" then
             return { documents = {}, deletes = {}, error = "delete event missing external_id" }
         end
@@ -79,6 +89,7 @@ local function extract(input)
                     metadata = metadata,
                     thread_event_id = metadata.thread_event_id,
                     thread_event_seq = metadata.thread_event_seq,
+                    expected_publication_id = expected,
                     user_id = user_id ~= "" and user_id or nil,
                 },
             },
