@@ -3,6 +3,7 @@
 -- chunk_size is the existing character budget. Byte bounds are conservative for
 -- Unicode and include the sheet heading, row identity, headers and separators.
 local M = {}
+local records = require("tabular_records")
 
 type ChunkMeta = {
     contextual_prefix: string?,
@@ -19,6 +20,28 @@ type ChunkMeta = {
     empty_columns: {integer}?,
 }
 type Sheet = { name: string, header_row: integer, headers: {string}, column_offset: integer }
+type Reader = (integer, integer) -> (string?, any?)
+type Emitter = (string, ChunkMeta) -> any?
+type Checkpoint = {
+    format: string,
+    size: integer,
+    offset: integer,
+    sheet: Sheet?,
+    name: string,
+    header_row: integer,
+    column_offset: integer,
+    pending: {string}?,
+    row: integer,
+    group: {string},
+    group_bytes: integer,
+    group_start: integer,
+    group_end: integer,
+}
+type PlanOptions = {
+    checkpoint: Checkpoint?,
+    should_pause: (() -> boolean)?,
+    max_record_bytes: integer?,
+}
 
 local EXTENSIONS = { xlsx = true, xls = true, xlsb = true, ods = true, csv = true }
 local MIMES = {
@@ -44,16 +67,18 @@ end
 local function markdown_cells(line: string): {string}
     local out: {string} = {}
     local start = 2
-    local slashes = 0
-    for i = 2, #line do
-        local c = line:sub(i, i)
-        if c == "|" and slashes % 2 == 0 then
-            out[#out + 1] = trim(line:sub(start, i - 1)):gsub("\\([\\|])", "%1")
-            start = i + 1
+    local delimiter = line:find("|", start, true)
+    while delimiter do
+        local before = delimiter
+        while before > start and line:byte(before - 1) == 92 do before = before - 1 end
+        if (delimiter - before) % 2 == 0 then
+            out[#out + 1] = trim(line:sub(start, delimiter - 1)):gsub("\\([\\|])", "%1")
+            start = delimiter + 1
         end
-        if c == "\\" then slashes = slashes + 1 else slashes = 0 end
+        delimiter = line:find("|", delimiter + 1, true)
     end
-    if trim(line:sub(start)) ~= "" then out[#out + 1] = trim(line:sub(start)) end
+    local tail = trim(line:sub(start))
+    if tail ~= "" then out[#out + 1] = tail end
     return out
 end
 local function escape(s: string): string
@@ -158,66 +183,40 @@ local function unicode_end(s: string, start: integer, budget: integer): integer
     return last
 end
 
--- CSV yields one logical record at a time, including quoted multiline fields.
--- It deliberately does not infer CSV from arbitrary prose or comma-containing text.
-local function csv_records(body: string): any
-    local pos = body:sub(1, 3) == "\239\187\191" and 4 or 1
-    return function(): ({string}?, string?)
-        if pos > #body then return nil, nil end
-        local cells: {string} = {}
-        local parts: {string} = {}
-        local quoted = false
-        local closed = false
-        while pos <= #body do
-            local c = body:sub(pos, pos)
-            pos = pos + 1
-            if quoted then
-                if c == '"' then
-                    if body:sub(pos, pos) == '"' then
-                        parts[#parts + 1] = '"'
-                        pos = pos + 1
-                    else quoted = false; closed = true end
-                else parts[#parts + 1] = c end
-            elseif c == '"' and #parts == 0 and not closed then
-                quoted = true
-            elseif c == "," or c == "\n" or c == "\r" then
-                cells[#cells + 1] = table.concat(parts)
-                parts = {}
-                closed = false
-                if c ~= "," then
-                    if c == "\r" and body:sub(pos, pos) == "\n" then pos = pos + 1 end
-                    return cells, nil
-                end
-            elseif closed or c == '"' then
-                return nil, "invalid CSV quoting"
-            else parts[#parts + 1] = c end
-        end
-        if quoted then return nil, "unterminated CSV field" end
-        cells[#cells + 1] = table.concat(parts)
-        return cells, nil
-    end
+local function copy_strings(values: {string}): {string}
+    local copy: {string} = {}
+    for i, value in ipairs(values) do copy[i] = value end
+    return copy
 end
 
--- nil chunks means prose: the caller keeps the existing prose splitter. An
--- identified but malformed spreadsheet returns an error, never a prose fallback.
-function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, string?)
+-- Resume reads the same immutable bytes at the returned offset. A record
+-- budget also bounds the decoded header or row. The sink commits its staged
+-- chunks together with the returned checkpoint after a successful call.
+function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, options: PlanOptions?):
+        (boolean?, Checkpoint?, any?)
     local format, filename = source_format(doc)
-    if not format then return nil, nil, nil end
-    local body = doc.content or ""
-    local chunks: {string} = {}
-    local metadata: {ChunkMeta} = {}
-    local current: Sheet? = nil
-    local group: {string} = {}
-    local group_bytes = 0
-    local group_start = 0
-    local group_end = 0
-    local row = 0
+    if not format then return false, nil, nil end
+    local checkpoint = options and options.checkpoint
+    if checkpoint and (checkpoint.format ~= format or checkpoint.size ~= size) then
+        return nil, nil, "spreadsheet checkpoint format or chunk size changed"
+    end
+    local input = records.open(read, checkpoint and checkpoint.offset or 0, options and options.max_record_bytes)
+    local current: Sheet? = checkpoint and checkpoint.sheet or nil
+    local group: {string} = checkpoint and copy_strings(checkpoint.group) or {}
+    local group_bytes = checkpoint and checkpoint.group_bytes or 0
+    local group_start = checkpoint and checkpoint.group_start or 0
+    local group_end = checkpoint and checkpoint.group_end or 0
+    local row = checkpoint and checkpoint.row or 0
+    local name = checkpoint and checkpoint.name or "Sheet1"
+    local header_row = checkpoint and checkpoint.header_row or 1
+    local column_offset = checkpoint and checkpoint.column_offset or 0
+    local pending: {string}? = checkpoint and checkpoint.pending and copy_strings(checkpoint.pending) or nil
+    local should_pause = options and options.should_pause
 
-    local function emit(content: string, sheet: Sheet, first_row: integer, last_row: integer, first_col: integer?, last_col: integer?, part: integer?)
+    local function lineage(sheet: Sheet, first_row: integer, last_row: integer, first_col: integer?, last_col: integer?, part: integer?): ChunkMeta
         local range = first_row == last_row and "row " .. tostring(first_row)
             or "rows " .. tostring(first_row) .. "–" .. tostring(last_row)
-        chunks[#chunks + 1] = content
-        metadata[#metadata + 1] = {
+        return {
             contextual_prefix = "Sheet " .. sheet.name .. ", " .. range .. ".",
             sheet_name = sheet.name, header_row = sheet.header_row,
             row_start = first_row, row_end = last_row,
@@ -226,13 +225,16 @@ function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, st
             cell_part = part,
         }
     end
-    local function flush(sheet: Sheet)
-        if #group == 0 then return end
-        emit(sheet_heading(sheet) .. header(sheet, 1, #sheet.headers) .. table.concat(group, "\n"), sheet, group_start, group_end, nil, nil, nil)
+    local function flush(sheet: Sheet): any?
+        if #group == 0 then return nil end
+        local err = emit(sheet_heading(sheet) .. header(sheet, 1, #sheet.headers) .. table.concat(group, "\n"),
+            lineage(sheet, group_start, group_end, nil, nil, nil))
+        if err then return err end
         group = {}
         group_bytes = 0
+        return nil
     end
-    local function split_row(sheet: Sheet, cells: {string}, number: integer): string?
+    local function split_row(sheet: Sheet, cells: {string}, number: integer): any?
         local prefix = sheet_heading(sheet) .. row_identity(sheet, cells, number, size)
         local selected: {integer} = {}
         for i = 1, #sheet.headers do
@@ -250,8 +252,7 @@ function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, st
             end
             return prefix .. table_line(headers, 1, #headers) .. "\n" .. table_line(separators, 1, #headers) .. "\n" .. table_line(values, 1, #headers)
         end
-        local function positions(first: integer, last: integer, column_start: integer, column_end: integer)
-            local meta = metadata[#metadata]
+        local function positions(meta: ChunkMeta, first: integer, last: integer, column_start: integer, column_end: integer)
             meta.columns = {}
             meta.empty_columns = {}
             for j = first, last do meta.columns[#meta.columns + 1] = selected[j] + sheet.column_offset end
@@ -262,10 +263,10 @@ function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, st
         if #selected == 0 then
             local content = prefix .. header(sheet, 1, 1) .. table_line(cells, 1, 1)
             if #content > size then return "spreadsheet header exceeds chunk budget" end
-            emit(content, sheet, number, number, 1, #sheet.headers, nil)
-            positions(1, 0, 1, #sheet.headers)
-            metadata[#metadata].columns = { 1 + sheet.column_offset }
-            return nil
+            local meta = lineage(sheet, number, number, 1, #sheet.headers, nil)
+            positions(meta, 1, 0, 1, #sheet.headers)
+            meta.columns = { 1 + sheet.column_offset }
+            return emit(content, meta)
         end
         local first = 1
         local column_start = 1
@@ -290,8 +291,10 @@ function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, st
                     end
                     if finish < start then return "spreadsheet cell cannot fit chunk budget" end
                     local column_end = first == #selected and #sheet.headers or column
-                    emit(base .. "| " .. escape(fragment) .. " |", sheet, number, number, column_start, column_end, part)
-                    positions(first, first, column_start, column_end)
+                    local meta = lineage(sheet, number, number, column_start, column_end, part)
+                    positions(meta, first, first, column_start, column_end)
+                    local emit_err = emit(base .. "| " .. escape(fragment) .. " |", meta)
+                    if emit_err then return emit_err end
                     column_start = column
                     start = finish + 1
                     part = part + 1
@@ -315,65 +318,82 @@ function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, st
                     end
                 end
                 local column_end = last == #selected and #sheet.headers or selected[last]
-                emit(candidate, sheet, number, number, column_start, column_end, nil)
-                positions(first, last, column_start, column_end)
+                local meta = lineage(sheet, number, number, column_start, column_end, nil)
+                positions(meta, first, last, column_start, column_end)
+                local emit_err = emit(candidate, meta)
+                if emit_err then return emit_err end
             end
             column_start = selected[last] + 1
             first = last + 1
         end
         local summaries, mappings = attribute_summary(sheet, cells, size)
         for i, content in ipairs(summaries) do
-            emit(content, sheet, number, number, nil, nil, nil)
-            metadata[#metadata].row_summary = true
-            metadata[#metadata].attribute_columns = mappings[i]
+            local meta = lineage(sheet, number, number, nil, nil, nil)
+            meta.row_summary = true
+            meta.attribute_columns = mappings[i]
+            local emit_err = emit(content, meta)
+            if emit_err then return emit_err end
         end
         return nil
     end
-    local function add_row(sheet: Sheet, cells: {string}): string?
+    local function add_row(sheet: Sheet, cells: {string}): any?
         row = row + 1
         if #cells > #sheet.headers then return "spreadsheet row has more cells than its header" end
         local rendered = table_line(cells, 1, #sheet.headers)
         local base = sheet_heading(sheet) .. header(sheet, 1, #sheet.headers)
         if #base + #rendered > size then
-            flush(sheet)
+            local err = flush(sheet)
+            if err then return err end
             return split_row(sheet, cells, row)
         end
-        if #group > 0 and #base + group_bytes + 1 + #rendered > size then flush(sheet) end
+        if #group > 0 and #base + group_bytes + 1 + #rendered > size then
+            local err = flush(sheet)
+            if err then return err end
+        end
         if #group == 0 then group_start = row end
         group_end = row
         group_bytes = group_bytes + (#group > 0 and 1 or 0) + #rendered
         group[#group + 1] = rendered
         return nil
     end
-    if format == "csv" then
-        local records = csv_records(body)
-        local headers, err = records()
-        if err then return nil, nil, err end
-        if not headers then return {}, {}, nil end
-        current = { name = filename:gsub("^.*[/\\]", ""):gsub("%.[^.]+$", ""), header_row = 1, headers = headers, column_offset = 0 }
-        if current.name == "" then current.name = "Sheet1" end
-        for i, name in ipairs(headers) do if name == "" then headers[i] = "Column " .. tostring(i) end end
-        row = 1
-        while true do
-            local cells, read_err = records()
+    local function begin_sheet(headers: {string}, sheet_name: string)
+        for i, value in ipairs(headers) do
+            if value == "" then headers[i] = "Column " .. tostring(i + column_offset) end
+        end
+        current = { name = sheet_name, header_row = header_row, headers = headers, column_offset = column_offset }
+        row = header_row
+    end
+
+    while true do
+        if should_pause and should_pause() then
+            return true, { format = format, size = size, offset = input.offset(), sheet = current, name = name,
+                header_row = header_row, column_offset = column_offset, pending = pending, row = row,
+                group = group, group_bytes = group_bytes, group_start = group_start, group_end = group_end }, nil
+        end
+        if format == "csv" then
+            local cells, read_err = input.csv()
             if read_err then return nil, nil, read_err end
             if not cells then break end
-            local row_err = add_row(current, cells)
-            if row_err then return nil, nil, row_err end
-        end
-        flush(current)
-    else
-        local name = "Sheet1"
-        local header_row = 1
-        local column_offset: integer = 0
-        local pending: {string}? = nil
-        for line in (body .. "\n"):gmatch("([^\n]*)\n") do
-            line = line:gsub("\r$", "")
+            if current then
+                local row_err = add_row(current, cells)
+                if row_err then return nil, nil, row_err end
+            else
+                local sheet_name = filename:gsub("^.*[/\\]", ""):gsub("%.[^.]+$", "")
+                begin_sheet(cells, sheet_name ~= "" and sheet_name or "Sheet1")
+            end
+        else
+            local record, read_err = input.markdown()
+            if read_err then return nil, nil, read_err end
+            if not record then break end
+            local line = record:gsub("\r$", "")
             local heading = line:match("^## (.+)$")
             local physical_row, physical_column = line:match("^<!%-%- kickside:sheet header%-row=(%d+) column%-start=(%d+) %-%->$")
             local simple_row = line:match("^<!%-%- kickside:sheet header%-row=(%d+) %-%->$")
             if heading then
-                if current then flush(current) end
+                if current then
+                    local flush_err = flush(current)
+                    if flush_err then return nil, nil, flush_err end
+                end
                 name = heading
                 current = nil
                 pending = nil
@@ -390,12 +410,8 @@ function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, st
                     for _, cell in ipairs(cells) do
                         if not cell:match("^:?-+:?$") then return nil, nil, "invalid spreadsheet header separator" end
                     end
-                    current = { name = name, header_row = header_row, headers = pending, column_offset = column_offset }
-                    for i, value in ipairs(pending) do
-                        if value == "" then pending[i] = "Column " .. tostring(i + column_offset) end
-                    end
+                    begin_sheet(pending, name)
                     pending = nil
-                    row = header_row
                 else
                     local row_err = add_row(current :: Sheet, cells)
                     if row_err then return nil, nil, row_err end
@@ -404,9 +420,29 @@ function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, st
                 return nil, nil, "unexpected content in converted spreadsheet"
             end
         end
-        if pending then return nil, nil, "spreadsheet is missing a header separator" end
-        if current then flush(current) end
     end
+    if pending then return nil, nil, "spreadsheet is missing a header separator" end
+    if current then
+        local flush_err = flush(current)
+        if flush_err then return nil, nil, flush_err end
+    end
+    return true, nil, nil
+end
+
+-- nil chunks means prose. An identified but malformed spreadsheet returns an
+-- error so its caller can preserve the source for an ordinary retry.
+function M.chunk_document(doc: any, size: integer): ({string}?, {ChunkMeta}?, string?)
+    local body = doc.content or ""
+    local chunks: {string} = {}
+    local metadata: {ChunkMeta} = {}
+    local tabular, _, err = M.plan_document(doc, size, function(offset, length)
+        return body:sub(offset + 1, offset + length), nil
+    end, function(text, meta)
+        chunks[#chunks + 1] = text
+        metadata[#metadata + 1] = meta
+        return nil
+    end)
+    if not tabular then return nil, nil, err end
     return chunks, metadata, nil
 end
 return M

@@ -669,10 +669,11 @@ entries:
       suite: kb_sheets
     source: file://tabular_chunker_test.lua
     method: run
-    modules: [uuid, fs]
+    modules: [uuid, fs, json]
     imports:
       doc2md: kickside.convert.doc2md:doc2md
       test: wippy.test:test
+      tabular_chunker: kickside.kb10.injection:tabular_chunker
       source_materializer: kickside.kb10.injection:source_materializer
       kb10_store: kickside.kb10.persist:store
       materializer_store: kickside.kb10.injection:materializer_store
