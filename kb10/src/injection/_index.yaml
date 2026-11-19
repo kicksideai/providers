@@ -102,7 +102,7 @@ entries:
       checkpointed_apply: true
     source: file://checkpoint_source_worker.lua
     method: run
-    modules: [time, logger]
+    modules: [time, logger, sql]
     imports:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types

@@ -8,11 +8,13 @@ local materializer = require("materializer")
 local materializer_store = require("materializer_store")
 local ops = require("ops")
 local writer = require("writer")
+local sql = require("sql")
 local time = require("time")
 local log = require("logger"):named("kb10.source.checkpoint")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
 local DELETE = "kickside.knowledge.events:content.deleted"
+type CheckpointWriter = (sql.Transaction, string) -> (boolean?, error?)
 
 local function invalid(message)
     return errors.new({kind = errors.INVALID, retryable = false, message = message})
@@ -32,7 +34,7 @@ local function target_config(cursor)
     if targets and (#targets ~= 1 or targets[1] ~= cursor.thread_id) then
         return nil, invalid("checkpointed knowledge source requires one registered local target")
     end
-    local store, store_err = materializer_store:get_store({component_id = cursor.thread_id})
+    local store, store_err = materializer_store.get_store(materializer_store, {component_id = cursor.thread_id})
     if store_err or not store then return nil, dependency("store", store_err) end
     local engine, engine_err = materializer.resolve_engine(store)
     if not engine then return nil, invalid(tostring(engine_err)) end
@@ -42,12 +44,12 @@ local function target_config(cursor)
         config = config, input_types = admitted}, nil
 end
 
-local function prepare(target, event, deadline)
+local function prepare(target: any, event: any, deadline: number): (CheckpointWriter?, error?)
     if event.type ~= UPSERT and event.type ~= DELETE then
         if target.input_types[event.type] then
             return nil, invalid("checkpointed knowledge source has no extractor for a declared event")
         end
-        return function() return true end
+        return function(_tx, _dialect) return true, nil end, nil
     end
     event.external = {external_source = event.external_source, external_id = event.external_id,
         external_version = event.external_version}
@@ -68,7 +70,7 @@ local function prepare(target, event, deadline)
             local id, err = writer.reject_source_revision_tx(tx, dialect, store_id, target.source_thread_id,
                 doc.metadata, rejected.code)
             return id ~= nil, err
-        end
+        end, nil
     end
     if event.type == DELETE then
         local selected, select_err = legacy_worker.selected_document_id(event, target.source_thread_id)
@@ -79,14 +81,14 @@ local function prepare(target, event, deadline)
                 external_source = doc.external_source, external_id = doc.external_id,
             })
             return receipt ~= nil, err
-        end
+        end, nil
     end
     local replacement, model_err = legacy_worker.prepare_checkpoint_document(target, doc, target.config, deadline)
     if not replacement then return nil, dependency("model", model_err) end
     return function(tx, dialect)
         local receipt, err = writer.replace_document_tx(tx, dialect, store_id, replacement)
         return receipt ~= nil, err
-    end
+    end, nil
 end
 
 local function run(input)
