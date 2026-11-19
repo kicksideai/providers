@@ -16,10 +16,7 @@ local function decode_object(value: any): { [string]: any }
     return decoded :: { [string]: any }
 end
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function int_delta(value: any): integer
     local n = tonumber(value)

@@ -10,10 +10,7 @@ local engines = require("engines")
 -- caller's boundary concern (validate_access); this module is pure resolution.
 local M = {}
 
-local function trim(s: any): string
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 -- resolve(kb_id) -> (store_inst, store_id, engine, err). Store-row kb_type is
 -- authoritative; access checks live at API/tool boundaries, not inside this

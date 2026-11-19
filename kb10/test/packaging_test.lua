@@ -13,7 +13,7 @@ local DEPENDENCY_PREFIX = "kickside.kb10:dep."
 
 local REQUIRED_DEPENDENCIES = {
     ["kickside.kb10:dep.kickside.component"] = { "kickside/component", "*" },
-    ["kickside.kb10:dep.kickside.contract"] = { "kickside/contract", "*" },
+    ["kickside.kb10:dep.kickside.contract"] = { "kickside/contract", ">=0.3.9" },
     ["kickside.kb10:dep.kickside.core"] = { "kickside/core", "*" },
     ["kickside.kb10:dep.kickside.search_index"] = { "kickside/search-index", "*" },
     -- Page and slide locators read the markers API introduced in 0.8.15.
@@ -22,7 +22,6 @@ local REQUIRED_DEPENDENCIES = {
     ["kickside.kb10:dep.kickside.jobs"] = { "kickside/jobs", "*" },
     ["kickside.kb10:dep.kickside.knowledge"] = { "kickside/knowledge", ">=0.1.89" },
     ["kickside.kb10:dep.kickside.models"] = { "kickside/models", "*" },
-    ["kickside.kb10:dep.kickside.provider_text"] = { "kickside/provider-text", "*" },
     -- Original delivery requires the storage-aware API introduced in 0.3.2.
     ["kickside.kb10:dep.kickside.uploads"] = { "kickside/uploads", ">=0.3.2" },
     ["kickside.kb10:dep.wippy.agent"] = { "wippy/agent", "*" },

@@ -66,6 +66,26 @@ local function define_tests()
                 end
             end)
         end
+        test.it("preserves document content and trims a title with a megabyte of internal whitespace", function()
+            local spaces = string.rep(" ", 1024 * 1024)
+            local title = "Before" .. spaces .. "after"
+            local event = {
+                type = "kickside.knowledge.events:content.upserted",
+                external = { external_id = "test-document" },
+                body = { title = "\t" .. title .. "\n", content = "\tBefore" .. spaces .. "after\n" },
+            }
+            local result, err = call(event)
+            test.is_nil(err, tostring(err))
+            test.is_nil(result.error)
+            test.is_true(result.documents[1].title == title)
+            test.is_true(result.documents[1].content == event.body.content)
+
+            event.body.content = spaces
+            local blank, blank_err = call(event)
+            test.is_nil(blank_err, tostring(blank_err))
+            test.eq(blank.error, "content event missing content")
+            test.eq(#blank.documents, 0)
+        end)
         test.it("retains inline events after their artifact is unavailable", function()
             local result, err = call({type="kickside.knowledge.events:content.upserted",
                 external={external_id="upload:missing"},body={content="Retained inline document",

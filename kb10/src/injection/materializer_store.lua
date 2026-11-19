@@ -8,7 +8,7 @@
 -- DTO/colon-methods so the engine-agnostic source_materializer planner drives it.
 
 local kb10_store = require("kb10_store")
-local trim = require("provider_text").trim
+local trim = require("text_trim").trim
 
 local M = {}
 

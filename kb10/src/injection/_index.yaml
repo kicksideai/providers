@@ -22,7 +22,7 @@ entries:
       comment: Internal kb10 materialization write adapter (kb10_store) — the single source-content write surface.
     source: file://materializer_store.lua
     imports:
-      provider_text: kickside.provider_text:trim
+      text_trim: kickside.contract:text_trim
       kb10_store: kickside.kb10.persist:store
 
   - name: tabular_chunker
@@ -31,6 +31,8 @@ entries:
       internal: true
       comment: Row-aware spreadsheet chunks with repeated headers and physical sheet ranges.
     source: file://tabular_chunker.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   # Storage-facing projection slice: materialization config, summary/chunk planning,
   # document replacement, and canonical deletes. Engine-agnostic through the
@@ -47,6 +49,7 @@ entries:
       - time
       - text
     imports:
+      text_trim: kickside.contract:text_trim
       kb_types: kickside.kb10:types
       engines: kickside.knowledge:engines
       model_settings: kickside.kb10:model_settings
@@ -69,7 +72,7 @@ entries:
     method: run
     modules: [hash]
     imports:
-      provider_text: kickside.provider_text:trim
+      text_trim: kickside.contract:text_trim
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
 
   # Deterministic, source-agnostic projection worker. Discovers extractors at
@@ -126,7 +129,7 @@ entries:
       - process
       - uuid
     imports:
-      provider_text: kickside.provider_text:trim
+      text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt
       component: kickside.component:component
@@ -152,7 +155,7 @@ entries:
       - process
       - uuid
     imports:
-      provider_text: kickside.provider_text:trim
+      text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt
       component: kickside.component:component
@@ -197,6 +200,7 @@ entries:
       - time
       - process
     imports:
+      text_trim: kickside.contract:text_trim
       digest: kickside.kb10.digest:digest
       execution_identity: kickside.execution:execution_identity
       enrichment_consts: kickside.kb10.graph:enrichment_consts
@@ -213,4 +217,5 @@ entries:
     method: run
     modules: [json, time]
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component

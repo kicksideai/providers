@@ -177,7 +177,7 @@ entries:
       timeout: 120s
     source: file://graph_change_publish_test.lua
     method: run
-    modules: [sql, json, crypto, funcs, security, contract, registry]
+    modules: [sql, json, crypto, funcs, security, contract, registry, store]
     imports:
       test: wippy.test:test
       kb10_types: kickside.kb10:types

@@ -1,7 +1,7 @@
 local M = {}
 local artifact_content_repo = require("artifact_content_repo")
 local hash = require("hash")
-local trim = require("provider_text").trim
+local trim = require("text_trim").trim
 
 local EVENT_CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 local EVENT_CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
@@ -103,7 +103,7 @@ function M.run(input)
             end
         end
     end
-    if type(content) ~= "string" or trim(content) == "" then
+    if trim(content) == "" then
         return { documents = {}, deletes = {}, error = "content event missing content" }
     end
 

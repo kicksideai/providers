@@ -50,10 +50,7 @@ local function map(value: unknown): UnknownMap
     return type(value) == "table" and (value :: UnknownMap) or {}
 end
 
-local function trim(value: unknown): string
-    if type(value) ~= "string" then return "" end
-    return ((value :: string):gsub("^%s*(.-)%s*$", "%1"))
-end
+local trim = require("text_trim").trim
 
 -- A worker reports failure by returning job_error, which the jobs engine records
 -- as the attempt's error and retries or dead-letters. The worker never raises, so

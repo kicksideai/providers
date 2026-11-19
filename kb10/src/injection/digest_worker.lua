@@ -49,10 +49,7 @@ type DigestWorkerDeps = {
 -- The worker regenerates the KB descriptions once for the target KB and broadcasts
 -- the refreshed summary to the users who drove the events.
 
-local function trim(s: any): string
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function decode_object(value: any): { [string]: any }
     if type(value) == "table" then return value :: { [string]: any } end

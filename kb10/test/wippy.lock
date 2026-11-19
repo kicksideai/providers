@@ -5,8 +5,8 @@ modules:
     - name: kickside/component
       version: 0.3.16
     - name: kickside/contract
-      version: 0.3.3
-      hash: 2b458c26be9a2a88e3ab630eb303f58ef5a29d29132a897a9f86b277df6492f3
+      version: 0.3.9
+      hash: e7d6ec472f7a36002f8740396a1b96b79ffe078ddeef06f3838641904a60bfbc
     - name: kickside/core
       version: 0.3.17
     - name: kickside/doc2md

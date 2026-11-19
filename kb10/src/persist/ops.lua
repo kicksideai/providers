@@ -9,7 +9,7 @@ local sql = require("sql")
 local json = require("json")
 local registry = require("registry")
 local search_index = require("search_index")
-local trim = require("provider_text").trim
+local trim = require("text_trim").trim
 
 local ops = { _modules = {} }
 

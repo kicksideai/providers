@@ -123,6 +123,7 @@ entries:
     source: file://concepts.lua
     modules: [http, json, security, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       http_errors: kickside.contract:http_errors
       component: kickside.component:component
       thread_ingest: kickside.knowledge.injection:thread_ingest

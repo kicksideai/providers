@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local text_limits = require("text_limits")
 local ctx = require("ctx")
 local json = require("json")
@@ -145,7 +146,7 @@ local function hyde_query_text(query_text: string, model: string): (string?, any
         { messages = { { role = "user", content = string.format(HYDE_PROMPT, query_text) } } },
         query_policy.hyde_options(model))
     if err then return nil, model_failure.wrap("HyDE generation", err) end
-    if not response or type(response.result) ~= "string" or response.result:match("^%s*$") then
+    if not response or type(response.result) ~= "string" or trim(response.result) == "" then
         return nil, errors.new({ kind = errors.INTERNAL, message = "HyDE generation returned an empty passage" })
     end
     return query_text .. "\n\n" .. text_limits.prefix(response.result, 2000), nil
