@@ -122,7 +122,7 @@ local function handler()
     -- top_level explicitly here to preserve the roots-only contract.
     local browse_parent = (parent_id and parent_id ~= "") and parent_id or nil
 
-    local results, query_err = kb_store:browse_nodes({
+    local page, query_err = kb_store:browse_page({
         store_id = store_row.id,
         opts = {
             parent_id = browse_parent,
@@ -140,24 +140,8 @@ local function handler()
         return
     end
 
-    -- The full match count for this filter, independent of limit/offset, so the UI
-    -- can page (A-B of TOTAL) rather than inferring the total from a capped page.
-    local total, count_err = kb_store:count_nodes({
-        store_id = store_row.id,
-        opts = {
-            parent_id = browse_parent,
-            top_level = browse_parent == nil,
-            node_type = (node_type and node_type ~= "") and node_type or nil,
-        },
-    })
-    if count_err then
-        res:set_status(http.STATUS.INTERNAL_ERROR)
-        res:write_json({ success = false, error = "browse count failed: " .. tostring(count_err) })
-        return
-    end
-
     local nodes = {}
-    for _, row in ipairs(results or {}) do
+    for _, row in ipairs(page.nodes) do
         local metadata = row.metadata
         if type(metadata) ~= "table" then metadata = {} end
 
@@ -189,7 +173,7 @@ local function handler()
         success = true,
         nodes = nodes,
         count = #nodes,
-        total = total,
+        total = page.total,
         pending_source = pending_source,
     })
 end
