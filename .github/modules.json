@@ -363,7 +363,7 @@
       "organization": "kickside",
       "module": "mcp-client",
       "type": "plugin",
-      "visibility": "private",
+      "visibility": "public",
       "embed": [
         "kickside.mcp_client:ui_fs"
       ],
