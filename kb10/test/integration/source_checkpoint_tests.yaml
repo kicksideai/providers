@@ -87,6 +87,11 @@ entries:
     method: run
     modules: [json, process, sql, time, uuid]
     imports:
+      apply: kickside.core.projections:apply
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
+      ops: kickside.kb10.persist:ops
+      source_repair: kickside.kb10.injection:source_repair
       jobs: kickside.core.jobs:jobs
       models: kickside.models.persist:repo
       projections: kickside.core.projections.persist:writer
