@@ -462,6 +462,7 @@ entries:
       component: kickside.component:component
       api: app.suites:secret_transport_fixture
       types: kickside.discord.client:types
+      text_trim: kickside.provider_text:trim
 
   - name: secret_transport_fixture
     kind: library.lua
