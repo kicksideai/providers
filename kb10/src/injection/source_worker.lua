@@ -337,6 +337,9 @@ local function default_dispatcher(event, deps)
     -- type (e.g. issue.created on both Jira and GitHub).
     local extractor_id = nil
     local source = event.external and event.external.external_source
+    if source == "knowledge.kb.versioned_delete" and event.type == "kickside.knowledge.events:content.deleted" then
+        source = "knowledge.kb"
+    end
     if type(source) == "string" and source ~= "" then
         extractor_id = extractor_map.by_source_type[source .. ":" .. event.type]
     end

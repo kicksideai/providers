@@ -1121,6 +1121,10 @@ function writer.delete_documents_by_external_id_tx(tx: any, db_type: any, store_
 end
 
 local function find_document_tx(tx: any, db_type: any, store_id: any, selector: any): (string?, table?, any?)
+    local expected = selector.expected_publication_id
+    if expected ~= nil and (selector.node_id ~= nil or type(expected) ~= "string" or not uuid.validate(expected)) then
+        return nil, nil, errors.new({kind = errors.INVALID, message = "invalid document publication selector"})
+    end
     if selector.node_id ~= nil then
         if type(selector.node_id) ~= "string" or not uuid.validate(selector.node_id) then
             return nil, nil, errors.new({kind = errors.INVALID, message = "invalid document node ID"})
@@ -1130,7 +1134,7 @@ local function find_document_tx(tx: any, db_type: any, store_id: any, selector: 
     end
     local binding = ops.source_binding(store_id, selector.external_source, selector.external_id, selector.source_thread_id)
     if not binding then return nil, nil, errors.new({kind = errors.INVALID, message = "invalid source binding"}) end
-    local id, err = ops.find_source_root_tx(tx, db_type, store_id, binding)
+    local id, err = ops.find_source_root_tx(tx, db_type, store_id, binding, expected)
     return id, nil, err
 end
 

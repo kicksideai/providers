@@ -10,11 +10,11 @@ entries:
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
   - name: dep.kickside.connection
     kind: ns.dependency
     component: kickside/connection
-    version: '>=0.5.8'
+    version: '>=0.5.9'
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract

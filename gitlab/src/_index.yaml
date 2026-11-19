@@ -17,14 +17,14 @@ entries:
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
     meta:
       comment: Resolves GitLab connection components through the component service.
 
   - name: dep.kickside.connection
     kind: ns.dependency
     component: kickside/connection
-    version: "*"
+    version: '>=0.1.8'
     meta:
       comment: Implements the shared connection contract and base connection helpers.
 

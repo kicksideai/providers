@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/kicksideai/providers/compare/telegram-v0.2.9...telegram-v0.2.10) (2026-11-19)
+
+
+### Bug Fixes
+
+* require compatible encrypted provider dependencies ([#173](https://github.com/kicksideai/providers/issues/173)) ([508276b](https://github.com/kicksideai/providers/commit/508276b3183236b644609b48eae680e671fa6b89))
+
 ## [0.2.9](https://github.com/kicksideai/providers/compare/telegram-v0.2.8...telegram-v0.2.9) (2026-11-19)
 
 

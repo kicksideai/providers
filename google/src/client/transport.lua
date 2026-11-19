@@ -58,6 +58,23 @@ local function extract_error(response: any): (string, number, any)
 end
 transport.extract_error = extract_error
 
+local function failure_result(response: any): google_types.Result
+    local message, code, body = extract_error(response)
+    local throttled = code == 429
+    local remote = code == 403 and type(body) == "table" and body.error or nil
+    if type(remote) == "table" and type(remote.errors) == "table" then
+        for _, item in ipairs(remote.errors) do
+            if type(item) == "table" and (item.reason == "rateLimitExceeded" or item.reason == "userRateLimitExceeded") then
+                throttled = true
+                break
+            end
+        end
+    end
+    return {success = false, error = message, status_code = code, data = body,
+        error_kind = throttled and "rate_limited" or nil,
+        retry_after_ms = throttled and capacity_http.retry_after(response, 60000) or nil}
+end
+
 -- Resolve the OAuth connection (token source). With a component_id, open that
 -- specific connection; without one, auto-discover the actor's Google connection.
 function transport.connect(component_id: string?): (google_types.Connection?, error?)
@@ -150,9 +167,7 @@ transport.request_json = capacity_http.wrap(function(conn: google_types.Connecti
         return { success = true, data = data, status_code = response.status_code }
     end
 
-    local message, code, error_body = extract_error(response)
-    return { success = false, error = message, status_code = code, data = error_body,
-        retry_after_ms = code == 429 and capacity_http.retry_after(response, 60000) or nil }
+    return failure_result(response)
 end, connection_id)
 
 -- Raw-text request for endpoints returning non-JSON bodies (Drive export to
@@ -166,9 +181,7 @@ transport.request_raw = capacity_http.wrap(function(conn: google_types.Connectio
         return { success = true, data = { text = response.body or "" } }
     end
 
-    local message, code, error_body = extract_error(response)
-    return { success = false, error = message, status_code = code, data = error_body,
-        retry_after_ms = code == 429 and capacity_http.retry_after(response, 60000) or nil }
+    return failure_result(response)
 end, connection_id)
 
 function transport.get(conn: google_types.Connection, endpoint: string, query: { [string]: any }?): (google_types.Result?, error?)

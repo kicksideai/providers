@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.52](https://github.com/kicksideai/providers/compare/hubspot-v0.1.51...hubspot-v0.1.52) (2026-11-19)
+
+
+### Bug Fixes
+
+* require compatible encrypted provider dependencies ([#173](https://github.com/kicksideai/providers/issues/173)) ([508276b](https://github.com/kicksideai/providers/commit/508276b3183236b644609b48eae680e671fa6b89))
+
 ## [0.1.51](https://github.com/kicksideai/providers/compare/hubspot-v0.1.50...hubspot-v0.1.51) (2026-11-19)
 
 

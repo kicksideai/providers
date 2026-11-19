@@ -782,6 +782,7 @@ function M.delete_documents_from_store(target, deletes): (any, any?)
                 external_source = d.external_source,
                 external_id = d.external_id,
                 external_version = d.external_version,
+                expected_publication_id = d.expected_publication_id,
                 source_ref = d.source_ref,
                 metadata = d.metadata,
                 thread_event_id = d.thread_event_id,
@@ -1407,9 +1408,18 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
 
     result.system_failed = system_failures
     if result.failed > 0 and result.inserted == 0 and system_failures == result.failed then
-        if type(first_system_failure) == "userdata" then return result, first_system_failure end
-        return result, "system-level document materialization failed for all documents: " ..
-            tostring(first_system_failure or "unknown")
+        local cause = first_system_failure
+        local cause_kind = type(cause) == "userdata" and cause:kind() or nil
+        -- Core invalidates a projection permanently on an INVALID, NOT_FOUND or
+        -- PERMISSION_DENIED failure. A provider rejection (missing key, unknown
+        -- model) is a dependency outage of this KB, not a defect of its events.
+        return result, errors.new({
+            kind = errors.UNAVAILABLE,
+            retryable = true,
+            message = "system-level document materialization failed for all documents: " ..
+                tostring(cause or "unknown"),
+            details = { cause_kind = cause_kind },
+        })
     end
 
     return result, nil

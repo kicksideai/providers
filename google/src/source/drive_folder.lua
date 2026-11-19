@@ -50,6 +50,10 @@ local function answer(result: any, err: error?, operation: string): (Map?, error
             retryable = raw.retryable, details = raw.details})
     end
     local code = tonumber(raw.status_code)
+    if code == 429 or raw.error_kind == "rate_limited" then
+        return nil, errors.new({kind = errors.RATE_LIMITED, retryable = true, message = operation .. ": Google Drive rate limited",
+            details = {code = "rate_limited", retry_after_ms = raw.retry_after_ms}})
+    end
     if code == 401 or code == 403 then
         return nil, failure(errors.PERMISSION_DENIED, "google_drive_access_denied", operation .. ": Google Drive access denied", false)
     end
@@ -58,10 +62,6 @@ local function answer(result: any, err: error?, operation: string): (Map?, error
     end
     if code == 410 then
         return nil, failure(errors.INVALID, "google_drive_cursor_expired", operation .. ": Drive cursor expired. Resync the automation.", false)
-    end
-    if code == 429 then
-        return nil, errors.new({kind = errors.RATE_LIMITED, retryable = true, message = operation .. ": Google Drive rate limited",
-            details = {code = "rate_limited", retry_after_ms = raw.retry_after_ms}})
     end
     return nil, failure(errors.UNAVAILABLE, "google_drive_provider_error", operation .. ": Google Drive returned no valid result", true)
 end
@@ -135,6 +135,11 @@ end
 local function list_folder(api: any, conn: any, selection: Map, token: string?, limit: number): (Map?, error?)
     local query = "'" .. selection.folder_id .. "' in parents and mimeType != '" .. FOLDER .. "'"
     local result, request_err = api.list_files(conn, query, limit, token, FILE_FIELDS, selection.drive_id)
+    local status = type(result) == "table" and tonumber(result.status_code) or nil
+    if token and not request_err and (status == 400 or status == 410) then
+        -- Drive rejects expired listing tokens. Restart once from the first page.
+        result, request_err = api.list_files(conn, query, limit, nil, FILE_FIELDS, selection.drive_id)
+    end
     local page, err = answer(result, request_err, "List selected folder")
     if err or not page then return nil, err end
     if page.incompleteSearch == true or type(page.files) ~= "table" or #page.files > limit then
@@ -270,7 +275,7 @@ local function read_items(selection: Map, rows: { any }): ({ Map }?, error?)
     end
     local items: { Map } = {}
     for index, file in ipairs(rows) do
-        if latest[file.id] == index and same_folder(file, selection) then
+        if latest[file.id] == index and file.mimeType ~= FOLDER and same_folder(file, selection) then
             local item, err = item_from(selection, file)
             if err or not item then return nil, err end
             items[#items + 1] = item

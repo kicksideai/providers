@@ -19,14 +19,14 @@ entries:
     meta:
       comment: Resolves MCP connection components for the worker, reconnect endpoint, and agent tools.
     component: kickside/component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
 
   - name: dep.kickside.connection
     kind: ns.dependency
     meta:
       comment: Implements the shared connection contract and base connection helpers.
     component: kickside/connection
-    version: "*"
+    version: '>=0.1.8'
 
   - name: dep.kickside.contract
     kind: ns.dependency

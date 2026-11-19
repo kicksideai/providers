@@ -8,6 +8,12 @@ function M.handle(): (any?, any?)
         res:set_status(403)
         return res:write_json({ error = { message = "Forbidden" } })
     end
+    if mode == "quota-user" or mode == "quota-project" then
+        local reason = mode == "quota-user" and "userRateLimitExceeded" or "rateLimitExceeded"
+        res:set_status(403)
+        res:set_header("Retry-After", "3")
+        return res:write_json({error = {message = "Quota exceeded", errors = {{reason = reason}}}})
+    end
     if mode == "always-unauthorized" or auth ~= "Bearer fresh" then
         res:set_status(401)
         return res:write_json({ error = { message = "Invalid Credentials" } })

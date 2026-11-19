@@ -17,7 +17,7 @@ entries:
   - name: dep.kickside.component
     kind: ns.dependency
     component: kickside/component
-    version: '>=0.3.21'
+    version: '>=0.3.23'
     meta:
       comment: Resolves GitHub connection components through the component service.
 
