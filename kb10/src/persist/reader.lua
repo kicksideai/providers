@@ -94,11 +94,7 @@ local function browse_filter(store_id: any, opts: kb10.BrowseNodesOptions)
     return clause, params
 end
 
-local function browse(store_id: any, opts: any, with_total: boolean)
-    local browse_opts = (type(opts) == "table" and opts or {}) :: kb10.BrowseNodesOptions
-    local db, err = ops.get_db()
-    if err then return nil, err end
-    local db_type = ops.get_db_type(db)
+local function read_nodes(handle: any, db_type: any, store_id: any, browse_opts: kb10.BrowseNodesOptions)
     local fields = "id, store_id, parent_id, node_type, content_type, metadata, created_at, updated_at, external_source, external_id"
     if browse_opts.include_content then fields = fields .. ", content" end
     local clause, params = browse_filter(store_id, browse_opts)
@@ -121,48 +117,60 @@ local function browse(store_id: any, opts: any, with_total: boolean)
     local query = "SELECT " .. fields .. clause .. order_by .. " LIMIT $" .. (#params + 1) .. " OFFSET $" .. (#params + 2)
     table.insert(params, browse_opts.limit or 50)
     table.insert(params, browse_opts.offset or 0)
-    if with_total then
-        -- The count side supplies one row even on an empty or out-of-range page.
-        -- Keep the aggregate independent of the selected content columns.
-        query = "WITH page AS (" .. query .. "), totals AS (SELECT COUNT(*) AS total" .. clause .. ")"
-            .. " SELECT page.*, totals.total FROM totals LEFT JOIN page ON true" .. order_by
-    end
+    return handle:query(query, params)
+end
 
-    local rows, query_err = db:query(query, params)
+local function count_nodes(handle: any, store_id: any, opts: kb10.BrowseNodesOptions)
+    local clause, params = browse_filter(store_id, opts)
+    local rows, err = handle:query("SELECT COUNT(*) AS total" .. clause, params)
+    if err then return nil, err end
+    return tonumber(rows[1].total)
+end
+
+local function browse_options(opts: any): kb10.BrowseNodesOptions
+    return (type(opts) == "table" and opts or {}) :: kb10.BrowseNodesOptions
+end
+
+function reader.browse_nodes(store_id: any, opts: any)
+    local db, err = ops.get_db()
+    if err then return nil, err end
+    local rows, query_err = read_nodes(db, ops.get_db_type(db), store_id, browse_options(opts))
     db:release()
     if query_err then return nil, query_err end
     rows = rows or {}
-    if with_total then
-        local total = tonumber(rows[1].total)
-        if rows[1].id == nil then rows = {} end
-        for _, row in ipairs(rows) do row.total = nil end
-        ops.decode_metadata(rows)
-        return { nodes = rows, total = total }
-    end
     ops.decode_metadata(rows)
     return rows
 end
 
-function reader.browse_nodes(store_id: any, opts: any)
-    return browse(store_id, opts, false)
-end
-
 function reader.browse_page(store_id: any, opts: any)
-    return browse(store_id, opts, true)
+    local db, err = ops.get_db()
+    if err then return nil, err end
+    local db_type = ops.get_db_type(db)
+    local options = browse_options(opts)
+    -- A concurrent insert or deletion must affect both the rows and the total together.
+    local tx, begin_err = db:begin({ isolation = sql.isolation.REPEATABLE_READ, read_only = true })
+    if begin_err then
+        db:release()
+        return nil, begin_err
+    end
+    local rows, query_err = read_nodes(tx, db_type, store_id, options)
+    local total
+    if not query_err then total, query_err = count_nodes(tx, store_id, options) end
+    local _, finish_err
+    if query_err then _, finish_err = tx:rollback() else _, finish_err = tx:commit() end
+    db:release()
+    if query_err or finish_err then return nil, query_err or finish_err end
+    rows = rows or {}
+    ops.decode_metadata(rows)
+    return { nodes = rows, total = total }
 end
 
 function reader.count_nodes(store_id: any, opts: any)
-    local count_opts = (type(opts) == "table" and opts or {}) :: kb10.BrowseNodesOptions
-    local clause, params = browse_filter(store_id, count_opts)
     local db, err = ops.get_db()
     if err then return nil, err end
-    local query = "SELECT COUNT(*) AS total" .. clause
-    local rows, query_err = db:query(query, params)
+    local total, count_err = count_nodes(db, store_id, browse_options(opts))
     db:release()
-
-    if query_err then return nil, query_err end
-    if not rows or #rows == 0 then return 0 end
-    return tonumber(rows[1].total) or 0
+    return total, count_err
 end
 
 function reader.get_summaries(component_ids: any)
