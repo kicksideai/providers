@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.20](https://github.com/kicksideai/providers/compare/kb10-v0.2.19...kb10-v0.2.20) (2026-11-19)
+
+
+### Features
+
+* **kb10:** show indexing progress on the knowledge base page ([#130](https://github.com/kicksideai/providers/issues/130)) ([1d0f167](https://github.com/kicksideai/providers/commit/1d0f167a7b77fcdd2ab12971975d70ced72d7bda))
+
 ## [0.2.19](https://github.com/kicksideai/providers/compare/kb10-v0.2.18...kb10-v0.2.19) (2026-11-19)
 
 
