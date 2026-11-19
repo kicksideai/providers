@@ -305,7 +305,8 @@ function tt(e, o) {
 function wo(e) {
   if (typeof e != "object" || !e) return "";
   const { count: o, truncated: t } = e;
-  if (typeof o != "number" || !Number.isSafeInteger(o) || o <= 0) return "";
+  if (typeof o != "number" || !Number.isSafeInteger(o) || o < 0) return "";
+  if (o === 0) return t === !0 ? "Indexing — waiting count unknown" : "";
   const l = o > 100 || t === !0;
   return `Indexing — ${`${Math.min(o, 100)}${l ? "+" : ""}`} ${o === 1 && !l ? "change" : "changes"} waiting`;
 }
@@ -1674,4 +1675,4 @@ export {
   mo as y,
   co as z
 };
-//# sourceMappingURL=AddPanel.vue_vue_type_script_setup_true_lang-D-CP0ZRz.js.map
+//# sourceMappingURL=AddPanel.vue_vue_type_script_setup_true_lang-kKOQPrqs.js.map

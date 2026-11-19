@@ -51,6 +51,7 @@ it.each(['document', 'wiki', 'graph'] as const)('shows waiting work in the %s vi
   for (const [index, { count, truncated, text }] of [
     { count: 1, truncated: false, text: 'Indexing — 1 change waiting' },
     { count: 145, truncated: true, text: 'Indexing — 100+ changes waiting' },
+    { count: 0, truncated: true, text: 'Indexing — waiting count unknown' },
     { count: 0, truncated: false, text: '' },
   ].entries()) {
     proxy.get.mockResolvedValueOnce({ data: { success: true, pending_source: { count, truncated } } })
