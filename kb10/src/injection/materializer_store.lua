@@ -192,10 +192,11 @@ function M.insert_embedding(_self: any, args: any): (any, string?)
     return kb10_store.insert_embedding(a.store_id, a.node_id, a.node_type, a.parent_id, a.embedding)
 end
 
-function M.replace_document(_self: any, args: any): (any, any?)
+function M.replace_document(self: any, args: any): (any, any?)
     local a = arg_table(args)
     local validation_err = validate_replace_document(a)
     if validation_err then return nil, validation_err end
+    if self and self.plan then return self.plan("replace", a) end
     return kb10_store.replace_document(a.store_id, {
         document = a.document,
         children = a.children,
@@ -203,17 +204,19 @@ function M.replace_document(_self: any, args: any): (any, any?)
     })
 end
 
-function M.reject_source_revision(_self: any, args: any): (any, any?)
+function M.reject_source_revision(self: any, args: any): (any, any?)
     local a = arg_table(args)
     local ok, err = require_source_lineage("reject_source_revision", a, a.metadata)
     if not ok then return nil, err end
+    if self and self.plan then return self.plan("reject", a) end
     return kb10_store.reject_source_revision(a.store_id, a.metadata.source_ref.thread_id, a.metadata, a.code)
 end
 
-function M.delete_documents_by_external_id(_self: any, args: any): (any, any?)
+function M.delete_documents_by_external_id(self: any, args: any): (any, any?)
     local a = arg_table(args)
     local ok, lineage_err = require_source_lineage("delete_documents_by_external_id", a, a.metadata)
     if not ok then return nil, lineage_err end
+    if self and self.plan then return self.plan("delete", a) end
     return kb10_store.delete_document(a.store_id, a)
 end
 

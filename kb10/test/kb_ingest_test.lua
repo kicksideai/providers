@@ -30,7 +30,7 @@ local INGEST_CONTROL_METHOD = "kickside.knowledge.injection:thread_ingest_contro
 local DELETE_CONTENT_METHOD = "app:agent_delete_content"
 local TRAIT_EMBED_METHOD = "kickside.knowledge.traits:kb_embed_tool"
 local MANAGED_INJECTION_ACTOR_ID = "system:knowledge.injection"
-local SOURCE_WORKER_PROC_REF = "proc://kickside.kb10.injection:source_worker_proc"
+local SOURCE_WORKER_PROC_REF = "proc://kickside.kb10.injection:primary_source_worker"
 
 local function ensure_test_user(db, user_id)
     if type(user_id) ~= "string" or user_id == "" then return nil end

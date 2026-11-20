@@ -811,6 +811,11 @@ function M.delete_documents_from_store(target, deletes): (any, any?)
                 removed_failed_document_count = tonumber(removed_row and removed_row.removed_failed_document_count) or 0,
                 removed_summary_count = tonumber(removed_row and removed_row.removed_summary_count) or 0,
                 removed_chunk_count = tonumber(removed_row and removed_row.removed_chunk_count) or 0,
+                embedding_delta = removed_row and removed_row.embedding_delta,
+                document_delta = removed_row and removed_row.document_delta,
+                failed_delta = removed_row and removed_row.failed_delta,
+                chunk_delta = removed_row and removed_row.chunk_delta,
+                summary_delta = removed_row and removed_row.summary_delta,
                 missing = missing,
             }
         end
@@ -1292,7 +1297,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         n.failed_delta = -(tonumber(n.removed_failed_document_count) or 0)
         n.chunk_delta = (tonumber(n.chunk_count) or 0) - (tonumber(n.removed_chunk_count) or 0)
         n.summary_delta = summary_count - (tonumber(n.removed_summary_count) or 0)
-        n.embedding_delta = (tonumber(n.chunk_delta) or 0) + (tonumber(n.summary_delta) or 0)
+        n.embedding_delta = replacement.embedding_delta or (tonumber(n.chunk_delta) or 0) + (tonumber(n.summary_delta) or 0)
         return true, nil
     end
 
@@ -1401,7 +1406,7 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
                 failed_delta = persisted and (1 - removed_failed_documents) or 0,
                 chunk_delta = persisted and -removed_chunks or 0,
                 summary_delta = persisted and -removed_summaries or 0,
-                embedding_delta = persisted and -(removed_chunks + removed_summaries) or 0,
+                embedding_delta = dead_letter_result and dead_letter_result.embedding_delta or (persisted and -(removed_chunks + removed_summaries) or 0),
             }
         end
     end
