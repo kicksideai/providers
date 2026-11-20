@@ -99,6 +99,12 @@ local function run(_: any?): any
     if err or not report then
         return {status = "error", message = "kb10 source repair failed: " .. tostring(err)}
     end
+    -- Keeper runs bootloaders for changed modules. KB10-only installs must
+    -- wake the owner of the projection declarations after migration 15.
+    local wake, wake_err = require("funcs").call("kickside.core.lifecycle:migrations_applied")
+    if wake_err or not wake or wake.status ~= "success" then
+        return {status = "error", message = "KB source convergence wake failed: " .. tostring(wake_err or (wake and wake.message))}
+    end
     return {
         status = #report.failed > 0 and "error" or "success",
         message = "kb10 source projections: " .. #report.repaired .. " resumed, " .. report.kept

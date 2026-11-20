@@ -14,7 +14,7 @@ local DEPENDENCY_PREFIX = "kickside.kb10:dep."
 local REQUIRED_DEPENDENCIES = {
     ["kickside.kb10:dep.kickside.component"] = { "kickside/component", "*" },
     ["kickside.kb10:dep.kickside.contract"] = { "kickside/contract", ">=0.3.9" },
-    ["kickside.kb10:dep.kickside.core"] = { "kickside/core", ">=0.3.40" },
+    ["kickside.kb10:dep.kickside.core"] = { "kickside/core", ">=0.3.41" },
     ["kickside.kb10:dep.kickside.search_index"] = { "kickside/search-index", "*" },
     -- Page and slide locators read the markers API introduced in 0.8.15.
     ["kickside.kb10:dep.kickside.doc2md"] = { "kickside/doc2md", ">=0.8.15" },

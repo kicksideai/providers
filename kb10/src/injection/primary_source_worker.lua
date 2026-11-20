@@ -203,6 +203,7 @@ local function publish(input)
     end
     if write then receipt, ack_err = acknowledge(write) end
     if not receipt then return nil, ack_err end
+    if ack_err then logger:warn("source checkpoint follow-up failed", {cursor_id = cursor.id, error = tostring(ack_err)}) end
     for _, request in ipairs(requests or {}) do
         local sent, err = process.send(enrichment.PROCESS, enrichment.TOPIC, {store_id = id, component_id = id,
             document_node_id = request.document_node_id, user_id = request.user_id, execution_identity = {

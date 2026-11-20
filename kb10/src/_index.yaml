@@ -40,7 +40,7 @@ entries:
   - name: dep.kickside.core
     kind: ns.dependency
     component: kickside/core
-    version: ">=0.3.40"
+    version: ">=0.3.41"
     meta:
       comment: Owns the knowledge thread and supervised source checkpoints.
 

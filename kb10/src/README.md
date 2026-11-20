@@ -41,17 +41,17 @@ workers; it does not use a public materializer contract.
 
 ## Installed source projection
 
-Core 0.3.40 or later runs the primary KB source worker through Jobs under the
+Core 0.3.41 or later runs the primary KB source worker through Jobs under the
 projection's stored actor and scope. It keeps the ordinary extractor, model
 options, source reducer, graph events, and digest and treatment finalizers.
 Graph placement is best effort after the checkpoint commits. A stop between
 commit and placement delivery can leave a document without a placement request.
 
-When upgrading a populated host, drain the ordinary source workers and stop
-them before switching packages. Run the module migrations and Core's ordinary
-descriptor convergence, then resume paused cursors. Core recognizes the
-previous installed worker and preserves its projection, cursor position, and
-fold. Explicitly registered workers keep their registration. A pre-upgrade
+Keeper Update all runs migration 15 and wakes Core's existing declaration
+converger. Core preserves the projection, cursor, job, source fold and the
+operator's active or paused state. A busy active predecessor serves its
+backlog through the head recorded at upgrade. At a settled Jobs boundary,
+Core switches the existing slot and the new worker consumes later uploads. A pre-upgrade
 target write whose acknowledgment was lost has no saved outcome from which to
 recover its original counts.
 

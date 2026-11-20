@@ -123,6 +123,8 @@ entries:
     source: file://source_publication_slot.lua
     modules: [uuid, sql]
     imports:
+      job_types: kickside.core.jobs:types
+      error_envelope: kickside.contract:error_envelope
       component: kickside.component:component
       ops: kickside.kb10.persist:ops
 
@@ -328,7 +330,7 @@ entries:
     meta:
       comment: Finds KB source projections invalidated by an embedding provider rejection and resumes them through Core.
     source: file://source_repair.lua
-    modules: [sql]
+    modules: [sql, funcs]
     imports:
       core_db: kickside.core:db
       projection_writer: kickside.core.projections.persist:writer
@@ -342,7 +344,7 @@ entries:
       comment: Resumes KB source projections that an earlier release invalidated on an embedding provider rejection.
     source: file://source_repair.lua
     method: run
-    modules: [sql]
+    modules: [sql, funcs]
     imports:
       core_db: kickside.core:db
       projection_writer: kickside.core.projections.persist:writer

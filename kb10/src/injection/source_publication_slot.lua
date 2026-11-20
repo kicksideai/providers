@@ -1,5 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local ops = require("ops")
+local error_envelope = require("error_envelope")
+local job_types = require("job_types")
 local component = require("component")
 local sql = require("sql")
 local uuid = require("uuid")
@@ -98,10 +100,25 @@ function M.publish(id, slot, encoded, write, acknowledge)
             return true, nil
         end)
     end)
-    if not committed then tx:rollback() end
-    local _, release_err = db:release()
-    if not ok then return nil, receipt end
-    return receipt, failure or release_err
+    local function thrown(value)
+        return job_types.native_error(value) or errors.new({kind = errors.INTERNAL, message = tostring(value)})
+    end
+    local function cleanup(method)
+        local called, value, err = pcall(method)
+        if not called then return thrown(value) end
+        return err
+    end
+    local rollback_err
+    if not committed then rollback_err = cleanup(function() return tx:rollback() end) end
+    local release_err = cleanup(function() return db:release() end)
+    if not ok then failure, receipt = thrown(receipt), nil end
+    if rollback_err then
+        failure = failure and error_envelope.wrap_secondary(failure, rollback_err, "knowledge publication rollback failed") or rollback_err
+    end
+    if release_err then
+        failure = failure and error_envelope.wrap_secondary(failure, release_err, "knowledge publication release failed") or release_err
+    end
+    return receipt, failure
 end
 
 return M
