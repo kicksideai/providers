@@ -58,4 +58,6 @@ function M.lookup(refs: any): ({any}?,error?)
     return results,nil
 end
 
+M.classify_for_test=outcome
+
 return M
