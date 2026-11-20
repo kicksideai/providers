@@ -8,6 +8,7 @@ local json = require("json")
 local models = require("models")
 local process = require("process")
 local projections = require("projections")
+local owner = require("projection_owner")
 local sql = require("sql")
 local store = require("store")
 local test = require("test")
@@ -126,7 +127,7 @@ local function assert_replay_stays_bounded(db, registered, store_id, model)
     end
 end
 
-local function scenario(worker, ordinary)
+local function scenario(ordinary)
     test.describe("scheduled KB10 source worker", function()
         test.it("recovers the existing slot without losing or replaying accepted documents", function()
             local id, actor = uuid.v7(), uuid.v7()
@@ -135,33 +136,28 @@ local function scenario(worker, ordinary)
                 capabilities = {"embed"}, dimensions = 512, max_tokens = 4096}))
             assert(store.create_store(id, model, {}))
             local upload_id, missing = absent_artifact()
+            local descriptor = not ordinary and "app:checkpoint_fixture_descriptor" or nil
+            local member_threads = owner.create(actor, id, descriptor)
+            if ordinary then
+                assert(member_threads:register_projection({
+                    thread_id = id, kind = "knowledge.injection.source", projection_key = "source", cursor_key = "source",
+                    worker_ref = "proc://kickside.kb10.injection:source_worker_proc", worker_input_mode = "prefetch_events",
+                    events = {input = {{type = UPSERT}, {type = DELETE}}},
+                    worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
+                }))
+            end
             local registered = in_db(function(db)
                 assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_checkpoint_model (
                     model TEXT PRIMARY KEY, online INTEGER NOT NULL, calls INTEGER NOT NULL, failures INTEGER NOT NULL)]]))
                 assert(db:execute("INSERT INTO kb10_checkpoint_model (model,online,calls,failures) VALUES ($1,0,0,0)", {model}))
-                local identity
-                if ordinary then
-                    assert(db:execute("INSERT INTO app_users (user_id,email,password_hash) VALUES ($1,$2,'!fixture')",
-                        {actor, actor .. "@test.invalid"}))
-                    assert(db:execute("INSERT INTO app_user_groups (user_id,group_id) VALUES ($1,'app:user')", {actor}))
-                    assert(db:execute([[INSERT INTO kickside_components (component_id,impl_id,private_context)
-                        VALUES ($1,'kickside.kb10:embeddable','{}')]], {id}))
-                    assert(db:execute([[INSERT INTO kickside_component_access
-                        (access_id,subject_type,subject_id,component_id,source_component_id,access_mask)
-                        VALUES ($1,'user',$2,$3,$4,15)]], {uuid.v7(),actor,id,id}))
-                    identity = {version = 2, principal = {kind = "user", id = actor}, authorized_by = {kind = "user", id = actor},
-                        component_id = id, captured_at = time.now():utc():format(time.RFC3339)}
-                end
-                assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id)
-                    VALUES ($1,'kickside.knowledge.injection',$2)]], {id, id}))
                 append(db, id, "a", "1", {content = "Earlier good revision"})
                 append(db, id, "a", "2", {content = "queued replacement"})
-                local registration = assert(projections.register_projection(db, id, {
-                    kind = "knowledge.injection.source", worker_input_mode = "prefetch_events", system_identity = not ordinary, execution_identity = identity,
-                    worker_ref = worker,
-                    events = {input = {{type = UPSERT}, {type = DELETE}}},
-                    worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
-                }))
+                local rows = assert(db:query([[SELECT c.id AS cursor_id,c.actor_id,c.job_id,c.projection_id
+                    FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
+                    WHERE c.thread_id=$1 AND p.kind='knowledge.injection.source' AND c.cursor_key='source']], {id}))
+                test.eq(#rows, 1)
+                local registration = rows[1]
+                test.eq(registration.actor_id, actor)
                 if ordinary then
                     assert(db:execute("UPDATE kickside_job SET max_attempts=1 WHERE id=$1", {registration.job_id}))
                 end
@@ -296,12 +292,7 @@ local function scenario(worker, ordinary)
                 assert(db:execute("DELETE FROM kb10_checkpoint_model WHERE model=$1", {model}))
                 assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", {id}))
                 assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {id}))
-                if ordinary then
-                    assert(db:execute("DELETE FROM kickside_component_access WHERE component_id=$1", {id}))
-                    assert(db:execute("DELETE FROM kickside_components WHERE component_id=$1", {id}))
-                    assert(db:execute("DELETE FROM app_user_groups WHERE user_id=$1", {actor}))
-                    assert(db:execute("DELETE FROM app_users WHERE user_id=$1", {actor}))
-                end
+                owner.cleanup(db, actor, id)
             end)
             assert(store.delete_store(id))
             assert(models.delete_card(model))
@@ -313,6 +304,6 @@ local function scenario(worker, ordinary)
 end
 
 return {
-    run = test.run_cases(function() scenario("proc://kickside.kb10.injection:checkpoint_source_worker", false) end),
-    ordinary = test.run_cases(function() scenario("proc://kickside.kb10.injection:source_worker_proc", true) end),
+    run = test.run_cases(function() scenario(false) end),
+    ordinary = test.run_cases(function() scenario(true) end),
 }

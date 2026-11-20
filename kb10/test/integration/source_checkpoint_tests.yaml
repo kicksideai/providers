@@ -53,6 +53,7 @@ entries:
     method: run
     modules: [fs, hash, json, process, sql, time, uuid]
     imports:
+      projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
       jobs: kickside.core.jobs:jobs
@@ -70,6 +71,7 @@ entries:
     method: ordinary
     modules: [fs, hash, json, process, sql, time, uuid]
     imports:
+      projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
       jobs: kickside.core.jobs:jobs
@@ -98,3 +100,53 @@ entries:
       store: kickside.kb10.persist:store
       test: wippy.test:test
       threads: kickside.core.threads.persist:writer
+
+  - name: projection_owner_fixture
+    kind: library.lua
+    source: file://../fixtures/projection_owner.lua
+    modules: [contract, security, sql]
+
+  - name: conflict_page
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+    schema:
+      type: object
+      properties:
+        page_id: {type: string}
+        title: {type: string}
+        text: {type: string}
+      required: [page_id, title, text]
+
+  - name: source_fixture_component
+    kind: contract.binding
+    meta:
+      events:
+        input: [{type: "app:conflict_page"}]
+        output:
+          - {type: "kickside.knowledge.events:content.upserted"}
+          - {type: "kickside.knowledge.events:content.deleted"}
+          - {type: "kickside.knowledge.events:graph.changed"}
+          - {type: "kickside.knowledge.events:digest.requested"}
+          - {type: "kickside.knowledge.events:treatment.requested"}
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: "kickside.core.threads:thread_status"}
+
+  # Only this test descriptor selects the dormant checkpoint worker. KB10's
+  # published Knowledge Base kinds continue to select the ordinary worker.
+  - name: checkpoint_fixture_descriptor
+    kind: registry.entry
+    meta:
+      impl_id: app:source_fixture_component
+      thread: {class: kb10.test.checkpoint}
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: proc://kickside.kb10.injection:checkpoint_source_worker
+          input_mode: prefetch_events
+          worker_config: {materialization: {summary_model: false, chunk_enrichment_model: false}}
+          events:
+            input:
+              - {type: "kickside.knowledge.events:content.upserted"}
+              - {type: "kickside.knowledge.events:content.deleted"}
