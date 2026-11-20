@@ -138,6 +138,60 @@ local function define_tests()
             test.eq(dense[2].id, "second")
         end)
 
+        test.it("matches indexed lexical partitions before ranking content", function()
+            local db, sqlite = open()
+            local partition, unrelated = "generation-1", "generation-2"
+            local token = index.lexical_scope_token(partition)
+            local other_token = index.lexical_scope_token(unrelated)
+            test.eq(token, "p67656e65726174696f6e2d31")
+            local vector = sqlite and "" or [=[, search_vector tsvector GENERATED ALWAYS AS
+                (setweight(to_tsvector('simple', regexp_replace(content, '[^[:alnum:]]+', ' ', 'g')), 'A') ||
+                 setweight(to_tsvector('simple', scope_token || '@scope.invalid'), 'D')) STORED]=]
+            exec(db, "CREATE TABLE si_scoped_rows (id INTEGER PRIMARY KEY, part TEXT NOT NULL, " ..
+                "content TEXT NOT NULL, scope_token TEXT NOT NULL" .. vector .. ")")
+            if sqlite then
+                exec(db, "CREATE VIRTUAL TABLE si_scoped_fts USING fts5(content, scope_token)")
+            else
+                exec(db, "CREATE INDEX si_scoped_fts ON si_scoped_rows USING gin(search_vector)")
+            end
+            local rows = {
+                { 1, partition, "roadmap", token },
+                { 2, partition, "roadmap roadmap", token },
+                { 3, partition, "roadmap", token },
+                { 4, unrelated, "roadmap roadmap roadmap", token }, -- Mismatched derived marker.
+                { 5, unrelated, "roadmap " .. token .. "@scope.invalid", other_token },
+                { 6, partition, "release 17 roadmap", token },
+            }
+            local tx = assert(db:begin())
+            assert(not index.insert_rows_tx(tx, "si_scoped_rows", { "id", "part", "content", "scope_token" }, rows))
+            if sqlite then
+                assert(tx:execute("INSERT INTO si_scoped_fts (rowid, content, scope_token) SELECT id, content, scope_token FROM si_scoped_rows"))
+            end
+            assert(tx:commit())
+            local spec = { vectors = "", vector_key = "", rows = "si_scoped_rows", row_key = "id", partition = "part", columns = { "content" },
+                fts = "si_scoped_fts", fts_key = "rowid", tsvector = "search_vector", lexical_scope = true }
+            local hits, err = index.lexical_search(db, spec, "roadmap", { partition = partition, limit = 10 })
+            test.is_nil(err, tostring(err))
+            test.eq(#hits, 4)
+            test.eq(tonumber(hits[1].id), 2)
+            local equal_rank = {}
+            for _, hit in ipairs(hits) do
+                if hit.content == "roadmap" then equal_rank[#equal_rank + 1] = tonumber(hit.id) end
+            end
+            test.eq(#equal_rank, 2)
+            test.eq(equal_rank[1], 1)
+            test.eq(equal_rank[2], 3)
+            local anchored, anchor_err, has_anchor = index.lexical_search(db, spec, "roadmap 17", { partition = partition })
+            test.is_nil(anchor_err, tostring(anchor_err))
+            test.is_true(has_anchor)
+            test.eq(#anchored, 1)
+            test.eq(tonumber(anchored[1].id), 6)
+            local marker, marker_err = index.lexical_search(db, spec, token, { partition = partition })
+            test.is_nil(marker_err, tostring(marker_err))
+            test.eq(#marker, 0)
+            db:release()
+        end)
+
         test.it("joins a dense vector only to its owner in the same partition", function()
             local part, other_part = uuid.v7(), uuid.v7()
             local local_node = insert(part, "fact", "current", "local owner")

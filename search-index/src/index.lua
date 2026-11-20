@@ -25,6 +25,7 @@ type Spec = {
     fts_key: string,
     tsvector: string,
     json_columns: { string }?,
+    lexical_scope: boolean?,
 }
 
 type SearchOptions = {
@@ -251,12 +252,13 @@ end
 
 -- Query text never enters either engine's full-text grammar unquoted. Tokens are
 -- OR-joined; digit-bearing tokens are additionally AND-required as anchors.
-function index.lexical_query(text: string, sqlite: boolean): (string?, boolean)
+local function lexical_query(text: string, sqlite: boolean, scoped: boolean?): (string?, boolean)
     local terms, anchors, seen = {}, {}, {}
     for token in text:lower():gmatch("[%w\128-\255]+") do
         if not seen[token] then
             seen[token] = true
             local quoted = sqlite and ('"' .. token .. '"') or ("'" .. token:gsub("'", "''") .. "'")
+            if scoped and not sqlite then quoted = quoted .. ":A" end
             terms[#terms + 1] = quoted
             if token:find("%d") then anchors[#anchors + 1] = quoted end
             if #terms >= 64 then break end
@@ -269,36 +271,70 @@ function index.lexical_query(text: string, sqlite: boolean): (string?, boolean)
     return query, #anchors > 0
 end
 
--- Rows matching the query text, best first (bm25 on SQLite, ts_rank on
--- PostgreSQL). Returns rows, error, and whether the query was anchored.
+function index.lexical_query(text: string, sqlite: boolean): (string?, boolean)
+    local match, anchored = lexical_query(text, sqlite)
+    return match, anchored
+end
+
+-- A single word in both tokenizers, with no lossy normalization of a partition ID.
+function index.lexical_scope_token(partition: string): string
+    return "p" .. (partition:gsub(".", function(byte: string): string
+        return string.format("%02x", byte:byte())
+    end))
+end
+
+-- Rows matching the query text, best first. Returns rows, error, and whether
+-- the query was anchored.
 function index.lexical_search(db: any, spec: Spec, query_text: string, opts: SearchOptions): (any, any?, boolean)
     local invalid_group = group_error(spec, opts)
     if invalid_group then return nil, invalid_group, false end
     local sqlite, type_err = index.is_sqlite(db)
     if type_err then return nil, type_err, false end
-    local match, anchored = index.lexical_query(query_text, sqlite :: boolean)
+    local match, anchored = lexical_query(query_text, sqlite :: boolean, spec.lexical_scope)
     if not match then return {}, nil, false end
+    local params: { any } = { match, opts.partition }
+    local idx = 2
+    local predicate = not sqlite and ("n." .. spec.tsvector .. " @@ to_tsquery('simple', $1)") or ""
+    local distance = sqlite and ("bm25(" .. spec.fts .. ")") or
+        ("-ts_rank(n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32)")
+    if spec.lexical_scope then
+        if type(opts.partition) ~= "string" or #opts.partition < 1 or #opts.partition > 128 then
+            return nil, errors.new({ kind = errors.INVALID, message = "lexical scope needs a partition ID of 1 to 128 bytes" }), anchored
+        end
+        local token = index.lexical_scope_token(opts.partition)
+        if sqlite then
+            params[1] = 'content : (' .. match .. ') AND scope_token : "' .. token .. '"'
+            -- Each highlighted range inserts two one-byte markers. Count only
+            -- matches on this row, without the shared BM25 phrase statistics.
+            distance = "(length(CAST(n.content AS BLOB)) - length(CAST(highlight(" .. spec.fts ..
+                ", 0, char(1), char(2)) AS BLOB)))"
+        else
+            -- GIN indexes lexemes without weights. The suffix distinguishes
+            -- scope markers from alphanumeric content even inside the index.
+            params[3], idx = token .. "@scope.invalid:D", 3
+            predicate = "n." .. spec.tsvector .. " @@ (to_tsquery('simple', $1) && to_tsquery('simple', $3))"
+            -- Content is stored at A, but retain the original unweighted score.
+            distance = "-ts_rank(ARRAY[0.1,0.2,0.4,0.1]::real[], n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32)"
+        end
+    end
     local selection = row_select(spec, "n", nil)
     if opts.group_by then
-        selection = "n." .. opts.group_by .. " AS id, " .. (sqlite and ("bm25(" .. spec.fts .. ")") or
-            ("-ts_rank(n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32)")) .. " AS lexical_distance"
+        selection = "n." .. opts.group_by .. " AS id, " .. distance .. " AS lexical_distance"
     end
     local query = "SELECT " .. selection
     if sqlite then
         query = query .. " FROM " .. spec.fts .. " JOIN " .. spec.rows .. " n ON n." .. spec.row_key .. " = " .. spec.fts .. "." .. spec.fts_key ..
             " WHERE " .. spec.fts .. " MATCH $1 AND n." .. spec.partition .. " = $2"
     else
-        query = query .. " FROM " .. spec.rows .. " n WHERE n." .. spec.tsvector .. " @@ to_tsquery('simple', $1) AND n." .. spec.partition .. " = $2"
+        query = query .. " FROM " .. spec.rows .. " n WHERE " .. predicate .. " AND n." .. spec.partition .. " = $2"
     end
-    local params: { any } = { match, opts.partition }
-    local idx = 2
     query, idx = append_filters(query, params, idx, opts.filters, { rows = "n", vectors = "n" })
     if opts.group_by then
         query = query .. " AND n." .. opts.group_by .. " IS NOT NULL"
         query = "WITH matches AS MATERIALIZED (" .. query .. ") SELECT id, MIN(lexical_distance) AS lexical_distance FROM matches " ..
             "GROUP BY id ORDER BY lexical_distance, id"
-    elseif sqlite then
-        query = query .. " ORDER BY bm25(" .. spec.fts .. "), n." .. spec.row_key
+    elseif sqlite or spec.lexical_scope then
+        query = query .. " ORDER BY " .. distance .. ", n." .. spec.row_key
     else
         query = query .. " ORDER BY ts_rank(n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32) DESC, n." .. spec.row_key
     end
