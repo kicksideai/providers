@@ -1,21 +1,14 @@
-import { WippyVueElement, define, useEvents } from "@wippy-fe/webcomponent-vue";
+import { WippyVueElement, define, lazyVueConfig } from '@wippy-fe/webcomponent-vue'
 import type {
   WippyElementConfig,
   WippyPropsSchema,
 } from "@wippy-fe/webcomponent-vue";
 import { PrimeVuePlugin } from "@wippy-fe/theme/primevue-plugin";
-import { lazyControl } from "./lazy";
+
 import stylesText from "./styles.css?inline";
 import pkg from "../package.json";
 
-const Root = lazyControl(
-  () => import("./app/HubSpotPicker.vue"),
-  {
-    loading: "Loading HubSpot picker…",
-    failed: "Could not load the HubSpot picker. Reload the page to try again.",
-  },
-  useEvents,
-);
+
 
 interface Config {
   connection_id?: string;
@@ -37,7 +30,7 @@ class HubSpotPickerElement extends WippyVueElement<P, E> {
     };
   }
   static get vueConfig() {
-    return { rootComponent: Root, plugins: [PrimeVuePlugin] };
+    return lazyVueConfig(() => (() => import("./app/HubSpotPicker.vue"))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: "Loading HubSpot picker…", failed: "Could not load the HubSpot picker. Reload the page to try again.", delay: 200, timeout: 30000 });
   }
 }
 

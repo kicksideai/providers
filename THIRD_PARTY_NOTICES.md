@@ -27,22 +27,6 @@ Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.jso
 
 license: [License text](#license-text-48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0)
 
-### npm: @iconify/types@2.0.0
-
-License: MIT
-
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
-
-license.txt: [License text](#license-text-045ce74712fc613fdd74d1c55f5140a08d623836ff2aca44132b38d68fbc67ad)
-
-### npm: @iconify/vue@5.0.3
-
-License: MIT
-
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
-
-license.txt: [License text](#license-text-7cef50a4477dcd1f0ea036d3c7031430851ea21228e65658c6c84a57754e1b65)
-
 ### npm: @jridgewell/gen-mapping@0.3.13
 
 License: MIT
@@ -167,19 +151,19 @@ Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.jso
 
 LICENSE: [License text](#license-text-d0ac09e8df2b54625ea1606dfae75d5b6af1cbc5d28a17eca1350be9c367175c)
 
-### npm: @wippy-fe/theme@0.0.61
+### npm: @wippy-fe/theme@0.0.70
 
 License: UNLICENSED
 
 Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
 
-### npm: @wippy-fe/webcomponent-core@0.0.60
+### npm: @wippy-fe/webcomponent-core@0.0.70
 
 License: UNLICENSED
 
 Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
 
-### npm: @wippy-fe/webcomponent-vue@0.0.60
+### npm: @wippy-fe/webcomponent-vue@0.0.70
 
 License: UNLICENSED
 
@@ -766,32 +750,6 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-## License text 045ce74712fc613fdd74d1c55f5140a08d623836ff2aca44132b38d68fbc67ad
-
-```text
-MIT License
-
-Copyright (c) 2021 - 2022 Vjacheslav Trushkin / Iconify OÜ
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ```
 
 ## License text 0f0ca96f50793990031ebc488a38f7292ff70bce8ab6a8e5eeda674abc32ccdf
@@ -1485,32 +1443,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
-
-## License text 7cef50a4477dcd1f0ea036d3c7031430851ea21228e65658c6c84a57754e1b65
-
-```text
-MIT License
-
-Copyright (c) 2020-PRESENT Vjacheslav Trushkin
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ```
 
 ## License text 85fe65eefab89e2a683232b96e6f689279821a0bd3b351e9ab6a6ebd19dea567

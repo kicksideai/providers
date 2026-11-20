@@ -1,5 +1,5 @@
 import { mergeProps as l, openBlock as p, createElementBlock as f, ref as u, onMounted as v } from "vue";
-import { c as x, a as s, B as c, f as m } from "./wc-runtime-Cnj2CWxS.js";
+import { d as x, b as s, B as c, f as m } from "./wc-runtime-DBE0CU59.js";
 import { loadByTagName as $ } from "@wippy-fe/proxy";
 import { e as b } from "./types-DQ01_s6c.js";
 var g = {
@@ -407,4 +407,4 @@ export {
   S as s,
   q as u
 };
-//# sourceMappingURL=useWidget-BoLMowwj.js.map
+//# sourceMappingURL=useWidget-WblJF__7.js.map

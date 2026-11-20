@@ -1,7 +1,7 @@
 import { defineComponent as Ie, openBlock as a, createElementBlock as o, normalizeClass as H, createElementVNode as s, ref as d, computed as i, watch as ue, onUnmounted as Je, onMounted as We, createVNode as k, unref as w, toDisplayString as g, Fragment as U, renderList as Se, createCommentVNode as m, createTextVNode as h, createBlock as Ye, withDirectives as Ge, vModelText as Ze, withCtx as Ce } from "vue";
 import { Icon as j } from "@iconify/vue";
 import { api as Ee, host as et, loadByTagName as Me } from "@wippy-fe/proxy";
-import { a as tt, u as st } from "./wc-runtime-f54Bo-yJ.js";
+import { u as tt, a as st } from "./wc-runtime-CuuaQDIp.js";
 import { _ as Ae } from "./KbButton.vue_vue_type_script_setup_true_lang-tUNGjhRC.js";
 const nt = ["disabled", "aria-checked"], T = /* @__PURE__ */ Ie({
   __name: "ToggleSwitch",

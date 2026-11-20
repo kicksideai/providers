@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => ({
         compilerOptions: { isCustomElement: (tag) => tag.startsWith("wc-") },
       },
     }),
-    wippyComponentPlugin(),
+    wippyComponentPlugin({ required: true, lazyEntries: ['picker'] }),
   ],
   define: {
     "process.env": JSON.stringify({ NODE_ENV: mode }),

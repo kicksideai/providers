@@ -1,6 +1,6 @@
-import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, lazyVueConfig } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import { lazyPage } from './lazy'
+
 import base from './styles.css?inline'
 import extra from './wiki.css?inline'
 import graphExtra from './graph.css?inline'
@@ -23,11 +23,7 @@ class KbWikiElement extends WippyVueElement<P, E> {
   }
   static get vueConfig() {
     return {
-      lazyConfig: lazyPage(
-        () => import('./wiki-mount').then((module) => module.mountConfig),
-        'Could not load the wiki knowledge base. Reload the page to try again.',
-        useEvents,
-      ),
+      ...lazyVueConfig(() => import('./wiki-mount').then((module) => module.mountConfig), { surface: 'page', loading: 'Loading…', failed: 'Could not load the wiki knowledge base. Reload the page to try again.', timeout: 30000 }),
     }
   }
 }

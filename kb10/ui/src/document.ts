@@ -1,6 +1,6 @@
-import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, lazyVueConfig } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
-import { lazyPage } from './lazy'
+
 import base from './styles.css?inline'
 import extra from './document.css?inline'
 import pkg from '../package.json'
@@ -23,11 +23,7 @@ class KbDocumentElement extends WippyVueElement<P, E> {
   }
   static get vueConfig() {
     return {
-      lazyConfig: lazyPage(
-        () => import('./document-mount').then((module) => module.mountConfig),
-        'Could not load the document knowledge base. Reload the page to try again.',
-        useEvents,
-      ),
+      ...lazyVueConfig(() => import('./document-mount').then((module) => module.mountConfig), { surface: 'page', loading: 'Loading…', failed: 'Could not load the document knowledge base. Reload the page to try again.', timeout: 30000 }),
     }
   }
 }

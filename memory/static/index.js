@@ -1,14 +1,9 @@
-import { u as t } from "./wc-runtime-Cnj2CWxS.js";
-import { m as r, a as n } from "./lazy-CG__0OGb.js";
-import "@iconify/vue";
-import { define as m } from "@wippy-fe/proxy";
-const e = r(
+import { l as t } from "./wc-runtime-DBE0CU59.js";
+import { m as n } from "./element-CzSM43lK.js";
+import { define as r } from "@wippy-fe/proxy";
+const e = n(
   {
-    lazyConfig: n(
-      () => import("./lazy-mount-B-xTrirj.js").then((o) => o.mountConfig),
-      "Could not load the memory knowledge base. Reload the page to try again.",
-      t
-    )
+    ...t(() => import("./lazy-mount-W-hZWwm5.js").then((o) => o.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the memory knowledge base. Reload the page to try again.", timeout: 3e4 })
   },
   {
     type: "object",
@@ -17,11 +12,11 @@ const e = r(
     }
   }
 );
-async function g() {
+async function p() {
   return e;
 }
-m(import.meta.url, e);
+r(import.meta.url, e);
 export {
-  g as webComponent
+  p as webComponent
 };
 //# sourceMappingURL=index.js.map

@@ -1,27 +1,22 @@
-import { W as t, u as e } from "./wc-runtime-CWzMpxrl.js";
-import { l as n, c as r, p as s } from "./package-CcOPnqd3.js";
-import { define as i } from "@wippy-fe/proxy";
-const p = n(
-  () => import("./Picker-D-noRmVD.js"),
-  { loading: "Loading the MCP tool picker…", failed: "Could not load the MCP tool picker. Reload the page to try again." },
-  e
-);
-class o extends t {
+import { W as o, l as i } from "./wc-runtime-BSKB6yGs.js";
+import { c as n, p } from "./package-2cp6oTNq.js";
+import { define as r } from "@wippy-fe/proxy";
+class e extends o {
   static get wippyConfig() {
     return {
-      propsSchema: s.wippy.props,
+      propsSchema: p.wippy.props,
       hostCssKeys: ["themeConfigUrl"],
-      inlineCss: r
+      inlineCss: n
     };
   }
   static get vueConfig() {
-    return { rootComponent: p };
+    return i(() => import("./Picker-DlrykQ8Q.js").then((t) => ({ rootComponent: t.default })), { surface: "compact", loading: "Loading the MCP tool picker…", failed: "Could not load the MCP tool picker. Reload the page to try again.", delay: 200, timeout: 3e4 });
   }
 }
-async function C() {
-  return o;
+async function c() {
+  return e;
 }
-i(import.meta.url, o);
+r(import.meta.url, e);
 export {
-  C as webComponent
+  c as webComponent
 };
