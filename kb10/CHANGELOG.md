@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.34](https://github.com/kicksideai/providers/compare/kb10-v0.2.33...kb10-v0.2.34) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** keep source maps out of production bundles ([1639469](https://github.com/kicksideai/providers/commit/16394691684a90f552c35d016148addcc63bffaf))
+
 ## [0.2.33](https://github.com/kicksideai/providers/compare/kb10-v0.2.32...kb10-v0.2.33) (2026-11-19)
 
 
