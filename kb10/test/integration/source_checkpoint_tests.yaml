@@ -51,11 +51,12 @@ entries:
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: run
-    modules: [fs, hash, json, process, sql, time, uuid]
+    modules: [channel, fs, hash, json, process, sql, time, uuid]
     imports:
       projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
       jobs: kickside.core.jobs:jobs
       models: kickside.models.persist:repo
       projections: kickside.core.projections.persist:writer
@@ -69,11 +70,12 @@ entries:
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: ordinary
-    modules: [fs, hash, json, process, sql, time, uuid]
+    modules: [channel, fs, hash, json, process, sql, time, uuid]
     imports:
       projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
       jobs: kickside.core.jobs:jobs
       models: kickside.models.persist:repo
       projections: kickside.core.projections.persist:writer
@@ -100,6 +102,44 @@ entries:
       store: kickside.kb10.persist:store
       test: wippy.test:test
       threads: kickside.core.threads.persist:writer
+
+  - name: source_worker_finalizer_edges_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_checkpoint_outage_test.lua
+    method: finalizer_edges
+    modules: [channel, fs, hash, json, process, sql, time, uuid]
+    imports:
+      projection_owner: app:projection_owner_fixture
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer
+      uploads: kickside.uploads.persist:upload_record_repo
+
+  - name: finalizer_empty_source
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+    schema:
+      type: object
+      properties:
+        kb_id: {type: string}
+      required: [kb_id]
+
+  - name: finalizer_empty_extractor
+    kind: function.lua
+    meta:
+      type: projection.extractor
+      source: fixture.empty
+      event_types: [app:finalizer_empty_source]
+    source: file://finalizer_empty_extractor.lua
+    method: run
+    modules: [sql]
 
   - name: projection_owner_fixture
     kind: library.lua
