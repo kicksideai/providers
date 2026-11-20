@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.41](https://github.com/kicksideai/providers/compare/kb10-v0.2.40...kb10-v0.2.41) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** preserve UTF-8 in fallback summaries ([#206](https://github.com/kicksideai/providers/issues/206)) ([b62d94c](https://github.com/kicksideai/providers/commit/b62d94ce76db3b124bac3da6ba20493a884e3e13))
+
 ## [0.2.40](https://github.com/kicksideai/providers/compare/kb10-v0.2.39...kb10-v0.2.40) (2026-11-20)
 
 
