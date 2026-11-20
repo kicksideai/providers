@@ -489,7 +489,8 @@ end
 
 local function finalizer_case(mode)
     local id, actor = uuid.v7(), uuid.v7()
-    local empty_sources = mode == "only-empty" and 2 or (mode == "empty-tail" and 1 or 0)
+    local retry_empty = mode == "retry-empty"
+    local empty_sources = mode == "only-empty" and 2 or ((mode == "empty-tail" or retry_empty) and 1 or 0)
     local model = "kb170-finalizer-" .. id
     assert(models.upsert_card({name = model, provider_id = "app:checkpoint_model_provider", provider_model = model,
         capabilities = {"embed"}, dimensions = 512, max_tokens = 4096}))
@@ -499,8 +500,9 @@ local function finalizer_case(mode)
         assert(db:execute("INSERT INTO kb10_checkpoint_model (model,online,calls,failures) VALUES ($1,$2,0,0)",
             {model, mode == "retry" and 0 or 1}))
         assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_finalizer_empty_source (
-            id TEXT PRIMARY KEY, calls INTEGER NOT NULL)]]))
-        assert(db:execute("INSERT INTO kb10_finalizer_empty_source (id,calls) VALUES ($1,0)", {id}))
+            id TEXT PRIMARY KEY, calls INTEGER NOT NULL, online INTEGER NOT NULL)]]))
+        assert(db:execute("INSERT INTO kb10_finalizer_empty_source (id,calls,online) VALUES ($1,0,$2)",
+            {id, retry_empty and 0 or 1}))
     end)
     assert(store.create_store(id, model, {}, {kb_type = "wiki", is_graph = true, name = "Finalizer fixture"}))
     local member_threads = owner.create(actor, id)
@@ -510,12 +512,15 @@ local function finalizer_case(mode)
         events = {input = {{type = UPSERT}, {type = DELETE}, {type = EMPTY}}},
         worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
     }))
+    local function append_empty(db, sequence)
+        assert(threads.append_system(db, id, {{type = EMPTY, role = "system",
+            body_json = assert(json.encode({kb_id = id})),
+            external = {external_source = "fixture.empty", external_id = tostring(sequence), external_version = "1"}}}))
+    end
     local registered = in_db(function(db)
         if mode ~= "only-empty" then append(db, id, "a", "1", {content = "Earlier good revision"}) end
         for sequence = 1, empty_sources do
-            assert(threads.append_system(db, id, {{type = EMPTY, role = "system",
-                body_json = assert(json.encode({kb_id = id})),
-                external = {external_source = "fixture.empty", external_id = tostring(sequence), external_version = "1"}}}))
+            append_empty(db, sequence)
         end
         if mode == "filtered-tail" then
             assert(threads.append_system(db, id, {{type = "app:conflict_page", role = "system",
@@ -535,7 +540,26 @@ local function finalizer_case(mode)
     local scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
     local ok, err = pcall(function()
         assert(jobs.nudge_workers())
-        if mode == "retry" then
+        if retry_empty then
+            local held = wait_state(registered, id, function(cursor)
+                return cursor.status == "pending" and tonumber(cursor.attempts) > 0
+            end)
+            test.eq(tonumber(held.cursor.last_seq), 1)
+            test.eq(#held.roots, 1)
+            assert_placement(capture_placements(listener), id, held.roots[1].id)
+            finalizers(id, registered, 0)
+            in_db(function(db)
+                assert(db:execute("UPDATE kb10_finalizer_empty_source SET online=1 WHERE id=$1", {id}))
+            end)
+            local done = wait_state(registered, id, caught_up)
+            test.eq(#done.roots, 1)
+            test.eq(done.roots[1].id, held.roots[1].id)
+            test.eq(#capture_placements(listener), 0)
+            finalizers(id, registered, 1, tonumber(held.cursor.event_count), 2)
+            in_db(function(db) append_empty(db, 2) end)
+            wait_state(registered, id, caught_up)
+            finalizers(id, registered, 1)
+        elseif mode == "retry" then
             local held = wait_state(registered, id, function(cursor)
                 return cursor.status == "pending" and tonumber(cursor.attempts) > 0
             end)
@@ -613,7 +637,7 @@ end
 
 local function define_finalizer_tests()
     test.describe("ordinary published KB10 source completion", function()
-        for _, mode in ipairs({"only-empty", "empty-tail", "filtered-tail", "delete", "retry"}) do
+        for _, mode in ipairs({"only-empty", "empty-tail", "filtered-tail", "delete", "retry", "retry-empty"}) do
             test.it("finalizer and placement uniqueness: " .. mode, function() finalizer_case(mode) end)
         end
     end)
