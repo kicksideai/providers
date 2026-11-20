@@ -123,7 +123,11 @@ function statusIcon(s: string): string {
   if (s === 'error') return 'tabler:alert-circle'
   return 'tabler:loader-2'
 }
-const hasItems = computed(() => ing.items.value.length > 0)
+// Put the actionable rows first even when a large selection finishes out of order.
+const progressItems = computed(() => [
+  ...ing.items.value.filter(it => it.status === 'error'),
+  ...ing.items.value.filter(it => it.status !== 'error'),
+])
 const hasDone = computed(() => ing.items.value.some((it) => it.status === 'done'))
 
 onMounted(() => { if (mode.value === 'uploads') loadUploads() })
@@ -248,13 +252,13 @@ watch(() => props.kbId, () => { ing.clearItems(); ing.reset() })
     </section>
 
     <!-- Shared progress list across all sources -->
-    <div v-if="hasItems" class="ap-items">
+    <div v-if="progressItems.length" class="ap-items">
       <div class="ap-items-h">
         <span>Progress</span>
         <button v-if="hasDone && !ing.busy.value" type="button" class="ap-items-clear" @click="ing.clearDone()">Clear done</button>
       </div>
       <ul class="ap-items-list">
-        <li v-for="it in ing.items.value" :key="it.key" class="ap-item" :class="it.status">
+        <li v-for="it in progressItems" :key="it.key" class="ap-item" :class="it.status">
           <Icon class="ap-item-ic" :class="!['done','error'].includes(it.status) && 'spin'" :icon="statusIcon(it.status)" aria-hidden="true" />
           <span class="ap-item-name" :title="it.name">{{ it.name }}</span>
           <span class="ap-item-status">{{ it.error || STATUS_LABEL[it.status] }}</span>

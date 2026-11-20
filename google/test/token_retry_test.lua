@@ -69,7 +69,25 @@ local function define_tests()
             local conn, state = connection()
             local result = transport.get(conn, endpoint("forbidden"))
             test.is_false(result.success); test.eq(result.status_code, 403)
+            test.is_nil(result.error_kind)
+            test.is_nil(result.retry_after_ms)
             test.eq(state.refreshes, 0); test.eq(state.reads, 1)
+        end)
+        test.it("preserves retry timing for Google quota responses on JSON and raw reads", function()
+            local conn, state = connection()
+            local reads = {
+                {transport.get, "quota-user"},
+                {transport.get_raw, "quota-project"},
+            }
+            for _, read in ipairs(reads) do
+                local result = assert(read[1](conn, endpoint(read[2])))
+                test.is_false(result.success)
+                test.eq(result.status_code, 403)
+                test.eq(result.error_kind, "rate_limited")
+                test.eq(result.retry_after_ms, 3000)
+            end
+            test.eq(state.refreshes, 0)
+            test.eq(state.reads, 2)
         end)
     end)
 end

@@ -19,6 +19,7 @@ type Result = {
     retryable: boolean?,
     details: any?,
     retry_after_ms: integer?,
+    error_kind: string?,
     success: boolean,
     data: any?,
     error: string?,

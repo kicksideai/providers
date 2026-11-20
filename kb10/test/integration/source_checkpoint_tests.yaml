@@ -51,10 +51,12 @@ entries:
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: run
-    modules: [fs, hash, json, process, sql, time, uuid]
+    modules: [channel, fs, hash, json, process, sql, time, uuid]
     imports:
+      projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
       jobs: kickside.core.jobs:jobs
       models: kickside.models.persist:repo
       projections: kickside.core.projections.persist:writer
@@ -68,10 +70,12 @@ entries:
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: ordinary
-    modules: [fs, hash, json, process, sql, time, uuid]
+    modules: [channel, fs, hash, json, process, sql, time, uuid]
     imports:
+      projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
       jobs: kickside.core.jobs:jobs
       models: kickside.models.persist:repo
       projections: kickside.core.projections.persist:writer
@@ -79,3 +83,110 @@ entries:
       test: wippy.test:test
       threads: kickside.core.threads.persist:writer
       uploads: kickside.uploads.persist:upload_record_repo
+
+  - name: source_provider_rejection_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_provider_rejection_test.lua
+    method: run
+    modules: [json, process, sql, time, uuid]
+    imports:
+      apply: kickside.core.projections:apply
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
+      ops: kickside.kb10.persist:ops
+      source_repair: kickside.kb10.injection:source_repair
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer
+
+  - name: source_worker_finalizer_edges_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_checkpoint_outage_test.lua
+    method: finalizer_edges
+    modules: [channel, fs, hash, json, process, sql, time, uuid]
+    imports:
+      projection_owner: app:projection_owner_fixture
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer
+      uploads: kickside.uploads.persist:upload_record_repo
+
+  - name: finalizer_empty_source
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+    schema:
+      type: object
+      properties:
+        kb_id: {type: string}
+      required: [kb_id]
+
+  - name: finalizer_empty_extractor
+    kind: function.lua
+    meta:
+      type: projection.extractor
+      source: fixture.empty
+      event_types: [app:finalizer_empty_source]
+    source: file://finalizer_empty_extractor.lua
+    method: run
+    modules: [sql]
+
+  - name: projection_owner_fixture
+    kind: library.lua
+    source: file://../fixtures/projection_owner.lua
+    modules: [contract, security, sql]
+
+  - name: conflict_page
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+    schema:
+      type: object
+      properties:
+        page_id: {type: string}
+        title: {type: string}
+        text: {type: string}
+      required: [page_id, title, text]
+
+  - name: source_fixture_component
+    kind: contract.binding
+    meta:
+      events:
+        input: [{type: "app:conflict_page"}]
+        output:
+          - {type: "kickside.knowledge.events:content.upserted"}
+          - {type: "kickside.knowledge.events:content.deleted"}
+          - {type: "kickside.knowledge.events:graph.changed"}
+          - {type: "kickside.knowledge.events:digest.requested"}
+          - {type: "kickside.knowledge.events:treatment.requested"}
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: "kickside.core.threads:thread_status"}
+
+  # Only this test descriptor selects the dormant checkpoint worker. KB10's
+  # published Knowledge Base kinds continue to select the ordinary worker.
+  - name: checkpoint_fixture_descriptor
+    kind: registry.entry
+    meta:
+      impl_id: app:source_fixture_component
+      thread: {class: kb10.test.checkpoint}
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: proc://kickside.kb10.injection:checkpoint_source_worker
+          input_mode: prefetch_events
+          worker_config: {materialization: {summary_model: false, chunk_enrichment_model: false}}
+          events:
+            input:
+              - {type: "kickside.knowledge.events:content.upserted"}
+              - {type: "kickside.knowledge.events:content.deleted"}

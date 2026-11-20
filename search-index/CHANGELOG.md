@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/kicksideai/providers/compare/search-index-v0.1.3...search-index-v0.1.4) (2026-11-20)
+
+
+### Bug Fixes
+
+* **search-index:** scope lexical matches in the index ([f9d2ec9](https://github.com/kicksideai/providers/commit/f9d2ec9330cf380ca952c755ef39c1842efcd193))
+
 ## [0.1.3](https://github.com/kicksideai/providers/compare/search-index-v0.1.2...search-index-v0.1.3) (2026-11-19)
 
 

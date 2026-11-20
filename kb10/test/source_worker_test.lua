@@ -152,19 +152,16 @@ local function define_tests()
             local projections = require("projections")
             local invoke = require("invoke")
             local claim = require("claim")
-            local thread_id = uuid()
+            local thread_id, actor = uuid(), uuid()
+            local owner = require("projection_owner")
+            local threads = owner.create(actor, thread_id)
+            local page = {type = "app:conflict_page", body = {page_id = "conflict", title = "Document", text = "Text"}}
+            assert(threads:append_events({thread_id = thread_id, events = {page, page}}))
+            local registered = assert(threads:register_projection({
+                thread_id = thread_id, kind = "writer-conflict", worker_ref = "proc://app:source_conflict_worker",
+                worker_input_mode = "prefetch_events", start_seq = 1,
+            })).projection
             local conn = assert(sql.get(APP_DB))
-            assert(conn:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
-                VALUES ($1,'test',$2,2)]], {thread_id, thread_id}))
-            for seq = 1, 2 do
-                assert(conn:execute([[INSERT INTO kickside_event (id,thread_id,type,role,body,seq)
-                    VALUES ($1,$2,'fixture.page','user',$3,$4)]],
-                    {uuid(), thread_id, '{"page_id":"conflict","title":"Document","text":"Text"}', seq}))
-            end
-            local registered = assert(projections.register_projection(conn, thread_id, {
-                kind = "writer-conflict", worker_ref = "proc://app:source_conflict_worker",
-                worker_input_mode = "prefetch_events", system_identity = true, start_seq = 1,
-            }))
             assert(conn:execute("UPDATE kickside_job SET scheduled_at=created_at WHERE id=$1", {registered.job_id}))
             local claimed = assert(claim.claim_batch(conn, tostring(conn:type()), 16, nil, nil, nil,
                 {"kickside.core.projections:advance"}))
@@ -182,16 +179,18 @@ local function define_tests()
             })
 
             conn = assert(sql.get(APP_DB))
-            local cursors = assert(conn:query("SELECT last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1",
+            local cursors = assert(conn:query("SELECT actor_id,last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1",
                 {registered.cursor_id}))
             local runs = assert(conn:query("SELECT status FROM kickside_job_run WHERE job_id=$1", {registered.job_id}))
             assert(projections.remove_projection(conn, thread_id, {projection_id = registered.projection_id}))
             assert(conn:execute("DELETE FROM kickside_event WHERE thread_id=$1", {thread_id}))
             assert(conn:execute("DELETE FROM kickside_thread WHERE id=$1", {thread_id}))
+            owner.cleanup(conn, actor, thread_id)
             conn:release()
 
             test.is_nil(result)
             test.is_true(errors.is(run_err, errors.CONFLICT), tostring(run_err))
+            test.eq(cursors[1].actor_id, actor)
             test.eq(tonumber(cursors[1].last_seq), 1)
             test.eq(cursors[1].status, "active")
             test.contains(cursors[1].last_error, "document revision changed")
@@ -547,6 +546,38 @@ local function define_tests()
 
             local nodes = fetch_kb10_nodes(db, cid) or {}
             test.eq(#nodes, 0, "retryable embedding failures must not leave materialized graph nodes")
+
+            teardown_kb10_store(db, cid)
+        end)
+
+        test.it("durably retries when the embedding provider rejects the call", function()
+            local cid = bootstrap_kb10_store(db)
+            local resolver = materialized_store_resolver_for({ [cid] = true })
+            local rejecting_embedder = function()
+                return nil, errors.new({ kind = errors.PERMISSION_DENIED, retryable = false,
+                    message = "OpenAI API key is required" })
+            end
+
+            local result, err = source_worker.run_with_deps({
+                thread_id = uuid(),
+                projection = { id = uuid() },
+                events = {
+                    build_event({
+                        seq = 1, type = "fixture.page",
+                        body = { page_id = "provider-rejects", title = "Provider rejects", text = "body text" },
+                    }),
+                },
+                worker_config = { target_kb_ids = { cid } },
+            }, worker_deps({ embedder = rejecting_embedder, dispatcher = doc_dispatcher,
+                 resolve_materialized_store = resolver }))
+
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.eq(err:retryable(), true)
+            test.contains(tostring(err), "OpenAI API key is required")
+
+            local nodes = fetch_kb10_nodes(db, cid) or {}
+            test.eq(#nodes, 0)
 
             teardown_kb10_store(db, cid)
         end)

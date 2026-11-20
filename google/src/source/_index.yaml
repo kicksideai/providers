@@ -100,3 +100,100 @@ entries:
           }
         },
         "required": ["item_key", "dedup_key", "op", "payload"] }
+
+  - name: drive_folder_runtime
+    kind: library.lua
+    source: file://drive_folder.lua
+    modules: [ctx]
+    imports: &drive_imports
+      drive: kickside.google.client:drive
+      transport: kickside.google.client:transport
+
+  - name: pull_drive_folder
+    kind: function.lua
+    source: file://drive_folder.lua
+    method: pull
+    modules: [ctx]
+    imports: *drive_imports
+
+  - name: browse_drive_folders
+    kind: function.lua
+    meta:
+      comment: List accessible shared drives or eligible direct child folders for the selected Google connection.
+    source: file://drive_folder.lua
+    method: browse
+    modules: [ctx]
+    imports: *drive_imports
+
+  - name: pull_drive_folder_keys
+    kind: function.lua
+    source: file://drive_folder.lua
+    method: pull_keys
+    modules: [ctx]
+    imports: *drive_imports
+
+  - name: fetch_drive_attachment
+    kind: function.lua
+    source: file://drive_folder.lua
+    method: fetch
+    modules: [ctx]
+    imports: *drive_imports
+
+  - name: verify_drive_attachment
+    kind: function.lua
+    source: file://drive_folder.lua
+    method: verify
+    modules: [ctx]
+    imports: *drive_imports
+
+  - name: drive_attachment_fetcher
+    kind: registry.entry
+    meta: {type: attachment.fetcher}
+    provider: google
+    fetch_func: kickside.google.source:fetch_drive_attachment
+    verify_func: kickside.google.source:verify_drive_attachment
+
+  - name: drive_folder_source
+    kind: contract.binding
+    meta:
+      title: Google Drive folder
+      icon: tabler:brand-google-drive
+      provider: google
+      group: Documents
+    contracts:
+      - contract: kickside.data:pullable
+        context_required: [component_id]
+        methods:
+          pull: kickside.google.source:pull_drive_folder
+
+  - name: drive_folder
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Google Drive folder
+      comment: Read versioned files directly inside a My Drive or shared drive folder.
+      icon: tabler:brand-google-drive
+    binding: kickside.google.source:drive_folder_source
+    reconcile:
+      pull_keys: kickside.google.source:pull_drive_folder_keys
+    config_schema:
+      connection_id:
+        picker: kickside-connection-trait-picker
+        required: true
+        provider: google
+        title: Google Drive connection
+      folder_id:
+        picker: wc-schema-form
+        type: string
+        required: true
+        title: Drive folder ID
+    output_schema: |
+      {"type":"object","properties":{
+        "source_version":{"type":"string"},
+        "attachment":{"type":"object","properties":{
+          "source":{"const":"google"},"component_id":{"type":"string"},
+          "ref":{"type":"object","properties":{"file_id":{"type":"string"},
+            "drive_id":{"type":"string"},"folder_id":{"type":"string"},"version":{"type":"string"}},
+            "required":["file_id","drive_id","folder_id","version"]}},
+          "required":["source","component_id","ref"]}},
+        "required":["attachment","source_version"]}

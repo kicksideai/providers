@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.2.37](https://github.com/kicksideai/providers/compare/kb10-v0.2.36...kb10-v0.2.37) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** finalize productive pages with an empty source tail ([c082f82](https://github.com/kicksideai/providers/commit/c082f82cfc43944897e5ec87c376631cd82fc51c))
+
+## [0.2.36](https://github.com/kicksideai/providers/compare/kb10-v0.2.35...kb10-v0.2.36) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** reject verified immutable upload corruption ([2d1bf93](https://github.com/kicksideai/providers/commit/2d1bf93d52c56f964db90d0738ec4b5d26665a29))
+
+## [0.2.35](https://github.com/kicksideai/providers/compare/kb10-v0.2.34...kb10-v0.2.35) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** identify failed sources and show indexing errors ([#192](https://github.com/kicksideai/providers/issues/192)) ([1206f81](https://github.com/kicksideai/providers/commit/1206f81ee70f81881c17ce8dae358f047627f51f))
+
+## [0.2.34](https://github.com/kicksideai/providers/compare/kb10-v0.2.33...kb10-v0.2.34) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** keep source maps out of production bundles ([1639469](https://github.com/kicksideai/providers/commit/16394691684a90f552c35d016148addcc63bffaf))
+
+## [0.2.33](https://github.com/kicksideai/providers/compare/kb10-v0.2.32...kb10-v0.2.33) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** clear the document link after its deletion is accepted ([#186](https://github.com/kicksideai/providers/issues/186)) ([dc23cb8](https://github.com/kicksideai/providers/commit/dc23cb883e5e18fd0e8c03f2f2539c094b75ce91))
+
+## [0.2.32](https://github.com/kicksideai/providers/compare/kb10-v0.2.31...kb10-v0.2.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** surface batch upload failures in the library drawer ([#182](https://github.com/kicksideai/providers/issues/182)) ([4d74641](https://github.com/kicksideai/providers/commit/4d74641c2437a0439c3dd44a583b92ddbffc9e97))
+
+## [0.2.31](https://github.com/kicksideai/providers/compare/kb10-v0.2.30...kb10-v0.2.31) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** retry a rejected embedding provider instead of invalidating the source ([#178](https://github.com/kicksideai/providers/issues/178)) ([522d1f5](https://github.com/kicksideai/providers/commit/522d1f52c335f196dd5ef192be623afbbd48c066))
+
+## [0.2.30](https://github.com/kicksideai/providers/compare/kb10-v0.2.29...kb10-v0.2.30) (2026-11-19)
+
+
+### Bug Fixes
+
+* **kb10:** compare upload publication when materializing deletes ([#175](https://github.com/kicksideai/providers/issues/175)) ([5d42e1f](https://github.com/kicksideai/providers/commit/5d42e1f1d4355e9940a8062d88e2dc60f3a920ca))
+
 ## [0.2.29](https://github.com/kicksideai/providers/compare/kb10-v0.2.28...kb10-v0.2.29) (2026-11-19)
 
 

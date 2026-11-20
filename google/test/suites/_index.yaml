@@ -94,3 +94,12 @@ entries:
     imports:
       sink: kickside.google.sink:gmail_draft_lib
       test: wippy.test:test
+
+  - name: drive_attachment_test
+    kind: function.lua
+    meta: {type: test, suite: google}
+    source: file://drive_attachment_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      drive_folder: kickside.google.source:drive_folder_runtime

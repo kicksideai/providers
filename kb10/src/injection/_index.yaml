@@ -87,7 +87,7 @@ entries:
         - kickside.knowledge.events:content.deleted
     source: file://content_extractor.lua
     method: run
-    modules: [hash]
+    modules: [hash, uuid]
     imports:
       text_trim: kickside.contract:text_trim
       artifact_input: kickside.kb10.injection:artifact_input
@@ -95,10 +95,20 @@ entries:
   - name: content_extractor_lib
     kind: library.lua
     source: file://content_extractor.lua
-    modules: [hash]
+    modules: [hash, uuid]
     imports:
       text_trim: kickside.contract:text_trim
       artifact_input: kickside.kb10.injection:artifact_input
+
+  - name: matches_upload_publication
+    kind: function.lua
+    source: file://upload_publication.lua
+    method: matches
+    modules: [uuid]
+    imports:
+      component: kickside.component:component
+      ops: kickside.kb10.persist:ops
+      store: kickside.kb10.persist:store
 
   - name: checkpoint_source_worker
     kind: process.lua
@@ -266,3 +276,30 @@ entries:
     imports:
       text_trim: kickside.contract:text_trim
       component: kickside.component:component
+
+  # Releases before the retryable provider failure invalidated KB source
+  # projections on a provider rejection. On every boot and module update this
+  # resumes those projections; other invalid projections stay invalid.
+  - name: source_repair
+    kind: library.lua
+    meta:
+      comment: Finds KB source projections invalidated by an embedding provider rejection and resumes them through Core.
+    source: file://source_repair.lua
+    modules: [sql]
+    imports:
+      core_db: kickside.core:db
+      projection_writer: kickside.core.projections.persist:writer
+
+  - name: source_repair_boot
+    kind: function.lua
+    meta:
+      type: bootloader
+      order: 60
+      requires: [wippy.migration:migration_bootloader]
+      comment: Resumes KB source projections that an earlier release invalidated on an embedding provider rejection.
+    source: file://source_repair.lua
+    method: run
+    modules: [sql]
+    imports:
+      core_db: kickside.core:db
+      projection_writer: kickside.core.projections.persist:writer

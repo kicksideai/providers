@@ -19,7 +19,8 @@ local function path_segment(value: any, name: string): (string?, string?)
     return value, nil
 end
 
-function drive.list_files(conn: google_types.Connection, query_str: string?, max_results: number?, page_token: string?, fields: string?): (google_types.Result?, error?)
+function drive.list_files(conn: google_types.Connection, query_str: string?, max_results: number?, page_token: string?,
+        fields: string?, folder_corpus: string?): (google_types.Result?, error?)
     local size, size_err = pagination.page_size(max_results, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, "max_results")
     if size_err then return { success = false, error = size_err } end
     local q = "trashed=false"
@@ -32,6 +33,11 @@ function drive.list_files(conn: google_types.Connection, query_str: string?, max
         supportsAllDrives = true,
         includeItemsFromAllDrives = true,
     }
+    if folder_corpus ~= nil then
+        query.fields = query.fields .. ",incompleteSearch"
+        query.corpora = folder_corpus ~= "" and "drive" or "user"
+        if folder_corpus ~= "" then query.driveId = folder_corpus end
+    end
     if page_token and page_token ~= "" then query.pageToken = page_token end
     return transport.get(conn, api() .. "/files", query)
 end
@@ -42,10 +48,16 @@ function drive.search_files(conn: google_types.Connection, text: string, max_res
     return drive.list_files(conn, query, max_results, page_token, fields)
 end
 
-function drive.get_file(conn: google_types.Connection, file_id: string): (google_types.Result?, error?)
+function drive.get_file(conn: google_types.Connection, file_id: string, fields: string?): (google_types.Result?, error?)
     local id, id_err = path_segment(file_id, "file_id")
     if not id then return { success = false, error = id_err } end
-    return transport.get(conn, api() .. "/files/" .. id, { fields = "*", supportsAllDrives = true })
+    return transport.get(conn, api() .. "/files/" .. id, { fields = fields or "*", supportsAllDrives = true })
+end
+
+function drive.list_shared_drives(conn: google_types.Connection, max_results: number, page_token: string?): (google_types.Result?, error?)
+    return transport.get(conn, api() .. "/drives", {
+        fields = "nextPageToken,drives(id,name)", pageSize = max_results, pageToken = page_token,
+    })
 end
 
 function drive.create_folder(conn: google_types.Connection, name: string, parent_id: string?): (google_types.Result?, error?)
@@ -56,15 +68,36 @@ end
 
 -- Google-native types export to text/CSV; everything else downloads directly.
 -- Both return raw bytes.
-function drive.read_file(conn: google_types.Connection, file_id: string, mime_type: string?): (google_types.Result?, error?)
+function drive.export_file(conn: google_types.Connection, file_id: string, mime_type: string,
+        max_response_body: number?): (google_types.Result?, error?)
+    local id, id_err = path_segment(file_id, "file_id")
+    if not id then return { success = false, error = id_err } end
+    return transport.get_raw(conn, api() .. "/files/" .. id .. "/export", { mimeType = mime_type }, max_response_body)
+end
+
+function drive.read_file(conn: google_types.Connection, file_id: string, mime_type: string?,
+        max_response_body: number?): (google_types.Result?, error?)
     local id, id_err = path_segment(file_id, "file_id")
     if not id then return { success = false, error = id_err } end
     if mime_type and mime_type:find("application/vnd.google-apps", 1, true) then
         local export = "text/plain"
         if mime_type == "application/vnd.google-apps.spreadsheet" then export = "text/csv" end
-        return transport.get_raw(conn, api() .. "/files/" .. id .. "/export", { mimeType = export })
+        return transport.get_raw(conn, api() .. "/files/" .. id .. "/export", { mimeType = export }, max_response_body)
     end
-    return transport.get_raw(conn, api() .. "/files/" .. id, { alt = "media", supportsAllDrives = true })
+    return transport.get_raw(conn, api() .. "/files/" .. id, { alt = "media", supportsAllDrives = true }, max_response_body)
+end
+
+function drive.start_changes(conn: google_types.Connection, drive_id: string?): (google_types.Result?, error?)
+    return transport.get(conn, api() .. "/changes/startPageToken", { driveId = drive_id, supportsAllDrives = true })
+end
+
+function drive.list_changes(conn: google_types.Connection, drive_id: string?, page_token: string,
+        max_results: number, fields: string): (google_types.Result?, error?)
+    return transport.get(conn, api() .. "/changes", {
+        driveId = drive_id, supportsAllDrives = true, includeItemsFromAllDrives = true,
+        includeRemoved = false, pageToken = page_token, pageSize = max_results,
+        fields = "nextPageToken,newStartPageToken,changes(file(" .. fields .. "))",
+    })
 end
 
 return drive

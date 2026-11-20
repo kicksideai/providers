@@ -1,11 +1,13 @@
 local M = {}
 local artifact_input = require("artifact_input")
 local hash = require("hash")
+local uuid = require("uuid")
 local trim = require("text_trim").trim
 
 local EVENT_CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 local EVENT_CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 local EXTERNAL_SOURCE = "knowledge.kb"
+local VERSIONED_DELETE_SOURCE = "knowledge.kb.versioned_delete"
 
 local function shallow_copy(input)
     local out = {}
@@ -18,6 +20,7 @@ end
 local function external_tuple(event, metadata)
     local external = type(event.external) == "table" and event.external or {}
     local source = trim(external.external_source)
+    if event.type == EVENT_CONTENT_DELETED and source == VERSIONED_DELETE_SOURCE then source = EXTERNAL_SOURCE end
     local stored_source, stored_id = trim(metadata.external_source), trim(metadata.external_id)
     local id = trim(external.external_id)
     if (source ~= "" and stored_source ~= "" and source ~= stored_source) or
@@ -59,6 +62,13 @@ local function extract(input)
     local source, external_id, external_version, tuple_err = external_tuple(event, metadata)
     if tuple_err then return { documents = {}, deletes = {}, error = tuple_err } end
     if event.type == EVENT_CONTENT_DELETED then
+        local expected
+        if type(event.external) == "table" and event.external.external_source == VERSIONED_DELETE_SOURCE then
+            expected = body.expected_publication_id
+            if type(expected) ~= "string" or not uuid.validate(expected) then
+                return {documents = {}, deletes = {}, error = "versioned delete requires an upload publication ID"}
+            end
+        end
         if external_id == "" then
             return { documents = {}, deletes = {}, error = "delete event missing external_id" }
         end
@@ -79,6 +89,7 @@ local function extract(input)
                     metadata = metadata,
                     thread_event_id = metadata.thread_event_id,
                     thread_event_seq = metadata.thread_event_seq,
+                    expected_publication_id = expected,
                     user_id = user_id ~= "" and user_id or nil,
                 },
             },
@@ -89,8 +100,9 @@ local function extract(input)
     local rejection
     if content == nil and body.content_omitted == true then
         local ref = source_ref or {}
-        local read_err
-        content, read_err, rejection = artifact_input.read(ref.upload_id, ref.artifact_id)
+        local read_err, recorded_blob
+        content, read_err, rejection, recorded_blob = artifact_input.read(
+            ref.upload_id, ref.artifact_id, body.content_bytes, body.content_sha256)
         if read_err and not rejection then
             -- A missing storage binding or locator configuration cannot prove
             -- that the selected immutable artifact is gone.
@@ -100,12 +112,17 @@ local function extract(input)
             return nil, read_err
         end
         if not rejection and (type(content) ~= "string" or #content ~= body.content_bytes) then
-            return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
-        end
-        if not rejection and body.content_sha256 ~= nil then
-            local digest, digest_err = hash.sha256(content)
+            if not recorded_blob then
+                return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
+            end
+            rejection = "artifact_length_mismatch"
+        elseif not rejection and body.content_sha256 ~= nil then
+            local digest, digest_err = hash.sha256(content :: string)
             if digest_err or digest ~= body.content_sha256 then
-                return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
+                if not recorded_blob or digest_err or type(digest) ~= "string" or #digest ~= 64 then
+                    return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
+                end
+                rejection = "artifact_digest_mismatch"
             end
         end
     end
@@ -133,7 +150,7 @@ local function extract(input)
         external_source = source,
         external_id = external_id,
         external_version = external_version ~= "" and external_version or nil,
-        content = content,
+        content = not rejection and content or nil,
         content_type = trim(body.content_type) ~= "" and trim(body.content_type) or "text/plain",
         title = title ~= "" and title or nil,
         metadata = metadata,

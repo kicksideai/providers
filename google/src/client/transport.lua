@@ -58,6 +58,23 @@ local function extract_error(response: any): (string, number, any)
 end
 transport.extract_error = extract_error
 
+local function failure_result(response: any): google_types.Result
+    local message, code, body = extract_error(response)
+    local throttled = code == 429
+    local remote = code == 403 and type(body) == "table" and body.error or nil
+    if type(remote) == "table" and type(remote.errors) == "table" then
+        for _, item in ipairs(remote.errors) do
+            if type(item) == "table" and (item.reason == "rateLimitExceeded" or item.reason == "userRateLimitExceeded") then
+                throttled = true
+                break
+            end
+        end
+    end
+    return {success = false, error = message, status_code = code, data = body,
+        error_kind = throttled and "rate_limited" or nil,
+        retry_after_ms = throttled and capacity_http.retry_after(response, 60000) or nil}
+end
+
 -- Resolve the OAuth connection (token source). With a component_id, open that
 -- specific connection; without one, auto-discover the actor's Google connection.
 function transport.connect(component_id: string?): (google_types.Connection?, error?)
@@ -112,13 +129,14 @@ local function authorization(conn: google_types.Connection, request: google_type
     return token_type .. " " .. access_token, nil, access_token
 end
 
-local function send(conn: google_types.Connection, method: string, endpoint: string, body: any?): (any, error?)
+local function send(conn: google_types.Connection, method: string, endpoint: string, body: any?,
+        max_response_body: number?): (any, error?)
     local auth, err, access_token = authorization(conn)
     if err then return nil, err end
     local options: any = { headers = {
         ["Authorization"] = auth :: string,
         ["Content-Type"] = "application/json",
-    } }
+    }, max_response_body = max_response_body }
     if body ~= nil then
         local encoded, encode_err = json.encode(body)
         if encode_err then return nil, errors.wrap(encode_err, "Google request body is not serializable") end
@@ -149,24 +167,21 @@ transport.request_json = capacity_http.wrap(function(conn: google_types.Connecti
         return { success = true, data = data, status_code = response.status_code }
     end
 
-    local message, code, error_body = extract_error(response)
-    return { success = false, error = message, status_code = code, data = error_body,
-        retry_after_ms = code == 429 and capacity_http.retry_after(response, 60000) or nil }
+    return failure_result(response)
 end, connection_id)
 
 -- Raw-text request for endpoints returning non-JSON bodies (Drive export to
 -- text/plain or CSV). Returns a Result whose data is { text }.
-transport.request_raw = capacity_http.wrap(function(conn: google_types.Connection, method: string, endpoint: string, query: { [string]: any }?): (google_types.Result?, error?)
-    local response, err = send(conn, method, build_url(endpoint, query), nil)
+transport.request_raw = capacity_http.wrap(function(conn: google_types.Connection, method: string, endpoint: string,
+        query: { [string]: any }?, max_response_body: number?): (google_types.Result?, error?)
+    local response, err = send(conn, method, build_url(endpoint, query), nil, max_response_body)
     if err then return nil, err end
 
     if response and response.status_code >= 200 and response.status_code < 300 then
         return { success = true, data = { text = response.body or "" } }
     end
 
-    local message, code, error_body = extract_error(response)
-    return { success = false, error = message, status_code = code, data = error_body,
-        retry_after_ms = code == 429 and capacity_http.retry_after(response, 60000) or nil }
+    return failure_result(response)
 end, connection_id)
 
 function transport.get(conn: google_types.Connection, endpoint: string, query: { [string]: any }?): (google_types.Result?, error?)
@@ -185,8 +200,9 @@ function transport.delete(conn: google_types.Connection, endpoint: string, query
     return transport.request_json(conn, "DELETE", endpoint, nil, query)
 end
 
-function transport.get_raw(conn: google_types.Connection, endpoint: string, query: { [string]: any }?): (google_types.Result?, error?)
-    return transport.request_raw(conn, "GET", endpoint, query)
+function transport.get_raw(conn: google_types.Connection, endpoint: string, query: { [string]: any }?,
+        max_response_body: number?): (google_types.Result?, error?)
+    return transport.request_raw(conn, "GET", endpoint, query, max_response_body)
 end
 
 function transport.user_info(conn: google_types.Connection): (google_types.Result?, error?)

@@ -1,5 +1,5 @@
 import { W as o, l as n } from "./wc-runtime-CuuaQDIp.js";
-import { b as i } from "./styles-C8dQyU9y.js";
+import { b as i } from "./styles-48TYyLEK.js";
 import { define as a } from "@wippy-fe/proxy";
 const s = {
   type: "object",
@@ -26,4 +26,3 @@ a(import.meta.url, e);
 export {
   g as webComponent
 };
-//# sourceMappingURL=create.js.map
