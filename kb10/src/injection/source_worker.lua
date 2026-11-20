@@ -988,6 +988,18 @@ local function checkpoint_writes(cursor: table, sequence: number, outcome: table
     return merge_append_writes(graph, domain)
 end
 
+local function source_targets(worker_config, thread_id: string): { string }
+    local target_kb_ids = type(worker_config.target_kb_ids) == "table" and worker_config.target_kb_ids or {}
+    local targets: { string } = {}
+    for _, id in ipairs(target_kb_ids) do
+        local s = trim(tostring(id))
+        if s ~= "" then targets[#targets + 1] = s end
+    end
+    -- An unconfigured source projection targets its KB primary thread.
+    if #targets == 0 and thread_id ~= "" then targets[1] = thread_id end
+    return targets
+end
+
 local function run_with_deps(input_raw, deps, defer_finalizers)
     deps = deps or {}
     local input = decode_object(input_raw)
@@ -1016,18 +1028,7 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
         DEFAULT_MAX_PENDING_DELETES
     )
 
-    local target_kb_ids = type(worker_config.target_kb_ids) == "table" and worker_config.target_kb_ids or {}
-    local clean_targets: { string } = {}
-    for _, id in ipairs(target_kb_ids) do
-        local s = trim(tostring(id))
-        if s ~= "" then clean_targets[#clean_targets + 1] = s end
-    end
-    -- The declared source projection carries no worker_config: the KB primary
-    -- thread IS the target (thread_id == component_id == kb_id), so an empty
-    -- target set defaults to this thread's own KB.
-    if #clean_targets == 0 and thread_id ~= "" then
-        clean_targets[#clean_targets + 1] = thread_id
-    end
+    local clean_targets = source_targets(worker_config, thread_id)
     if #clean_targets == 0 then
         return nil, (errors.new({message = "worker_config.target_kb_ids is required", kind = errors.INVALID}) :: error)
     end
@@ -1467,7 +1468,15 @@ local function run_page(input_raw, deps)
     local input = decode_object(input_raw)
     deps = deps or {}
     local page = input.events
-    if type(page) ~= "table" or #page <= 1 or type(input.projection) ~= "table" then return run_with_deps(input, deps) end
+    if type(page) ~= "table" or #page == 0 or type(input.projection) ~= "table" then return run_with_deps(input, deps) end
+    local body = projection_body(input.projection)
+    input.projection.body = body
+    local cursor = type(input.cursor) == "table" and input.cursor or {}
+    local pending = body.source_finalizer_pending
+    local same_cursor = type(pending) == "table" and type(cursor.id) == "string" and pending.cursor_id == cursor.id
+    local resume = same_cursor and pending.last_seq == cursor.last_seq
+        and type(pending.targets) == "table" and #pending.targets <= MAX_TARGET_KBS
+    if #page == 1 and not same_cursor then return run_with_deps(input, deps) end
     local targets = {}
     local resolver = {resolve_materialized_store = deps.resolve_materialized_store}
     local page_deps = {}
@@ -1481,9 +1490,20 @@ local function run_page(input_raw, deps)
     local range = type(input.range) == "table" and input.range or {}
     local events, ready_by_kb, metrics = {}, {}, {}
     local finalizer_targets, seen_targets = {}, {}
-    local body = projection_body(input.projection)
-    input.projection.body = body
-    local last_seq
+    local function remember(kb_id)
+        if type(kb_id) ~= "string" or kb_id == "" or seen_targets[kb_id] then return end
+        finalizer_targets[#finalizer_targets + 1] = kb_id
+        seen_targets[kb_id] = true
+    end
+    if resume then
+        local configured = {}
+        local worker_config = resolve_worker_config(input.worker_config, input.projection)
+        for _, kb_id in ipairs(source_targets(worker_config, trim(input.thread_id))) do configured[kb_id] = true end
+        for _, kb_id in ipairs(pending.targets) do
+            if configured[kb_id] then remember(kb_id) end
+        end
+    end
+    local last_seq, finalized
     for index, event in ipairs(page) do
         input.events = {event}
         local result, err, slice_targets = run_with_deps(input, page_deps, true)
@@ -1494,19 +1514,26 @@ local function run_page(input_raw, deps)
         for key, value in pairs(result.patch or {}) do body[key] = value end
         for key, value in pairs(result.metrics) do metrics[key] = (metrics[key] or 0) + value end
         append_source_outputs(events, ready_by_kb, result.append_events)
-        for _, kb_id in ipairs(slice_targets or {}) do
-            if not seen_targets[kb_id] then
-                finalizer_targets[#finalizer_targets + 1] = kb_id
-                seen_targets[kb_id] = true
-            end
-        end
+        for _, kb_id in ipairs(slice_targets or {}) do remember(kb_id) end
         last_seq = tonumber(event.seq)
         if index == #page then
             -- The complete page owns finalization, even if its last eligible
             -- event emitted nothing or Core scanned beyond it.
-            append_source_outputs(events, ready_by_kb, build_digest_request_writes(range,
-                trim(input.thread_id), trim(input.projection.id), finalizer_targets, last_seq, last_seq))
+            local writes = build_digest_request_writes(range,
+                trim(input.thread_id), trim(input.projection.id), finalizer_targets, last_seq, last_seq)
+            append_source_outputs(events, ready_by_kb, writes)
+            finalized = writes ~= nil
             last_seq = tonumber(range.to_seq) or last_seq
+        end
+    end
+    -- Core commits this body with the cursor and events. Follow the committed
+    -- position across pause/resume; an explicit reset replaces the body.
+    if (pending == nil or same_cursor) and type(cursor.id) == "string" and type(cursor.last_seq) == "number" then
+        body.source_finalizer_pending = nil
+        if not finalized and #finalizer_targets > 0 then
+            body.source_finalizer_pending = {
+                cursor_id = cursor.id, last_seq = last_seq, targets = finalizer_targets,
+            }
         end
     end
     body.last_from_seq = page[1].seq
