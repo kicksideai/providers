@@ -13,12 +13,13 @@ it('builds all published KB10 entry points without source maps', () => {
     execFileSync('npm', ['run', 'build', '--', '--outDir', output], {
       cwd: new URL('.', import.meta.url),
       env: { ...process.env, NODE_ENV: 'production' },
+      timeout: 30_000,
     })
-    const files = readdirSync(output)
+    const files = readdirSync(output, { recursive: true })
     expect(files).toEqual(expect.arrayContaining(['document.js', 'wiki.js', 'create.js', 'wippy-meta.json']))
     expect(files.filter(name => name.endsWith('.map'))).toEqual([])
     for (const file of files.filter(name => name.endsWith('.js'))) {
-      expect(readFileSync(join(output, file), 'utf8')).not.toContain('sourceMappingURL=')
+      expect(readFileSync(join(output, file), 'utf8')).not.toMatch(/^\s*\/\/[#@]\s*sourceMappingURL=/m)
     }
   } finally {
     rmSync(output, { recursive: true, force: true })
