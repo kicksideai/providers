@@ -16,7 +16,6 @@ local function valid(ref: any): boolean
 end
 
 local function outcome(rows: any, publication_id: string): any
-    local newest: string? = nil
     for _,node in ipairs(type(rows) == "table" and rows or {}) do
         local meta = type(node.metadata) == "table" and node.metadata or {}
         local published = meta.upload_publication_id
@@ -28,13 +27,12 @@ local function outcome(rows: any, publication_id: string): any
                 if meta.status == "completed" then return {status="indexed"} end
                 return {status="pending"}
             end
-            if newest == nil or published > newest then newest=published end
         end
     end
-    -- Upload publication IDs are UUIDv7. A later receipt may be accepted while
-    -- the previous source row is still materialized; it is pending, not
-    -- superseded. A newer stored publication supersedes this one.
-    if newest and newest > publication_id then return {status="superseded"} end
+    -- A source row for another publication does not establish an ordering:
+    -- delivery and materialization can run on different hosts. Until an
+    -- authoritative source publication record says otherwise, an unmatched
+    -- accepted receipt is still pending rather than falsely superseded.
     return {status="pending"}
 end
 
