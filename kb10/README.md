@@ -2,7 +2,7 @@
 
 Document and graph knowledge storage, embeddings, and durable ingestion bindings.
 
-This module installs independently into a [KickSide](https://kickside.ai) host.
+The Knowledge base onboarding profile installs KB10 as a separate module. On an existing host, open **System → Modules** and check the installed version of `kickside/kb10` when updating the engine.
 
 ## Quick start
 
@@ -41,6 +41,19 @@ afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
+
+## Ingestion after an extractor outage
+
+KB10 0.2.38 fixes a case where a source page indexes a document, then stops
+when the next extraction is temporarily unavailable. If the remaining source
+later yields no documents, the worker still requests digest and treatment for
+the KBs that received content. A page containing only empty extractions
+leaves those downstream jobs idle.
+
+This recovery applies when the worker returned its completed part of the
+page. A worker that reaches its execution deadline before returning can leave
+indexed documents ahead of its cursor. That case remains open in
+[Providers #170](https://github.com/kicksideai/providers/issues/170).
 
 ## Original document delivery
 
