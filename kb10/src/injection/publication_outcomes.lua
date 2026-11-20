@@ -15,24 +15,10 @@ local function valid(ref: any): boolean
         and type(ref.publication_id) == "string" and uuid.validate(ref.publication_id)
 end
 
-local function outcome(rows: any, publication_id: string): any
-    for _,node in ipairs(type(rows) == "table" and rows or {}) do
-        local meta = type(node.metadata) == "table" and node.metadata or {}
-        local published = meta.upload_publication_id
-        if node.parent_id == nil and node.node_type == "document" and type(published) == "string" then
-            if published == publication_id then
-                if meta.status == "failed" then
-                    return {status="failed",reason=type(meta.error) == "string" and meta.error or "Indexing failed"}
-                end
-                if meta.status == "completed" then return {status="indexed"} end
-                return {status="pending"}
-            end
-        end
-    end
-    -- A source row for another publication does not establish an ordering:
-    -- delivery and materialization can run on different hosts. Until an
-    -- authoritative source publication record says otherwise, an unmatched
-    -- accepted receipt is still pending rather than falsely superseded.
+local function outcome(row: any): any
+    if type(row) ~= "table" then return {} end
+    if row.status == "failed" then return {status="failed",reason=type(row.error) == "string" and row.error or "Indexing failed"} end
+    if row.status == "completed" then return {status="indexed"} end
     return {status="pending"}
 end
 
@@ -41,18 +27,27 @@ function M.lookup(refs: any): ({any}?,error?)
         return nil,errors.new({kind=errors.INVALID,message="at most 100 publication references are required"})
     end
     local results: {any}={}
+    local groups: { [string]: any }={}
     for index,ref in ipairs(refs) do
         if not valid(ref) then return nil,errors.new({kind=errors.INVALID,message="invalid Knowledge publication reference"}) end
-        local _,access_err=component.validate_access(ref.kb_id,component.ACCESS.READ)
+        results[index]={}
+        local group=groups[ref.kb_id] or {refs={},indexes={}}
+        groups[ref.kb_id]=group;group.refs[#group.refs+1]=ref;group.indexes[#group.indexes+1]=index
+    end
+    for kb_id,group in pairs(groups) do
+        local _,access_err=component.validate_access(kb_id,component.ACCESS.READ)
         if access_err then
             -- Do not disclose either a KB relationship or its failure reason.
-            results[index]={}
         else
-            local kb,store_err=store.get_store(ref.kb_id)
+            local kb,store_err=store.get_store(kb_id)
             if store_err then return nil,store_err end
-            local rows,read_err=store.find_by_external_id(kb.id,"knowledge.kb",ref.external_id)
+            local rows,read_err=store.publication_outcomes(kb.id,group.refs)
             if read_err then return nil,read_err end
-            results[index]=outcome(rows,ref.publication_id)
+            local by_receipt: {[string]: any}={}
+            for _,row in ipairs(rows) do by_receipt[tostring(row.external_id) .. "\n" .. tostring(row.publication_id)]=row end
+            for offset,ref in ipairs(group.refs) do
+                results[group.indexes[offset]]=outcome(by_receipt[ref.external_id .. "\n" .. ref.publication_id])
+            end
         end
     end
     return results,nil
