@@ -334,7 +334,8 @@ local function ordinary_integrity()
                     thread_id = id, kind = "knowledge.injection.source", projection_key = "source", cursor_key = "source",
                     worker_ref = "proc://kickside.kb10.injection:source_worker_proc", worker_input_mode = "prefetch_events",
                     events = {input = {{type = UPSERT}}},
-                    worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
+                    worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false,
+                        summary_max_chars = 32}},
                 }))
                 local registered = in_db(function(db)
                     assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_checkpoint_model (
@@ -347,7 +348,10 @@ local function ordinary_integrity()
                 end)
                 local replacement = "Replacement " .. mode .. " file"
                 local pending, blob = immutable_file(uploads_to_clean, replacement)
-                local following = immutable_file(uploads_to_clean, "Following " .. mode .. " file")
+                local summary_prefix = string.rep("x", 23)
+                local following_content = summary_prefix .. " Following " .. mode .. " file"
+                local following = immutable_file(uploads_to_clean, following_content)
+                following.title = "Source"
                 local function set_storage(storage_id)
                     in_db(function(db)
                         assert(db:execute("UPDATE kickside_upload_artifact_blobs SET storage_id=$1 WHERE blob_id=$2",
@@ -415,7 +419,12 @@ local function ordinary_integrity()
                     test.is_nil(done.cursor.last_error)
                     test.eq(#done.roots, 2)
                     test.eq(done.roots[1].id, accepted.id)
-                    test.eq(done.roots[2].content, "Following " .. mode .. " file")
+                    test.eq(done.roots[2].content, following_content)
+                    local summary = in_db(function(db)
+                        return assert(db:query([[SELECT content FROM kb10_nodes
+                            WHERE store_id=$1 AND parent_id=$2 AND node_type='summary']], {id, done.roots[2].id}))[1]
+                    end)
+                    test.eq(assert(summary).content, "Source\n\n" .. summary_prefix)
                 end)
                 process.terminate(scheduler)
                 if mode == "storage" and not reopened then set_storage(blob.storage_id) end

@@ -356,6 +356,17 @@ function M.locate_chunks(chunks: {string}): ({string}, {{[string]: any}})
     return texts, located
 end
 
+-- Keep the byte budget without cutting through a UTF-8 code point.
+local function summary_prefix(value: string, budget: integer): string
+    local last = math.min(#value, budget)
+    while last > 0 do
+        local next_byte = string.byte(value, last + 1)
+        if not next_byte or next_byte < 128 or next_byte > 191 then break end
+        last = last - 1
+    end
+    return value:sub(1, last)
+end
+
 function M.build_summary_text(doc: any, opts: any?)
     opts = opts or {}
     local summary_max_chars = 0
@@ -370,11 +381,11 @@ function M.build_summary_text(doc: any, opts: any?)
     end
     local headline = title ~= "" and title or trim(doc.external_id) or ""
     if #headline > summary_max_chars then
-        return headline:sub(1, summary_max_chars)
+        return summary_prefix(headline, summary_max_chars)
     end
     local budget = summary_max_chars - #headline - 2
     if budget < 0 then budget = 0 end
-    local snippet = trim(body:sub(1, budget))
+    local snippet = trim(summary_prefix(body, budget))
     if snippet == "" then return headline end
     if headline == "" then return snippet end
     return headline .. "\n\n" .. snippet
