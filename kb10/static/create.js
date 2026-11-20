@@ -31,4 +31,3 @@ s(import.meta.url, e);
 export {
   c as webComponent
 };
-//# sourceMappingURL=create.js.map

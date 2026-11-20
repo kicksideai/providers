@@ -4,4 +4,3 @@ const t = { props: { type: "object", properties: { config: { type: "object", des
 export {
   p
 };
-//# sourceMappingURL=package-BnnarOlp.js.map
