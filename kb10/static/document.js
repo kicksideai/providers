@@ -29,4 +29,3 @@ p(import.meta.url, r);
 export {
   f as webComponent
 };
-//# sourceMappingURL=document.js.map

@@ -863,4 +863,3 @@ const Qe = { class: "kx-railhead" }, Ye = { class: "kx-railhead-title" }, Ze = {
 export {
   ln as mountConfig
 };
-//# sourceMappingURL=document-mount-BkX63fJr.js.map

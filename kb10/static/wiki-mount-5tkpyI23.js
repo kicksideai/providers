@@ -2991,4 +2991,3 @@ const Gl = { class: "kb-railtop" }, jl = { class: "kb-railtop-acts" }, Zl = {
 export {
   ks as mountConfig
 };
-//# sourceMappingURL=wiki-mount-5tkpyI23.js.map

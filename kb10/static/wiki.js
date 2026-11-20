@@ -29,4 +29,3 @@ p(import.meta.url, r);
 export {
   f as webComponent
 };
-//# sourceMappingURL=wiki.js.map
