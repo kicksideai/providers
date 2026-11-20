@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.40](https://github.com/kicksideai/providers/compare/kb10-v0.2.39...kb10-v0.2.40) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** recover installed source publications across retries ([#204](https://github.com/kicksideai/providers/issues/204)) ([d6b87a8](https://github.com/kicksideai/providers/commit/d6b87a884685ed6cd775cf9dc9ef578d4adc2b8e))
+
 ## [0.2.39](https://github.com/kicksideai/providers/compare/kb10-v0.2.38...kb10-v0.2.39) (2026-11-20)
 
 
