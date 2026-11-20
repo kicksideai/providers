@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.36](https://github.com/kicksideai/providers/compare/kb10-v0.2.35...kb10-v0.2.36) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** reject verified immutable upload corruption ([2d1bf93](https://github.com/kicksideai/providers/commit/2d1bf93d52c56f964db90d0738ec4b5d26665a29))
+
 ## [0.2.35](https://github.com/kicksideai/providers/compare/kb10-v0.2.34...kb10-v0.2.35) (2026-11-20)
 
 
