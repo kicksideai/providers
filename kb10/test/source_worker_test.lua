@@ -1241,6 +1241,14 @@ local function define_tests()
                 test.eq("", disabled)
             end)
 
+            test.it("preserves UTF-8 when the byte budget cuts a headline or snippet", function()
+                local build = source_worker._build_summary_text
+                test.eq("A", build({title = "A B"}, {summary_max_chars = 2}))
+                test.eq("", build({title = "😀"}, {summary_max_chars = 3}))
+                test.eq("A\n\nx", build({title = "A", content = "x y"}, {summary_max_chars = 5}))
+                test.eq("A\n\nx ", build({title = "A", content = "x y"}, {summary_max_chars = 6}))
+            end)
+
             test.it("handles empty doc gracefully", function()
                 local s = source_worker._build_summary_text({})
                 test.eq(s, "")
