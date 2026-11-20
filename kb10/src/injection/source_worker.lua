@@ -1138,6 +1138,10 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
             else
                 local docs = type(items.documents) == "table" and items.documents or {}
                 local deletes = type(items.deletes) == "table" and items.deletes or {}
+                if deps.single_source and #docs + #deletes > 1 then
+                    return nil, errors.new({kind = errors.INVALID,
+                        message = "multi-item extractors require their own source projection"})
+                end
                 if #docs == 0 and #deletes == 0 then
                     -- Extractor handled the event but emitted nothing.
                 else
@@ -1505,6 +1509,10 @@ local function run_page(input_raw, deps)
     end
     local last_seq, finalized
     for index, event in ipairs(page) do
+        if index > 1 and deps.close_before and deps.close_before(event) then
+            last_seq = event.seq - 1
+            break
+        end
         input.events = {event}
         local result, err, slice_targets = run_with_deps(input, page_deps, true)
         if err then
@@ -1514,6 +1522,7 @@ local function run_page(input_raw, deps)
         for key, value in pairs(result.patch or {}) do body[key] = value end
         for key, value in pairs(result.metrics) do metrics[key] = (metrics[key] or 0) + value end
         append_source_outputs(events, ready_by_kb, result.append_events)
+        if deps.after_source then deps.after_source(result, event) end
         for _, kb_id in ipairs(slice_targets or {}) do remember(kb_id) end
         last_seq = tonumber(event.seq)
         if index == #page then

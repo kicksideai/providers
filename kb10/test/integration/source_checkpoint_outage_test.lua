@@ -487,7 +487,7 @@ local function assert_placement(received, id, document_node_id)
     test.not_nil(received[1].execution_identity)
 end
 
-local function finalizer_case(mode)
+local function finalizer_case(mode, primary)
     local id, actor = uuid.v7(), uuid.v7()
     local retry_empty = mode == "retry-empty"
     local empty_sources = mode == "only-empty" and 2 or ((mode == "empty-tail" or retry_empty) and 1 or 0)
@@ -505,13 +505,17 @@ local function finalizer_case(mode)
             {id, retry_empty and 0 or 1}))
     end)
     assert(store.create_store(id, model, {}, {kb_type = "wiki", is_graph = true, name = "Finalizer fixture"}))
-    local member_threads = owner.create(actor, id)
-    assert(member_threads:register_projection({
-        thread_id = id, kind = "knowledge.injection.source", projection_key = "source", cursor_key = "source",
-        worker_ref = "proc://kickside.kb10.injection:source_worker_proc", worker_input_mode = "prefetch_events",
-        events = {input = {{type = UPSERT}, {type = DELETE}, {type = EMPTY}}},
-        worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
-    }))
+    if primary then
+        owner.create(actor, id, "app:primary_fixture_descriptor")
+    else
+        local member_threads = owner.create(actor, id)
+        assert(member_threads:register_projection({
+            thread_id = id, kind = "knowledge.injection.source", projection_key = "source", cursor_key = "source",
+            worker_ref = "proc://kickside.kb10.injection:source_worker_proc", worker_input_mode = "prefetch_events",
+            events = {input = {{type = UPSERT}, {type = DELETE}, {type = EMPTY}}},
+            worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
+        }))
+    end
     local function append_empty(db, sequence)
         assert(threads.append_system(db, id, {{type = EMPTY, role = "system",
             body_json = assert(json.encode({kb_id = id})),
@@ -639,6 +643,9 @@ local function define_finalizer_tests()
     test.describe("ordinary published KB10 source completion", function()
         for _, mode in ipairs({"only-empty", "empty-tail", "filtered-tail", "delete", "retry", "retry-empty"}) do
             test.it("finalizer and placement uniqueness: " .. mode, function() finalizer_case(mode) end)
+        end
+        for _, mode in ipairs({"only-empty", "empty-tail", "filtered-tail", "delete", "retry", "retry-empty"}) do
+            test.it("installed primary finalizers and placement: " .. mode, function() finalizer_case(mode, true) end)
         end
     end)
 end

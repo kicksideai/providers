@@ -20,6 +20,8 @@ entries:
       test: wippy.test:test
       uploads: kickside.uploads.persist:upload_record_repo
       writer: kickside.kb10.persist:writer
+      publication_plan: kickside.kb10.injection:source_publication_plan
+      publication_slot: kickside.kb10.injection:source_publication_slot
 
   - name: checkpoint_model_provider
     kind: registry.entry
@@ -172,8 +174,7 @@ entries:
       - contract: kickside.contract:component
         methods: {get_status: "kickside.core.threads:thread_status"}
 
-  # Only this test descriptor selects the dormant checkpoint worker. KB10's
-  # published Knowledge Base kinds continue to select the ordinary worker.
+  # Keep the earlier single-event checkpoint worker covered independently.
   - name: checkpoint_fixture_descriptor
     kind: registry.entry
     meta:
@@ -190,3 +191,21 @@ entries:
             input:
               - {type: "kickside.knowledge.events:content.upserted"}
               - {type: "kickside.knowledge.events:content.deleted"}
+
+  - name: primary_fixture_descriptor
+    kind: registry.entry
+    meta:
+      impl_id: app:source_fixture_component
+      thread: {class: kb10.test.primary}
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: proc://kickside.kb10.injection:primary_source_worker
+          input_mode: prefetch_events
+          worker_config: {materialization: {summary_model: false, chunk_enrichment_model: false}}
+          events:
+            input:
+              - {type: "kickside.knowledge.events:content.upserted"}
+              - {type: "kickside.knowledge.events:content.deleted"}
+              - {type: "app:finalizer_empty_source"}

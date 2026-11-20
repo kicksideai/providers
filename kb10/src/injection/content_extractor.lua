@@ -164,6 +164,12 @@ function M.run(input)
     return extract(input)
 end
 
+-- The primary worker can group independent inputs by the same canonical
+-- identity without opening an immutable artifact or invoking a model.
+function M.source_identity(event, metadata)
+    return external_tuple({type = event.type, external = event}, metadata)
+end
+
 function M.checkpoint_input(event)
     return extract({event = event})
 end

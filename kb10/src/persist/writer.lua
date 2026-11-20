@@ -639,7 +639,7 @@ local SOURCE_REJECTIONS = {
 }
 
 local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
-        metadata: kb10.Map, code: string, before: table?): (any?, any?, table?)
+        metadata: kb10.Map, code: string, before: table?, planned_id: string?): (any?, any?, table?)
     local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, source_thread_id)
     if not binding then
         return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a source identity"})
@@ -700,7 +700,7 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
     if not id then
         local insert_err
         id, insert_err = insert_node_tx(tx, db_type, store_id, {
-            node_type = kb10.NODE_TYPE.DOCUMENT, content_type = "text/plain", metadata = stored,
+            id = planned_id, node_type = kb10.NODE_TYPE.DOCUMENT, content_type = "text/plain", metadata = stored,
         }, binding)
         if insert_err then return nil, insert_err end
     else
@@ -754,8 +754,8 @@ function writer.create_store(component_id: any, embedding_model: any, config: an
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
 
     local _, exec_err = tx:execute(
-        "INSERT INTO kb10_stores (id, component_id, embedding_model, config, kb_type, enrichment_agent_id) VALUES ($1, $2, $3, $4, $5, $6)",
-        { component_id, component_id, embedding_model, config_json, kb_type, enrichment_agent_id }
+        "INSERT INTO kb10_stores (id, component_id, embedding_model, config, kb_type, enrichment_agent_id, source_publication_token) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        { component_id, component_id, embedding_model, config_json, kb_type, enrichment_agent_id, uuid.v7() }
     )
     if exec_err then return fail_tx(tx, db, exec_err) end
 
@@ -1179,11 +1179,14 @@ function writer.source_checkpoint_before(store_id: string, selector: table, kind
     if err then return nil, err end
     local dialect, type_err = ops.get_db_type(db)
     if type_err then db:release(); return nil, type_err end
-    local id, _, read_err = find_document_tx(db, dialect, store_id, selector)
+    local id, root, read_err = find_document_tx(db, dialect, store_id, selector)
     local before
     if not read_err then before, read_err = source_checkpoint_state(db, dialect, store_id, id, kind ~= "reject") end
     local _, release_err = db:release()
     if read_err or release_err then return nil, read_err or release_err end
+    if before and root then
+        before.external_source, before.external_id = root.external_source, root.external_id
+    end
     return before, nil
 end
 
@@ -1208,7 +1211,11 @@ function writer.source_checkpoint_outcome(before: table, change: table): table
     end
     local children = change.replacement.children
     delta.embedding_delta = #children - (tonumber(counts.child_embedding_count) or 0)
-    delta.document_delta = delta.document_delta + 1
+    if change.replacement.document.metadata.status == "failed" then
+        delta.failed_delta = delta.failed_delta + 1
+    else
+        delta.document_delta = delta.document_delta + 1
+    end
     for _, child in ipairs(children) do
         if child.node.node_type == kb10.NODE_TYPE.SUMMARY then delta.summary_delta = delta.summary_delta + 1 end
         if child.node.node_type == kb10.NODE_TYPE.CHUNK then delta.chunk_delta = delta.chunk_delta + 1 end
@@ -1220,20 +1227,21 @@ function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: s
         before: table, change: table, expected: table): (boolean?, any?)
     if change.kind == "reject" then
         local id, err = reject_source_revision_tx(tx, dialect, store_id, selector.source_thread_id, change.metadata,
-            change.code, before)
+            change.code, before, change.document_id)
+        if id and change.document_id and id ~= change.document_id then return nil, checkpoint_conflict() end
         return id ~= nil, err
     end
     local written, write_err
-    local added = 0
+    local added, failed = 0, 0
     if change.kind == "delete" then
         written, write_err = delete_document_tx(tx, dialect, store_id, selector, before)
     else
         written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before)
-        added = 1
+        if change.replacement.document.metadata.status == "failed" then failed = 1 else added = 1 end
     end
     if write_err or not written then return nil, write_err end
     if added - written.removed_document_count ~= expected.document_delta
-        or -written.removed_failed_document_count ~= expected.failed_delta
+        or failed - written.removed_failed_document_count ~= expected.failed_delta
         or (written.summary_count or 0) - written.removed_summary_count ~= expected.summary_delta
         or (written.chunk_count or 0) - written.removed_chunk_count ~= expected.chunk_delta
         or (written.embedding_count or 0) - written.removed_embedding_count ~= expected.embedding_delta then

@@ -16,6 +16,8 @@ local time = require("time")
 local uploads = require("uploads")
 local uuid = require("uuid")
 local writer = require("writer")
+local publication_plan = require("publication_plan")
+local publication_slot = require("publication_slot")
 
 local UPSERT = "kickside.knowledge.events:content.upserted"
 local GRAPH = "kickside.knowledge.events:graph.changed"
@@ -144,6 +146,38 @@ end
 
 return {run = test.run_cases(function()
     test.describe("fenced writes on a registered KB10 source", function()
+        test.it("binds a first rejection to its planned document ID and retires the recreated store", function()
+            with_registration(function(kb_id, events, job, current)
+                local page = publication_plan.new(kb_id, kb_id)
+                local slot = assert(publication_slot.read(kb_id))
+                test.not_nil(slot.token)
+                local revision = replacement(kb_id, events[1], 1).document.metadata
+                local invalid = page.store:reject_source_revision({store_id = kb_id, metadata = {}, code = "artifact_bytes_not_found"})
+                test.is_nil(invalid)
+                test.eq(#page.plans, 0)
+                local rejection = assert(page.store:reject_source_revision({store_id = kb_id, metadata = revision,
+                    code = "artifact_bytes_not_found"}))
+                test.eq(rejection.failed_delta, 1)
+                test.is_nil(row("SELECT id FROM kb10_nodes WHERE store_id=$1", {kb_id}))
+                local _, repeated = page.store:reject_source_revision({store_id = kb_id, metadata = revision,
+                    code = "artifact_bytes_not_found"})
+                test.is_true(errors.is(repeated, errors.CONFLICT))
+                assert(apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1}, function(tx, dialect)
+                    assert(publication_slot.check(tx, dialect, kb_id, slot.token))
+                    return publication_plan.write(tx, dialect, kb_id, page.plans)
+                end))
+                test.eq(row("SELECT id FROM kb10_nodes WHERE store_id=$1", {kb_id}).id, rejection.document_node_id)
+                assert(store.delete_store(kb_id))
+                assert(store.create_store(kb_id, "fixture-embed", {}))
+                local fresh = assert(publication_slot.read(kb_id))
+                test.is_true(fresh.token ~= slot.token)
+                local stale, changed = publication_slot.current(kb_id, slot.token)
+                test.is_nil(stale)
+                test.is_true(errors.is(changed, errors.CONFLICT))
+                test.is_nil(fresh.result)
+            end)
+        end)
+
         test.it("commits the real document, descendants and checkpoint together", function()
             with_registration(function(kb_id, events, job, current)
                 local first = assert(apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1},

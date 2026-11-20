@@ -40,7 +40,7 @@ entries:
   - name: dep.kickside.core
     kind: ns.dependency
     component: kickside/core
-    version: ">=0.3.25"
+    version: ">=0.3.41"
     meta:
       comment: Owns the knowledge thread and supervised source checkpoints.
 
@@ -192,6 +192,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:14_store_document_counts
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:15_source_publication
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 
@@ -259,7 +261,7 @@ entries:
         - kind: knowledge.injection.source
           projection_key: source
           cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          worker_ref: "proc://kickside.kb10.injection:primary_source_worker"
           input_mode: prefetch_events
           batch_size: 1
           events:
@@ -411,7 +413,7 @@ entries:
         - kind: knowledge.injection.source
           projection_key: source
           cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          worker_ref: "proc://kickside.kb10.injection:primary_source_worker"
           input_mode: prefetch_events
           batch_size: 1
           events:
@@ -593,7 +595,7 @@ entries:
         - kind: knowledge.injection.source
           projection_key: source
           cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          worker_ref: "proc://kickside.kb10.injection:primary_source_worker"
           input_mode: prefetch_events
           batch_size: 1
           events:

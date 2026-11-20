@@ -110,6 +110,51 @@ entries:
       ops: kickside.kb10.persist:ops
       store: kickside.kb10.persist:store
 
+  - name: source_publication_plan
+    kind: library.lua
+    source: file://source_publication_plan.lua
+    modules: [uuid, json]
+    imports:
+      materializer_store: kickside.kb10.injection:materializer_store
+      writer: kickside.kb10.persist:writer
+
+  - name: source_publication_slot
+    kind: library.lua
+    source: file://source_publication_slot.lua
+    modules: [uuid, sql]
+    imports:
+      job_types: kickside.core.jobs:types
+      error_envelope: kickside.contract:error_envelope
+      component: kickside.component:component
+      ops: kickside.kb10.persist:ops
+
+  - name: primary_source_worker
+    kind: process.lua
+    meta:
+      type: projection.worker
+      kind: knowledge.injection.source
+      private: true
+      checkpointed_apply: true
+      filtered_checkpoint: true
+      transition_from:
+        worker_ref: proc://kickside.kb10.injection:source_worker_proc
+        target_db_config: kickside.kb10:db_config
+    source: file://primary_source_worker.lua
+    method: run
+    modules: [ctx, json, process, logger]
+    imports:
+      component: kickside.component:component
+      enrichment: kickside.kb10.graph:enrichment_consts
+      extractor: kickside.kb10.injection:content_extractor_lib
+      ordinary: kickside.kb10.injection:source_worker_lib
+      materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      planner: kickside.kb10.injection:source_publication_plan
+      slots: kickside.kb10.injection:source_publication_slot
+      core_db: kickside.core:db
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
   - name: checkpoint_source_worker
     kind: process.lua
     meta:
@@ -285,7 +330,7 @@ entries:
     meta:
       comment: Finds KB source projections invalidated by an embedding provider rejection and resumes them through Core.
     source: file://source_repair.lua
-    modules: [sql]
+    modules: [sql, funcs]
     imports:
       core_db: kickside.core:db
       projection_writer: kickside.core.projections.persist:writer
@@ -299,7 +344,7 @@ entries:
       comment: Resumes KB source projections that an earlier release invalidated on an embedding provider rejection.
     source: file://source_repair.lua
     method: run
-    modules: [sql]
+    modules: [sql, funcs]
     imports:
       core_db: kickside.core:db
       projection_writer: kickside.core.projections.persist:writer
