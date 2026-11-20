@@ -47,8 +47,8 @@ commit regenerated tracked assets with the source.
 KB10 0.2.38 fixes a case where a source page indexes a document, then stops
 when the next extraction is temporarily unavailable. If the remaining source
 later yields no documents, the worker still requests digest and treatment for
-the KBs that received content. A page containing only empty extractions
-leaves those downstream jobs idle.
+the KBs that received content. When all extractions are empty and there is no
+prior work to finalize, the worker requests neither digest nor treatment.
 
 This recovery applies when the worker returned its completed part of the
 page. A worker that reaches its execution deadline before returning can leave
