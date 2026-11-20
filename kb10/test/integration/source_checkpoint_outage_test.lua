@@ -303,7 +303,142 @@ local function scenario(ordinary)
     end)
 end
 
+local function immutable_file(uploads_to_clean, text)
+    local id = uuid.v7()
+    uploads_to_clean[#uploads_to_clean + 1] = id
+    local checksum = assert(hash.sha256(text))
+    assert(uploads.create(id, "test-user", #text, "text/plain", "app:uploads", "source.txt",
+        "document", {}, "completed", checksum))
+    local artifact = assert(artifacts.create_artifact({upload_id = id, kind = "markdown", role = "primary",
+        mime_type = "text/plain", content = text, storage_id = "app:uploads"}))
+    local blob = assert(artifacts.get_blob(artifact.blob_id))
+    return {content_omitted = true, content_bytes = #text, content_sha256 = checksum,
+        source_ref = {kind = "upload", upload_id = id, artifact_id = artifact.artifact_id}}, blob
+end
+
+local function ordinary_integrity()
+    test.describe("ordinary KB10 immutable artifact integrity", function()
+        for _, mode in ipairs({"length", "digest", "storage"}) do
+            test.it("handles " .. mode .. " and the following immutable upload", function()
+                local id, actor = uuid.v7(), uuid.v7()
+                local model = "kb10-integrity-" .. id
+                local uploads_to_clean = {}
+                assert(models.upsert_card({name = model, provider_id = "app:checkpoint_model_provider", provider_model = model,
+                    capabilities = {"embed"}, dimensions = 512, max_tokens = 4096}))
+                assert(store.create_store(id, model, {}))
+                local member_threads = owner.create(actor, id)
+                assert(member_threads:register_projection({
+                    thread_id = id, kind = "knowledge.injection.source", projection_key = "source", cursor_key = "source",
+                    worker_ref = "proc://kickside.kb10.injection:source_worker_proc", worker_input_mode = "prefetch_events",
+                    events = {input = {{type = UPSERT}}},
+                    worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
+                }))
+                local registered = in_db(function(db)
+                    assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_checkpoint_model (
+                        model TEXT PRIMARY KEY, online INTEGER NOT NULL, calls INTEGER NOT NULL, failures INTEGER NOT NULL)]]))
+                    assert(db:execute("INSERT INTO kb10_checkpoint_model (model,online,calls,failures) VALUES ($1,1,0,0)", {model}))
+                    append(db, id, "accepted", "1", {content = "Earlier accepted content"})
+                    return assert(assert(db:query([[SELECT c.id AS cursor_id,c.job_id,c.projection_id
+                        FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
+                        WHERE c.thread_id=$1 AND p.kind='knowledge.injection.source' AND c.cursor_key='source']], {id}))[1])
+                end)
+                local replacement = "Replacement " .. mode .. " file"
+                local pending, blob = immutable_file(uploads_to_clean, replacement)
+                local following = immutable_file(uploads_to_clean, "Following " .. mode .. " file")
+                local function set_storage(storage_id)
+                    in_db(function(db)
+                        assert(db:execute("UPDATE kickside_upload_artifact_blobs SET storage_id=$1 WHERE blob_id=$2",
+                            {storage_id, blob.blob_id}))
+                    end)
+                end
+                local reopened = false
+                local scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
+                local ok, err = pcall(function()
+                    assert(jobs.nudge_workers())
+                    local before = wait_state(registered, id, caught_up)
+                    local accepted = before.roots[1]
+                    test.eq(accepted.content, "Earlier accepted content")
+                    local function accepted_tree()
+                        return in_db(function(db)
+                            local children = assert(db:query([[SELECT id,content FROM kb10_nodes
+                                WHERE store_id=$1 AND parent_id=$2 ORDER BY id]], {id, accepted.id}))
+                            local vectors = assert(db:query([[SELECT id,CAST(embedding AS TEXT) AS value FROM kb10_embeddings
+                                WHERE store_id=$1 AND (parent_id=$2 OR node_id=$2) ORDER BY id]], {id, accepted.id}))
+                            local keys = {}
+                            for _, child in ipairs(children) do keys[#keys + 1] = child.id .. ":" .. child.content end
+                            for _, vector in ipairs(vectors) do keys[#keys + 1] = vector.id .. ":" .. vector.value end
+                            test.is_true(#children > 0 and #vectors > 0)
+                            return table.concat(keys, "\n")
+                        end)
+                    end
+                    local prior_tree = accepted_tree()
+                    if mode == "storage" then
+                        set_storage("app:unavailable_upload_storage")
+                    else
+                        local actual = mode == "length" and replacement .. "!" or string.rep("X", #replacement)
+                        local storage = assert(fs.get(blob.storage_id))
+                        assert(select(2, storage:writefile(blob.storage_path, actual)) == nil)
+                        test.eq(assert(storage:readfile(blob.storage_path)), actual)
+                    end
+                    in_db(function(db)
+                        append(db, id, "accepted", "2", pending)
+                        append(db, id, "following", "1", following)
+                    end)
+                    local done = wait_state(registered, id, function(cursor)
+                        return caught_up(cursor) or (cursor.status == "pending" and cursor.last_error ~= nil)
+                    end)
+                    if mode == "storage" then
+                        test.is_false(caught_up(done.cursor))
+                        test.not_nil(done.cursor.scheduled_at)
+                        test.eq(tonumber(done.cursor.last_seq), tonumber(before.cursor.last_seq))
+                        test.eq(#done.roots, 1)
+                        test.is_nil(metadata(done.roots[1]).source_rejection)
+                        test.eq(accepted_tree(), prior_tree)
+                        set_storage(blob.storage_id)
+                        reopened = true
+                        done = wait_state(registered, id, caught_up)
+                        test.eq(done.roots[1].content, replacement)
+                    else
+                        test.is_true(caught_up(done.cursor), assert(json.encode({
+                            cursor = done.cursor, root_count = #done.roots, accepted = done.roots[1].content,
+                        })))
+                        test.eq(done.roots[1].content, accepted.content)
+                        test.eq(accepted_tree(), prior_tree)
+                        local rejected = metadata(done.roots[1]).source_rejection
+                        test.eq(rejected.code, "artifact_" .. mode .. "_mismatch")
+                        test.eq(rejected.kind, errors.INVALID)
+                        test.eq(rejected.external_version, "2")
+                    end
+                    test.is_nil(done.cursor.last_error)
+                    test.eq(#done.roots, 2)
+                    test.eq(done.roots[1].id, accepted.id)
+                    test.eq(done.roots[2].content, "Following " .. mode .. " file")
+                end)
+                process.terminate(scheduler)
+                if mode == "storage" and not reopened then set_storage(blob.storage_id) end
+                in_db(function(db)
+                    assert(projections.remove_projection(db, id, {projection_id = registered.projection_id}))
+                    assert(db:execute("DELETE FROM kb10_checkpoint_model WHERE model=$1", {model}))
+                    assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", {id}))
+                    assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {id}))
+                    owner.cleanup(db, actor, id)
+                end)
+                assert(store.delete_store(id))
+                assert(models.delete_card(model))
+                for _, upload_id in ipairs(uploads_to_clean) do
+                    assert(select(2, artifact_cleanup.delete_for_upload(upload_id)) == nil)
+                    in_db(function(db) assert(db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", {upload_id})) end)
+                end
+                if not ok then error(err) end
+            end)
+        end
+    end)
+end
+
 return {
     run = test.run_cases(function() scenario(false) end),
-    ordinary = test.run_cases(function() scenario(true) end),
+    ordinary = test.run_cases(function()
+        scenario(true)
+        ordinary_integrity()
+    end),
 }

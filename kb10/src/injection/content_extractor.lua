@@ -100,8 +100,9 @@ local function extract(input)
     local rejection
     if content == nil and body.content_omitted == true then
         local ref = source_ref or {}
-        local read_err
-        content, read_err, rejection = artifact_input.read(ref.upload_id, ref.artifact_id)
+        local read_err, recorded_blob
+        content, read_err, rejection, recorded_blob = artifact_input.read(
+            ref.upload_id, ref.artifact_id, body.content_bytes, body.content_sha256)
         if read_err and not rejection then
             -- A missing storage binding or locator configuration cannot prove
             -- that the selected immutable artifact is gone.
@@ -111,12 +112,17 @@ local function extract(input)
             return nil, read_err
         end
         if not rejection and (type(content) ~= "string" or #content ~= body.content_bytes) then
-            return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
-        end
-        if not rejection and body.content_sha256 ~= nil then
-            local digest, digest_err = hash.sha256(content)
+            if not recorded_blob then
+                return { documents = {}, deletes = {}, error = "content artifact byte length changed", retryable = true }
+            end
+            rejection = "artifact_length_mismatch"
+        elseif not rejection and body.content_sha256 ~= nil then
+            local digest, digest_err = hash.sha256(content :: string)
             if digest_err or digest ~= body.content_sha256 then
-                return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
+                if not recorded_blob or digest_err or type(digest) ~= "string" or #digest ~= 64 then
+                    return { documents = {}, deletes = {}, error = "content artifact digest changed", retryable = true }
+                end
+                rejection = "artifact_digest_mismatch"
             end
         end
     end
@@ -144,7 +150,7 @@ local function extract(input)
         external_source = source,
         external_id = external_id,
         external_version = external_version ~= "" and external_version or nil,
-        content = content,
+        content = not rejection and content or nil,
         content_type = trim(body.content_type) ~= "" and trim(body.content_type) or "text/plain",
         title = title ~= "" and title or nil,
         metadata = metadata,
