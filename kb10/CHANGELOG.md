@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.37](https://github.com/kicksideai/providers/compare/kb10-v0.2.36...kb10-v0.2.37) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** finalize productive pages with an empty source tail ([c082f82](https://github.com/kicksideai/providers/commit/c082f82cfc43944897e5ec87c376631cd82fc51c))
+
 ## [0.2.36](https://github.com/kicksideai/providers/compare/kb10-v0.2.35...kb10-v0.2.36) (2026-11-20)
 
 
