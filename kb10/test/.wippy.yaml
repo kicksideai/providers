@@ -36,6 +36,8 @@ workspace:
     kickside/uploads: ../../../kickside/platform/uploads
     kickside/users: ../../../kickside/platform/users
 override:
+  kickside.users.security:tokens:data.token_key_env: ""
+  kickside.users.security:tokens:data.token_key: "0123456789abcdef0123456789abcdef"
   kickside.kb10.api:source:modules: [security]
   kickside.kb10.api:source:imports.http: app:key_owner_http
   kickside.kb10.api:concepts_implementation:modules: [json, security, logger]

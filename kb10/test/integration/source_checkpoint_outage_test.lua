@@ -706,14 +706,22 @@ local function same_revision_retry()
 
             process.terminate(scheduler)
             scheduler = nil
-            config.max_document_content_chars = 0
-            assert(store.update_config(id, config))
-            local executor = require("funcs").new():with_actor(actor):with_scope(scope)
-            local args = {kb_id = id, node_id = failed.id, failed_event_id = metadata(failed).thread_event_id}
-            local first, request_err = executor:call("app:retry_failed_upload_probe", args)
-            test.is_nil(request_err, tostring(request_err))
+            local member = assert(require("groups").get_user_with_groups(user_id))
+            local token = assert(require("session").mint(member)).token
+            local gateway = assert(require("registry").get("app:gateway"))
+            local port = assert(gateway.data.addr:match(":(%d+)$"))
+            local url = "http://127.0.0.1:" .. port .. "/retry-fixture/knowledge/" .. id .. "/retry-source"
+            local function retry(node, expected_status)
+                local body = assert(json.encode({node_id = node.id, failed_event_id = metadata(node).thread_event_id}))
+                local response = assert(require("http_client").request("POST", url, {
+                    headers = {Authorization = "Bearer " .. token, ["Content-Type"] = "application/json"}, body = body,
+                }))
+                test.eq(response.status_code, expected_status, response.body)
+                return assert(json.decode(response.body))
+            end
+            local first = retry(failed, 202)
             test.eq(first.status, "queued")
-            local duplicate = assert(executor:call("app:retry_failed_upload_probe", args))
+            local duplicate = retry(failed, 202)
             test.eq(duplicate.event_id, first.event_id)
             test.is_true(duplicate.duplicate)
             in_db(function(db)
@@ -723,6 +731,16 @@ local function same_revision_retry()
 
             scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
             assert(jobs.nudge_workers())
+            local failed_again = wait_state(registered, id, caught_up).roots[1]
+            test.eq(failed_again.id, failed.id)
+            test.eq(metadata(failed_again).status, "failed")
+            test.eq(metadata(failed_again).thread_event_id, first.event_id)
+            test.eq(metadata(failed_again).upload_publication_id, delivery.dest_ref.publication_id)
+            test.is_false(retry(failed, 409).success)
+            config.max_document_content_chars = 0
+            assert(store.update_config(id, config))
+            local second = retry(failed_again, 202)
+            test.is_false(second.event_id == first.event_id)
             local done = wait_state(registered, id, caught_up)
             test.eq(#done.roots, 1)
             local document = done.roots[1]
@@ -737,9 +755,7 @@ local function same_revision_retry()
             local hits = assert(store.vector_search(id, vector, {query_text = "quokka", node_types = {"chunk"}, limit = 5}))
             test.eq(#hits, 1)
             test.eq(hits[1].parent_id, failed.id)
-            local stale, stale_err = executor:call("app:retry_failed_upload_probe", args)
-            test.is_nil(stale)
-            test.is_true(errors.is(stale_err, errors.CONFLICT), tostring(stale_err))
+            test.is_false(retry(failed_again, 409).success)
         end)
         if scheduler then process.terminate(scheduler) end
         in_db(function(db)

@@ -148,21 +148,29 @@ entries:
     source: file://../fixtures/projection_owner.lua
     modules: [contract, security, sql]
 
-  - name: retry_failed_upload_probe
-    kind: function.lua
-    source: file://retry_failed_upload_probe.lua
-    method: run
-    imports:
-      reingest: kickside.knowledge.injection:thread_ingest_reingest
-    security:
-      policies: [kickside.knowledge.security:content_upserted_publish]
+  - name: retry_fixture_api
+    kind: http.router
+    meta:
+      server: gateway
+    prefix: /retry-fixture
+    middleware: [token_auth]
+    options:
+      token_store: kickside.users.security:tokens
+
+  - name: retry_fixture.endpoint
+    kind: http.endpoint
+    meta:
+      router: retry_fixture_api
+    method: POST
+    path: /knowledge/{id}/retry-source
+    func: kickside.knowledge.api:retry_source
 
   - name: same_revision_retry_test
     kind: function.lua
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: same_revision
-    modules: [channel, contract, fs, funcs, hash, json, process, security, sql, time, uuid]
+    modules: [channel, contract, fs, hash, http_client, json, process, registry, security, sql, time, uuid]
     imports:
       projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
@@ -172,6 +180,8 @@ entries:
       models: kickside.models.persist:repo
       provision: kickside.core.threads:provision
       projections: kickside.core.projections.persist:writer
+      groups: kickside.users.persist:user_groups_repo
+      session: kickside.users:session
       store: kickside.kb10.persist:store
       test: wippy.test:test
       threads: kickside.core.threads.persist:writer
