@@ -526,7 +526,7 @@ local function finalizer_case(mode)
             FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
             WHERE c.thread_id=$1 AND p.kind='knowledge.injection.source' AND c.cursor_key='source']], {id}))[1])
         local provider = assert(db:query("SELECT calls FROM kb10_checkpoint_model WHERE model=$1", {model}))
-        row.initial_embed_calls = tonumber(provider[1].calls)
+        row.initial_embed_calls = assert(tonumber(provider[1].calls))
         return row
     end)
     local listener = process.listen(enrichment_consts.TOPIC, {message = true})
@@ -570,8 +570,8 @@ local function finalizer_case(mode)
                 test.eq(tonumber(rows[1].calls), empty_sources, "empty source extractor calls")
                 local productive = mode == "only-empty" and 0 or 1
                 local provider = assert(db:query("SELECT calls FROM kb10_checkpoint_model WHERE model=$1", {model}))
-                test.eq(tonumber(provider[1].calls) - registered.initial_embed_calls, productive,
-                    "one embedding call per indexed source")
+                local calls = assert(tonumber(provider[1].calls))
+                test.eq(calls - registered.initial_embed_calls, productive, "one embedding call per indexed source")
                 test.eq(#outputs(db, id).graph, productive, "one graph change per indexed source")
             end)
             if mode == "only-empty" then
