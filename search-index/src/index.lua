@@ -283,8 +283,8 @@ function index.lexical_scope_token(partition: string): string
     end))
 end
 
--- Rows matching the query text, best first (bm25 on SQLite, ts_rank on
--- PostgreSQL). Returns rows, error, and whether the query was anchored.
+-- Rows matching the query text, best first. Returns rows, error, and whether
+-- the query was anchored.
 function index.lexical_search(db: any, spec: Spec, query_text: string, opts: SearchOptions): (any, any?, boolean)
     local invalid_group = group_error(spec, opts)
     if invalid_group then return nil, invalid_group, false end
@@ -309,7 +309,9 @@ function index.lexical_search(db: any, spec: Spec, query_text: string, opts: Sea
             distance = "(length(CAST(n.content AS BLOB)) - length(CAST(highlight(" .. spec.fts ..
                 ", 0, char(1), char(2)) AS BLOB)))"
         else
-            params[3], idx = token .. ":D", 3
+            -- GIN indexes lexemes without weights. The suffix distinguishes
+            -- scope markers from alphanumeric content even inside the index.
+            params[3], idx = token .. "@scope.invalid:D", 3
             predicate = "n." .. spec.tsvector .. " @@ (to_tsquery('simple', $1) && to_tsquery('simple', $3))"
             -- Content is stored at A, but retain the original unweighted score.
             distance = "-ts_rank(ARRAY[0.1,0.2,0.4,0.1]::real[], n." .. spec.tsvector .. ", to_tsquery('simple', $1), 32)"

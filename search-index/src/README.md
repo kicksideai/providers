@@ -19,8 +19,11 @@ passes an open connection and a table spec.
 - `lexical_scope`: Opts into a full-text index that contains a partition token.
   Use `lexical_scope_token(partition)` to index the same partition key used by
   the query. On SQLite, use indexed FTS5 columns `content`, `scope_token` in
-  that order, and keep the same `content` in the row table. On PostgreSQL, put
-  content at weight A and the scope token at weight D in `tsvector`.
+  that order, and keep the same `content` in the row table. On PostgreSQL, use
+  `to_tsvector('simple', ...)` for both parts. Replace non-alphanumeric runs
+  in content with spaces and store it at weight A. Append `@scope.invalid` to
+  the scope token and store that single lexeme at weight D. This keeps content
+  lexemes distinct from scope markers in GIN, which does not index weights.
 
 ## Functions
 

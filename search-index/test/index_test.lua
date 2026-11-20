@@ -145,8 +145,8 @@ local function define_tests()
             local other_token = index.lexical_scope_token(unrelated)
             test.eq(token, "p67656e65726174696f6e2d31")
             local vector = sqlite and "" or [[, search_vector tsvector GENERATED ALWAYS AS
-                (setweight(to_tsvector('simple', content), 'A') ||
-                 setweight(to_tsvector('simple', scope_token), 'D')) STORED]]
+                (setweight(to_tsvector('simple', regexp_replace(content, '[^[:alnum:]]+', ' ', 'g')), 'A') ||
+                 setweight(to_tsvector('simple', scope_token || '@scope.invalid'), 'D')) STORED]]
             exec(db, "CREATE TABLE si_scoped_rows (id INTEGER PRIMARY KEY, part TEXT NOT NULL, " ..
                 "content TEXT NOT NULL, scope_token TEXT NOT NULL" .. vector .. ")")
             if sqlite then
@@ -159,7 +159,7 @@ local function define_tests()
                 { 2, partition, "roadmap roadmap", token },
                 { 3, partition, "roadmap", token },
                 { 4, unrelated, "roadmap roadmap roadmap", token }, -- Mismatched derived marker.
-                { 5, unrelated, "roadmap", other_token },
+                { 5, unrelated, "roadmap " .. token .. "@scope.invalid", other_token },
                 { 6, partition, "release 17 roadmap", token },
             }
             local tx = assert(db:begin())
