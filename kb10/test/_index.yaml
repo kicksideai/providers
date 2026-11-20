@@ -220,6 +220,7 @@ entries:
     method: run
     modules: [json, logger, sql, process, channel, time, funcs]
     imports:
+      projection_owner: app:projection_owner_fixture
       kb10_writer: kickside.kb10.persist:writer
       materializer_store: kickside.kb10.injection:materializer_store
       ops: kickside.kb10.persist:ops
