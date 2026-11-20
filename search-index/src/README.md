@@ -16,6 +16,11 @@ passes an open connection and a table spec.
 - `fts` / `fts_key`: SQLite `fts5` table and its row-id column.
 - `tsvector`: PostgreSQL `tsvector` column on `rows`.
 - `json_columns`: Row columns decoded from JSON text.
+- `lexical_scope`: Opts into a full-text index that contains a partition token.
+  Use `lexical_scope_token(partition)` to index the same partition key used by
+  the query. On SQLite, use indexed FTS5 columns `content`, `scope_token` in
+  that order, and keep the same `content` in the row table. On PostgreSQL, put
+  content at weight A and the scope token at weight D in `tsvector`.
 
 ## Functions
 
@@ -37,6 +42,12 @@ to the read transaction and does not change the caller's session defaults.
 
 Each hit carries `id` and `similarity`; fused hits also carry
 `vector_similarity`, `vector_rank`, `lexical_rank` and `hybrid_score`.
+
+The scoped layout matches the partition token in the full-text index and
+checks the partition again on the source row. SQLite ranks by the number of
+highlighted content ranges, with row ID breaking ties. PostgreSQL ranks only
+the A-weighted content and uses the existing unweighted content score. The
+existing BM25 and PostgreSQL query paths apply for the original layouts.
 
 `search` accepts optional `group_by`, naming a column in `spec.columns`.
 Each dense and lexical ranking selects distinct non-null group values before
