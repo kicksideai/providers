@@ -22,7 +22,7 @@ local function outcome(row: any): any
     return {status="pending"}
 end
 
-function M.lookup(refs: any): ({any}?,error?)
+local function lookup(component_service: any, store_service: any, refs: any): ({any}?,error?)
     if type(refs) ~= "table" or #refs > MAX_REFS then
         return nil,errors.new({kind=errors.INVALID,message="at most 100 publication references are required"})
     end
@@ -35,13 +35,13 @@ function M.lookup(refs: any): ({any}?,error?)
         groups[ref.kb_id]=group;group.refs[#group.refs+1]=ref;group.indexes[#group.indexes+1]=index
     end
     for kb_id,group in pairs(groups) do
-        local _,access_err=component.validate_access(kb_id,component.ACCESS.READ)
+        local _,access_err=component_service.validate_access(kb_id,component_service.ACCESS.READ)
         if access_err then
             -- Do not disclose either a KB relationship or its failure reason.
         else
-            local kb,store_err=store.get_store(kb_id)
+            local kb,store_err=store_service.get_store(kb_id)
             if store_err then return nil,store_err end
-            local rows,read_err=store.publication_outcomes(kb.id,group.refs)
+            local rows,read_err=store_service.publication_outcomes(kb.id,group.refs)
             if read_err then return nil,read_err end
             local by_receipt: {[string]: any}={}
             for _,row in ipairs(rows) do by_receipt[tostring(row.external_id) .. "\n" .. tostring(row.publication_id)]=row end
@@ -53,6 +53,9 @@ function M.lookup(refs: any): ({any}?,error?)
     return results,nil
 end
 
+function M.lookup(refs: any): ({any}?,error?) return lookup(component,store,refs) end
+
 M.classify_for_test=outcome
+M.lookup_for_test=lookup
 
 return M
