@@ -12,7 +12,7 @@
 --                              external_version, content, content_type,
 --                              title?, embed_text, metadata, node_type? }, ...] }
 --          | { documents = [], error = "...", retryable? = true }
--- Verified immutable absences return {rejection = {document, code}}.
+-- Verified immutable artifact failures return {rejection = {document, code}}.
 -- Retryable extractor failures return to the projection job;
 -- ordinary extractor validation errors keep their existing skip behavior.
 --

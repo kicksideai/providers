@@ -632,8 +632,10 @@ end
 
 -- Record an attempted immutable revision without rewriting an accepted tree.
 local SOURCE_REJECTIONS = {
-    artifact_reference_not_found = "The selected artifact is missing.",
-    artifact_bytes_not_found = "The selected artifact's stored content is missing.",
+    artifact_reference_not_found = {kind = errors.NOT_FOUND, message = "The selected artifact is missing."},
+    artifact_bytes_not_found = {kind = errors.NOT_FOUND, message = "The selected artifact's stored content is missing."},
+    artifact_length_mismatch = {kind = errors.INVALID, message = "The selected artifact's byte length does not match this revision."},
+    artifact_digest_mismatch = {kind = errors.INVALID, message = "The selected artifact's checksum does not match this revision."},
 }
 
 local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
@@ -653,12 +655,13 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
         if not current then return nil, confirm_err end
     end
 
-    local reason = SOURCE_REJECTIONS[code]
+    local classification = SOURCE_REJECTIONS[code]
     local position = tonumber(metadata.thread_event_seq)
-    if not reason or not position or not is_str(metadata.thread_event_id) then
+    if not classification or not position or not is_str(metadata.thread_event_id) then
         return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a verified source revision"})
     end
-    local rejection = {code = code, kind = errors.NOT_FOUND, message = reason, thread_event_seq = position,
+    local reason = classification.message
+    local rejection = {code = code, kind = classification.kind, message = reason, thread_event_seq = position,
         thread_event_id = metadata.thread_event_id, external_version = metadata.external_version}
     local stored = {}
     if id then
@@ -1189,7 +1192,8 @@ function writer.source_checkpoint_outcome(before: table, change: table): table
         chunk_delta = 0, embedding_delta = 0}
     if change.kind == "reject" then
         delta.status = before.id and before.status ~= "failed" and "degraded" or "error"
-        delta.last_error = SOURCE_REJECTIONS[change.code]
+        local classification = SOURCE_REJECTIONS[change.code]
+        delta.last_error = classification and classification.message
         delta.failed_delta = before.id and 0 or 1
         return delta
     end
