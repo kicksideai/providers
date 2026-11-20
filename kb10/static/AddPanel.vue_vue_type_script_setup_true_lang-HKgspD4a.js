@@ -1,11 +1,16 @@
-import { defineComponent as G, openBlock as u, createElementBlock as d, createElementVNode as r, renderSlot as ke, normalizeClass as z, createVNode as C, unref as i, withKeys as st, createCommentVNode as U, Fragment as ie, renderList as de, createBlock as $e, createTextVNode as B, toDisplayString as x, watch as he, onBeforeUnmount as xe, Transition as Ke, withCtx as je, withModifiers as Ce, ref as F, computed as V, isRef as Re, nextTick as at, onMounted as Ge, withDirectives as be, vModelText as Me, vModelSelect as it } from "vue";
+import { defineComponent as G, openBlock as u, createElementBlock as d, createElementVNode as r, renderSlot as ke, normalizeClass as z, createVNode as C, unref as i, withKeys as st, createCommentVNode as U, Fragment as le, renderList as pe, createBlock as $e, createTextVNode as B, toDisplayString as x, watch as he, onBeforeUnmount as xe, Transition as Ke, withCtx as je, withModifiers as Ce, ref as F, computed as V, isRef as Re, nextTick as at, onMounted as Ge, withDirectives as be, vModelText as Me, vModelSelect as it } from "vue";
 import { Icon as M } from "@iconify/vue";
-import { on as We, api as X, host as ue } from "@wippy-fe/proxy";
+import { on as We, api as X, host as de } from "@wippy-fe/proxy";
 function He(e, s = "") {
   const t = e || {};
   return t.label || t.title || t.source_ref?.title || t.filename || t.original_filename || t.source_url || s;
 }
 function Co(e) {
+  const s = e.metadata;
+  if (s?.status === "failed") {
+    const t = oe(s.source_title) || oe(s.filename) || oe(s.original_filename) || oe(s.source_url);
+    if (t) return t;
+  }
   return He(e.metadata, e.id);
 }
 function _e(e) {
@@ -14,15 +19,15 @@ function _e(e) {
 function De(e) {
   return e && typeof e == "object" && !Array.isArray(e) ? e : {};
 }
-function me(e) {
+function oe(e) {
   return typeof e == "string" ? e.trim() : "";
 }
 function So(e) {
   const s = De(e.metadata), t = { ...De(s.source_ref) };
   return delete t.thread_id, delete t.thread_event_id, delete t.thread_event_seq, delete t.external_version, {
     external_id: e.external_id || s.external_id || t.external_id || e.id,
-    upload_id: me(t.upload_id) || me(s.upload_id) || void 0,
-    source_url: me(t.source_url) || me(t.url) || me(s.source_url) || void 0,
+    upload_id: oe(t.upload_id) || oe(s.upload_id) || void 0,
+    source_url: oe(t.source_url) || oe(t.url) || oe(s.source_url) || void 0,
     metadata: {
       title: s.title || s.filename || s.source_url,
       node_id: e.id
@@ -37,7 +42,7 @@ const lt = /engine .*not installed|no .*engine|unavailable/i;
 function Eo(e) {
   return lt.test(e || "");
 }
-const To = "This knowledge base's engine is not installed; its contents are unavailable.", pe = {
+const To = "This knowledge base's engine is not installed; its contents are unavailable.", fe = {
   root: { fill: "#6366f1", stroke: "#4f46e5" },
   topic: { fill: "#8b5cf6", stroke: "#7c3aed" },
   technology: { fill: "#06b6d4", stroke: "#0891b2" },
@@ -50,10 +55,10 @@ const To = "This knowledge base's engine is not installed; its contents are unav
   document: { fill: "#94a3b8", stroke: "#64748b" }
 };
 function Mo(e) {
-  if (e.node_type === "document") return pe.document;
-  if (e.is_root) return pe.root;
+  if (e.node_type === "document") return fe.document;
+  if (e.is_root) return fe.root;
   const s = (e.concept_type || "").toLowerCase();
-  return pe[s] || pe.topic;
+  return fe[s] || fe.topic;
 }
 const rt = {
   subtopic_of: "subtopic",
@@ -93,12 +98,12 @@ function Ao(e, s) {
   const b = (p, O, I) => p + (O - p) * I, w = /* @__PURE__ */ new Map();
   for (const p of e) {
     if (p.is_root) {
-      w.set(p.id, { ...pe.root });
+      w.set(p.id, { ...fe.root });
       continue;
     }
     const O = v.get(p.id);
     if (!O) {
-      w.set(p.id, { ...pe.topic });
+      w.set(p.id, { ...fe.topic });
       continue;
     }
     const I = k.get(O.branch) ?? 220, N = Math.min(Math.max(S.get(O.branch) ?? 0, 1), 4), L = Math.min(1, O.depth / N);
@@ -410,7 +415,7 @@ const gt = { class: "kx-shell" }, kt = { class: "kx-rail" }, wt = { class: "kx-m
   setup(e, { emit: s }) {
     const t = s;
     return (l, n) => (u(), d("div", St, [
-      (u(!0), d(ie, null, de(e.tabs, (a) => (u(), d("button", {
+      (u(!0), d(le, null, pe(e.tabs, (a) => (u(), d("button", {
         key: a.id,
         class: z(["tb-tab", { on: e.active === a.id }]),
         role: "tab",
@@ -520,7 +525,7 @@ function Ut(e) {
       const { data: y } = await X.get(`/api/v1/kb10/${N}/search?q=${encodeURIComponent(L)}&limit=${I}`);
       y?.success ? (t.value = y.results || [], l.value = "", a.value = y.retrieval?.analysis?.status === "unavailable" ? y.retrieval.analysis : null) : S.value = y?.error || "search failed";
     } catch (y) {
-      S.value = y?.response?.data?.error || y?.message || "search error", ue.handleError(y?.response?.status === 401 ? "auth-expired" : "other", y);
+      S.value = y?.response?.data?.error || y?.message || "search error", de.handleError(y?.response?.status === 401 ? "auth-expired" : "other", y);
     } finally {
       v.value = !1;
     }
@@ -537,7 +542,7 @@ function Ut(e) {
       y?.success ? (t.value = y.results || [], y.mode === "query" ? n.value = y.answer : l.value = String(y.answer || "")) : S.value = y?.error || "ask failed";
     } catch (y) {
       const R = y?.response?.data;
-      S.value = R?.error || y?.message || "ask error", ue.handleError(y?.response?.status === 401 ? "auth-expired" : "other", y);
+      S.value = R?.error || y?.message || "ask error", de.handleError(y?.response?.status === 401 ? "auth-expired" : "other", y);
     } finally {
       v.value = !1;
     }
@@ -638,15 +643,15 @@ const Ft = {
   },
   emits: ["open", "close"],
   setup(e, { emit: s }) {
-    const t = e, l = s, { query: n, results: a, answer: v, queryNotice: S, analysisUnavailable: A, loading: k, error: b, performed: w, run: p, ask: O, runDebounced: I, clear: N } = Ut(() => t.kbId), L = F("search"), y = F(!1), R = F(""), K = V(() => t.layout === "panel" && t.ask && L.value === "ask"), J = V(() => K.value && !S.value), Q = V(() => k.value ? "tabler:hourglass" : K.value ? "tabler:sparkles" : "tabler:arrow-right"), W = V(() => a.value[0]), le = V(() => J.value ? a.value.slice(1) : a.value), H = V(() => t.layout === "rail" && y.value && n.value.trim() !== "" && (k.value || w.value || !!b.value));
-    function oe() {
+    const t = e, l = s, { query: n, results: a, answer: v, queryNotice: S, analysisUnavailable: A, loading: k, error: b, performed: w, run: p, ask: O, runDebounced: I, clear: N } = Ut(() => t.kbId), L = F("search"), y = F(!1), R = F(""), K = V(() => t.layout === "panel" && t.ask && L.value === "ask"), J = V(() => K.value && !S.value), Q = V(() => k.value ? "tabler:hourglass" : K.value ? "tabler:sparkles" : "tabler:arrow-right"), W = V(() => a.value[0]), re = V(() => J.value ? a.value.slice(1) : a.value), H = V(() => t.layout === "rail" && y.value && n.value.trim() !== "" && (k.value || w.value || !!b.value));
+    function se() {
       n.value.trim() && (R.value = n.value.trim(), K.value ? O(8) : p(20));
     }
     function Y() {
       t.layout === "rail" && I(300);
     }
     function P(ee) {
-      L.value = ee, w.value && n.value.trim() && oe();
+      L.value = ee, w.value && n.value.trim() && se();
     }
     function Z(ee) {
       l("open", ee), t.layout === "rail" && (N(), y.value = !1);
@@ -676,10 +681,10 @@ const Ft = {
           }),
           r("span", null, x(i(b)), 1)
         ])) : i(a).length ? (u(), d("div", Rt, [
-          (u(!0), d(ie, null, de(i(a), (E) => (u(), d("button", {
+          (u(!0), d(le, null, pe(i(a), (E) => (u(), d("button", {
             key: E.id,
             class: "kc-search-hit",
-            onMousedown: Ce((re) => Z(E), ["prevent"])
+            onMousedown: Ce((ce) => Z(E), ["prevent"])
           }, [
             r("span", Pt, [
               i(_e)(E) ? (u(), d("span", Bt, [
@@ -738,7 +743,7 @@ const Ft = {
             modelValue: i(n),
             "onUpdate:modelValue": $[6] || ($[6] = (E) => Re(n) ? n.value = E : null),
             placeholder: K.value ? "Ask this knowledge base a question…" : "Search every indexed passage…",
-            onEnter: oe
+            onEnter: se
           }, null, 8, ["modelValue", "placeholder"])
         ]),
         C(we, {
@@ -747,7 +752,7 @@ const Ft = {
           variant: "bordered",
           active: i(k),
           disabled: !i(n).trim() || i(k),
-          onClick: oe
+          onClick: se
         }, null, 8, ["icon", "label", "active", "disabled"]),
         C(we, {
           icon: "tabler:x",
@@ -764,11 +769,11 @@ const Ft = {
         }),
         r("span", null, x(i(b)), 1)
       ])) : i(k) ? (u(), d("div", Zt, [
-        (u(), d(ie, null, de(3, (E) => r("div", {
+        (u(), d(le, null, pe(3, (E) => r("div", {
           key: E,
           class: "kc-search-skel-row"
         })), 64))
-      ])) : i(a).length ? (u(), d(ie, { key: 4 }, [
+      ])) : i(a).length ? (u(), d(le, { key: 4 }, [
         J.value ? (u(), d("div", en, [
           r("div", tn, [
             C(i(M), {
@@ -792,11 +797,11 @@ const Ft = {
           ])) : U("", !0)
         ])) : U("", !0),
         r("div", sn, [
-          J.value && le.value.length ? (u(), d("div", an, "Sources")) : U("", !0),
-          (u(!0), d(ie, null, de(le.value, (E) => (u(), d("button", {
+          J.value && re.value.length ? (u(), d("div", an, "Sources")) : U("", !0),
+          (u(!0), d(le, null, pe(re.value, (E) => (u(), d("button", {
             key: E.id,
             class: z(["kc-search-result", { link: !!E.parent_id }]),
-            onClick: (re) => Z(E)
+            onClick: (ce) => Z(E)
           }, [
             r("div", rn, [
               i(_e)(E) ? (u(), d("span", cn, [
@@ -1131,17 +1136,17 @@ function Ln(e, s) {
   function W() {
     return t.value.some((o) => o.targetKb && ze.includes(o.status));
   }
-  function le() {
+  function re() {
     !p || W() || (p = !1, w !== void 0 && clearTimeout(w), w = void 0, s(!1), J());
   }
   function H(o, c, f = !1) {
-    R(o) && (y(o, { status: "error", error: c, needsFileSelection: f }), le());
+    R(o) && (y(o, { status: "error", error: c, needsFileSelection: f }), re());
   }
-  function oe(o) {
+  function se(o) {
     const c = t.value.find((f) => f.key === o);
     !c || c.status === "done" || (y(o, { status: "done", error: void 0 }), Q(), p = !0, W() && w === void 0 && (w = setTimeout(() => {
       w = void 0, s(!1);
-    }, 2500)), le());
+    }, 2500)), re());
   }
   function Y(o, c) {
     t.value = [...t.value, { key: S("q"), name: o, uuid: c, status: "done" }], Q(), s(!0), J();
@@ -1172,7 +1177,7 @@ function Ln(e, s) {
   function E(o) {
     return `/api/v1/uploads/${encodeURIComponent(o)}`;
   }
-  async function re(o) {
+  async function ce(o) {
     try {
       const { data: c } = await X.get(E(o)), f = P(c?.upload) ? c.upload : P(c) ? c : {};
       if (f.uuid !== o || typeof f.status != "string") throw new Error(Oe);
@@ -1182,34 +1187,34 @@ function Ln(e, s) {
       throw c;
     }
   }
-  function ce(o, c, f, h = !1) {
+  function ue(o, c, f, h = !1) {
     if (!R(o)) return;
     A.delete(o), k.get(o)?.(), y(o, { status: "processing", error: void 0, needsFileSelection: !1 });
     const T = `upload:${c}`, D = [];
-    let se, ne = h;
+    let ae, ne = h;
     function q() {
-      k.delete(o), se?.();
+      k.delete(o), ae?.();
       for (const j of D) clearTimeout(j);
     }
-    function fe(j, ae = !1) {
+    function me(j, ie = !1) {
       if (k.get(o) !== q || !R(o)) return;
       const Te = String(j.status);
-      Fn.includes(Te) && (ne = !1), Ve.includes(Te) && (!ne || ae) ? (q(), H(o, String(j.error || j.error_details || "File processing failed"))) : Te === "completed" && (q(), oe(o));
+      Fn.includes(Te) && (ne = !1), Ve.includes(Te) && (!ne || ie) ? (q(), H(o, String(j.error || j.error_details || "File processing failed"))) : Te === "completed" && (q(), se(o));
     }
     async function Ee(j = !1) {
       try {
-        const ae = await re(c);
-        ae && fe(ae, j);
+        const ie = await ce(c);
+        ie && me(ie, j);
       } catch {
       }
     }
-    if (k.set(o, q), f && fe(f), !k.has(o)) return;
+    if (k.set(o, q), f && me(f), !k.has(o)) return;
     const Ne = We("@message", (j) => {
       if (Z(j) !== T) return;
-      const ae = ee(j);
-      ae.uuid === c && (h && ae.status !== "completed" ? Ee() : fe(ae));
+      const ie = ee(j);
+      ie.uuid === c && (h && ie.status !== "completed" ? Ee() : me(ie));
     });
-    typeof Ne == "function" && (se = Ne), f || Ee();
+    typeof Ne == "function" && (ae = Ne), f || Ee();
     for (const j of [1500, 5e3, 15e3]) D.push(setTimeout(() => {
       Ee(j === 15e3);
     }, j));
@@ -1236,9 +1241,9 @@ function Ln(e, s) {
   });
   async function te(o, c, f, h = !1) {
     try {
-      const T = await re(c);
+      const T = await ce(c);
       if (T) {
-        ce(o, c, T);
+        ue(o, c, T);
         return;
       }
     } catch {
@@ -1253,15 +1258,15 @@ function Ln(e, s) {
       const { data: D } = await X.post("/api/v1/uploads", T, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      D?.success && D.uuid === c ? ce(o, c) : await te(o, c, $(D, Oe));
+      D?.success && D.uuid === c ? ue(o, c) : await te(o, c, $(D, Oe));
     } catch (T) {
-      const D = T?.response?.data, se = T?.response?.status, ne = se === 400, q = $(D, T?.message || "Upload failed");
+      const D = T?.response?.data, ae = T?.response?.status, ne = ae === 400, q = $(D, T?.message || "Upload failed");
       ne && A.delete(o), await te(
         o,
         c,
         ne ? `${q}. Select this file again to start a new upload.` : q,
         ne
-      ), se === 401 && ue.handleError("auth-expired", T);
+      ), ae === 401 && de.handleError("auth-expired", T);
     }
   }
   async function Fe(o, c) {
@@ -1276,7 +1281,7 @@ function Ln(e, s) {
         }
         f.token = h.upload_token, y(o, { uuid: h.upload_id }), await Ue(o, h.upload_id, f.file, h.upload_token);
       } catch (h) {
-        H(o, $(h?.response?.data, h?.message || "Could not get an upload token")), h?.response?.status === 401 && ue.handleError("auth-expired", h);
+        H(o, $(h?.response?.data, h?.message || "Could not get an upload token")), h?.response?.status === 401 && de.handleError("auth-expired", h);
       }
   }
   async function Ze(o) {
@@ -1289,22 +1294,22 @@ function Ln(e, s) {
     }
     y(o, { status: "retrying", error: void 0 });
     try {
-      const h = await re(f);
+      const h = await ce(f);
       if (!R(o)) return;
       if (h)
         if (!Ve.includes(String(h.status)))
-          ce(o, f, h);
+          ue(o, f, h);
         else {
           A.delete(o);
           const { data: T } = await X.post(`${E(f)}/retry`);
-          T?.success && T.upload_id === f ? ce(o, f, void 0, !0) : await te(o, f, T?.error || "Could not retry file processing");
+          T?.success && T.upload_id === f ? ue(o, f, void 0, !0) : await te(o, f, T?.error || "Could not retry file processing");
         }
       else {
         const T = A.get(o);
         T?.token ? await Ue(o, f, T.file, T.token) : H(o, "Upload not found. Select this file again to start a new upload.", !0);
       }
     } catch (h) {
-      await te(o, f, h?.response?.data?.error || Oe), h?.response?.status === 401 && ue.handleError("auth-expired", h);
+      await te(o, f, h?.response?.data?.error || Oe), h?.response?.status === 401 && de.handleError("auth-expired", h);
     }
   }
   function Le(o) {
@@ -1348,14 +1353,14 @@ function Ln(e, s) {
           a.value = "Re-ingest requires an updated Knowledge service";
           return;
         }
-        const T = Array.isArray(h?.results) ? h.results : [], D = (q) => o.find((fe) => fe.uuid === q)?.name || q;
-        let se = !1;
+        const T = Array.isArray(h?.results) ? h.results : [], D = (q) => o.find((me) => me.uuid === q)?.name || q;
+        let ae = !1;
         for (const q of T)
-          q?.success && (se = !0, Y(D(String(q.upload_id)), String(q.upload_id)));
+          q?.success && (ae = !0, Y(D(String(q.upload_id)), String(q.upload_id)));
         const ne = c ? T.find((q) => q?.success === !1) : void 0;
-        (ne || !se) && (a.value = ne?.error || h?.error || "Could not ingest the selected uploads");
+        (ne || !ae) && (a.value = ne?.error || h?.error || "Could not ingest the selected uploads");
       } catch (h) {
-        a.value = h?.response?.data?.error || h?.message || "Ingest error", ue.handleError(h?.response?.status === 401 ? "auth-expired" : "other", h);
+        a.value = h?.response?.data?.error || h?.message || "Ingest error", de.handleError(h?.response?.status === 401 ? "auth-expired" : "other", h);
       } finally {
         l.value = !1;
       }
@@ -1369,7 +1374,7 @@ function Ln(e, s) {
         const T = c.trim() ? { title: c.trim() } : void 0, { data: D } = await X.post(`/api/v1/knowledge/${h}/ingest`, { content: o, content_type: f, metadata: T });
         D?.success ? Y(c.trim() || "Pasted text") : a.value = D?.error || "Ingestion failed";
       } catch (T) {
-        a.value = T?.response?.data?.error || T?.message || "Ingestion error", ue.handleError(T?.response?.status === 401 ? "auth-expired" : "other", T);
+        a.value = T?.response?.data?.error || T?.message || "Ingestion error", de.handleError(T?.response?.status === 401 ? "auth-expired" : "other", T);
       } finally {
         l.value = !1;
       }
@@ -1472,7 +1477,7 @@ const Nn = { class: "ap" }, Rn = {
         N.value = !1;
       }
     }
-    function le(g) {
+    function re(g) {
       R.value = { ...R.value, [g]: !R.value[g] };
     }
     async function H(g = !1) {
@@ -1486,7 +1491,7 @@ const Nn = { class: "ap" }, Rn = {
         n.errMsg.value || (R.value = {}, K.value = void 0);
       }
     }
-    function oe(g) {
+    function se(g) {
       return !g || g <= 0 ? "" : g < 1024 ? `${g} B` : g < 1024 * 1024 ? `${(g / 1024).toFixed(0)} KB` : `${(g / 1024 / 1024).toFixed(1)} MB`;
     }
     const Y = F(""), P = F(""), Z = F("text/plain"), ee = V(() => P.value.length);
@@ -1500,10 +1505,10 @@ const Nn = { class: "ap" }, Rn = {
       done: "Added",
       error: "Failed"
     };
-    function re(g) {
+    function ce(g) {
       return g === "done" ? "tabler:circle-check" : g === "error" ? "tabler:alert-circle" : "tabler:loader-2";
     }
-    const ce = V(() => [
+    const ue = V(() => [
       ...n.items.value.filter((g) => g.status === "error"),
       ...n.items.value.filter((g) => g.status !== "error")
     ]), Se = V(() => n.items.value.some((g) => g.status === "done"));
@@ -1513,7 +1518,7 @@ const Nn = { class: "ap" }, Rn = {
       n.clearItems(), n.reset();
     }), (g, m) => (u(), d("div", Nn, [
       r("div", Rn, [
-        (u(), d(ie, null, de(v, (_) => r("button", {
+        (u(), d(le, null, pe(v, (_) => r("button", {
           key: _.id,
           class: z(["ap-mode", { on: a.value === _.id }]),
           role: "tab",
@@ -1606,14 +1611,14 @@ const Nn = { class: "ap" }, Rn = {
           }),
           B(" " + x(L.value), 1)
         ])) : J.value.length ? (u(), d("ul", Xn, [
-          (u(!0), d(ie, null, de(J.value, (_) => (u(), d("li", {
+          (u(!0), d(le, null, pe(J.value, (_) => (u(), d("li", {
             key: _.uuid
           }, [
             r("button", {
               type: "button",
               class: z(["ap-upload", { on: R.value[_.uuid] }]),
               "aria-pressed": !!R.value[_.uuid],
-              onClick: (te) => le(_.uuid)
+              onClick: (te) => re(_.uuid)
             }, [
               C(i(M), {
                 class: "ap-upload-check",
@@ -1629,7 +1634,7 @@ const Nn = { class: "ap" }, Rn = {
                 r("span", Yn, x(_.filename), 1),
                 r("span", Zn, [
                   _.mime_type ? (u(), d("span", eo, x(_.mime_type), 1)) : U("", !0),
-                  oe(_.size) ? (u(), d("span", to, x(oe(_.size)), 1)) : U("", !0)
+                  se(_.size) ? (u(), d("span", to, x(se(_.size)), 1)) : U("", !0)
                 ])
               ])
             ], 10, Jn)
@@ -1722,7 +1727,7 @@ const Nn = { class: "ap" }, Rn = {
           ])
         ])
       ])),
-      ce.value.length ? (u(), d("div", ho, [
+      ue.value.length ? (u(), d("div", ho, [
         r("div", bo, [
           m[19] || (m[19] = r("span", null, "Progress", -1)),
           Se.value && !i(n).busy.value ? (u(), d("button", {
@@ -1733,13 +1738,13 @@ const Nn = { class: "ap" }, Rn = {
           }, "Clear done")) : U("", !0)
         ]),
         r("ul", _o, [
-          (u(!0), d(ie, null, de(ce.value, (_) => (u(), d("li", {
+          (u(!0), d(le, null, pe(ue.value, (_) => (u(), d("li", {
             key: _.key,
             class: z(["ap-item", _.status])
           }, [
             C(i(M), {
               class: z(["ap-item-ic", !["done", "error"].includes(_.status) && "spin"]),
-              icon: re(_.status),
+              icon: ce(_.status),
               "aria-hidden": "true"
             }, null, 8, ["class", "icon"]),
             r("span", {
@@ -1770,7 +1775,7 @@ export {
   rt as G,
   Ro as H,
   Ao as I,
-  pe as N,
+  fe as N,
   we as _,
   qo as a,
   Jo as b,

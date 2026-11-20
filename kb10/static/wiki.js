@@ -15,7 +15,7 @@ class r extends e {
   static get vueConfig() {
     return {
       lazyConfig: a(
-        () => import("./wiki-mount-5tkpyI23.js").then((o) => o.mountConfig),
+        () => import("./wiki-mount-BkrVLclH.js").then((o) => o.mountConfig),
         "Could not load the wiki knowledge base. Reload the page to try again.",
         t
       )

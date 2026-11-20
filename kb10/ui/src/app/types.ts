@@ -55,6 +55,12 @@ export function metaLabel(metadata: Record<string, any> | null | undefined, fall
 }
 
 export function nodeLabel(n: BrowseNode): string {
+  const metadata = n.metadata
+  if (metadata?.status === 'failed') {
+    const source = str(metadata.source_title) || str(metadata.filename)
+      || str(metadata.original_filename) || str(metadata.source_url)
+    if (source) return source
+  }
   return metaLabel(n.metadata, n.id)
 }
 
