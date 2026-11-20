@@ -110,6 +110,24 @@ entries:
       ops: kickside.kb10.persist:ops
       store: kickside.kb10.persist:store
 
+  - name: failed_upload_source
+    kind: library.lua
+    meta: {private: true}
+    source: file://failed_upload_source.lua
+    modules: [security, uuid]
+    imports:
+      component: kickside.component:component
+      store: kickside.kb10.persist:store
+
+  - name: read_failed_upload_source
+    kind: function.lua
+    source: file://failed_upload_source.lua
+    method: read
+    modules: [security, uuid]
+    imports:
+      component: kickside.component:component
+      store: kickside.kb10.persist:store
+
   - name: source_publication_plan
     kind: library.lua
     source: file://source_publication_plan.lua

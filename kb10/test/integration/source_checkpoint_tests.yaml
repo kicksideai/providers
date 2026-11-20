@@ -148,6 +148,45 @@ entries:
     source: file://../fixtures/projection_owner.lua
     modules: [contract, security, sql]
 
+  - name: retry_fixture_api
+    kind: http.router
+    meta:
+      server: gateway
+    prefix: /retry-fixture
+    middleware: [token_auth]
+    options:
+      token_store: kickside.users.security:tokens
+
+  - name: retry_fixture.endpoint
+    kind: http.endpoint
+    meta:
+      router: retry_fixture_api
+    method: POST
+    path: /knowledge/{id}/retry-source
+    func: kickside.knowledge.api:retry_source
+
+  - name: same_revision_retry_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_checkpoint_outage_test.lua
+    method: same_revision
+    modules: [channel, contract, fs, hash, http_client, json, process, registry, security, sql, time, uuid]
+    imports:
+      projection_owner: app:projection_owner_fixture
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      provision: kickside.core.threads:provision
+      projections: kickside.core.projections.persist:writer
+      groups: kickside.users.persist:user_groups_repo
+      session: kickside.users:session
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer
+      uploads: kickside.uploads.persist:upload_record_repo
+
   - name: conflict_page
     kind: registry.entry
     meta: {type: kickside.core.threads.event}
