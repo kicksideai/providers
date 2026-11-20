@@ -246,6 +246,7 @@ entries:
       class: [knowledge]
       title: Knowledge Base
       upload_publication_match: kickside.kb10.injection:matches_upload_publication
+      failed_source_retry: kickside.kb10.injection:read_failed_upload_source
       events:
         output:
           - type: kickside.knowledge.events:content.upserted

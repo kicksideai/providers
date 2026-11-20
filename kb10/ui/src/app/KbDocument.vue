@@ -69,6 +69,30 @@ const addOpen = ref(false)
 const searchOpen = ref(false)
 const confirmTarget = ref<BrowseNode | null>(null)
 const confirmBusy = computed(() => !!confirmTarget.value && !!deleting.value[confirmTarget.value.id])
+const retryNotice = ref('')
+const retrying = ref<Record<string, boolean>>({})
+
+async function retrySource(node: BrowseNode) {
+  const id = kbId.value
+  const eventId = node.retry_source_event_id
+  if (!id || !eventId || retrying.value[eventId]) return
+  retrying.value[eventId] = true
+  retryNotice.value = ''
+  try {
+    const { data } = await api.post(`/api/v1/knowledge/${encodeURIComponent(id)}/retry-source`, {
+      node_id: node.id, failed_event_id: eventId,
+    })
+    if (id !== kbId.value) return
+    if (!data?.success) throw new Error(data?.error || 'Could not retry indexing')
+    retryNotice.value = 'Indexing retry requested.'
+    scheduleRefresh()
+  } catch (error: any) {
+    if (id !== kbId.value) return
+    retryNotice.value = error?.response?.data?.error || error?.message || 'Could not retry indexing'
+  } finally {
+    if (id === kbId.value) delete retrying.value[eventId]
+  }
+}
 
 function select(n: BrowseNode) {
   if (deleting.value[n.id]) return
@@ -88,6 +112,7 @@ function selectScope(id: string) {
   if (id === scope.value) return
   routeRequest++
   searchOpen.value = false
+  retryNotice.value = ''
   selectedId.value = ''
   linkedDocument.value = null
   q.value = ''
@@ -137,7 +162,11 @@ watch(documents, (docs) => {
   else if (!findDoc(selectedId.value)) selectedId.value = ''
 })
 
-watch(kbId, () => { selectedId.value = '' })
+watch(kbId, () => {
+  selectedId.value = ''
+  retryNotice.value = ''
+  retrying.value = {}
+})
 
 watch([kbId, routeParam], async ([id, route]) => {
   routedId = route
@@ -165,6 +194,7 @@ watch([kbId, routeParam], async ([id, route]) => {
   <div class="kb-page kd">
     <KbNotice v-if="notice" class="kd-notice">{{ notice }}</KbNotice>
     <KbNotice v-if="indexingNotice" class="kd-notice" role="status">{{ indexingNotice }}</KbNotice>
+    <KbNotice v-if="retryNotice" class="kd-notice" role="status">{{ retryNotice }}</KbNotice>
 
     <KbShell>
       <template #rail>
@@ -196,6 +226,15 @@ watch([kbId, routeParam], async ([id, route]) => {
                 <span class="kd-row-sub">{{ docBadge(n) }}<template v-if="n.created_at"> · {{ relativeTime(n.created_at) }}</template></span>
               </span>
             </button>
+            <IconButton
+              v-if="n.retry_source_event_id"
+              icon="tabler:refresh"
+              :label="`Retry indexing ${nodeLabel(n)}`"
+              size="sm"
+              :spin="!!retrying[n.retry_source_event_id]"
+              :disabled="!!retrying[n.retry_source_event_id] || !!deleting[n.id]"
+              @click="retrySource(n)"
+            />
             <IconButton
               class="kd-row-del"
               icon="tabler:trash"

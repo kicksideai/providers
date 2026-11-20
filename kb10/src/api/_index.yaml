@@ -36,13 +36,14 @@ entries:
   - name: browse
     kind: function.lua
     source: file://browse.lua
-    modules: [http, json, security, sql]
+    modules: [http, json, registry, security, sql]
     imports:
       http_errors: kickside.contract:http_errors
       component: kickside.component:component
       node_store: kickside.kb10.persist:node_store
       query_params: kickside.kb10.api:query_params
       thread_ingest: kickside.knowledge.injection:thread_ingest
+      failed_upload_source: kickside.kb10.injection:failed_upload_source
     method: handler
 
   - name: browse.endpoint

@@ -9,6 +9,7 @@ export interface BrowseNode {
   metadata?: Record<string, any>
   external_source?: string
   external_id?: string
+  retry_source_event_id?: string
   created_at?: string
   updated_at?: string
 }

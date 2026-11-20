@@ -8,11 +8,12 @@ import RailHeader from './shared/RailHeader.vue'
 
 const proxy = vi.hoisted(() => ({
   get: vi.fn(),
+  post: vi.fn(),
   on: vi.fn(),
   view: 'wiki' as 'wiki' | 'graph',
 }))
 vi.mock('@wippy-fe/proxy', () => ({
-  api: { get: proxy.get },
+  api: { get: proxy.get, post: proxy.post },
   on: proxy.on,
   host: { handleError: vi.fn() },
   loadByTagName: vi.fn(async () => {}),
@@ -88,6 +89,37 @@ it('uses the accepted and failed page totals when switching document scopes', as
   expect(proxy.get).toHaveBeenCalledTimes(2)
 
   wrapper.unmount()
+})
+
+it('retries only the failed indexing attempt offered by the server', async () => {
+  const wrapper = shallowMount(KbDocument, { global: { stubs: { KbShell: false, KbTabs: false, KbNotice: false } } })
+  try {
+    await flushPromises()
+    proxy.get.mockResolvedValueOnce({ data: { success: true, total: 2, nodes: [
+      { id: 'retryable', retry_source_event_id: 'failed-event', metadata: { title: 'Drive file', status: 'failed' } },
+      { id: 'other', metadata: { title: 'Other file', status: 'failed' } },
+    ] } })
+    await wrapper.findAll('[role="tab"]')[1].trigger('click')
+    await flushPromises()
+
+    const retries = wrapper.findAllComponents(IconButton).filter(button => button.props('label').startsWith('Retry'))
+    expect(retries).toHaveLength(1)
+    let settle!: (result: unknown) => void
+    proxy.post.mockReturnValueOnce(new Promise(resolve => { settle = resolve }))
+    retries[0].vm.$emit('click')
+    retries[0].vm.$emit('click')
+    expect(proxy.post).toHaveBeenCalledExactlyOnceWith('/api/v1/knowledge/kb/retry-source', {
+      node_id: 'retryable', failed_event_id: 'failed-event',
+    })
+    settle({ data: { success: true } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Indexing retry requested.')
+    await vi.advanceTimersByTimeAsync(400)
+    await flushPromises()
+    expect(wrapper.findAllComponents(IconButton).some(button => button.props('label').startsWith('Retry'))).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
 })
 
 it('coalesces spaced ingestion events and panel refreshes for the current document catalog', async () => {

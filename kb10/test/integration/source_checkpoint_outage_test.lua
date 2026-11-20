@@ -659,6 +659,104 @@ local function define_finalizer_tests()
     end)
 end
 
+local function same_revision_retry()
+    test.it("indexes an unchanged Drive delivery after an explicit retry", function()
+        local id, user_id, upload_id = uuid.v7(), uuid.v7(), uuid.v7()
+        local model = "kb10-retry-" .. id
+        local content = "The retained Drive revision has a searchable quokka."
+        local source_url = "https://docs.google.com/document/d/fixture-unchanged/edit"
+        local external_id = "fixture:google:drive:unchanged"
+        local config = {summary_model = false, chunk_enrichment_model = false, max_document_content_chars = 10}
+        assert(models.upsert_card({name = model, provider_id = "app:checkpoint_model_provider", provider_model = model,
+            capabilities = {"embed"}, dimensions = 512, max_tokens = 4096}))
+        assert(store.create_store(id, model, config))
+        owner.create(user_id, id, "kickside.kb10:embeddable", "kickside.kb10:embeddable")
+        assert(uploads.create(upload_id, user_id, #content, "text/plain", "app:uploads", "fixture.txt",
+            "document", {filename = "Drive fixture.txt", source_url = source_url}, "completed", hash.sha256(content)))
+        assert(artifacts.create_artifact({upload_id = upload_id, kind = "markdown", role = "primary",
+            mime_type = "text/plain", content = content, storage_id = "app:uploads"}))
+        local registered = in_db(function(db)
+            assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_checkpoint_model (
+                model TEXT PRIMARY KEY, online INTEGER NOT NULL, calls INTEGER NOT NULL, failures INTEGER NOT NULL)]]))
+            assert(db:execute("INSERT INTO kb10_checkpoint_model (model,online,calls,failures) VALUES ($1,1,0,0)", {model}))
+            return assert(assert(db:query([[SELECT id AS cursor_id,job_id,projection_id
+                FROM kickside_projection_cursor WHERE thread_id=$1 AND cursor_key='source']], {id}))[1])
+        end)
+        local security = require("security")
+        local actor = assert(security.new_actor(user_id, {security_groups = {"app:user"}}))
+        local scope = assert(security.named_scope("wippy.security:process"))
+        assert(require("provision").ensure_user(actor, scope, user_id))
+        local sink = assert(assert(require("contract").get("kickside.data:writable"))
+            :with_actor(actor):with_scope(scope):open("kickside.knowledge.sink:kb_upload_sink"))
+        local request = {origin = "fixture", config = {kb_id = id}, sink_op = "upsert",
+            identity_key = external_id, idempotency_key = "fixture-drive-revision-7", resume_effect = false,
+            input = {upload_id = upload_id, source_version = "7"}}
+        local scheduler
+        local ok, err = pcall(function()
+            local delivery = assert(sink:write(request))
+            test.is_true(delivery.success, tostring(delivery.error and delivery.error.message))
+            scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
+            assert(jobs.nudge_workers())
+            local failed = wait_state(registered, id, caught_up).roots[1]
+            test.eq(metadata(failed).status, "failed")
+            test.contains(metadata(failed).error, "document content too large")
+            local unchanged = assert(sink:write(request))
+            test.eq(unchanged.result, "noop")
+            test.eq(unchanged.dest_ref.publication_id, delivery.dest_ref.publication_id)
+
+            process.terminate(scheduler)
+            scheduler = nil
+            config.max_document_content_chars = 0
+            assert(store.update_config(id, config))
+            local executor = require("funcs").new():with_actor(actor):with_scope(scope)
+            local args = {kb_id = id, node_id = failed.id, failed_event_id = metadata(failed).thread_event_id}
+            local first, request_err = executor:call("app:retry_failed_upload_probe", args)
+            test.is_nil(request_err, tostring(request_err))
+            test.eq(first.status, "queued")
+            local duplicate = assert(executor:call("app:retry_failed_upload_probe", args))
+            test.eq(duplicate.event_id, first.event_id)
+            test.is_true(duplicate.duplicate)
+            in_db(function(db)
+                local upserts = assert(db:query("SELECT id FROM kickside_event WHERE thread_id=$1 AND type=$2", {id, UPSERT}))
+                test.eq(#upserts, 2)
+            end)
+
+            scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
+            assert(jobs.nudge_workers())
+            local done = wait_state(registered, id, caught_up)
+            test.eq(#done.roots, 1)
+            local document = done.roots[1]
+            test.eq(document.id, failed.id)
+            test.eq(document.content, content)
+            test.eq(metadata(document).status, "completed")
+            test.eq(metadata(document).source_version, "7")
+            test.eq(metadata(document).source_ref.source_url, source_url)
+            test.eq(metadata(document).upload_publication_id, delivery.dest_ref.publication_id)
+            local vector = {}
+            for i = 1, 512 do vector[i] = i == 1 and #content / 1024 or 0 end
+            local hits = assert(store.vector_search(id, vector, {query_text = "quokka", node_types = {"chunk"}, limit = 5}))
+            test.eq(#hits, 1)
+            test.eq(hits[1].parent_id, failed.id)
+            local stale, stale_err = executor:call("app:retry_failed_upload_probe", args)
+            test.is_nil(stale)
+            test.is_true(errors.is(stale_err, errors.CONFLICT), tostring(stale_err))
+        end)
+        if scheduler then process.terminate(scheduler) end
+        in_db(function(db)
+            assert(projections.remove_projection(db, id, {projection_id = registered.projection_id}))
+            assert(db:execute("DELETE FROM kb10_checkpoint_model WHERE model=$1", {model}))
+            assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", {id}))
+            assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {id}))
+            owner.cleanup(db, user_id, id)
+        end)
+        assert(store.delete_store(id))
+        assert(models.delete_card(model))
+        assert(select(2, artifact_cleanup.delete_for_upload(upload_id)) == nil)
+        in_db(function(db) assert(db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", {upload_id})) end)
+        if not ok then error(err) end
+    end)
+end
+
 return {
     finalizer_edges = test.run_cases(define_finalizer_tests),
     run = test.run_cases(function() scenario(false) end),
@@ -666,4 +764,5 @@ return {
         scenario(true)
         ordinary_integrity()
     end),
+    same_revision = test.run_cases(function() test.describe("Knowledge publication retry", same_revision_retry) end),
 }
