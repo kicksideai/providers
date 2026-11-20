@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.35](https://github.com/kicksideai/providers/compare/kb10-v0.2.34...kb10-v0.2.35) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** identify failed sources and show indexing errors ([#192](https://github.com/kicksideai/providers/issues/192)) ([1206f81](https://github.com/kicksideai/providers/commit/1206f81ee70f81881c17ce8dae358f047627f51f))
+
 ## [0.2.34](https://github.com/kicksideai/providers/compare/kb10-v0.2.33...kb10-v0.2.34) (2026-11-20)
 
 
