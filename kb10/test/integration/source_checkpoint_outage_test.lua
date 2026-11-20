@@ -1,6 +1,8 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local artifact_cleanup = require("artifact_cleanup")
 local artifacts = require("artifacts")
+local channel = require("channel")
+local enrichment_consts = require("enrichment_consts")
 local fs = require("fs")
 local hash = require("hash")
 local jobs = require("jobs")
@@ -22,6 +24,7 @@ local DELETE = "kickside.knowledge.events:content.deleted"
 local GRAPH = "kickside.knowledge.events:graph.changed"
 local DIGEST = "kickside.knowledge.events:digest.requested"
 local TREAT = "kickside.knowledge.events:treatment.requested"
+local EMPTY = "app:finalizer_empty_source"
 
 local function in_db(check)
     local db = assert(sql.get("app:db"))
@@ -435,7 +438,189 @@ local function ordinary_integrity()
     end)
 end
 
+
+local function capture_placements(listener)
+    local received = {}
+    local timeout = time.after("150ms")
+    while true do
+        local selected = channel.select({listener:case_receive(), timeout:case_receive()})
+        if selected.channel == timeout then return received end
+        received[#received + 1] = selected.value:payload():data()
+    end
+end
+
+local function finalizers(id, registration, expected, target_seq, source_seq)
+    return in_db(function(db)
+        local rows = assert(db:query([[SELECT type,body,external_source,external_id,external_version
+            FROM kickside_event WHERE thread_id=$1 AND type IN ($2,$3) ORDER BY seq]], {id, DIGEST, TREAT}))
+        test.eq(#rows, expected * 2, "one digest/treatment pair per completed source boundary")
+        local seen = {}
+        for _, row in ipairs(rows) do
+            local body = type(row.body) == "table" and row.body or assert(json.decode(row.body))
+            test.eq(body.kb_id, id)
+            test.eq(body.reason, "source_complete")
+            test.eq(body.source_thread_id, id)
+            test.eq(body.source_projection_id, registration.projection_id)
+            test.eq(row.external_source, "knowledge.source.finalizer")
+            test.eq(row.external_version, "v1")
+            local prefix = row.type == DIGEST and "digest-request" or "treatment-request"
+            local expected_id = table.concat({prefix, id, registration.projection_id, body.source_target_seq}, ":")
+            test.eq(row.external_id, expected_id)
+            test.is_nil(seen[row.external_id], "finalizer identity repeated")
+            seen[row.external_id] = true
+        end
+        if target_seq then
+            for i = #rows - 1, #rows do
+                local body = type(rows[i].body) == "table" and rows[i].body or assert(json.decode(rows[i].body))
+                test.eq(body.source_target_seq, target_seq)
+                test.eq(body.source_to_seq, source_seq)
+            end
+        end
+    end)
+end
+
+local function assert_placement(received, id, document_node_id)
+    test.eq(#received, 1)
+    test.eq(received[1].store_id, id)
+    test.eq(received[1].component_id, id)
+    test.eq(received[1].document_node_id, document_node_id)
+    test.not_nil(received[1].execution_identity)
+end
+
+local function finalizer_case(mode)
+    local id, actor = uuid.v7(), uuid.v7()
+    local empty_sources = mode == "only-empty" and 2 or (mode == "empty-tail" and 1 or 0)
+    local model = "kb170-finalizer-" .. id
+    assert(models.upsert_card({name = model, provider_id = "app:checkpoint_model_provider", provider_model = model,
+        capabilities = {"embed"}, dimensions = 512, max_tokens = 4096}))
+    in_db(function(db)
+        assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_checkpoint_model (
+            model TEXT PRIMARY KEY, online INTEGER NOT NULL, calls INTEGER NOT NULL, failures INTEGER NOT NULL)]]))
+        assert(db:execute("INSERT INTO kb10_checkpoint_model (model,online,calls,failures) VALUES ($1,$2,0,0)",
+            {model, mode == "retry" and 0 or 1}))
+        assert(db:execute([[CREATE TABLE IF NOT EXISTS kb10_finalizer_empty_source (
+            id TEXT PRIMARY KEY, calls INTEGER NOT NULL)]]))
+        assert(db:execute("INSERT INTO kb10_finalizer_empty_source (id,calls) VALUES ($1,0)", {id}))
+    end)
+    assert(store.create_store(id, model, {}, {kb_type = "wiki", is_graph = true, name = "Finalizer fixture"}))
+    local member_threads = owner.create(actor, id)
+    assert(member_threads:register_projection({
+        thread_id = id, kind = "knowledge.injection.source", projection_key = "source", cursor_key = "source",
+        worker_ref = "proc://kickside.kb10.injection:source_worker_proc", worker_input_mode = "prefetch_events",
+        events = {input = {{type = UPSERT}, {type = DELETE}, {type = EMPTY}}},
+        worker_config = {materialization = {summary_model = false, chunk_enrichment_model = false}},
+    }))
+    local registered = in_db(function(db)
+        if mode ~= "only-empty" then append(db, id, "a", "1", {content = "Earlier good revision"}) end
+        for sequence = 1, empty_sources do
+            assert(threads.append_system(db, id, {{type = EMPTY, role = "system",
+                body_json = assert(json.encode({kb_id = id})),
+                external = {external_source = "fixture.empty", external_id = tostring(sequence), external_version = "1"}}}))
+        end
+        if mode == "filtered-tail" then
+            assert(threads.append_system(db, id, {{type = "app:conflict_page", role = "system",
+                body_json = assert(json.encode({page_id = "skipped", title = "Skipped", text = "Filtered source"}))}}))
+        end
+        if mode == "retry" then append(db, id, "a", "2", {content = "queued replacement"}) end
+        local row = assert(assert(db:query([[SELECT c.id AS cursor_id,c.job_id,c.projection_id
+            FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
+            WHERE c.thread_id=$1 AND p.kind='knowledge.injection.source' AND c.cursor_key='source']], {id}))[1])
+        local provider = assert(db:query("SELECT calls FROM kb10_checkpoint_model WHERE model=$1", {model}))
+        row.initial_embed_calls = tonumber(provider[1].calls)
+        return row
+    end)
+    local listener = process.listen(enrichment_consts.TOPIC, {message = true})
+    local registration, register_err = process.registry.register(enrichment_consts.PROCESS, nil, process.registry.CONSISTENT)
+    assert(registration, tostring(register_err))
+    local scheduler = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
+    local ok, err = pcall(function()
+        assert(jobs.nudge_workers())
+        if mode == "retry" then
+            local held = wait_state(registered, id, function(cursor)
+                return cursor.status == "pending" and tonumber(cursor.attempts) > 0
+            end)
+            test.eq(tonumber(held.cursor.last_seq), 1)
+            test.eq(#held.roots, 1)
+            local first_id = held.roots[1].id
+            assert_placement(capture_placements(listener), id, first_id)
+            finalizers(id, registered, 0)
+            in_db(function(db)
+                assert(db:execute("UPDATE kb10_checkpoint_model SET online=1 WHERE model=$1", {model}))
+            end)
+            local done = wait_state(registered, id, caught_up)
+            test.eq(#done.roots, 1)
+            test.eq(done.roots[1].id, first_id)
+            test.eq(done.roots[1].content, "queued replacement")
+            assert_placement(capture_placements(listener), id, first_id)
+            finalizers(id, registered, 1, tonumber(held.cursor.event_count), 2)
+            in_db(function(db)
+                local duplicate = assert(threads.append_system(db, id, {{type = UPSERT, role = "user",
+                    body_json = assert(json.encode({kb_id=id, content="queued replacement"})),
+                    external={external_source="knowledge.kb", external_id="a", external_version="2"}}}))
+                test.eq(tonumber(duplicate.inserted), 0)
+            end)
+            test.eq(#capture_placements(listener), 0)
+            finalizers(id, registered, 1)
+        else
+            local done = wait_state(registered, id, caught_up)
+            local received = capture_placements(listener)
+            test.is_nil(done.cursor.last_error)
+            in_db(function(db)
+                local rows = assert(db:query("SELECT calls FROM kb10_finalizer_empty_source WHERE id=$1", {id}))
+                test.eq(tonumber(rows[1].calls), empty_sources, "empty source extractor calls")
+                local productive = mode == "only-empty" and 0 or 1
+                local provider = assert(db:query("SELECT calls FROM kb10_checkpoint_model WHERE model=$1", {model}))
+                test.eq(tonumber(provider[1].calls) - registered.initial_embed_calls, productive,
+                    "one embedding call per indexed source")
+                test.eq(#outputs(db, id).graph, productive, "one graph change per indexed source")
+            end)
+            if mode == "only-empty" then
+                test.eq(#done.roots, 0)
+                test.eq(#received, 0)
+                finalizers(id, registered, 0)
+            else
+                test.eq(#done.roots, 1)
+                assert_placement(received, id, done.roots[1].id)
+                local target_seq = mode == "delete" and 1 or 2
+                local source_seq = mode == "empty-tail" and 2 or 1
+                finalizers(id, registered, 1, target_seq, source_seq)
+                if mode == "delete" then
+                    local seq = in_db(function(db) return delete(db, id, "system", "a", done.roots[1].id) end)
+                    assert(jobs.nudge_workers())
+                    local deleted = wait_state(registered, id, caught_up)
+                    test.eq(#deleted.roots, 0)
+                    test.eq(#capture_placements(listener), 0)
+                    finalizers(id, registered, 2, seq, seq)
+                end
+            end
+        end
+    end)
+    process.terminate(scheduler)
+    process.unlisten(listener)
+    process.registry.unregister(enrichment_consts.PROCESS)
+    in_db(function(db)
+        assert(projections.remove_projection(db, id, {projection_id = registered.projection_id}))
+        assert(db:execute("DELETE FROM kb10_checkpoint_model WHERE model=$1", {model}))
+        assert(db:execute("DELETE FROM kb10_finalizer_empty_source WHERE id=$1", {id}))
+        assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", {id}))
+        assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {id}))
+        owner.cleanup(db, actor, id)
+    end)
+    assert(store.delete_store(id))
+    assert(models.delete_card(model))
+    if not ok then error(err) end
+end
+
+local function define_finalizer_tests()
+    test.describe("ordinary published KB10 source completion", function()
+        for _, mode in ipairs({"only-empty", "empty-tail", "filtered-tail", "delete", "retry"}) do
+            test.it("finalizer and placement uniqueness: " .. mode, function() finalizer_case(mode) end)
+        end
+    end)
+end
+
 return {
+    finalizer_edges = test.run_cases(define_finalizer_tests),
     run = test.run_cases(function() scenario(false) end),
     ordinary = test.run_cases(function()
         scenario(true)

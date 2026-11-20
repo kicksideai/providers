@@ -805,11 +805,8 @@ local function digest_request_writes(thread_id: string, projection_id: string, t
     return { { thread_id = thread_id, events = events } }
 end
 
-local function build_digest_request_writes(input: any, thread_id: string, projection_id: string, target_kb_ids: { string }, metrics: IngestMetrics, from_seq: number?, to_seq: number?): { table }?
-    if metrics.documents_emitted == 0 and metrics.deletes_emitted == 0 then
-        return nil
-    end
-    local range = type(input.range) == "table" and input.range or {}
+local function build_digest_request_writes(range: table, thread_id: string, projection_id: string,
+        target_kb_ids: { string }, from_seq: number?, to_seq: number?): { table }?
     local target_seq = tonumber(range.target_seq)
     local range_to_seq = tonumber(range.to_seq) or tonumber(to_seq)
     if not target_seq or not range_to_seq or range_to_seq < target_seq then
@@ -991,7 +988,7 @@ local function checkpoint_writes(cursor: table, sequence: number, outcome: table
     return merge_append_writes(graph, domain)
 end
 
-local function run_with_deps(input_raw, deps)
+local function run_with_deps(input_raw, deps, defer_finalizers)
     deps = deps or {}
     local input = decode_object(input_raw)
 
@@ -1412,11 +1409,6 @@ local function run_with_deps(input_raw, deps)
             end
         end
     end
-    local append_events = merge_append_writes(
-        build_source_meta_writes(thread_id, projection_id, clean_targets, kb_results, source_status, last_error, from_seq, to_seq),
-        build_digest_request_writes(input, thread_id, projection_id, clean_targets, metrics, from_seq, to_seq)
-    )
-
     body.last_run_at = time.now():utc():format(time.RFC3339)
     if metrics.items_failed > 0 then
         body.last_status = "completed_with_failures"
@@ -1432,11 +1424,17 @@ local function run_with_deps(input_raw, deps)
     body.kb_results = kb_results
     body.post_materialization_errors = #post_materialization_errors > 0 and post_materialization_errors or nil
 
-    return {
+    local result = {
         body = body,
         metrics = metrics,
-        append_events = append_events,
-    }, nil
+        append_events = build_source_meta_writes(thread_id, projection_id, clean_targets, kb_results,
+            source_status, last_error, from_seq, to_seq),
+    }
+    if defer_finalizers then return result, nil, clean_targets end
+    local range = type(input.range) == "table" and input.range or {}
+    result.append_events = merge_append_writes(result.append_events,
+        build_digest_request_writes(range, thread_id, projection_id, clean_targets, from_seq, to_seq))
+    return result, nil
 end
 
 -- Keep a healthy run's graph output proportional to its page count. A
@@ -1480,20 +1478,15 @@ local function run_page(input_raw, deps)
         targets[id] = target
         return target, err
     end
-    local range = input.range or {}
+    local range = type(input.range) == "table" and input.range or {}
     local events, ready_by_kb, metrics = {}, {}, {}
+    local finalizer_targets, seen_targets = {}, {}
     local body = projection_body(input.projection)
     input.projection.body = body
     local last_seq
     for index, event in ipairs(page) do
         input.events = {event}
-        input.range = {from_seq = event.seq, to_seq = event.seq, target_seq = range.target_seq}
-        -- Core may prefetch nonmatching events past the last eligible source.
-        -- Finalize at the source boundary when the complete page succeeds.
-        if index == #page then
-            input.range.to_seq = range.to_seq
-        end
-        local result, err = run_with_deps(input, page_deps)
+        local result, err, slice_targets = run_with_deps(input, page_deps, true)
         if err then
             if not last_seq then return nil, err end
             break
@@ -1501,8 +1494,20 @@ local function run_page(input_raw, deps)
         for key, value in pairs(result.patch or {}) do body[key] = value end
         for key, value in pairs(result.metrics) do metrics[key] = (metrics[key] or 0) + value end
         append_source_outputs(events, ready_by_kb, result.append_events)
+        for _, kb_id in ipairs(slice_targets or {}) do
+            if not seen_targets[kb_id] then
+                finalizer_targets[#finalizer_targets + 1] = kb_id
+                seen_targets[kb_id] = true
+            end
+        end
         last_seq = tonumber(event.seq)
-        if index == #page then last_seq = tonumber(range.to_seq) or last_seq end
+        if index == #page then
+            -- The complete page owns finalization, even if its last eligible
+            -- event emitted nothing or Core scanned beyond it.
+            append_source_outputs(events, ready_by_kb, build_digest_request_writes(range,
+                trim(input.thread_id), trim(input.projection.id), finalizer_targets, last_seq, last_seq))
+            last_seq = tonumber(range.to_seq) or last_seq
+        end
     end
     body.last_from_seq = page[1].seq
     return {last_seq = last_seq, body = body, metrics = metrics,
