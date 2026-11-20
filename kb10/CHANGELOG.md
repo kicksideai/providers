@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.39](https://github.com/kicksideai/providers/compare/kb10-v0.2.38...kb10-v0.2.39) (2026-11-20)
+
+
+### Performance Improvements
+
+* **kb10:** bound escaped spreadsheet cell splitting ([#202](https://github.com/kicksideai/providers/issues/202)) ([176dc75](https://github.com/kicksideai/providers/commit/176dc7560dc8960edda4004ca4a5f7d3c7507bef))
+
 ## [0.2.38](https://github.com/kicksideai/providers/compare/kb10-v0.2.37...kb10-v0.2.38) (2026-11-20)
 
 
