@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.42](https://github.com/kicksideai/providers/compare/kb10-v0.2.41...kb10-v0.2.42) (2026-11-20)
+
+
+### Features
+
+* **kb10:** retry failed document indexing ([#208](https://github.com/kicksideai/providers/issues/208)) ([3137835](https://github.com/kicksideai/providers/commit/31378353e89256b9094b01fde6f2aada637f272e))
+
 ## [0.2.41](https://github.com/kicksideai/providers/compare/kb10-v0.2.40...kb10-v0.2.41) (2026-11-20)
 
 
