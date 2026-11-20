@@ -34,6 +34,8 @@ function chunkPrefix(c: BrowseNode): string {
 }
 
 const meta = computed(() => props.node.metadata || {})
+const indexingFailed = computed(() => meta.value.status === 'failed')
+const failureReason = computed(() => typeof meta.value.error === 'string' ? meta.value.error.trim() : '')
 const sourceUrl = computed(() => meta.value.source_url as string | undefined)
 const renderType = computed(() => fullType.value || props.node.content_type || 'text/markdown')
 
@@ -182,6 +184,11 @@ onBeforeUnmount(() => { bodyObserver?.disconnect() })
       </div>
     </header>
 
+    <div v-if="indexingFailed" class="dr-state err" role="status">
+      <Icon icon="tabler:alert-circle" aria-hidden="true" />
+      <span>Indexing failed<span v-if="failureReason">: {{ failureReason }}</span></span>
+    </div>
+
     <KbTabs :tabs="tabs" :active="tab" @select="tab = $event as typeof tab" />
 
     <div v-if="loading" class="dr-skel"><div v-for="i in 6" :key="i" class="dr-skel-line" /></div>
@@ -207,7 +214,7 @@ onBeforeUnmount(() => { bodyObserver?.disconnect() })
             <Icon :icon="expanded ? 'tabler:chevron-up' : 'tabler:chevron-down'" aria-hidden="true" />
             {{ expanded ? 'Show less' : 'Show more' }}
           </button>
-          <div v-if="!body" class="dr-state"><Icon icon="tabler:file-off" aria-hidden="true" /> No readable content was indexed for this document.</div>
+          <div v-if="!body && !indexingFailed" class="dr-state"><Icon icon="tabler:file-off" aria-hidden="true" /> No readable content was indexed for this document.</div>
         </div>
 
       </div>
