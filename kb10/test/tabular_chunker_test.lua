@@ -168,6 +168,31 @@ local function define_tests()
             end
             test.eq(recovered, value)
         end)
+        test.it("keeps escaped cell fragment boundaries and column lineage", function()
+            local size = 200
+            local base = "## cells\n\nRow 2\n\n| Notes |\n| --- |\n"
+            local budget = size - #base - 4
+            local first = string.rep("x", budget - 5) .. "é"
+            local second = string.rep("y", budget - 8)
+            local value = first .. "\r\n" .. second .. "\\|🙂\rword\nend"
+            local chunks, metadata, err = tabular.chunk_document(document('Notes,Empty\r\n"' .. value .. '",\r\n', "cells.csv"), size)
+            test.is_nil(err)
+            test.eq(#chunks, 3)
+            test.eq(chunks[1], base .. "| " .. first .. " |")
+            test.eq(chunks[2], base .. "| <br>" .. second .. string.rep("\\", 3) .. "| |")
+            test.eq(chunks[3], base .. "| 🙂<br>word<br>end |")
+            for part, meta in ipairs(metadata) do
+                test.eq(meta.contextual_prefix, "Sheet cells, row 2.")
+                test.eq(meta.header_row, 1)
+                test.eq(meta.row_start, 2)
+                test.eq(meta.row_end, 2)
+                test.eq(meta.cell_part, part)
+                test.eq(meta.column_start, 1)
+                test.eq(meta.column_end, 2)
+                test.eq(meta.columns[1], 1)
+                test.eq(meta.empty_columns[1], 2)
+            end
+        end)
         test.it("reads CSV quoted delimiters, escaped quotes, multiline cells, and CRLF", function()
             local csv = 'SKU,Name,Notes\r\nA,"Alpha, Beta","say ""hi""\nnext"\r\nB,Bravo,ok\r\n'
             local plans, _, err = plan(document(csv, "Products.CSV"), 400)
