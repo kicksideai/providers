@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.44](https://github.com/kicksideai/providers/compare/kb10-v0.2.43...kb10-v0.2.44) (2026-11-21)
+
+
+### Bug Fixes
+
+* **kb10:** commit ordinary source fan-out atomically ([#213](https://github.com/kicksideai/providers/issues/213)) ([388d3bd](https://github.com/kicksideai/providers/commit/388d3bd6fa6c993f058d8eb830b051b07c3f20b4))
+
 ## [0.2.43](https://github.com/kicksideai/providers/compare/kb10-v0.2.42...kb10-v0.2.43) (2026-11-21)
 
 
