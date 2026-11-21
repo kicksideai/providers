@@ -174,6 +174,7 @@ entries:
     meta: {type: test, suite: knowledge_injection}
     source: file://publication_outcomes_test.lua
     method: run
+    modules: [sql, crypto, json]
     imports:
       test: wippy.test:test
       outcomes: kickside.kb10.injection:publication_outcomes
@@ -189,6 +190,7 @@ entries:
     method: run
     modules: [sql, json, crypto, funcs, security, contract, registry, store]
     imports:
+      projection_owner: app:projection_owner_fixture
       test: wippy.test:test
       kb10_types: kickside.kb10:types
       node_store: kickside.kb10.persist:node_store
@@ -204,6 +206,7 @@ entries:
     method: run
     modules: [sql, json, crypto, funcs, security, contract]
     imports:
+      projection_owner: app:projection_owner_fixture
       deletion_worker: app:deletion_test_worker
       test: wippy.test:test
       kb10_types: kickside.kb10:types

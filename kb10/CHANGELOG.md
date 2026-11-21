@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.47](https://github.com/kicksideai/providers/compare/kb10-v0.2.46...kb10-v0.2.47) (2026-11-21)
+
+
+### Bug Fixes
+
+* **kb10:** preserve legacy empty answer settings ([#220](https://github.com/kicksideai/providers/issues/220)) ([7ea94b0](https://github.com/kicksideai/providers/commit/7ea94b06ed567e990c97c8a56c7a6c46b19f0164))
+
 ## [0.2.46](https://github.com/kicksideai/providers/compare/kb10-v0.2.45...kb10-v0.2.46) (2026-11-21)
 
 
