@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.45](https://github.com/kicksideai/providers/compare/kb10-v0.2.44...kb10-v0.2.45) (2026-11-21)
+
+
+### Performance Improvements
+
+* **kb10:** seek export pages by store and row key ([#215](https://github.com/kicksideai/providers/issues/215)) ([757947b](https://github.com/kicksideai/providers/commit/757947bcf264cbd07da2c45a5b226dd218bef1f0))
+
 ## [0.2.44](https://github.com/kicksideai/providers/compare/kb10-v0.2.43...kb10-v0.2.44) (2026-11-21)
 
 
