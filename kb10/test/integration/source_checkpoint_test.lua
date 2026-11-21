@@ -146,6 +146,19 @@ end
 
 return {run = test.run_cases(function()
     test.describe("fenced writes on a registered KB10 source", function()
+        test.it("closes a prepared group before the next input would use its publication time", function()
+            local page = publication_plan.new("store", "thread")
+            test.eq(page.full(100, 150, 1), false)
+            test.eq(page.full(115, 150, 1), false)
+            -- A quick second input must not erase the cost of the first one.
+            test.eq(page.full(118, 150, 1), true)
+            local retry = publication_plan.new("store", "thread")
+            test.eq(retry.full(101, 150, 2), true)
+            test.eq(retry.full(101, 150, nil), true)
+            local fast = publication_plan.new("store", "thread")
+            for now = 100, 110 do test.eq(fast.full(now, 150, 1), false) end
+        end)
+
         test.it("binds a first rejection to its planned document ID and retires the recreated store", function()
             with_registration(function(kb_id, events, job, current)
                 local page = publication_plan.new(kb_id, kb_id)

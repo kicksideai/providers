@@ -2,6 +2,7 @@
 local ctx = require("ctx")
 local json = require("json")
 local process = require("process")
+local time = require("time")
 local component = require("component")
 local enrichment = require("enrichment")
 local logger = require("logger"):named("kb10.source.publication")
@@ -144,7 +145,8 @@ local function publish(input)
             local key = source and external_id and source .. ":" .. external_id or event.id
             local node_delete = meta.node_id ~= nil
             local lineage_bytes = #key + #(version or "")
-            local close = page.full() or receipt_bytes + lineage_bytes >= GROUP_RECEIPT_BYTES or seen[key] or selected or node_delete
+            local full = page.full(time.now():unix_nano(), input.execution_deadline_ns, a.job.attempt_no)
+            local close = full or receipt_bytes + lineage_bytes >= GROUP_RECEIPT_BYTES or seen[key] or selected or node_delete
             seen[key], selected = true, node_delete
             return close
         end

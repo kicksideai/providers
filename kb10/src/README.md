@@ -41,7 +41,7 @@ workers; it does not use a public materializer contract.
 
 ## Installed source projection
 
-Core 0.3.41 or later runs the primary KB source worker through Jobs under the
+Core 0.3.51 or later runs the primary KB source worker through Jobs under the
 projection's stored actor and scope. It keeps the ordinary extractor, model
 options, source reducer, graph events, and digest and treatment finalizers.
 Graph placement is best effort after the checkpoint commits. A stop between
@@ -67,8 +67,13 @@ Migration 15 initializes existing stores on their next primary-source run.
 The store retains one result. It contains the manifest, changed fold fields,
 changed source entries, new dead letters, graph events and placement requests.
 The worker groups inputs up to a 16 MiB prepared-change budget or a 1 MiB
-serialized contribution budget, checking between inputs. One admitted input
-can exceed either budget. Core limits incoming event rows through
+serialized contribution budget, checking between inputs. It also closes the
+group when the time remaining on Core’s deadline would be consumed by another
+input as slow as the longest in the group and a publication taking as long as
+the group’s preparation. After a failed claim it publishes the first eligible
+input by itself. An unexpectedly slow input can still exceed the estimate on
+the first attempt. One admitted input can exceed these budgets. Core limits
+incoming event rows through
 `limits.max_row_bytes` (4 MiB by default), and a source outcome can contain
 multiple copies of lineage or diagnostic text. The underlying projection fold
 still contains the source history and Core rewrites that fold at checkpoint.

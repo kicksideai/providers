@@ -122,7 +122,24 @@ function M.new(store_id, thread_id, ordered)
     page.store = {vector_dimensions = store.vector_dimensions, replace_document = store.replace_document,
         reject_source_revision = store.reject_source_revision, delete_documents_by_external_id = store.delete_documents_by_external_id,
         plan = plan}
-    page.full = function() return page.bytes >= MAX_GROUP_BYTES end
+    local group_started, source_started
+    local longest_source = 0
+    page.full = function(now, deadline, attempt_no)
+        if page.bytes >= MAX_GROUP_BYTES then return true end
+        if not deadline then return false end
+        -- A later input may have exceeded the previous estimate. Publish the
+        -- first input alone on retry or when Core cannot identify the attempt.
+        if attempt_no ~= 1 then return true end
+        if not source_started then
+            group_started, source_started = now, now
+            return false
+        end
+        longest_source = math.max(longest_source, now - source_started)
+        source_started = now
+        -- Allow the next input as long as the slowest completed one, and
+        -- reserve this group's preparation time for serializing and committing it.
+        return deadline - now <= longest_source + (now - group_started)
+    end
     return page
 end
 
