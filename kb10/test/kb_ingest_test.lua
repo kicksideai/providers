@@ -14,6 +14,7 @@ local kb10_store = require("kb10_store")
 local thread_ingest = require("thread_ingest")
 local source_worker = require("source_worker_lib")
 local worker_fixtures = require("source_worker_fixtures")
+local projection_owner = require("projection_owner")
 local artifact_cleanup_repo = require("artifact_cleanup_repo")
 
 local function uuid()
@@ -98,37 +99,20 @@ local function create_test_kb(component_id, user_id, opts)
     if db_err then return db_err end
 
     local user_err = ensure_test_user(db, user_id)
-    if user_err then db:release() return user_err end
+    db:release()
+    if user_err then return user_err end
 
+    local registered, register_err = projection_owner.register(user_id, component_id, EMBED_BINDING, {
+        title = "Test Ingest KB",
+        description = "KB for ingest testing",
+        class = COMPONENT_CLASS,
+    })
+    if register_err then return register_err end
+    if not registered or not registered.success then return registered and registered.error or "component registration failed" end
+
+    db, db_err = sql.get("app:db")
+    if db_err then return db_err end
     local _, err = db:execute(
-        [[INSERT INTO kickside_components (component_id, impl_id, private_context, created_at, updated_at)
-          VALUES ($1, $2, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)]],
-        { component_id, EMBED_BINDING }
-    )
-    if err then db:release() return err end
-
-    local meta_entries = {
-        { key = "title", value = "Test Ingest KB" },
-        { key = "description", value = "KB for ingest testing" },
-        { key = "class", value = COMPONENT_CLASS },
-    }
-    for _, m in ipairs(meta_entries) do
-        _, err = db:execute(
-            [[INSERT INTO kickside_component_meta (meta_id, component_id, key, value, created_at, updated_at)
-              VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)]],
-            { uuid(), component_id, m.key, m.value }
-        )
-        if err then db:release() return err end
-    end
-
-    _, err = db:execute(
-        [[INSERT INTO kickside_component_access (access_id, subject_type, subject_id, component_id, source_component_id, access_mask, created_at)
-          VALUES ($1, 'user', $2, $3, $4, 15, CURRENT_TIMESTAMP)]],
-        { uuid(), user_id, component_id, component_id }
-    )
-    if err then db:release() return err end
-
-    _, err = db:execute(
         [[INSERT INTO kickside_component_access (access_id, subject_type, subject_id, component_id, source_component_id, access_mask, created_at)
           VALUES ($1, 'user', $2, $3, $4, 15, CURRENT_TIMESTAMP)]],
         { uuid(), MANAGED_INJECTION_ACTOR_ID, component_id, component_id }
@@ -1155,7 +1139,9 @@ local function define_tests()
                 local before = cursor_for_projection(first.projection_id)
                 test.not_nil(before)
                 assert_source_projection_filter(before.projection_body)
-                test.eq(nil, before.actor_id)
+                test.eq(before.actor_id, test_user_id)
+                test.eq(before.cursor_actor_id, test_user_id)
+                test.not_nil(before.execution_identity_json)
                 test.eq("proc", before.worker_runtime)
                 test.eq(before.worker_ref, SOURCE_WORKER_PROC_REF)
                 local generation = assert(tonumber(before.generation), "cursor generation must be numeric")
