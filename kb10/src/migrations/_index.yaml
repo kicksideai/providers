@@ -181,3 +181,18 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 17_source_preparation
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      depends_on: [ns:wippy.migration, kickside.core.migrations:23_filtered_checkpoint_pins]
+      timestamp: "2026-11-21T21:01:00Z"
+    source: file://17_source_preparation.lua
+    imports:
+      apply: kickside.core.projections:apply
+      migration: wippy.migration:migration
+      ops: kickside.kb10.persist:ops
+    method: migrate
