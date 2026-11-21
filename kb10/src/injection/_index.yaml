@@ -171,7 +171,7 @@ entries:
         target_db_config: kickside.kb10:db_config
     source: file://primary_source_worker.lua
     method: run
-    modules: [ctx, json, process, logger]
+    modules: [ctx, json, process, logger, time]
     imports:
       component: kickside.component:component
       enrichment: kickside.kb10.graph:enrichment_consts
