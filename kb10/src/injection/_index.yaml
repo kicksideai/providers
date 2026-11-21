@@ -24,6 +24,7 @@ entries:
     imports:
       text_trim: kickside.contract:text_trim
       kb10_store: kickside.kb10.persist:store
+      writer: kickside.kb10.persist:writer
 
   - name: tabular_chunker
     kind: library.lua

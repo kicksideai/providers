@@ -124,14 +124,16 @@ local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any, b
     return ids[1], nil
 end
 
-local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}, replace: boolean?): ({string}?, any?)
+local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any},
+        replace: boolean?, encoded: boolean?): ({string}?, any?)
     local sqlite = db_type == sql.type.SQLITE
     local ids: {string} = {}
     local rows: {any} = {}
     local owners: {any} = {}
     local owner_count = 0
+    local embedding_type = encoded and "string" or "table"
     for i, input in ipairs(embeddings) do
-        if type(input.embedding) ~= "table" then
+        if type(input.embedding) ~= embedding_type then
             return nil, errors.new({ message = "embedding is required", kind = errors.INVALID })
         end
         local parent_id = input.parent_id
@@ -149,7 +151,8 @@ local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embedd
             end
             owner[#owner + 1] = ids[i]
         end
-        rows[i] = { ids[i], input.node_id, store_id, input.node_type, parent_id, ops.vector_to_string(input.embedding) }
+        local vector = encoded and input.embedding or ops.vector_to_string(input.embedding)
+        rows[i] = {ids[i], input.node_id, store_id, input.node_type, parent_id, vector}
     end
     local err = insert_rows_tx(tx, "kb10_embeddings", { "id", "node_id", "store_id", "node_type", "parent_id", "embedding" }, rows)
     if err then return nil, err end
@@ -501,6 +504,48 @@ local function require_store_tx(tx: any, db_type: any, store_id: any): any?
     return nil
 end
 
+-- All recipients live in the configured KB database. Lock stores in a shared
+-- order, then apply the source mutations in their original order.
+function writer.write_source_fanout(stores, write)
+    local ids = {}
+    for id in pairs(stores) do ids[#ids + 1] = id end
+    table.sort(ids)
+
+    local db, err = ops.get_db()
+    if not db then return nil, err end
+    local dialect, type_err = ops.get_db_type(db)
+    if type_err then db:release(); return nil, type_err end
+    local tx, begin_err = db:begin()
+    if not tx then db:release(); return nil, begin_err end
+
+    local ok, result, write_err = pcall(function()
+        local lock = dialect == sql.type.POSTGRES and " FOR NO KEY UPDATE" or ""
+        for _, id in ipairs(ids) do
+            local rows, lock_err = tx:query([[SELECT component_id, embedding_model, CAST(config AS TEXT) AS config,
+                kb_type, source_publication_token
+                FROM kb10_stores WHERE id = $1]] .. lock, {id})
+            if lock_err then return nil, lock_err end
+            local current, expected = rows[1], stores[id]
+            -- A legacy store can still have a NULL token. Every new store
+            -- receives a fresh token, so even a legacy store cannot be replaced
+            -- under the same ID without changing the snapshot.
+            if not current or current.component_id ~= expected.component_id
+                or current.source_publication_token ~= expected.source_publication_token
+                or current.embedding_model ~= expected.embedding_model
+                or current.config ~= expected.config_snapshot or current.kb_type ~= expected.kb_type then
+                return nil, errors.new({kind = errors.CONFLICT, retryable = true,
+                    message = "source fan-out destination changed during preparation"})
+            end
+        end
+        return write(tx, dialect)
+    end)
+    if not ok then return fail_tx(tx, db, result) end
+    if not result or write_err then return fail_tx(tx, db, write_err) end
+    local committed, commit_err = commit_tx(tx, db, "source fan-out")
+    if not committed then return nil, commit_err end
+    return result, nil
+end
+
 -- Atomically replace the materialized tree for one canonical source document.
 -- The worker computes embeddings outside this transaction; kb10 owns the commit
 -- boundary for doc + children + vectors + prior-version cleanup.
@@ -512,7 +557,8 @@ end
 -- underneath it — content, children, vectors. Children re-mint their ids; they
 -- are content. A caller-supplied document.id only seeds a first
 -- materialization: on replacement the stored identity wins.
-local function replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any, before: table?)
+local function replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any, before: table?,
+        encoded_embeddings: boolean?)
     if not is_str(store_id) then return nil, errors.new({ message = "store_id is required", kind = errors.INVALID }) end
     local spec = type(replacement) == "table" and replacement or {}
     local document = type(spec.document) == "table" and spec.document or nil
@@ -590,7 +636,7 @@ local function replace_document_tx(tx: any, db_type: any, store_id: any, replace
         embeddings[i] = { node_id = child_ids[i], node_type = nodes[i].node_type,
             parent_id = doc_id, embedding = child_spec.embedding }
     end
-    local embedding_ids, emb_err = insert_embeddings_tx(tx, db_type, store_id, embeddings)
+    local embedding_ids, emb_err = insert_embeddings_tx(tx, db_type, store_id, embeddings, nil, encoded_embeddings)
     if emb_err or not embedding_ids then return nil, errors.wrap(emb_err, "insert child embedding failed") end
 
     return {
@@ -609,6 +655,19 @@ end
 
 function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any)
     return replace_document_tx(tx, db_type, store_id, replacement)
+end
+
+-- Use the same SQL parameter format as single-document writes. Preparing it
+-- once lets fan-out drop the numeric tables before preparing the next store.
+function writer.encode_source_fanout_embeddings(replacement: any)
+    for _, child in ipairs(replacement.children) do
+        local vector = child.embedding :: {number}
+        child.embedding = ops.vector_to_string(vector)
+    end
+end
+
+function writer.replace_source_fanout_document_tx(tx: any, db_type: any, store_id: any, replacement: any)
+    return replace_document_tx(tx, db_type, store_id, replacement, nil, true)
 end
 
 local function mutate_source_document(store_id: any, mutate: any, ...)
