@@ -1039,7 +1039,8 @@ local function write_fanout(target_ids, deps, thread_id, deletes, source_deletes
             if access_err then return nil, access_err end
         end
     end
-    return materializer_store.write_fanout(stores, function(transaction_store)
+    local publish = deps.stage_fanout or materializer_store.write_fanout
+    return publish(stores, function(transaction_store)
         for _, recipient in ipairs(recipients) do
             if #recipient.deletes > 0 then
                 local del, err = source_materializer.delete_documents_from_store({
@@ -1311,7 +1312,7 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
     local docs = {}
     for _, pending in ipairs(pending_documents) do docs[#docs + 1] = pending.doc end
     local fanout
-    if #clean_targets > 1 then
+    if #clean_targets > 1 or (deps.stage_fanout and #clean_targets > 0) then
         local prepare_documents = #docs > 0 and function(kb_id, target)
             return source_materializer.prepare_documents(kb_id, target, docs, embedder, summarizer, enricher,
                 captioner, worker_config, batch_enricher, materializer_store.encode_fanout_embeddings)

@@ -51,9 +51,18 @@ the KBs that received content. When all extractions are empty and there is no
 prior work to finalize, the worker requests neither digest nor treatment.
 
 This recovery applies when the worker returned its completed part of the
-page. A worker that reaches its execution deadline before returning can leave
-indexed documents ahead of its cursor. That case remains open in
-[Providers #170](https://github.com/kicksideai/providers/issues/170).
+page.
+
+A Core registered checkpoint lets a public source projection commit a filtered input for multiple
+local destinations with its fold, graph changes, finalizers and cursor. Register
+the projection with `prefetch_events`, an input filter and multiple distinct
+`target_kb_ids`. Core, Jobs and KB10 must share the same configured database
+resource. Explicitly re-register an existing projection to enable this path at
+its current position. [Core checkpoint contract](https://github.com/kicksideai/kickside/pull/865)
+
+Placement requests use the live enrichment service after the checkpoint
+commits. Physically separate databases and durable placement delivery are
+tracked in [Providers #170](https://github.com/kicksideai/providers/issues/170).
 
 ## Original document delivery
 

@@ -370,8 +370,9 @@ local function source_checkpoint_state(db: any, dialect: string, store_id: strin
         counts, err = subtree_source_counts_tx(db, dialect, store_id, id, true)
         if err then return nil, err end
     end
+    local metadata = decode_metadata(root.revision)
     return {id = id, updated_at = root.updated_at, revision = root.revision,
-        status = decode_metadata(root.revision).status, counts = counts}, nil
+        status = metadata.status, publication_id = metadata.upload_publication_id, counts = counts}, nil
 end
 
 local function checkpoint_conflict(): error
@@ -383,7 +384,11 @@ local function confirm_source_checkpoint(tx: any, dialect: string, store_id: str
     if id ~= before.id then return nil, checkpoint_conflict() end
     local current, err = source_checkpoint_state(tx, dialect, store_id, id, count_subtree)
     if not current then return nil, err end
-    if current.revision ~= before.revision or current.updated_at ~= before.updated_at then return nil, checkpoint_conflict() end
+    if before.chained then
+        -- An earlier checked mutation in this same store transaction owns the
+        -- revision. Validate its predicted state before consuming this step.
+        if current.status ~= before.status or current.publication_id ~= before.publication_id then return nil, checkpoint_conflict() end
+    elseif current.revision ~= before.revision or current.updated_at ~= before.updated_at then return nil, checkpoint_conflict() end
     for key, count in pairs(before.counts or {}) do
         if not current.counts or tonumber(current.counts[key]) ~= tonumber(count) then return nil, checkpoint_conflict() end
     end
@@ -504,13 +509,32 @@ local function require_store_tx(tx: any, db_type: any, store_id: any): any?
     return nil
 end
 
--- All recipients live in the configured KB database. Lock stores in a shared
--- order, then apply the source mutations in their original order.
-function writer.write_source_fanout(stores, write)
+-- Both ordinary and checkpointed fan-out acquire store locks in this order.
+function writer.lock_source_fanout_tx(tx, dialect, stores)
     local ids = {}
     for id in pairs(stores) do ids[#ids + 1] = id end
     table.sort(ids)
+    local lock = dialect == sql.type.POSTGRES and " FOR NO KEY UPDATE" or ""
+    for _, id in ipairs(ids) do
+        local rows, lock_err = tx:query([[SELECT component_id, embedding_model, CAST(config AS TEXT) AS config,
+            kb_type, source_publication_token
+            FROM kb10_stores WHERE id = $1]] .. lock, {id})
+        if lock_err then return lock_err end
+        local current, expected = rows[1], stores[id]
+        -- New stores always get a fresh token, including successors of a
+        -- legacy store whose token was NULL.
+        if not current or current.component_id ~= expected.component_id
+            or current.source_publication_token ~= expected.source_publication_token
+            or current.embedding_model ~= expected.embedding_model
+            or current.config ~= expected.config_snapshot or current.kb_type ~= expected.kb_type then
+            return errors.new({kind = errors.CONFLICT, retryable = true,
+                message = "source fan-out destination changed during preparation"})
+        end
+    end
+    return nil
+end
 
+function writer.write_source_fanout(stores, write)
     local db, err = ops.get_db()
     if not db then return nil, err end
     local dialect, type_err = ops.get_db_type(db)
@@ -519,24 +543,8 @@ function writer.write_source_fanout(stores, write)
     if not tx then db:release(); return nil, begin_err end
 
     local ok, result, write_err = pcall(function()
-        local lock = dialect == sql.type.POSTGRES and " FOR NO KEY UPDATE" or ""
-        for _, id in ipairs(ids) do
-            local rows, lock_err = tx:query([[SELECT component_id, embedding_model, CAST(config AS TEXT) AS config,
-                kb_type, source_publication_token
-                FROM kb10_stores WHERE id = $1]] .. lock, {id})
-            if lock_err then return nil, lock_err end
-            local current, expected = rows[1], stores[id]
-            -- A legacy store can still have a NULL token. Every new store
-            -- receives a fresh token, so even a legacy store cannot be replaced
-            -- under the same ID without changing the snapshot.
-            if not current or current.component_id ~= expected.component_id
-                or current.source_publication_token ~= expected.source_publication_token
-                or current.embedding_model ~= expected.embedding_model
-                or current.config ~= expected.config_snapshot or current.kb_type ~= expected.kb_type then
-                return nil, errors.new({kind = errors.CONFLICT, retryable = true,
-                    message = "source fan-out destination changed during preparation"})
-            end
-        end
+        local lock_err = writer.lock_source_fanout_tx(tx, dialect, stores)
+        if lock_err then return nil, lock_err end
         return write(tx, dialect)
     end)
     if not ok then return fail_tx(tx, db, result) end
@@ -710,7 +718,7 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
     local current
     if before then
         local confirm_err
-        current, confirm_err = confirm_source_checkpoint(tx, db_type, store_id, id, before, false)
+        current, confirm_err = confirm_source_checkpoint(tx, db_type, store_id, id, before, before.counts ~= nil)
         if not current then return nil, confirm_err end
     end
 
@@ -1233,14 +1241,16 @@ end
 -- Core authorizes appends before opening the shared write transaction. Read
 -- the affected subtree's contribution so the caller can declare those appends
 -- and prove the same facts under the store lock before consuming the event.
-function writer.source_checkpoint_before(store_id: string, selector: table, kind: string): (table?, any?)
+function writer.source_checkpoint_before(store_id: string, selector: table, kind: string, count_rejected: boolean?): (table?, any?)
     local db, err = ops.get_db()
     if err then return nil, err end
     local dialect, type_err = ops.get_db_type(db)
     if type_err then db:release(); return nil, type_err end
     local id, root, read_err = find_document_tx(db, dialect, store_id, selector)
     local before
-    if not read_err then before, read_err = source_checkpoint_state(db, dialect, store_id, id, kind ~= "reject") end
+    if not read_err then
+        before, read_err = source_checkpoint_state(db, dialect, store_id, id, kind ~= "reject" or count_rejected == true)
+    end
     local _, release_err = db:release()
     if read_err or release_err then return nil, read_err or release_err end
     if before and root then
@@ -1283,7 +1293,7 @@ function writer.source_checkpoint_outcome(before: table, change: table): table
 end
 
 function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: string, selector: table,
-        before: table, change: table, expected: table): (boolean?, any?)
+        before: table, change: table, expected: table, encoded_embeddings: boolean?): (boolean?, any?)
     if change.kind == "reject" then
         local id, err = reject_source_revision_tx(tx, dialect, store_id, selector.source_thread_id, change.metadata,
             change.code, before, change.document_id)
@@ -1295,7 +1305,7 @@ function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: s
     if change.kind == "delete" then
         written, write_err = delete_document_tx(tx, dialect, store_id, selector, before)
     else
-        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before)
+        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before, encoded_embeddings)
         if change.replacement.document.metadata.status == "failed" then failed = 1 else added = 1 end
     end
     if write_err or not written then return nil, write_err end
