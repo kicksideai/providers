@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.43](https://github.com/kicksideai/providers/compare/kb10-v0.2.42...kb10-v0.2.43) (2026-11-21)
+
+
+### Features
+
+* **kb10:** expose publication materialization outcomes ([ca0b0b2](https://github.com/kicksideai/providers/commit/ca0b0b2734f1017e3d9702c210467424dea34bef))
+
+
+### Bug Fixes
+
+* **kb10:** bind Activity lookups in SQL order ([d1b143a](https://github.com/kicksideai/providers/commit/d1b143a92de39e458b1e58a53173160f9b2a0eb3))
+
 ## [0.2.42](https://github.com/kicksideai/providers/compare/kb10-v0.2.41...kb10-v0.2.42) (2026-11-20)
 
 
