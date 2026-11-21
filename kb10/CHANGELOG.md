@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.46](https://github.com/kicksideai/providers/compare/kb10-v0.2.45...kb10-v0.2.46) (2026-11-21)
+
+
+### Bug Fixes
+
+* **kb10:** settle shared source fan-out with its cursor ([f577a0d](https://github.com/kicksideai/providers/commit/f577a0d463cdce0c97ccc5ab0f122fa7c7354770))
+
 ## [0.2.45](https://github.com/kicksideai/providers/compare/kb10-v0.2.44...kb10-v0.2.45) (2026-11-21)
 
 
