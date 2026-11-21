@@ -410,8 +410,8 @@ local EMBED_TIMEOUT_SECONDS = 90
 local SUMMARY_TIMEOUT_SECONDS = 60
 local ENRICH_TIMEOUT_SECONDS = 45
 
-local function default_embedder(texts, model, dims, timeout)
-    return llm.embed(texts, {
+local function default_embedder(texts, model, dims, timeout, invoke)
+    return (invoke or llm.embed)(texts, {
         model = model,
         dimensions = dims,
         timeout = timeout or EMBED_TIMEOUT_SECONDS,
@@ -456,7 +456,7 @@ end
 -- no model, no length budget) is (nil, nil), not a failure. The materializer
 -- falls back to the deterministic head summary in either case.
 local function default_summarizer(content: any, model: any, target_chars: any, summary_prompt: any,
-        budget: number?): (string?, any?)
+        budget: number?, invoke: any?): (string?, any?)
     if type(content) ~= "string" or content == "" then return nil, nil end
     if type(model) ~= "string" or model == "" then return nil, nil end
     local target_raw = tonumber(target_chars)
@@ -477,7 +477,7 @@ local function default_summarizer(content: any, model: any, target_chars: any, s
     end
     p:add_user(string.format("Summarize the following document in about %d characters.\n\n%s", target, body))
 
-    local response, gen_err = llm.generate(p, {
+    local response, gen_err = (invoke or llm.generate)(p, {
         model = model,
         temperature = 0.2,
         -- The token ceiling carries headroom over the character target so the
@@ -540,7 +540,7 @@ local function strip_json_fence(s: string): string
     return trim(out)
 end
 
-local function default_batch_enricher(content: any, summary: any, chunks: any, model: any, budget: number?): (any?, any?)
+local function default_batch_enricher(content: any, summary: any, chunks: any, model: any, budget: number?, invoke: any?): (any?, any?)
     if type(chunks) ~= "table" or #chunks == 0 then return {}, nil end
     if type(model) ~= "string" or model == "" then return nil, nil end
     local doc_context = (type(summary) == "string" and summary ~= "") and summary or ""
@@ -565,7 +565,7 @@ local function default_batch_enricher(content: any, summary: any, chunks: any, m
     p:add_system(ENRICH_BATCH_SYSTEM)
     p:add_user(string.format("Document context:\n%s\n\nChunks JSON:\n%s", doc_context, chunks_json))
 
-    local response, gen_err = llm.generate(p, {
+    local response, gen_err = (invoke or llm.generate)(p, {
         model = model,
         temperature = 0.2,
         max_tokens = math.max(256, math.min(1600, #chunks * 48)),
@@ -1293,6 +1293,19 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
     local image_loader = deps.image_loader or default_image_loader
     local captioner = deps.captioner or function(image: any, context: any, model: any): string?
         return default_captioner(image, context, model, image_loader)
+    end
+
+    if deps.model_checkpoint then
+        local checkpoint = deps.model_checkpoint
+        embedder = function(texts, model, dims)
+            return default_embedder(texts, model, dims, nil, checkpoint.embed)
+        end
+        summarizer = function(content, model, chars, instructions)
+            return default_summarizer(content, model, chars, instructions, nil, checkpoint.generate)
+        end
+        batch_enricher = function(content, summary, chunks, model)
+            return default_batch_enricher(content, summary, chunks, model, nil, checkpoint.generate)
+        end
     end
 
     local deletes, source_deletes = {}, {}

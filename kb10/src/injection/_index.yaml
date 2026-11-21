@@ -158,6 +158,17 @@ entries:
       component: kickside.component:component
       ops: kickside.kb10.persist:ops
 
+  - name: source_model_checkpoint
+    kind: library.lua
+    meta: {internal: true}
+    source: file://source_model_checkpoint.lua
+    modules: [hash, json, sql, time]
+    imports:
+      apply: kickside.core.projections:apply
+      canonical: kickside.contract:canonical_json
+      llm: wippy.llm:llm
+      ops: kickside.kb10.persist:ops
+
   - name: primary_source_worker
     kind: process.lua
     meta:
@@ -171,8 +182,8 @@ entries:
         target_db_config: kickside.kb10:db_config
     source: file://primary_source_worker.lua
     method: run
-    modules: [ctx, json, process, logger, time]
-    imports:
+    modules: &source_worker_modules [ctx, json, process, logger, time]
+    imports: &source_worker_imports
       component: kickside.component:component
       enrichment: kickside.kb10.graph:enrichment_consts
       extractor: kickside.kb10.injection:content_extractor_lib
@@ -181,9 +192,27 @@ entries:
       materializer_store: kickside.kb10.injection:materializer_store
       planner: kickside.kb10.injection:source_publication_plan
       slots: kickside.kb10.injection:source_publication_slot
+      model_checkpoint: kickside.kb10.injection:source_model_checkpoint
       core_db: kickside.core:db
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types
+
+  - name: resumable_primary_source_worker
+    kind: process.lua
+    meta:
+      type: projection.worker
+      kind: knowledge.injection.source
+      private: true
+      checkpointed_apply: true
+      filtered_checkpoint: true
+      filtered_continuation: true
+      transition_from:
+        worker_ref: proc://kickside.kb10.injection:primary_source_worker
+        target_db_config: kickside.kb10:db_config
+    source: file://primary_source_worker.lua
+    method: run
+    modules: *source_worker_modules
+    imports: *source_worker_imports
 
   - name: checkpoint_source_worker
     kind: process.lua

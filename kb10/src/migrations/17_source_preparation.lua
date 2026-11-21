@@ -56,7 +56,7 @@ return require("migration").define(function()
                         ordinal INTEGER NOT NULL,
                         input_sha TEXT NOT NULL,
                         output_sha TEXT NOT NULL,
-                        vector_count INTEGER NOT NULL CHECK (vector_count>0),
+                        vector_count INTEGER NOT NULL CHECK (vector_count>=0),
                         payload ]] .. bytes .. [[ NOT NULL,
                         PRIMARY KEY(store_id,cursor_id,ordinal),
                         FOREIGN KEY(store_id,cursor_id)
