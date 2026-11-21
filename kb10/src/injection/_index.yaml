@@ -270,7 +270,6 @@ entries:
       - process
       - uuid
     imports:
-      projection_worker: kickside.core.projections.persist:worker
       source_deadline: kickside.kb10.injection:source_deadline
       text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
@@ -319,7 +318,6 @@ entries:
       - process
       - uuid
     imports:
-      projection_worker: kickside.core.projections.persist:worker
       source_deadline: kickside.kb10.injection:source_deadline
       text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm

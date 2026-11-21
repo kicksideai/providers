@@ -78,9 +78,10 @@ local function define_tests()
 
         test.it("returns a complete ordinary prefix at the deadline or after a supervised timeout", function()
             local now = require("time").now():unix_nano()
-            local function run(deadline, last_error)
+            local function run(deadline, last_error, previous_execution_timed_out)
                 return source_worker.run_proc({
                     thread_id = uuid(), projection = {id = uuid()}, execution_deadline_ns = deadline,
+                    previous_execution_timed_out = previous_execution_timed_out,
                     cursor = {id = uuid(), last_seq = 1, last_error = last_error},
                     range = {from_seq = 2, to_seq = 12, target_seq = 12},
                     events = {build_event({seq = 3, type = "unrelated.signal", body = {}}),
@@ -90,8 +91,11 @@ local function define_tests()
             -- The next eligible source is at eight. A closed prefix includes
             -- the filtered gap and leaves that source for the next claim.
             test.eq(run(now - 1, nil).last_seq, 7)
-            -- Retained cursors from 0.2.39 contain this Core timeout marker.
-            test.eq(run(now + 60000000000, "projection worker exceeded max_execution_ms").last_seq, 7)
+            -- Jobs can terminate Core before it can write the cursor error,
+            -- even when that cursor still holds an earlier provider failure.
+            test.eq(run(now + 60000000000, nil, true).last_seq, 7)
+            test.eq(run(now + 60000000000, "temporary provider outage", true).last_seq, 7)
+            test.eq(run(now + 60000000000, nil, "true").last_seq, 12)
             test.eq(run(now + 60000000000, "temporary provider outage").last_seq, 12)
             test.eq(run(now + 60000000000, "").last_seq, 12)
             test.eq(run(nil, nil).last_seq, 12)
