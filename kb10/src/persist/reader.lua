@@ -624,14 +624,19 @@ function reader.publication_outcomes(store_id: any, refs: any)
     local publication=dialect == sql.type.POSTGRES and "n.metadata->>'upload_publication_id'" or "json_extract(n.metadata, '$.upload_publication_id')"
     local status=dialect == sql.type.POSTGRES and "n.metadata->>'status'" or "json_extract(n.metadata, '$.status')"
     local failure=dialect == sql.type.POSTGRES and "n.metadata->>'error'" or "json_extract(n.metadata, '$.error')"
-    local params: {any}={store_id}
+    local params: {any}={}
     local requested: {string}={}
     for _,ref in ipairs(refs) do
         params[#params+1]=ref.external_id;params[#params+1]=ref.publication_id
         requested[#requested+1]="($" .. tostring(#params-1) .. ",$" .. tostring(#params) .. ")"
     end
+    -- SQLite binds named placeholders in the order in which they first appear.
+    -- The requested receipts occur before the store parameter in both queries.
+    params[#params+1]=store_id
+    local store_parameter="$" .. tostring(#params)
     local values="WITH requested(external_id,publication_id) AS (VALUES " .. table.concat(requested,",") .. ")"
-    local root=root_key .. " = " .. ops.source_root_tuple(dialect,"$1, '', 'knowledge.kb', r.external_id")
+    local root="n." .. ops.SOURCE_BOUND .. " AND " .. root_key .. " = "
+        .. ops.source_root_tuple(dialect,store_parameter .. ", '', 'knowledge.kb', r.external_id")
     local query
     if dialect == sql.type.POSTGRES then
         -- The source-root key is unique. A lateral probe makes PostgreSQL use
