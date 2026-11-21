@@ -128,6 +128,17 @@ entries:
       component: kickside.component:component
       store: kickside.kb10.persist:store
 
+  - name: publication_outcomes
+    kind: function.lua
+    meta:
+      type: automation.publication_outcomes_reader
+      comment: Bounded, KB-READ-gated materialization outcomes for Automation Activity.
+    source: file://publication_outcomes.lua
+    method: lookup
+    modules: [uuid]
+    imports:
+      component: kickside.component:component
+      store: kickside.kb10.persist:store
   - name: source_publication_plan
     kind: library.lua
     source: file://source_publication_plan.lua

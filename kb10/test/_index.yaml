@@ -169,6 +169,16 @@ entries:
     imports:
       thread_ingest: kickside.knowledge.injection:thread_ingest
 
+  - name: publication_outcomes_test
+    kind: function.lua
+    meta: {type: test, suite: knowledge_injection}
+    source: file://publication_outcomes_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      outcomes: kickside.kb10.injection:publication_outcomes
+      store: kickside.kb10.persist:store
+
   - name: graph_change_publish_test
     kind: function.lua
     meta:

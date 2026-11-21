@@ -756,3 +756,10 @@ entries:
       resources: [kickside.models.persist:reload_profiles]
       actions: [funcs.call, funcs.security]
       effect: allow
+
+  - name: publication_outcomes_call
+    kind: security.policy
+    policy:
+      resources: [kickside.kb10.injection:publication_outcomes]
+      actions: [funcs.call, funcs.security]
+      effect: allow
