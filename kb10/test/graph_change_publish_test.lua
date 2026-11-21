@@ -14,6 +14,7 @@ local registry = require("registry")
 local kb10_types = require("kb10_types")
 local node_store = require("node_store")
 local thread_ingest = require("thread_ingest")
+local projection_owner = require("projection_owner")
 
 local GRAPH_CHANGED = "kickside.knowledge.events:graph.changed"
 local KB_ENGINE_IMPL = "kickside.kb10:engine_document"
@@ -49,15 +50,13 @@ local function seed_kb(component_id: string): (string, string)
     exec_ok(db, "INSERT INTO app_users (user_id, email, full_name, password_hash, status, created_at, updated_at) VALUES ($1, $2, 'KB10 Test User', '!test:no-password', 'active', " .. now .. ", " .. now .. ") ON CONFLICT (user_id) DO NOTHING"
         , { OWNER, OWNER .. "@kb10.test" })
     exec_ok(db, "INSERT INTO app_user_groups (user_id, group_id, created_at) VALUES ($1, 'app:user', " .. now .. ") ON CONFLICT (user_id, group_id) DO NOTHING", { OWNER })
-    exec_ok(db, [[INSERT INTO kickside_components (component_id, impl_id, private_context, created_at, updated_at)
-        VALUES ($1, $2, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)]], { component_id, kb10_types.EMBED_BINDING })
-    for key, value in pairs({ title = "Graph change target", class = "knowledge_base" }) do
-        exec_ok(db, [[INSERT INTO kickside_component_meta (meta_id, component_id, key, value, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)]], { uuid(), component_id, key, value })
-    end
-    exec_ok(db, [[INSERT INTO kickside_component_access (access_id, subject_type, subject_id, component_id, source_component_id, access_mask, created_at)
-        VALUES ($1, 'user', $2, $3, $4, 15, CURRENT_TIMESTAMP)]], { uuid(), OWNER, component_id, component_id })
     db:release()
+
+    local registered, register_err = projection_owner.register(OWNER, component_id, kb10_types.EMBED_BINDING,
+        { title = "Graph change target", class = "knowledge_base" })
+    if register_err or not registered or not registered.success then
+        error("register component: " .. tostring(register_err or (registered and registered.error)))
+    end
 
     local store_id, store_err = node_store:create_store({ component_id = component_id, embedding_model = "test-model", config = {} })
     if store_err then error("create_store failed: " .. tostring(store_err)) end
