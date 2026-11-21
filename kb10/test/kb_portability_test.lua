@@ -57,7 +57,8 @@ local function build_source(src: string): { string }
     local nodes: { any } = {}
     local embeddings: { any } = {}
     for i = 1, N_NODES do
-        local id = uuid.v7()
+        -- The last row exercises the inclusive upper bound of the PostgreSQL store range.
+        local id = i == N_NODES and "ffffffff-ffff-ffff-ffff-ffffffffffff" or uuid.v7()
         -- Shallow tree: parents are always earlier (lower index) so the export's
         -- created_at,id order is parent-first.
         local parent = nil
