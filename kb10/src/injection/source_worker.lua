@@ -46,8 +46,6 @@ local materializer_store = require("materializer_store")
 local execution_identity = require("execution_identity")
 local enrichment_consts = require("enrichment_consts")
 
--- Stored by the released Core projection process supervisor on a deadline.
-local PROJECTION_TIMEOUT = "projection worker exceeded max_execution_ms"
 local CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 local EXTRACTOR_META_TYPE = "projection.extractor"
 
@@ -1649,7 +1647,9 @@ local function run_proc(input_raw)
     if type(input.execution_deadline_ns) == "number" and type(input.events) == "table" and #input.events > 1 then
         -- A later input may have exceeded the previous estimate. Isolate
         -- the first source on timeout and preserve ordinary outage retries.
-        local single = type(input.cursor) == "table" and input.cursor.last_error == PROJECTION_TIMEOUT
+        local last_error = type(input.cursor) == "table" and input.cursor.last_error
+        local single = type(last_error) == "string" and last_error ~= ""
+            and last_error == require("projection_worker").PROC_TIMEOUT_MARKER
         local full = source_deadline.new(time.now():unix_nano())
         deps.close_before = function()
             return full(time.now():unix_nano(), input.execution_deadline_ns, single)

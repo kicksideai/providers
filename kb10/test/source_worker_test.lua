@@ -90,6 +90,7 @@ local function define_tests()
             -- The next eligible source is at eight. A closed prefix includes
             -- the filtered gap and leaves that source for the next claim.
             test.eq(run(now - 1, nil).last_seq, 7)
+            -- Retained cursors from 0.2.39 contain this Core timeout marker.
             test.eq(run(now + 60000000000, "projection worker exceeded max_execution_ms").last_seq, 7)
             test.eq(run(now + 60000000000, "temporary provider outage").last_seq, 12)
             test.eq(run(now + 60000000000, "").last_seq, 12)
