@@ -177,6 +177,7 @@ entries:
     imports:
       test: wippy.test:test
       outcomes: kickside.kb10.injection:publication_outcomes
+      store: kickside.kb10.persist:store
 
   - name: graph_change_publish_test
     kind: function.lua

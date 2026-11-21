@@ -72,16 +72,6 @@ entries:
     meta:
       comment: Reads and writes knowledge bases through the knowledge contract.
 
-  - name: dep.kickside.automation
-    kind: ns.dependency
-    component: kickside/automation
-    version: ">=0.2.42"
-    parameters:
-      - name: kickside.automation.engine:publication_outcomes_reader
-        value: kickside.kb10.injection:publication_outcomes
-    meta:
-      comment: Supplies the KB-owned Activity outcome reader without making delivery state depend on materialization.
-
   - name: dep.kickside.models
     kind: ns.dependency
     component: kickside/models
@@ -764,5 +754,12 @@ entries:
     kind: security.policy
     policy:
       resources: [kickside.models.persist:reload_profiles]
+      actions: [funcs.call, funcs.security]
+      effect: allow
+
+  - name: publication_outcomes_call
+    kind: security.policy
+    policy:
+      resources: [kickside.kb10.injection:publication_outcomes]
       actions: [funcs.call, funcs.security]
       effect: allow

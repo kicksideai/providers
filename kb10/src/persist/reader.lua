@@ -608,29 +608,43 @@ function reader.publication_outcomes(store_id: any, refs: any)
     if type(store_id) ~= "string" or type(refs) ~= "table" or #refs == 0 or #refs > 100 then
         return nil, errors.new({kind=errors.INVALID,message="store and 1..100 publication references are required"})
     end
+    -- Validate before borrowing a connection so every early failure has a
+    -- single ownership path and cannot strand a pooled handle.
+    for _,ref in ipairs(refs) do
+        if type(ref) ~= "table" or type(ref.external_id) ~= "string" or type(ref.external_id) == ""
+            or type(ref.publication_id) ~= "string" or type(ref.publication_id) == "" then
+            return nil,errors.new({kind=errors.INVALID,message="invalid publication reference"})
+        end
+    end
     local db,err=ops.get_db()
     if err then return nil,err end
     local dialect,type_err=ops.get_db_type(db)
     if type_err then db:release();return nil,type_err end
-    local key,predicate=ops.source_member_key(dialect)
-    local publication=dialect == sql.type.POSTGRES and "metadata->>'upload_publication_id'" or "json_extract(metadata, '$.upload_publication_id')"
-    local status=dialect == sql.type.POSTGRES and "metadata->>'status'" or "json_extract(metadata, '$.status')"
-    local failure=dialect == sql.type.POSTGRES and "metadata->>'error'" or "json_extract(metadata, '$.error')"
+    local root_key=ops.source_root_key(dialect,"n.")
+    local publication=dialect == sql.type.POSTGRES and "n.metadata->>'upload_publication_id'" or "json_extract(n.metadata, '$.upload_publication_id')"
+    local status=dialect == sql.type.POSTGRES and "n.metadata->>'status'" or "json_extract(n.metadata, '$.status')"
+    local failure=dialect == sql.type.POSTGRES and "n.metadata->>'error'" or "json_extract(n.metadata, '$.error')"
     local params: {any}={store_id}
-    local clauses: {string}={}
+    local requested: {string}={}
     for _,ref in ipairs(refs) do
-        if type(ref) ~= "table" or type(ref.external_id) ~= "string" or type(ref.external_id) == ""
-            or type(ref.publication_id) ~= "string" or type(ref.publication_id) == "" then
-            db:release();return nil,errors.new({kind=errors.INVALID,message="invalid publication reference"})
-        end
-        params[#params+1]="knowledge.kb";params[#params+1]=ref.external_id
-        clauses[#clauses+1]=key .. " = " .. index_tuple(dialect,"$1, $" .. tostring(#params-1) .. ", $" .. tostring(#params),"kb10_source_pair")
+        params[#params+1]=ref.external_id;params[#params+1]=ref.publication_id
+        requested[#requested+1]="($" .. tostring(#params-1) .. ",$" .. tostring(#params) .. ")"
     end
-    local rows,read_err=db:query("SELECT " .. member_columns(dialect) .. " AS external_source, "
-        .. (dialect == sql.type.POSTGRES and "metadata->>'external_id'" or "json_extract(metadata, '$.external_id')")
-        .. " AS external_id, " .. publication .. " AS publication_id, " .. status .. " AS status, " .. failure .. " AS error"
-        .. " FROM kb10_nodes WHERE " .. predicate .. " AND node_type='document' AND parent_id IS NULL AND ("
-        .. table.concat(clauses," OR ") .. ")",params)
+    local values="WITH requested(external_id,publication_id) AS (VALUES " .. table.concat(requested,",") .. ")"
+    local root=root_key .. " = " .. ops.source_root_tuple(dialect,"$1, '', 'knowledge.kb', r.external_id")
+    local query
+    if dialect == sql.type.POSTGRES then
+        -- The source-root key is unique. A lateral probe makes PostgreSQL use
+        -- that exact index once per bounded receipt instead of considering a
+        -- broad OR or a root-table scan for the VALUES list.
+        query=values .. " SELECT n.external_id AS external_id,r.publication_id AS publication_id," .. status .. " AS status," .. failure .. " AS error"
+            .. " FROM requested r CROSS JOIN LATERAL (SELECT * FROM kb10_nodes n WHERE " .. root
+            .. " AND " .. publication .. " = r.publication_id LIMIT 1) n"
+    else
+        query=values .. " SELECT n.external_id AS external_id,r.publication_id AS publication_id," .. status .. " AS status," .. failure .. " AS error"
+            .. " FROM requested r JOIN kb10_nodes n ON " .. root .. " AND " .. publication .. " = r.publication_id"
+    end
+    local rows,read_err=db:query(query,params)
     db:release()
     if read_err then return nil,read_err end
     return rows or {},nil

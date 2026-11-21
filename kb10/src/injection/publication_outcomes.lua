@@ -19,7 +19,8 @@ local function outcome(row: any): any
     if type(row) ~= "table" then return {} end
     if row.status == "failed" then return {status="failed",reason=type(row.error) == "string" and row.error or "Indexing failed"} end
     if row.status == "completed" then return {status="indexed"} end
-    return {status="pending"}
+    if row.status == "pending" then return {status="pending"} end
+    return {}
 end
 
 local function lookup(component_service: any, store_service: any, refs: any): ({any}?,error?)
@@ -53,7 +54,10 @@ local function lookup(component_service: any, store_service: any, refs: any): ({
     return results,nil
 end
 
-function M.lookup(refs: any): ({any}?,error?) return lookup(component,store,refs) end
+function M.lookup(input: any): ({any}?,error?)
+    local refs=type(input) == "table" and input.refs or input
+    return lookup(component,store,refs)
+end
 
 M.classify_for_test=outcome
 M.lookup_for_test=lookup
