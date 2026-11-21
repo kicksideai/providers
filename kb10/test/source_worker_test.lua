@@ -76,6 +76,25 @@ local function define_tests()
             test.eq(result.error_native.message, "thread_id is required")
         end)
 
+        test.it("returns a complete ordinary prefix at the deadline or after a failed claim", function()
+            local now = require("time").now():unix_nano()
+            local function run(deadline, last_error)
+                return source_worker.run_proc({
+                    thread_id = uuid(), projection = {id = uuid()}, execution_deadline_ns = deadline,
+                    cursor = {id = uuid(), last_seq = 1, last_error = last_error},
+                    range = {from_seq = 2, to_seq = 12, target_seq = 12},
+                    events = {build_event({seq = 3, type = "unrelated.signal", body = {}}),
+                        build_event({seq = 8, type = "unrelated.signal", body = {}})},
+                })
+            end
+            -- The next eligible source is at eight. A closed prefix includes
+            -- the filtered gap and leaves that source for the next claim.
+            test.eq(run(now - 1, nil).last_seq, 7)
+            test.eq(run(now + 60000000000, "previous retryable failure").last_seq, 7)
+            test.eq(run(now + 60000000000, "").last_seq, 12)
+            test.eq(run(nil, nil).last_seq, 12)
+        end)
+
         test.it("library run keeps its native error return", function()
             local result, err = source_worker.run({})
             test.is_nil(result)
