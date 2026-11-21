@@ -37,12 +37,26 @@ local PAGE = 1000
 -- Sorts before every real (canonical, lowercase) uuid, so it is the start cursor that
 -- makes one keyset query form serve both the first page and every page after it.
 local ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+local MAX_UUID = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
--- "col > $p" keyset predicate. SQLite ids/node_ids are TEXT; Postgres are UUID, so the
--- cursor (always carried as text) is cast back to uuid there. The seek rides the primary
--- key index either way.
-local function cursor_cmp(db_type: any, col: string, p: string): string
-    return (db_type == sql.type.SQLITE) and (col .. " > " .. p) or (col .. " > " .. p .. "::uuid")
+local function page_query(db: any, db_type: any, store_id: string, relation: string, key: string, columns: string): any
+    local order = " ORDER BY " .. key
+    local select_rows = "SELECT " .. columns .. " FROM " .. relation
+    local query = select_rows .. " WHERE store_id = $1 AND " .. key .. " > $2" .. order .. " LIMIT $3"
+    if db_type == sql.type.POSTGRES then
+        -- Seek a composite range within one store before fetching wide rows.
+        -- Separate store and cursor predicates can favor the global UUID index,
+        -- even for a narrow key-only SELECT.
+        local pair = "(store_id, " .. key .. ")"
+        local keys = "SELECT " .. key .. " FROM " .. relation
+            .. " WHERE " .. pair .. " > ($1::text, $2::uuid)"
+            .. " AND " .. pair .. " <= ($1::text, '" .. MAX_UUID .. "'::uuid)"
+            .. " ORDER BY store_id, " .. key .. " LIMIT $3"
+        query = select_rows .. " WHERE " .. key .. " = ANY(ARRAY(" .. keys .. "))" .. order
+    end
+    return function(cursor, limit)
+        return db:query(query, { store_id, cursor, limit })
+    end
 end
 
 -- Stream a table to <path> as JSONL via KEYSET pagination: page_query(cursor, limit)
@@ -135,11 +149,10 @@ local function impl(args: any): any
     -- memory and never re-scanning prior pages. Nodes seek by id (uuid v7, so id order
     -- is insert order -> a parent precedes its children; import's deferred pass covers
     -- any rare inversion).
-    local node_count, nerr = write_paged(storage, base .. "nodes.jsonl", function(cursor, lim)
-        return db:query(
-            "SELECT id, parent_id, node_type, content, content_type, metadata, source_scope, external_source, external_id FROM kb10_nodes WHERE store_id = $1 AND " .. cursor_cmp(db_type, "id", "$2") .. " ORDER BY id LIMIT $3",
-            { component_id, cursor, lim })
-    end, "id", { decode_field = "metadata", source_bindings = true })
+    local node_count, nerr = write_paged(storage, base .. "nodes.jsonl",
+        page_query(db, db_type, component_id, "kb10_nodes", "id",
+            "id, parent_id, node_type, content, content_type, metadata, source_scope, external_source, external_id"),
+        "id", { decode_field = "metadata", source_bindings = true })
     if not node_count then return done("write nodes: " .. tostring(nerr)) end
 
     local emb_count = 0
@@ -148,10 +161,8 @@ local function impl(args: any): any
         local emb_cols = (db_type == sql.type.SQLITE)
             and "node_id, node_type, parent_id, vec_to_json(embedding) AS embedding"
             or  "node_id, node_type, parent_id, embedding::text AS embedding"
-        local emb_sql = "SELECT " .. emb_cols .. " FROM kb10_embeddings WHERE store_id = $1 AND " .. cursor_cmp(db_type, "node_id", "$2") .. " ORDER BY node_id LIMIT $3"
-        local c, eerr = write_paged(storage, base .. "embeddings.jsonl", function(cursor, lim)
-            return db:query(emb_sql, { component_id, cursor, lim })
-        end, "node_id", {})
+        local c, eerr = write_paged(storage, base .. "embeddings.jsonl",
+            page_query(db, db_type, component_id, "kb10_embeddings", "node_id", emb_cols), "node_id", {})
         if not c then return done("write embeddings: " .. tostring(eerr)) end
         emb_count = c
     else
@@ -161,11 +172,10 @@ local function impl(args: any): any
     end
 
     -- Edges seek by id (carried only as the cursor; import keys edges off node ids).
-    local edge_count, gerr = write_paged(storage, base .. "edges.jsonl", function(cursor, lim)
-        return db:query(
-            "SELECT id, from_node_id, to_node_id, edge_type, weight, metadata FROM kb10_edges WHERE store_id = $1 AND " .. cursor_cmp(db_type, "id", "$2") .. " ORDER BY id LIMIT $3",
-            { component_id, cursor, lim })
-    end, "id", { decode_field = "metadata", strip = { "id" } })
+    local edge_count, gerr = write_paged(storage, base .. "edges.jsonl",
+        page_query(db, db_type, component_id, "kb10_edges", "id",
+            "id, from_node_id, to_node_id, edge_type, weight, metadata"),
+        "id", { decode_field = "metadata", strip = { "id" } })
     if not edge_count then return done("write edges: " .. tostring(gerr)) end
 
     db:release()
