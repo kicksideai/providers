@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.48](https://github.com/kicksideai/providers/compare/kb10-v0.2.47...kb10-v0.2.48) (2026-11-21)
+
+
+### Bug Fixes
+
+* **kb10:** publish slow source pages in complete prefixes ([#222](https://github.com/kicksideai/providers/issues/222)) ([86244e8](https://github.com/kicksideai/providers/commit/86244e8d136e6d8f2c92e109320acb5ae13d14e5))
+
 ## [0.2.47](https://github.com/kicksideai/providers/compare/kb10-v0.2.46...kb10-v0.2.47) (2026-11-21)
 
 
