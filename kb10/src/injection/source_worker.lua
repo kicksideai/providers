@@ -33,6 +33,7 @@ local logger = require("logger"):named("knowledge.injection.source_worker")
 local job_types = require("job_types")
 local registry = require("registry")
 local funcs = require("funcs")
+local component = require("component")
 local uuid = require("uuid")
 local trim = require("text_trim").trim
 
@@ -380,13 +381,13 @@ end
 -- store row and shape the engine from the row's kb_type for the graph/is_graph
 -- branches. Returns (nil, nil) when the kb10 store does not own the component so
 -- the batch reports "no source materializer".
-local function resolve_materialized_store(component_id: string, deps: any): (any?, any?)
+local function resolve_materialized_store(component_id: string, deps: any, fanout_snapshot: boolean?): (any?, any?)
     if type(deps.resolve_materialized_store) == "function" then
-        return deps.resolve_materialized_store(component_id)
+        return deps.resolve_materialized_store(component_id, fanout_snapshot)
     end
 
     local store = materializer_store
-    local row, row_err = store.get_store(store, { component_id = component_id })
+    local row, row_err = store.get_store(store, {component_id = component_id, fanout_snapshot = fanout_snapshot})
     if row_err then return nil, row_err end
     if not row then return nil, nil end
 
@@ -988,6 +989,76 @@ local function checkpoint_writes(cursor: table, sequence: number, outcome: table
     return merge_append_writes(graph, domain)
 end
 
+local function source_targets(worker_config, thread_id: string): { string }
+    local target_kb_ids = type(worker_config.target_kb_ids) == "table" and worker_config.target_kb_ids or {}
+    local targets: { string } = {}
+    for _, id in ipairs(target_kb_ids) do
+        local s = trim(tostring(id))
+        if s ~= "" then targets[#targets + 1] = s end
+    end
+    -- An unconfigured source projection targets its KB primary thread.
+    if #targets == 0 and thread_id ~= "" then targets[1] = thread_id end
+    return targets
+end
+
+local function unique_targets(targets)
+    if #targets < 2 then return targets end
+    local unique, seen = {}, {}
+    for _, id in ipairs(targets) do
+        if not seen[id] then
+            unique[#unique + 1] = id
+            seen[id] = true
+        end
+    end
+    return unique
+end
+
+local function write_fanout(target_ids, deps, thread_id, deletes, source_deletes, prepare_documents)
+    local stores, recipients = {}, {}
+    for _, id in ipairs(target_ids) do
+        local _, access_err = component.validate_access(id, component.ACCESS.WRITE)
+        if access_err then return nil, access_err end
+        local target, target_err = resolve_materialized_store(id, deps, true)
+        if target_err or not target then return nil, target_err or "no source materializer for KB engine" end
+        target.source_thread_id = thread_id
+        stores[target.store_row.id] = target.store_row
+        recipients[#recipients + 1] = {
+            id = id, target = target, deletes = id == thread_id and deletes or source_deletes,
+        }
+    end
+    if prepare_documents then
+        for _, recipient in ipairs(recipients) do
+            local apply, err = prepare_documents(recipient.id, recipient.target)
+            if not apply then return nil, err or "source document preparation returned no result" end
+            recipient.apply_documents = apply
+        end
+        -- Model preparation can outlast a permission grant. Recheck access before
+        -- taking the KB connection because the Component API owns its own handle.
+        for _, recipient in ipairs(recipients) do
+            local _, access_err = component.validate_access(recipient.id, component.ACCESS.WRITE)
+            if access_err then return nil, access_err end
+        end
+    end
+    local publish = deps.stage_fanout or materializer_store.write_fanout
+    return publish(stores, function(transaction_store)
+        for _, recipient in ipairs(recipients) do
+            if #recipient.deletes > 0 then
+                local del, err = source_materializer.delete_documents_from_store({
+                    store = transaction_store, store_row = recipient.target.store_row, source_thread_id = thread_id,
+                }, recipient.deletes)
+                if err then return nil, err end
+                recipient.delete = del
+            end
+            if recipient.apply_documents then
+                local docs, err = recipient.apply_documents(transaction_store)
+                if err or not docs then return nil, err or "source document mutation returned no result" end
+                recipient.document = docs
+            end
+        end
+        return recipients, nil
+    end)
+end
+
 local function run_with_deps(input_raw, deps, defer_finalizers)
     deps = deps or {}
     local input = decode_object(input_raw)
@@ -1016,24 +1087,14 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
         DEFAULT_MAX_PENDING_DELETES
     )
 
-    local target_kb_ids = type(worker_config.target_kb_ids) == "table" and worker_config.target_kb_ids or {}
-    local clean_targets: { string } = {}
-    for _, id in ipairs(target_kb_ids) do
-        local s = trim(tostring(id))
-        if s ~= "" then clean_targets[#clean_targets + 1] = s end
-    end
-    -- The declared source projection carries no worker_config: the KB primary
-    -- thread IS the target (thread_id == component_id == kb_id), so an empty
-    -- target set defaults to this thread's own KB.
-    if #clean_targets == 0 and thread_id ~= "" then
-        clean_targets[#clean_targets + 1] = thread_id
-    end
+    local clean_targets = source_targets(worker_config, thread_id)
     if #clean_targets == 0 then
         return nil, (errors.new({message = "worker_config.target_kb_ids is required", kind = errors.INVALID}) :: error)
     end
     if #clean_targets > MAX_TARGET_KBS then
         return nil, (errors.new({message = "worker_config.target_kb_ids exceeds cap of " .. tostring(MAX_TARGET_KBS), kind = errors.INVALID}) :: error)
     end
+    clean_targets = unique_targets(clean_targets)
 
     local raw_events = type(input.events) == "table" and input.events or {}
 
@@ -1137,6 +1198,10 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
             else
                 local docs = type(items.documents) == "table" and items.documents or {}
                 local deletes = type(items.deletes) == "table" and items.deletes or {}
+                if deps.single_source and #docs + #deletes > 1 then
+                    return nil, errors.new({kind = errors.INVALID,
+                        message = "multi-item extractors require their own source projection"})
+                end
                 if #docs == 0 and #deletes == 0 then
                     -- Extractor handled the event but emitted nothing.
                 else
@@ -1244,14 +1309,32 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
         clean_targets = own_target
     end
 
+    local docs = {}
+    for _, pending in ipairs(pending_documents) do docs[#docs + 1] = pending.doc end
+    local fanout
+    if #clean_targets > 1 or (deps.stage_fanout and #clean_targets > 0) then
+        local prepare_documents = #docs > 0 and function(kb_id, target)
+            return source_materializer.prepare_documents(kb_id, target, docs, embedder, summarizer, enricher,
+                captioner, worker_config, batch_enricher, materializer_store.encode_fanout_embeddings)
+        end or nil
+        local err
+        fanout, err = write_fanout(clean_targets, deps, thread_id, deletes, source_deletes, prepare_documents)
+        if not fanout then
+            return nil, job_types.native_error(err) or errors.new({kind = errors.UNAVAILABLE,
+                retryable = true, message = tostring(err or "source fan-out failed")})
+        end
+    end
+
     -- A whole-batch system error (store down, embedder unreachable, no
     -- materializer for the KB). Per-document content failures are isolated inside
     -- the materializer and do NOT surface here; only an error that fails the
     -- batch as a unit does. Collected rather than returned immediately so the
     -- worker can report the outcome after every target KB is tried.
-    for _, kb_id in ipairs(clean_targets) do
+    for index, kb_id in ipairs(clean_targets) do
         local target_error = nil
-        local target, target_err = resolve_materialized_store(kb_id, deps)
+        local recipient = fanout and fanout[index]
+        local target, target_err
+        if recipient then target = recipient.target else target, target_err = resolve_materialized_store(kb_id, deps) end
         if target_err then
             logger:warn("target KB materializer resolution failed", { kb = kb_id, error = target_err })
             kb_results[#kb_results + 1] = { component_id = kb_id, error = tostring(target_err) }
@@ -1265,7 +1348,9 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
             target.source_thread_id = thread_id
             local target_deletes = kb_id == thread_id and deletes or source_deletes
             if #target_deletes > 0 then
-                local del, del_err = source_materializer.delete_documents_from_store(target, target_deletes)
+                local del, del_err
+                if recipient then del = recipient.delete
+                else del, del_err = source_materializer.delete_documents_from_store(target, target_deletes) end
                 if del_err and errors.is(del_err, errors.CONFLICT) then return nil, del_err end
                 local delete_result, shape_err = checked_result(del, kb_id, "delete")
                 if shape_err then
@@ -1295,9 +1380,12 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
                         }
                     end
                 else
-                    local docs = {}
-                    for _, p in ipairs(pending_documents) do docs[#docs + 1] = p.doc end
-                    local r, kb_err = source_materializer.ingest_documents_into_store(kb_id, target, docs, embedder, summarizer, enricher, captioner, worker_config, batch_enricher)
+                    local r, kb_err
+                    if recipient then r = recipient.document
+                    else
+                        r, kb_err = source_materializer.ingest_documents_into_store(kb_id, target, docs, embedder,
+                            summarizer, enricher, captioner, worker_config, batch_enricher)
+                    end
                     if kb_err and errors.is(kb_err, errors.CONFLICT) then return nil, kb_err end
                     local ingest_result, shape_err = checked_result(r, kb_id, "document")
                     if shape_err then
@@ -1337,7 +1425,14 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
                         metrics.items_failed = metrics.items_failed + (tonumber(r.failed) or 0)
                         kb_results[#kb_results + 1] = r
                         apply_document_result(kb_state(body, kb_id), r)
-                        local placement_ok, placement_err = request_graph_placement(deps, kb_id, target, r)
+                        local placement_ok, placement_err
+                        if recipient then
+                            local called, sent, err = pcall(request_graph_placement, deps, kb_id, target, r)
+                            if called then placement_ok, placement_err = sent, err
+                            else placement_err = tostring(sent) end
+                        else
+                            placement_ok, placement_err = request_graph_placement(deps, kb_id, target, r)
+                        end
                         if not placement_ok then
                             logger:warn("graph placement request failed", { kb = kb_id, error = placement_err })
                             post_materialization_errors[#post_materialization_errors + 1] = {
@@ -1361,8 +1456,7 @@ local function run_with_deps(input_raw, deps, defer_finalizers)
     if batch_error then
         -- A failed ordinary worker leaves Core's cursor at its committed
         -- position. Jobs owns the scheduled retry and its backoff.
-        -- A custom extractor can fan out one event. Preserve its existing
-        -- partial-write outcome and publish the deltas already committed.
+        -- The single-store path may have committed some document results.
         local committed = false
         for _, result in ipairs(kb_results) do
             if has_committed_source_write(result) then committed = true break end
@@ -1467,12 +1561,21 @@ local function run_page(input_raw, deps)
     local input = decode_object(input_raw)
     deps = deps or {}
     local page = input.events
-    if type(page) ~= "table" or #page <= 1 or type(input.projection) ~= "table" then return run_with_deps(input, deps) end
+    if type(page) ~= "table" or #page == 0 or type(input.projection) ~= "table" then return run_with_deps(input, deps) end
+    local body = projection_body(input.projection)
+    input.projection.body = body
+    local cursor = type(input.cursor) == "table" and input.cursor or {}
+    local pending = body.source_finalizer_pending
+    local same_cursor = type(pending) == "table" and type(cursor.id) == "string" and pending.cursor_id == cursor.id
+    local resume = same_cursor and pending.last_seq == cursor.last_seq
+        and type(pending.targets) == "table" and #pending.targets <= MAX_TARGET_KBS
+    if #page == 1 and not same_cursor then return run_with_deps(input, deps) end
     local targets = {}
     local resolver = {resolve_materialized_store = deps.resolve_materialized_store}
     local page_deps = {}
     for key, value in pairs(deps) do page_deps[key] = value end
-    page_deps.resolve_materialized_store = function(id)
+    page_deps.resolve_materialized_store = function(id, fanout_snapshot)
+        if fanout_snapshot then return resolve_materialized_store(id, resolver, true) end
         if targets[id] then return targets[id] end
         local target, err = resolve_materialized_store(id, resolver)
         targets[id] = target
@@ -1481,10 +1584,25 @@ local function run_page(input_raw, deps)
     local range = type(input.range) == "table" and input.range or {}
     local events, ready_by_kb, metrics = {}, {}, {}
     local finalizer_targets, seen_targets = {}, {}
-    local body = projection_body(input.projection)
-    input.projection.body = body
-    local last_seq
+    local function remember(kb_id)
+        if type(kb_id) ~= "string" or kb_id == "" or seen_targets[kb_id] then return end
+        finalizer_targets[#finalizer_targets + 1] = kb_id
+        seen_targets[kb_id] = true
+    end
+    if resume then
+        local configured = {}
+        local worker_config = resolve_worker_config(input.worker_config, input.projection)
+        for _, kb_id in ipairs(source_targets(worker_config, trim(input.thread_id))) do configured[kb_id] = true end
+        for _, kb_id in ipairs(pending.targets) do
+            if configured[kb_id] then remember(kb_id) end
+        end
+    end
+    local last_seq, finalized
     for index, event in ipairs(page) do
+        if index > 1 and deps.close_before and deps.close_before(event) then
+            last_seq = event.seq - 1
+            break
+        end
         input.events = {event}
         local result, err, slice_targets = run_with_deps(input, page_deps, true)
         if err then
@@ -1494,19 +1612,27 @@ local function run_page(input_raw, deps)
         for key, value in pairs(result.patch or {}) do body[key] = value end
         for key, value in pairs(result.metrics) do metrics[key] = (metrics[key] or 0) + value end
         append_source_outputs(events, ready_by_kb, result.append_events)
-        for _, kb_id in ipairs(slice_targets or {}) do
-            if not seen_targets[kb_id] then
-                finalizer_targets[#finalizer_targets + 1] = kb_id
-                seen_targets[kb_id] = true
-            end
-        end
+        if deps.after_source then deps.after_source(result, event) end
+        for _, kb_id in ipairs(slice_targets or {}) do remember(kb_id) end
         last_seq = tonumber(event.seq)
         if index == #page then
             -- The complete page owns finalization, even if its last eligible
             -- event emitted nothing or Core scanned beyond it.
-            append_source_outputs(events, ready_by_kb, build_digest_request_writes(range,
-                trim(input.thread_id), trim(input.projection.id), finalizer_targets, last_seq, last_seq))
+            local writes = build_digest_request_writes(range,
+                trim(input.thread_id), trim(input.projection.id), finalizer_targets, last_seq, last_seq)
+            append_source_outputs(events, ready_by_kb, writes)
+            finalized = writes ~= nil
             last_seq = tonumber(range.to_seq) or last_seq
+        end
+    end
+    -- Core commits this body with the cursor and events. Follow the committed
+    -- position across pause/resume; an explicit reset replaces the body.
+    if (pending == nil or same_cursor) and type(cursor.id) == "string" and type(cursor.last_seq) == "number" then
+        body.source_finalizer_pending = nil
+        if not finalized and #finalizer_targets > 0 then
+            body.source_finalizer_pending = {
+                cursor_id = cursor.id, last_seq = last_seq, targets = finalizer_targets,
+            }
         end
     end
     body.last_from_seq = page[1].seq

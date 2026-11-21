@@ -184,6 +184,25 @@ local function unicode_end(s: string, start: integer, budget: integer): integer
     return last
 end
 
+local function escaped_prefix_bytes(s: string, budget: integer): integer
+    local rendered_bytes = 0
+    local previous = 0
+    for i = 1, #s do
+        local byte = s:byte(i) or 0
+        if byte == 92 or byte == 124 then -- Backslash or pipe
+            rendered_bytes = rendered_bytes + 2
+        elseif byte == 13 or byte == 10 then
+            -- CRLF renders as a single <br>, including when the prefix ends at CR.
+            if byte ~= 10 or previous ~= 13 then rendered_bytes = rendered_bytes + 4 end
+        else
+            rendered_bytes = rendered_bytes + 1
+        end
+        if rendered_bytes > budget then return i - 1 end
+        previous = byte
+    end
+    return #s
+end
+
 local function copy_strings(values: {string}): {string}
     local copy: {string} = {}
     for i, value in ipairs(values) do copy[i] = value end
@@ -299,15 +318,16 @@ function M.plan_document(doc: any, size: integer, read: Reader, emit: Emitter, o
                     local finish = unicode_end(value, start, available)
                     if finish < start then return "spreadsheet cell cannot fit chunk budget" end
                     local fragment = value:sub(start, finish)
-                    while #base + #escape(fragment) + 4 > size and finish >= start do
-                        finish = unicode_end(value, start, finish - start)
-                        fragment = value:sub(start, finish)
+                    local rendered = escape(fragment)
+                    if #rendered > available then
+                        finish = unicode_end(value, start, escaped_prefix_bytes(fragment, available))
+                        if finish < start then return "spreadsheet cell cannot fit chunk budget" end
+                        rendered = escape(value:sub(start, finish))
                     end
-                    if finish < start then return "spreadsheet cell cannot fit chunk budget" end
                     local column_end = first == #selected and #sheet.headers or column
                     local meta = lineage(sheet, number, number, column_start, column_end, part)
                     positions(meta, first, first, column_start, column_end)
-                    local emit_err = emit(base .. "| " .. escape(fragment) .. " |", meta)
+                    local emit_err = emit(base .. "| " .. rendered .. " |", meta)
                     if emit_err then return emit_err end
                     column_start = column
                     start = finish + 1

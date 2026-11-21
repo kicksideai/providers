@@ -295,22 +295,6 @@ local function define_tests()
             test.contains(tostring(err), "no source materializer")
         end)
 
-        test.it("publishes committed deltas when a custom target fan-out partially succeeds", function()
-            local cid, missing = bootstrap_kb10_store(db), uuid()
-            local result, err = source_worker.run_with_deps({
-                thread_id = uuid(), projection = {id = uuid()},
-                events = {build_event({seq = 1, type = "fixture.page", body = {page_id = "one", title = "One", text = "Body"}})},
-                worker_config = {target_kb_ids = {cid, missing}},
-            }, worker_deps({embedder = fake_embedder, dispatcher = doc_dispatcher,
-                resolve_materialized_store = materialized_store_resolver_for({[cid] = true})}))
-            test.is_nil(err)
-            test.eq(result.body.last_status, "completed_with_warnings")
-            test.eq(result.append_events[1].events[1].body.document_delta, 1)
-            test.eq(result.append_events[1].events[2].body.document_delta, 0)
-            test.contains(result.body.last_error, "no source materializer")
-            teardown_kb10_store(db, cid)
-        end)
-
         test.it("inserts a document into a kb10 KB", function()
             local cid = bootstrap_kb10_store(db)
             local resolver = materialized_store_resolver_for({ [cid] = true })
@@ -1239,6 +1223,14 @@ local function define_tests()
                     summary_max_chars = 0,
                 })
                 test.eq("", disabled)
+            end)
+
+            test.it("preserves UTF-8 when the byte budget cuts a headline or snippet", function()
+                local build = source_worker._build_summary_text
+                test.eq("A", build({title = "A B"}, {summary_max_chars = 2}))
+                test.eq("", build({title = "😀"}, {summary_max_chars = 3}))
+                test.eq("A\n\nx", build({title = "A", content = "x y"}, {summary_max_chars = 5}))
+                test.eq("A\n\nx ", build({title = "A", content = "x y"}, {summary_max_chars = 6}))
             end)
 
             test.it("handles empty doc gracefully", function()

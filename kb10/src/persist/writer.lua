@@ -124,14 +124,16 @@ local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any, b
     return ids[1], nil
 end
 
-local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any}, replace: boolean?): ({string}?, any?)
+local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embeddings: {any},
+        replace: boolean?, encoded: boolean?): ({string}?, any?)
     local sqlite = db_type == sql.type.SQLITE
     local ids: {string} = {}
     local rows: {any} = {}
     local owners: {any} = {}
     local owner_count = 0
+    local embedding_type = encoded and "string" or "table"
     for i, input in ipairs(embeddings) do
-        if type(input.embedding) ~= "table" then
+        if type(input.embedding) ~= embedding_type then
             return nil, errors.new({ message = "embedding is required", kind = errors.INVALID })
         end
         local parent_id = input.parent_id
@@ -149,7 +151,8 @@ local function insert_embeddings_tx(tx: any, db_type: any, store_id: any, embedd
             end
             owner[#owner + 1] = ids[i]
         end
-        rows[i] = { ids[i], input.node_id, store_id, input.node_type, parent_id, ops.vector_to_string(input.embedding) }
+        local vector = encoded and input.embedding or ops.vector_to_string(input.embedding)
+        rows[i] = {ids[i], input.node_id, store_id, input.node_type, parent_id, vector}
     end
     local err = insert_rows_tx(tx, "kb10_embeddings", { "id", "node_id", "store_id", "node_type", "parent_id", "embedding" }, rows)
     if err then return nil, err end
@@ -367,8 +370,9 @@ local function source_checkpoint_state(db: any, dialect: string, store_id: strin
         counts, err = subtree_source_counts_tx(db, dialect, store_id, id, true)
         if err then return nil, err end
     end
+    local metadata = decode_metadata(root.revision)
     return {id = id, updated_at = root.updated_at, revision = root.revision,
-        status = decode_metadata(root.revision).status, counts = counts}, nil
+        status = metadata.status, publication_id = metadata.upload_publication_id, counts = counts}, nil
 end
 
 local function checkpoint_conflict(): error
@@ -380,7 +384,11 @@ local function confirm_source_checkpoint(tx: any, dialect: string, store_id: str
     if id ~= before.id then return nil, checkpoint_conflict() end
     local current, err = source_checkpoint_state(tx, dialect, store_id, id, count_subtree)
     if not current then return nil, err end
-    if current.revision ~= before.revision or current.updated_at ~= before.updated_at then return nil, checkpoint_conflict() end
+    if before.chained then
+        -- An earlier checked mutation in this same store transaction owns the
+        -- revision. Validate its predicted state before consuming this step.
+        if current.status ~= before.status or current.publication_id ~= before.publication_id then return nil, checkpoint_conflict() end
+    elseif current.revision ~= before.revision or current.updated_at ~= before.updated_at then return nil, checkpoint_conflict() end
     for key, count in pairs(before.counts or {}) do
         if not current.counts or tonumber(current.counts[key]) ~= tonumber(count) then return nil, checkpoint_conflict() end
     end
@@ -501,6 +509,51 @@ local function require_store_tx(tx: any, db_type: any, store_id: any): any?
     return nil
 end
 
+-- Both ordinary and checkpointed fan-out acquire store locks in this order.
+function writer.lock_source_fanout_tx(tx, dialect, stores)
+    local ids = {}
+    for id in pairs(stores) do ids[#ids + 1] = id end
+    table.sort(ids)
+    local lock = dialect == sql.type.POSTGRES and " FOR NO KEY UPDATE" or ""
+    for _, id in ipairs(ids) do
+        local rows, lock_err = tx:query([[SELECT component_id, embedding_model, CAST(config AS TEXT) AS config,
+            kb_type, source_publication_token
+            FROM kb10_stores WHERE id = $1]] .. lock, {id})
+        if lock_err then return lock_err end
+        local current, expected = rows[1], stores[id]
+        -- New stores always get a fresh token, including successors of a
+        -- legacy store whose token was NULL.
+        if not current or current.component_id ~= expected.component_id
+            or current.source_publication_token ~= expected.source_publication_token
+            or current.embedding_model ~= expected.embedding_model
+            or current.config ~= expected.config_snapshot or current.kb_type ~= expected.kb_type then
+            return errors.new({kind = errors.CONFLICT, retryable = true,
+                message = "source fan-out destination changed during preparation"})
+        end
+    end
+    return nil
+end
+
+function writer.write_source_fanout(stores, write)
+    local db, err = ops.get_db()
+    if not db then return nil, err end
+    local dialect, type_err = ops.get_db_type(db)
+    if type_err then db:release(); return nil, type_err end
+    local tx, begin_err = db:begin()
+    if not tx then db:release(); return nil, begin_err end
+
+    local ok, result, write_err = pcall(function()
+        local lock_err = writer.lock_source_fanout_tx(tx, dialect, stores)
+        if lock_err then return nil, lock_err end
+        return write(tx, dialect)
+    end)
+    if not ok then return fail_tx(tx, db, result) end
+    if not result or write_err then return fail_tx(tx, db, write_err) end
+    local committed, commit_err = commit_tx(tx, db, "source fan-out")
+    if not committed then return nil, commit_err end
+    return result, nil
+end
+
 -- Atomically replace the materialized tree for one canonical source document.
 -- The worker computes embeddings outside this transaction; kb10 owns the commit
 -- boundary for doc + children + vectors + prior-version cleanup.
@@ -512,7 +565,8 @@ end
 -- underneath it — content, children, vectors. Children re-mint their ids; they
 -- are content. A caller-supplied document.id only seeds a first
 -- materialization: on replacement the stored identity wins.
-local function replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any, before: table?)
+local function replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any, before: table?,
+        encoded_embeddings: boolean?)
     if not is_str(store_id) then return nil, errors.new({ message = "store_id is required", kind = errors.INVALID }) end
     local spec = type(replacement) == "table" and replacement or {}
     local document = type(spec.document) == "table" and spec.document or nil
@@ -590,7 +644,7 @@ local function replace_document_tx(tx: any, db_type: any, store_id: any, replace
         embeddings[i] = { node_id = child_ids[i], node_type = nodes[i].node_type,
             parent_id = doc_id, embedding = child_spec.embedding }
     end
-    local embedding_ids, emb_err = insert_embeddings_tx(tx, db_type, store_id, embeddings)
+    local embedding_ids, emb_err = insert_embeddings_tx(tx, db_type, store_id, embeddings, nil, encoded_embeddings)
     if emb_err or not embedding_ids then return nil, errors.wrap(emb_err, "insert child embedding failed") end
 
     return {
@@ -609,6 +663,19 @@ end
 
 function writer.replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any)
     return replace_document_tx(tx, db_type, store_id, replacement)
+end
+
+-- Use the same SQL parameter format as single-document writes. Preparing it
+-- once lets fan-out drop the numeric tables before preparing the next store.
+function writer.encode_source_fanout_embeddings(replacement: any)
+    for _, child in ipairs(replacement.children) do
+        local vector = child.embedding :: {number}
+        child.embedding = ops.vector_to_string(vector)
+    end
+end
+
+function writer.replace_source_fanout_document_tx(tx: any, db_type: any, store_id: any, replacement: any)
+    return replace_document_tx(tx, db_type, store_id, replacement, nil, true)
 end
 
 local function mutate_source_document(store_id: any, mutate: any, ...)
@@ -639,7 +706,7 @@ local SOURCE_REJECTIONS = {
 }
 
 local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, source_thread_id: string,
-        metadata: kb10.Map, code: string, before: table?): (any?, any?, table?)
+        metadata: kb10.Map, code: string, before: table?, planned_id: string?): (any?, any?, table?)
     local binding = ops.source_binding(store_id, metadata.external_source, metadata.external_id, source_thread_id)
     if not binding then
         return nil, errors.new({kind = errors.INVALID, message = "document rejection requires a source identity"})
@@ -651,7 +718,7 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
     local current
     if before then
         local confirm_err
-        current, confirm_err = confirm_source_checkpoint(tx, db_type, store_id, id, before, false)
+        current, confirm_err = confirm_source_checkpoint(tx, db_type, store_id, id, before, before.counts ~= nil)
         if not current then return nil, confirm_err end
     end
 
@@ -700,7 +767,7 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
     if not id then
         local insert_err
         id, insert_err = insert_node_tx(tx, db_type, store_id, {
-            node_type = kb10.NODE_TYPE.DOCUMENT, content_type = "text/plain", metadata = stored,
+            id = planned_id, node_type = kb10.NODE_TYPE.DOCUMENT, content_type = "text/plain", metadata = stored,
         }, binding)
         if insert_err then return nil, insert_err end
     else
@@ -754,8 +821,8 @@ function writer.create_store(component_id: any, embedding_model: any, config: an
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
 
     local _, exec_err = tx:execute(
-        "INSERT INTO kb10_stores (id, component_id, embedding_model, config, kb_type, enrichment_agent_id) VALUES ($1, $2, $3, $4, $5, $6)",
-        { component_id, component_id, embedding_model, config_json, kb_type, enrichment_agent_id }
+        "INSERT INTO kb10_stores (id, component_id, embedding_model, config, kb_type, enrichment_agent_id, source_publication_token) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        { component_id, component_id, embedding_model, config_json, kb_type, enrichment_agent_id, uuid.v7() }
     )
     if exec_err then return fail_tx(tx, db, exec_err) end
 
@@ -1174,16 +1241,21 @@ end
 -- Core authorizes appends before opening the shared write transaction. Read
 -- the affected subtree's contribution so the caller can declare those appends
 -- and prove the same facts under the store lock before consuming the event.
-function writer.source_checkpoint_before(store_id: string, selector: table, kind: string): (table?, any?)
+function writer.source_checkpoint_before(store_id: string, selector: table, kind: string, count_rejected: boolean?): (table?, any?)
     local db, err = ops.get_db()
     if err then return nil, err end
     local dialect, type_err = ops.get_db_type(db)
     if type_err then db:release(); return nil, type_err end
-    local id, _, read_err = find_document_tx(db, dialect, store_id, selector)
+    local id, root, read_err = find_document_tx(db, dialect, store_id, selector)
     local before
-    if not read_err then before, read_err = source_checkpoint_state(db, dialect, store_id, id, kind ~= "reject") end
+    if not read_err then
+        before, read_err = source_checkpoint_state(db, dialect, store_id, id, kind ~= "reject" or count_rejected == true)
+    end
     local _, release_err = db:release()
     if read_err or release_err then return nil, read_err or release_err end
+    if before and root then
+        before.external_source, before.external_id = root.external_source, root.external_id
+    end
     return before, nil
 end
 
@@ -1208,7 +1280,11 @@ function writer.source_checkpoint_outcome(before: table, change: table): table
     end
     local children = change.replacement.children
     delta.embedding_delta = #children - (tonumber(counts.child_embedding_count) or 0)
-    delta.document_delta = delta.document_delta + 1
+    if change.replacement.document.metadata.status == "failed" then
+        delta.failed_delta = delta.failed_delta + 1
+    else
+        delta.document_delta = delta.document_delta + 1
+    end
     for _, child in ipairs(children) do
         if child.node.node_type == kb10.NODE_TYPE.SUMMARY then delta.summary_delta = delta.summary_delta + 1 end
         if child.node.node_type == kb10.NODE_TYPE.CHUNK then delta.chunk_delta = delta.chunk_delta + 1 end
@@ -1217,23 +1293,24 @@ function writer.source_checkpoint_outcome(before: table, change: table): table
 end
 
 function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: string, selector: table,
-        before: table, change: table, expected: table): (boolean?, any?)
+        before: table, change: table, expected: table, encoded_embeddings: boolean?): (boolean?, any?)
     if change.kind == "reject" then
         local id, err = reject_source_revision_tx(tx, dialect, store_id, selector.source_thread_id, change.metadata,
-            change.code, before)
+            change.code, before, change.document_id)
+        if id and change.document_id and id ~= change.document_id then return nil, checkpoint_conflict() end
         return id ~= nil, err
     end
     local written, write_err
-    local added = 0
+    local added, failed = 0, 0
     if change.kind == "delete" then
         written, write_err = delete_document_tx(tx, dialect, store_id, selector, before)
     else
-        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before)
-        added = 1
+        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before, encoded_embeddings)
+        if change.replacement.document.metadata.status == "failed" then failed = 1 else added = 1 end
     end
     if write_err or not written then return nil, write_err end
     if added - written.removed_document_count ~= expected.document_delta
-        or -written.removed_failed_document_count ~= expected.failed_delta
+        or failed - written.removed_failed_document_count ~= expected.failed_delta
         or (written.summary_count or 0) - written.removed_summary_count ~= expected.summary_delta
         or (written.chunk_count or 0) - written.removed_chunk_count ~= expected.chunk_delta
         or (written.embedding_count or 0) - written.removed_embedding_count ~= expected.embedding_delta then

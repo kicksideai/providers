@@ -24,6 +24,7 @@ entries:
     imports:
       text_trim: kickside.contract:text_trim
       kb10_store: kickside.kb10.persist:store
+      writer: kickside.kb10.persist:writer
 
   - name: tabular_chunker
     kind: library.lua
@@ -110,6 +111,80 @@ entries:
       ops: kickside.kb10.persist:ops
       store: kickside.kb10.persist:store
 
+  - name: failed_upload_source
+    kind: library.lua
+    meta: {private: true}
+    source: file://failed_upload_source.lua
+    modules: [security, uuid]
+    imports:
+      component: kickside.component:component
+      store: kickside.kb10.persist:store
+
+  - name: read_failed_upload_source
+    kind: function.lua
+    source: file://failed_upload_source.lua
+    method: read
+    modules: [security, uuid]
+    imports:
+      component: kickside.component:component
+      store: kickside.kb10.persist:store
+
+  - name: publication_outcomes
+    kind: function.lua
+    meta:
+      type: automation.publication_outcomes_reader
+      comment: Bounded, KB-READ-gated materialization outcomes for Automation Activity.
+    source: file://publication_outcomes.lua
+    method: lookup
+    modules: [uuid]
+    imports:
+      component: kickside.component:component
+      store: kickside.kb10.persist:store
+  - name: source_publication_plan
+    kind: library.lua
+    source: file://source_publication_plan.lua
+    modules: [uuid, json]
+    imports:
+      materializer_store: kickside.kb10.injection:materializer_store
+      writer: kickside.kb10.persist:writer
+
+  - name: source_publication_slot
+    kind: library.lua
+    source: file://source_publication_slot.lua
+    modules: [uuid, sql]
+    imports:
+      job_types: kickside.core.jobs:types
+      error_envelope: kickside.contract:error_envelope
+      component: kickside.component:component
+      ops: kickside.kb10.persist:ops
+
+  - name: primary_source_worker
+    kind: process.lua
+    meta:
+      type: projection.worker
+      kind: knowledge.injection.source
+      private: true
+      checkpointed_apply: true
+      filtered_checkpoint: true
+      transition_from:
+        worker_ref: proc://kickside.kb10.injection:source_worker_proc
+        target_db_config: kickside.kb10:db_config
+    source: file://primary_source_worker.lua
+    method: run
+    modules: [ctx, json, process, logger]
+    imports:
+      component: kickside.component:component
+      enrichment: kickside.kb10.graph:enrichment_consts
+      extractor: kickside.kb10.injection:content_extractor_lib
+      ordinary: kickside.kb10.injection:source_worker_lib
+      materializer: kickside.kb10.injection:source_materializer
+      materializer_store: kickside.kb10.injection:materializer_store
+      planner: kickside.kb10.injection:source_publication_plan
+      slots: kickside.kb10.injection:source_publication_slot
+      core_db: kickside.core:db
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
   - name: checkpoint_source_worker
     kind: process.lua
     meta:
@@ -175,6 +250,10 @@ entries:
       kind: knowledge.injection.source
       category: injection
       icon: tabler:database-import
+      registered_checkpoint:
+        writer_ref: proc://kickside.kb10.injection:registered_source_worker
+        target_db_config: kickside.kb10:db_config
+        destinations_key: target_kb_ids
     source: file://source_worker.lua
     modules:
       - json
@@ -198,6 +277,27 @@ entries:
       job_types: kickside.core.jobs:types
       enrichment_consts: kickside.kb10.graph:enrichment_consts
     method: run_proc
+
+  - name: registered_source_worker
+    kind: process.lua
+    meta:
+      type: projection.worker
+      kind: knowledge.injection.source
+      private: true
+      checkpointed_apply: true
+      filtered_checkpoint: true
+      registered_checkpoint_writer: true
+    source: file://registered_source_worker.lua
+    method: run
+    modules: [logger, process]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+      materializer_store: kickside.kb10.injection:materializer_store
+      ops: kickside.kb10.persist:ops
+      ordinary: kickside.kb10.injection:source_worker_lib
+      planner: kickside.kb10.injection:source_publication_plan
+      writer: kickside.kb10.persist:writer
 
   - name: source_worker_lib
     kind: library.lua
@@ -285,7 +385,7 @@ entries:
     meta:
       comment: Finds KB source projections invalidated by an embedding provider rejection and resumes them through Core.
     source: file://source_repair.lua
-    modules: [sql]
+    modules: [sql, funcs]
     imports:
       core_db: kickside.core:db
       projection_writer: kickside.core.projections.persist:writer
@@ -299,7 +399,7 @@ entries:
       comment: Resumes KB source projections that an earlier release invalidated on an embedding provider rejection.
     source: file://source_repair.lua
     method: run
-    modules: [sql]
+    modules: [sql, funcs]
     imports:
       core_db: kickside.core:db
       projection_writer: kickside.core.projections.persist:writer

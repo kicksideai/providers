@@ -5,6 +5,8 @@ local http_errors = require("http_errors")
 local node_store = require("node_store")
 local query_params = require("query_params")
 local thread_ingest = require("thread_ingest")
+local failed_upload_source = require("failed_upload_source")
+local registry = require("registry")
 
 local function new(dependencies: any?): any
     local deps = dependencies or {}
@@ -152,6 +154,8 @@ local function handler()
         return
     end
 
+    local can_retry = scope == "failures" and registry.get("kickside.knowledge.api:retry_source.endpoint")
+        and select(2, component.validate_access(kb_id, component.ACCESS.WRITE)) == nil
     local nodes = {}
     for _, row in ipairs(page.nodes) do
         local metadata = row.metadata
@@ -171,6 +175,10 @@ local function handler()
 
         if include_content then
             node.content = row.content
+        end
+        if can_retry then
+            local failed = failed_upload_source.current(row, actor:id())
+            node.retry_source_event_id = failed and failed.failed_event_id or nil
         end
 
         table.insert(nodes, node)

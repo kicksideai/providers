@@ -39,6 +39,41 @@ and public-metadata projections. Knowledge discovers these declarations without
 branching on the engine name. Source materialization uses the descriptor’s
 workers; it does not use a public materializer contract.
 
+## Installed source projection
+
+Core 0.3.41 or later runs the primary KB source worker through Jobs under the
+projection's stored actor and scope. It keeps the ordinary extractor, model
+options, source reducer, graph events, and digest and treatment finalizers.
+Graph placement is best effort after the checkpoint commits. A stop between
+commit and placement delivery can leave a document without a placement request.
+
+Keeper Update all runs migration 15 and wakes Core's existing declaration
+converger. Core preserves the projection, cursor, job, source fold and the
+operator's active or paused state. A busy active predecessor serves its
+backlog through the head recorded at upgrade. At a settled Jobs boundary,
+Core switches the existing slot and the new worker consumes later uploads. A pre-upgrade
+target write whose acknowledgment was lost has no saved outcome from which to
+recover its original counts.
+
+For a shared database resource, Core commits the checked node and vector
+writes, projection fold, cursor advancement and emitted events together. For
+separate databases, KB10 prepares its changes in a target transaction and
+commits that transaction from Core's fenced checkpoint. If the subsequent
+Core commit fails, the next attempt reuses the target's recorded outcome.
+Recovery verifies the store token, owner, cursor, reset and eligible event IDs
+and sequence numbers. Deleting the store retires its token and recovery data.
+Migration 15 initializes existing stores on their next primary-source run.
+
+The store retains one result. It contains the manifest, changed fold fields,
+changed source entries, new dead letters, graph events and placement requests.
+The worker groups inputs up to a 16 MiB prepared-change budget or a 1 MiB
+serialized contribution budget, checking between inputs. One admitted input
+can exceed either budget. Core limits incoming event rows through
+`limits.max_row_bytes` (4 MiB by default), and a source outcome can contain
+multiple copies of lineage or diagnostic text. The underlying projection fold
+still contains the source history and Core rewrites that fold at checkpoint.
+Existing graph state carries the counts available at cutover.
+
 ## Browse document populations
 
 `GET /api/v1/kb10/{id}/browse?scope=documents` lists accepted top-level

@@ -157,3 +157,27 @@ entries:
       migration: wippy.migration:migration
       ops: kickside.kb10.persist:ops
     method: migrate
+
+  - name: 15_source_publication
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-20T16:00:00Z"
+    source: file://15_source_publication.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
+  - name: 16_export_page_indexes
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-21T14:40:00Z"
+    source: file://16_export_page_indexes.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

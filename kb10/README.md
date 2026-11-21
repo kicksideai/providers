@@ -2,7 +2,7 @@
 
 Document and graph knowledge storage, embeddings, and durable ingestion bindings.
 
-This module installs independently into a [KickSide](https://kickside.ai) host.
+The Knowledge base onboarding profile installs KB10 as a separate module. On an existing host, open **System → Modules** and check the installed version of `kickside/kb10` when updating the engine.
 
 ## Quick start
 
@@ -41,6 +41,28 @@ afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make build` from this directory;
 commit regenerated tracked assets with the source.
+
+## Ingestion after an extractor outage
+
+KB10 0.2.38 fixes a case where a source page indexes a document, then stops
+when the next extraction is temporarily unavailable. If the remaining source
+later yields no documents, the worker still requests digest and treatment for
+the KBs that received content. When all extractions are empty and there is no
+prior work to finalize, the worker requests neither digest nor treatment.
+
+This recovery applies when the worker returned its completed part of the
+page.
+
+A Core registered checkpoint lets a public source projection commit a filtered input for multiple
+local destinations with its fold, graph changes, finalizers and cursor. Register
+the projection with `prefetch_events`, an input filter and multiple distinct
+`target_kb_ids`. Core, Jobs and KB10 must share the same configured database
+resource. Explicitly re-register an existing projection to enable this path at
+its current position. [Core checkpoint contract](https://github.com/kicksideai/kickside/pull/865)
+
+Placement requests use the live enrichment service after the checkpoint
+commits. Physically separate databases and durable placement delivery are
+tracked in [Providers #170](https://github.com/kicksideai/providers/issues/170).
 
 ## Original document delivery
 

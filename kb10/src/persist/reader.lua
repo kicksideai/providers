@@ -25,14 +25,16 @@ local function decode_store_config(row: any): any
     return row
 end
 
-function reader.get_store(component_id: any)
+function reader.get_store(component_id: any, fanout_snapshot: boolean?)
     local db, err = ops.get_db()
     if err then return nil, err end
 
-    local rows, query_err = db:query(
-        "SELECT id, component_id, embedding_model, config, auto_summary, auto_description, kb_type, enrichment_agent_id FROM kb10_stores WHERE component_id = $1",
-        { component_id }
-    )
+    local query = "SELECT id, component_id, embedding_model, config, auto_summary, auto_description, kb_type, enrichment_agent_id FROM kb10_stores WHERE component_id = $1"
+    if fanout_snapshot then
+        query = [[SELECT id, component_id, embedding_model, CAST(config AS TEXT) AS config, kb_type, source_publication_token
+            FROM kb10_stores WHERE component_id = $1]]
+    end
+    local rows, query_err = db:query(query, { component_id })
     db:release()
 
     if query_err then return nil, query_err end
@@ -599,6 +601,60 @@ function reader.find_by_external_id(store_id: any, external_source: any, externa
         end
     end
     return rows, nil
+end
+
+-- One bounded indexed read for the source-document materialization outcomes
+-- that Activity requests for a single KB. Callers supply only immutable
+-- publication receipts; missing rows deliberately remain unknown.
+function reader.publication_outcomes(store_id: any, refs: any)
+    if type(store_id) ~= "string" or type(refs) ~= "table" or #refs == 0 or #refs > 100 then
+        return nil, errors.new({kind=errors.INVALID,message="store and 1..100 publication references are required"})
+    end
+    -- Validate before borrowing a connection so every early failure has a
+    -- single ownership path and cannot strand a pooled handle.
+    for _,ref in ipairs(refs) do
+        if type(ref) ~= "table" or type(ref.external_id) ~= "string" or type(ref.external_id) == ""
+            or type(ref.publication_id) ~= "string" or type(ref.publication_id) == "" then
+            return nil,errors.new({kind=errors.INVALID,message="invalid publication reference"})
+        end
+    end
+    local db,err=ops.get_db()
+    if err then return nil,err end
+    local dialect,type_err=ops.get_db_type(db)
+    if type_err then db:release();return nil,type_err end
+    local root_key=ops.source_root_key(dialect,"n.")
+    local publication=dialect == sql.type.POSTGRES and "n.metadata->>'upload_publication_id'" or "json_extract(n.metadata, '$.upload_publication_id')"
+    local status=dialect == sql.type.POSTGRES and "n.metadata->>'status'" or "json_extract(n.metadata, '$.status')"
+    local failure=dialect == sql.type.POSTGRES and "n.metadata->>'error'" or "json_extract(n.metadata, '$.error')"
+    local params: {any}={}
+    local requested: {string}={}
+    for _,ref in ipairs(refs) do
+        params[#params+1]=ref.external_id;params[#params+1]=ref.publication_id
+        requested[#requested+1]="($" .. tostring(#params-1) .. ",$" .. tostring(#params) .. ")"
+    end
+    -- SQLite binds named placeholders in the order in which they first appear.
+    -- The requested receipts occur before the store parameter in both queries.
+    params[#params+1]=store_id
+    local store_parameter="$" .. tostring(#params)
+    local values="WITH requested(external_id,publication_id) AS (VALUES " .. table.concat(requested,",") .. ")"
+    local root="n." .. ops.SOURCE_BOUND .. " AND " .. root_key .. " = "
+        .. ops.source_root_tuple(dialect,store_parameter .. ", '', 'knowledge.kb', r.external_id")
+    local query
+    if dialect == sql.type.POSTGRES then
+        -- The source-root key is unique. A lateral probe makes PostgreSQL use
+        -- that exact index once per bounded receipt instead of considering a
+        -- broad OR or a root-table scan for the VALUES list.
+        query=values .. " SELECT n.external_id AS external_id,r.publication_id AS publication_id," .. status .. " AS status," .. failure .. " AS error"
+            .. " FROM requested r CROSS JOIN LATERAL (SELECT * FROM kb10_nodes n WHERE " .. root
+            .. " AND " .. publication .. " = r.publication_id LIMIT 1) n"
+    else
+        query=values .. " SELECT n.external_id AS external_id,r.publication_id AS publication_id," .. status .. " AS status," .. failure .. " AS error"
+            .. " FROM requested r JOIN kb10_nodes n ON " .. root .. " AND " .. publication .. " = r.publication_id"
+    end
+    local rows,read_err=db:query(query,params)
+    db:release()
+    if read_err then return nil,read_err end
+    return rows or {},nil
 end
 
 return reader

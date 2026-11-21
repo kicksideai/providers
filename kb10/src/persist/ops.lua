@@ -97,8 +97,12 @@ end
 
 function ops.source_root_key(db_type: any, prefix: string?): string
     local p = prefix or ""
-    return index_tuple(db_type, p .. "store_id, " .. p .. "source_scope, " ..
-        p .. "external_source, " .. p .. "external_id", "kb10_source_key")
+    return ops.source_root_tuple(db_type, p .. "store_id, " .. p .. "source_scope, " ..
+        p .. "external_source, " .. p .. "external_id")
+end
+
+function ops.source_root_tuple(db_type: any, fields: string): string
+    return index_tuple(db_type, fields, "kb10_source_key")
 end
 
 function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, binding: any, expected_publication: string?)
@@ -112,7 +116,7 @@ function ops.find_source_root_tx(tx: any, db_type: any, store_id: any, binding: 
     end
     local rows, err = tx:query("SELECT id FROM kb10_nodes WHERE " .. ops.SOURCE_BOUND ..
         " AND " .. ops.source_root_key(db_type) .. " = " ..
-        index_tuple(db_type, "$1, $2, $3, $4", "kb10_source_key") .. version, args)
+        ops.source_root_tuple(db_type, "$1, $2, $3, $4") .. version, args)
     if err then return nil, errors.wrap(err, "failed to find source document") end
     return rows[1] and tostring(rows[1].id), nil
 end

@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.2.46](https://github.com/kicksideai/providers/compare/kb10-v0.2.45...kb10-v0.2.46) (2026-11-21)
+
+
+### Bug Fixes
+
+* **kb10:** settle shared source fan-out with its cursor ([f577a0d](https://github.com/kicksideai/providers/commit/f577a0d463cdce0c97ccc5ab0f122fa7c7354770))
+
+## [0.2.45](https://github.com/kicksideai/providers/compare/kb10-v0.2.44...kb10-v0.2.45) (2026-11-21)
+
+
+### Performance Improvements
+
+* **kb10:** seek export pages by store and row key ([#215](https://github.com/kicksideai/providers/issues/215)) ([757947b](https://github.com/kicksideai/providers/commit/757947bcf264cbd07da2c45a5b226dd218bef1f0))
+
+## [0.2.44](https://github.com/kicksideai/providers/compare/kb10-v0.2.43...kb10-v0.2.44) (2026-11-21)
+
+
+### Bug Fixes
+
+* **kb10:** commit ordinary source fan-out atomically ([#213](https://github.com/kicksideai/providers/issues/213)) ([388d3bd](https://github.com/kicksideai/providers/commit/388d3bd6fa6c993f058d8eb830b051b07c3f20b4))
+
+## [0.2.43](https://github.com/kicksideai/providers/compare/kb10-v0.2.42...kb10-v0.2.43) (2026-11-21)
+
+
+### Features
+
+* **kb10:** expose publication materialization outcomes ([ca0b0b2](https://github.com/kicksideai/providers/commit/ca0b0b2734f1017e3d9702c210467424dea34bef))
+
+
+### Bug Fixes
+
+* **kb10:** bind Activity lookups in SQL order ([d1b143a](https://github.com/kicksideai/providers/commit/d1b143a92de39e458b1e58a53173160f9b2a0eb3))
+
+## [0.2.42](https://github.com/kicksideai/providers/compare/kb10-v0.2.41...kb10-v0.2.42) (2026-11-20)
+
+
+### Features
+
+* **kb10:** retry failed document indexing ([#208](https://github.com/kicksideai/providers/issues/208)) ([3137835](https://github.com/kicksideai/providers/commit/31378353e89256b9094b01fde6f2aada637f272e))
+
+## [0.2.41](https://github.com/kicksideai/providers/compare/kb10-v0.2.40...kb10-v0.2.41) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** preserve UTF-8 in fallback summaries ([#206](https://github.com/kicksideai/providers/issues/206)) ([b62d94c](https://github.com/kicksideai/providers/commit/b62d94ce76db3b124bac3da6ba20493a884e3e13))
+
+## [0.2.40](https://github.com/kicksideai/providers/compare/kb10-v0.2.39...kb10-v0.2.40) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** recover installed source publications across retries ([#204](https://github.com/kicksideai/providers/issues/204)) ([d6b87a8](https://github.com/kicksideai/providers/commit/d6b87a884685ed6cd775cf9dc9ef578d4adc2b8e))
+
+## [0.2.39](https://github.com/kicksideai/providers/compare/kb10-v0.2.38...kb10-v0.2.39) (2026-11-20)
+
+
+### Performance Improvements
+
+* **kb10:** bound escaped spreadsheet cell splitting ([#202](https://github.com/kicksideai/providers/issues/202)) ([176dc75](https://github.com/kicksideai/providers/commit/176dc7560dc8960edda4004ca4a5f7d3c7507bef))
+
+## [0.2.38](https://github.com/kicksideai/providers/compare/kb10-v0.2.37...kb10-v0.2.38) (2026-11-20)
+
+
+### Bug Fixes
+
+* **kb10:** finalize resumed source pages with an empty tail ([#199](https://github.com/kicksideai/providers/issues/199)) ([c6843f7](https://github.com/kicksideai/providers/commit/c6843f70aba13c68c5bedbf63648ce72f30a24c2))
+
 ## [0.2.37](https://github.com/kicksideai/providers/compare/kb10-v0.2.36...kb10-v0.2.37) (2026-11-20)
 
 

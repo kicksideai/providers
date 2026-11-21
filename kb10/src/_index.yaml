@@ -40,7 +40,7 @@ entries:
   - name: dep.kickside.core
     kind: ns.dependency
     component: kickside/core
-    version: ">=0.3.25"
+    version: ">=0.3.41"
     meta:
       comment: Owns the knowledge thread and supervised source checkpoints.
 
@@ -192,6 +192,10 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:14_store_document_counts
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:15_source_publication
+        path: .meta.target_db
+      - entry: kickside.kb10.migrations:16_export_page_indexes
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 
@@ -244,6 +248,7 @@ entries:
       class: [knowledge]
       title: Knowledge Base
       upload_publication_match: kickside.kb10.injection:matches_upload_publication
+      failed_source_retry: kickside.kb10.injection:read_failed_upload_source
       events:
         output:
           - type: kickside.knowledge.events:content.upserted
@@ -259,7 +264,7 @@ entries:
         - kind: knowledge.injection.source
           projection_key: source
           cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          worker_ref: "proc://kickside.kb10.injection:primary_source_worker"
           input_mode: prefetch_events
           batch_size: 1
           events:
@@ -411,7 +416,7 @@ entries:
         - kind: knowledge.injection.source
           projection_key: source
           cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          worker_ref: "proc://kickside.kb10.injection:primary_source_worker"
           input_mode: prefetch_events
           batch_size: 1
           events:
@@ -593,7 +598,7 @@ entries:
         - kind: knowledge.injection.source
           projection_key: source
           cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
+          worker_ref: "proc://kickside.kb10.injection:primary_source_worker"
           input_mode: prefetch_events
           batch_size: 1
           events:
@@ -751,5 +756,12 @@ entries:
     kind: security.policy
     policy:
       resources: [kickside.models.persist:reload_profiles]
+      actions: [funcs.call, funcs.security]
+      effect: allow
+
+  - name: publication_outcomes_call
+    kind: security.policy
+    policy:
+      resources: [kickside.kb10.injection:publication_outcomes]
       actions: [funcs.call, funcs.security]
       effect: allow

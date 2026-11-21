@@ -20,6 +20,8 @@ entries:
       test: wippy.test:test
       uploads: kickside.uploads.persist:upload_record_repo
       writer: kickside.kb10.persist:writer
+      publication_plan: kickside.kb10.injection:source_publication_plan
+      publication_slot: kickside.kb10.injection:source_publication_slot
 
   - name: checkpoint_model_provider
     kind: registry.entry
@@ -146,6 +148,45 @@ entries:
     source: file://../fixtures/projection_owner.lua
     modules: [contract, security, sql]
 
+  - name: retry_fixture_api
+    kind: http.router
+    meta:
+      server: gateway
+    prefix: /retry-fixture
+    middleware: [token_auth]
+    options:
+      token_store: kickside.users.security:tokens
+
+  - name: retry_fixture.endpoint
+    kind: http.endpoint
+    meta:
+      router: retry_fixture_api
+    method: POST
+    path: /knowledge/{id}/retry-source
+    func: kickside.knowledge.api:retry_source
+
+  - name: same_revision_retry_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
+    source: file://source_checkpoint_outage_test.lua
+    method: same_revision
+    modules: [channel, contract, fs, hash, http_client, json, process, registry, security, sql, time, uuid]
+    imports:
+      projection_owner: app:projection_owner_fixture
+      artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      provision: kickside.core.threads:provision
+      projections: kickside.core.projections.persist:writer
+      groups: kickside.users.persist:user_groups_repo
+      session: kickside.users:session
+      store: kickside.kb10.persist:store
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer
+      uploads: kickside.uploads.persist:upload_record_repo
+
   - name: conflict_page
     kind: registry.entry
     meta: {type: kickside.core.threads.event}
@@ -161,7 +202,7 @@ entries:
     kind: contract.binding
     meta:
       events:
-        input: [{type: "app:conflict_page"}]
+        input: [{type: "app:conflict_page"}, {type: "app:registered_fanout_event"}]
         output:
           - {type: "kickside.knowledge.events:content.upserted"}
           - {type: "kickside.knowledge.events:content.deleted"}
@@ -172,8 +213,7 @@ entries:
       - contract: kickside.contract:component
         methods: {get_status: "kickside.core.threads:thread_status"}
 
-  # Only this test descriptor selects the dormant checkpoint worker. KB10's
-  # published Knowledge Base kinds continue to select the ordinary worker.
+  # Keep the earlier single-event checkpoint worker covered independently.
   - name: checkpoint_fixture_descriptor
     kind: registry.entry
     meta:
@@ -190,3 +230,80 @@ entries:
             input:
               - {type: "kickside.knowledge.events:content.upserted"}
               - {type: "kickside.knowledge.events:content.deleted"}
+
+  - name: primary_fixture_descriptor
+    kind: registry.entry
+    meta:
+      impl_id: app:source_fixture_component
+      thread: {class: kb10.test.primary}
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: proc://kickside.kb10.injection:primary_source_worker
+          input_mode: prefetch_events
+          worker_config: {materialization: {summary_model: false, chunk_enrichment_model: false}}
+          events:
+            input:
+              - {type: "kickside.knowledge.events:content.upserted"}
+              - {type: "kickside.knowledge.events:content.deleted"}
+              - {type: "app:finalizer_empty_source"}
+
+  - name: source_fanout_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint}
+    source: file://source_fanout_test.lua
+    method: run
+    modules: [contract, funcs, security, sql]
+    imports:
+      fixtures: app:source_worker_fixtures
+      projection_owner: app:projection_owner_fixture
+      store: kickside.kb10.persist:store
+      source_worker: kickside.kb10.injection:source_worker_lib
+      test: wippy.test:test
+
+  - name: fanout_materialize_fixture
+    kind: function.lua
+    meta: {type: test_helper}
+    source: file://source_fanout_test.lua
+    method: materialize
+    modules: [contract, funcs, security, sql]
+    imports:
+      fixtures: app:source_worker_fixtures
+      projection_owner: app:projection_owner_fixture
+      store: kickside.kb10.persist:store
+      source_worker: kickside.kb10.injection:source_worker_lib
+      test: wippy.test:test
+
+  - name: registered_fanout_event
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+    schema:
+      type: object
+      properties:
+        text: {type: string}
+      required: [text]
+
+  - name: registered_fanout_extractor
+    kind: function.lua
+    meta:
+      type: projection.extractor
+      source: test.registered.fanout
+      event_types: ["app:registered_fanout_event"]
+    source: file://registered_fanout_extractor.lua
+    method: run
+
+  - name: registered_source_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint}
+    source: file://registered_source_test.lua
+    method: run
+    modules: [channel, contract, json, process, security, sql, time, uuid]
+    imports:
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projection_owner: app:projection_owner_fixture
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
+      test: wippy.test:test

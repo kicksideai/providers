@@ -356,6 +356,17 @@ function M.locate_chunks(chunks: {string}): ({string}, {{[string]: any}})
     return texts, located
 end
 
+-- Keep the byte budget without cutting through a UTF-8 code point.
+local function summary_prefix(value: string, budget: integer): string
+    local last = math.min(#value, budget)
+    while last > 0 do
+        local next_byte = string.byte(value, last + 1)
+        if not next_byte or next_byte < 128 or next_byte > 191 then break end
+        last = last - 1
+    end
+    return value:sub(1, last)
+end
+
 function M.build_summary_text(doc: any, opts: any?)
     opts = opts or {}
     local summary_max_chars = 0
@@ -370,11 +381,11 @@ function M.build_summary_text(doc: any, opts: any?)
     end
     local headline = title ~= "" and title or trim(doc.external_id) or ""
     if #headline > summary_max_chars then
-        return headline:sub(1, summary_max_chars)
+        return summary_prefix(headline, summary_max_chars)
     end
     local budget = summary_max_chars - #headline - 2
     if budget < 0 then budget = 0 end
-    local snippet = trim(body:sub(1, budget))
+    local snippet = trim(summary_prefix(body, budget))
     if snippet == "" then return headline end
     if headline == "" then return snippet end
     return headline .. "\n\n" .. snippet
@@ -811,6 +822,11 @@ function M.delete_documents_from_store(target, deletes): (any, any?)
                 removed_failed_document_count = tonumber(removed_row and removed_row.removed_failed_document_count) or 0,
                 removed_summary_count = tonumber(removed_row and removed_row.removed_summary_count) or 0,
                 removed_chunk_count = tonumber(removed_row and removed_row.removed_chunk_count) or 0,
+                embedding_delta = removed_row and removed_row.embedding_delta,
+                document_delta = removed_row and removed_row.document_delta,
+                failed_delta = removed_row and removed_row.failed_delta,
+                chunk_delta = removed_row and removed_row.chunk_delta,
+                summary_delta = removed_row and removed_row.summary_delta,
                 missing = missing,
             }
         end
@@ -1201,7 +1217,9 @@ function M.prepare_document(target: any, doc: any, adapters: table, worker_confi
     return prepared, nil
 end
 
-function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher, captioner, worker_config, batch_enricher): (DocIngestResult, any?)
+local function ingest_documents(component_id: string, target, documents, embedder, summarizer, enricher, captioner,
+        worker_config, batch_enricher, stage_replacement): (DocIngestResult, any?, any?)
+    local deferred = stage_replacement and {} or nil
     local store_row = target.store_row or target
     local store_id = store_row.id
     local store = target.store
@@ -1231,37 +1249,25 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         return result, "vector_dimensions unavailable: " .. tostring(dim_err)
     end
 
-    -- Per-document fault isolation. Plan, embed, and write each document on its
-    -- own so one document that throws mid-materialization (a registry overflow on
-    -- a pathological block, a provider rejection, a malformed chunk) fails in
-    -- isolation and the rest of the batch still materializes. A single document's
-    -- summary/chunks/images are still planned and embedded together, preserving
-    -- their order and node associations; documents simply no longer share a fate.
-    local function materialize_one(doc: any): (boolean, any?, boolean?)
-        local rejection = doc.rejection_code
-        if rejection then
-            local meta = doc.metadata
-            meta.title = meta.title or doc.title or meta.original_filename
-            local receipt, err = store:reject_source_revision({store_id = store_id, metadata = meta, code = rejection})
-            if not receipt then return false, err, true end
-            result.failed = result.failed + 1
-            result.notifications[#result.notifications + 1] = {
-                external_source = meta.external_source, external_id = meta.external_id, external_version = meta.external_version,
-                document_node_id = receipt.document_node_id, status = "failed", error = receipt.error,
-                retained = receipt.retained, persisted = true, failed_delta = receipt.failed_delta,
-            }
-            return true, nil
-        end
-        local prepared, prepare_err, cause = prepare_replacement(doc, target, materialization_opts, dims,
-            summarize, enrich, caption, enrich_batch, embedder)
-        if not prepared then
-            if type(cause) == "userdata" then return false, cause, true end
-            return false, prepare_err
-        end
+    local function reject(doc: any): (boolean, any?, boolean?)
+        local meta = doc.metadata
+        meta.title = meta.title or doc.title or meta.original_filename
+        local receipt, err = store:reject_source_revision({store_id = store_id, metadata = meta, code = doc.rejection_code})
+        if not receipt then return false, err, true end
+        result.failed = result.failed + 1
+        result.notifications[#result.notifications + 1] = {
+            external_source = meta.external_source, external_id = meta.external_id, external_version = meta.external_version,
+            document_node_id = receipt.document_node_id, status = "failed", error = receipt.error,
+            retained = receipt.retained, persisted = true, failed_delta = receipt.failed_delta,
+        }
+        return true, nil
+    end
+
+    local function replace(prepared): (boolean, any?, boolean?)
         local meta = prepared.document.metadata
         local replacement, replace_err = store:replace_document(prepared)
         if replace_err or not replacement then
-            if errors.is(replace_err, errors.CONFLICT) then return false, replace_err end
+            if deferred or errors.is(replace_err, errors.CONFLICT) then return false, replace_err end
             if type(replace_err) == "userdata" and replace_err:retryable() == true then return false, replace_err, true end
             return false, "replace document failed: " .. tostring(replace_err or "no result")
         end
@@ -1292,8 +1298,29 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         n.failed_delta = -(tonumber(n.removed_failed_document_count) or 0)
         n.chunk_delta = (tonumber(n.chunk_count) or 0) - (tonumber(n.removed_chunk_count) or 0)
         n.summary_delta = summary_count - (tonumber(n.removed_summary_count) or 0)
-        n.embedding_delta = (tonumber(n.chunk_delta) or 0) + (tonumber(n.summary_delta) or 0)
+        n.embedding_delta = replacement.embedding_delta or (tonumber(n.chunk_delta) or 0) + (tonumber(n.summary_delta) or 0)
         return true, nil
+    end
+
+    local function materialize_one(doc: any): (boolean, any?, boolean?)
+        local write, payload
+        if doc.rejection_code then
+            write, payload = reject, doc
+        else
+            local prepared, prepare_err, cause = prepare_replacement(doc, target, materialization_opts, dims,
+                summarize, enrich, caption, enrich_batch, embedder)
+            if not prepared then
+                if type(cause) == "userdata" then return false, cause, true end
+                return false, prepare_err
+            end
+            if stage_replacement then stage_replacement(prepared) end
+            write, payload = replace, prepared
+        end
+        if deferred then
+            deferred[#deferred + 1] = function() return write(payload) end
+            return true, nil
+        end
+        return write(payload)
     end
 
     -- Dead-letter a poison document onto the KB-owned source-document read-model:
@@ -1344,85 +1371,124 @@ function M.ingest_documents_into_store(component_id: string, target, documents, 
         return replacement
     end
 
-    -- Drive each document through its own isolated materialization. Content-level
-    -- failures stay isolated so poison documents cannot head-of-line-block their
-    -- siblings. If every document fails for a system-level cause (provider down,
-    -- store unavailable, malformed provider vectors), the batch returns an error
-    -- without writing failed rows so the source worker can retry instead of
-    -- advancing a cursor through an infrastructure outage.
+    local function system_error(cause, all_failed)
+        local cause_kind = type(cause) == "userdata" and cause:kind() or nil
+        -- Core invalidates a projection permanently on an INVALID, NOT_FOUND or
+        -- PERMISSION_DENIED failure. A provider rejection (missing key, unknown
+        -- model) is a dependency outage of this KB, not a defect of its events.
+        return errors.new({
+            kind = errors.UNAVAILABLE,
+            retryable = true,
+            message = "system-level document materialization failed" ..
+                (all_failed and " for all documents: " or ": ") ..
+                tostring(cause or "unknown"),
+            details = { cause_kind = cause_kind },
+        })
+    end
+
+    local function record_failure(doc, failure_message, system_level)
+        local dead_letter_result = nil
+        if not system_level then
+            local persist_err
+            dead_letter_result, persist_err = dead_letter(doc, failure_message, system_level)
+            if persist_err then return false, persist_err end
+        end
+        local dead_letter_node_id = type(dead_letter_result) == "table" and dead_letter_result.document_node_id or nil
+        local removed_documents = tonumber(dead_letter_result and dead_letter_result.removed_document_count) or tonumber(dead_letter_result and dead_letter_result.removed) or 0
+        local removed_failed_documents = tonumber(dead_letter_result and dead_letter_result.removed_failed_document_count) or 0
+        local removed_summaries = tonumber(dead_letter_result and dead_letter_result.removed_summary_count) or 0
+        local removed_chunks = tonumber(dead_letter_result and dead_letter_result.removed_chunk_count) or 0
+        local persisted = dead_letter_result ~= nil
+        result.notifications[#result.notifications + 1] = {
+            external_source = type(doc) == "table" and doc.external_source or nil,
+            external_id = type(doc) == "table" and doc.external_id or nil,
+            external_version = type(doc) == "table" and doc.external_version or nil,
+            user_id = type(doc) == "table" and type(doc.metadata) == "table"
+                and doc.metadata.actor_id or nil,
+            status = "failed",
+            error = failure_message,
+            system_level = system_level,
+            document_node_id = dead_letter_node_id,
+            persisted = persisted,
+            removed_document_count = removed_documents,
+            removed_failed_document_count = removed_failed_documents,
+            removed_summary_count = removed_summaries,
+            removed_chunk_count = removed_chunks,
+            document_delta = persisted and -removed_documents or 0,
+            failed_delta = persisted and (1 - removed_failed_documents) or 0,
+            chunk_delta = persisted and -removed_chunks or 0,
+            summary_delta = persisted and -removed_summaries or 0,
+            embedding_delta = dead_letter_result and dead_letter_result.embedding_delta or (persisted and -(removed_chunks + removed_summaries) or 0),
+        }
+        return true, nil
+    end
+
+    -- Single-store ingestion isolates document failures. Fan-out instead
+    -- returns all writes to the caller and aborts on any dependency failure.
     local system_failures = 0
     local first_system_failure = nil
     for _, doc in ipairs(documents) do
-        -- pcall returns (call_ok, materialize_one's first return, second return).
         local call_ok, doc_ok, doc_err, dependency_failed = pcall(materialize_one, doc)
         if not call_ok or doc_ok ~= true then
             local failure = call_ok and doc_err or doc_ok
             if errors.is(failure, errors.CONFLICT) then return result, failure end
             local failure_message = tostring(failure or "document materialization failed")
-            result.failed = result.failed + 1
             local system_level = dependency_failed == true or is_system_failure(failure_message)
             logger:warn("document materialization failed", {
                 error = failure_message,
                 external_id = doc.external_id,
                 system_level = system_level,
             })
-            local dead_letter_result = nil
-            if not system_level then
-                local persist_err
-                dead_letter_result, persist_err = dead_letter(doc, failure_message, system_level)
-                if persist_err then return result, persist_err end
+            if deferred then
+                if system_level then return result, system_error(failure, false) end
+                deferred[#deferred + 1] = function()
+                    result.failed = result.failed + 1
+                    return record_failure(doc, failure_message, false)
+                end
+            else
+                result.failed = result.failed + 1
+                local recorded, persist_err = record_failure(doc, failure_message, system_level)
+                if not recorded then return result, persist_err end
+                if system_level then
+                    system_failures = system_failures + 1
+                    if not first_system_failure then first_system_failure = failure end
+                end
             end
-            local dead_letter_node_id = type(dead_letter_result) == "table" and dead_letter_result.document_node_id or nil
-            if system_level then
-                system_failures = system_failures + 1
-                if not first_system_failure then first_system_failure = failure end
+        end
+    end
+
+    if deferred then
+        return result, nil, function(transaction_store)
+            store = transaction_store
+            for _, write in ipairs(deferred) do
+                local ok, err = write()
+                if not ok then return nil, err or "source document mutation returned no result" end
             end
-            local removed_documents = tonumber(dead_letter_result and dead_letter_result.removed_document_count) or tonumber(dead_letter_result and dead_letter_result.removed) or 0
-            local removed_failed_documents = tonumber(dead_letter_result and dead_letter_result.removed_failed_document_count) or 0
-            local removed_summaries = tonumber(dead_letter_result and dead_letter_result.removed_summary_count) or 0
-            local removed_chunks = tonumber(dead_letter_result and dead_letter_result.removed_chunk_count) or 0
-            local persisted = dead_letter_result ~= nil
-            result.notifications[#result.notifications + 1] = {
-                external_source = type(doc) == "table" and doc.external_source or nil,
-                external_id = type(doc) == "table" and doc.external_id or nil,
-                external_version = type(doc) == "table" and doc.external_version or nil,
-                user_id = type(doc) == "table" and type(doc.metadata) == "table"
-                    and doc.metadata.actor_id or nil,
-                status = "failed",
-                error = failure_message,
-                system_level = system_level,
-                document_node_id = dead_letter_node_id,
-                persisted = persisted,
-                removed_document_count = removed_documents,
-                removed_failed_document_count = removed_failed_documents,
-                removed_summary_count = removed_summaries,
-                removed_chunk_count = removed_chunks,
-                document_delta = persisted and -removed_documents or 0,
-                failed_delta = persisted and (1 - removed_failed_documents) or 0,
-                chunk_delta = persisted and -removed_chunks or 0,
-                summary_delta = persisted and -removed_summaries or 0,
-                embedding_delta = persisted and -(removed_chunks + removed_summaries) or 0,
-            }
+            result.system_failed = 0
+            return result, nil
         end
     end
 
     result.system_failed = system_failures
     if result.failed > 0 and result.inserted == 0 and system_failures == result.failed then
-        local cause = first_system_failure
-        local cause_kind = type(cause) == "userdata" and cause:kind() or nil
-        -- Core invalidates a projection permanently on an INVALID, NOT_FOUND or
-        -- PERMISSION_DENIED failure. A provider rejection (missing key, unknown
-        -- model) is a dependency outage of this KB, not a defect of its events.
-        return result, errors.new({
-            kind = errors.UNAVAILABLE,
-            retryable = true,
-            message = "system-level document materialization failed for all documents: " ..
-                tostring(cause or "unknown"),
-            details = { cause_kind = cause_kind },
-        })
+        return result, system_error(first_system_failure, true)
     end
 
     return result, nil
+end
+
+function M.ingest_documents_into_store(component_id: string, target, documents, embedder, summarizer, enricher,
+        captioner, worker_config, batch_enricher): (DocIngestResult, any?)
+    local result, err = ingest_documents(component_id, target, documents, embedder, summarizer, enricher,
+        captioner, worker_config, batch_enricher, nil)
+    return result, err
+end
+
+function M.prepare_documents(component_id: string, target, documents, embedder, summarizer, enricher,
+        captioner, worker_config, batch_enricher, stage_replacement): (any?, any?)
+    local _, err, apply = ingest_documents(component_id, target, documents, embedder, summarizer, enricher,
+        captioner, worker_config, batch_enricher, stage_replacement)
+    return apply, err
 end
 
 return M

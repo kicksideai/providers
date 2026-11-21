@@ -25,6 +25,7 @@ store.get_edges = reader.get_edges
 store.get_edges_batch = reader.get_edges_batch
 store.graph_traverse = reader.graph_traverse
 store.find_by_external_id = reader.find_by_external_id
+store.publication_outcomes = reader.publication_outcomes
 
 -- Writes
 store.create_store = writer.create_store
