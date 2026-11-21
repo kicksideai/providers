@@ -795,13 +795,19 @@ function writer.reject_source_revision_tx(tx: any, db_type: any, store_id: any, 
     return reject_source_revision_tx(tx, db_type, store_id, source_thread_id, metadata, code)
 end
 
+local function encode_store_config(config: any)
+    -- Wippy can encode an empty Lua table as an array. Store settings are an object.
+    if not config or (type(config) == "table" and next(config) == nil) then return "{}" end
+    return json.encode(config)
+end
+
 -- Create the per-component store row. The store id equals the component_id so
 -- the control plane (graph root anchor, concept tooling) can address the store
 -- by component_id. opts carries the optional kb_type / enrichment_agent_id the
 -- graph KB variant needs.
 function writer.create_store(component_id: any, embedding_model: any, config: any, opts: any)
     local create_opts = (type(opts) == "table" and opts or {}) :: kb10.StoreCreateOptions
-    local config_json = json.encode(config or {})
+    local config_json = encode_store_config(config)
     local kb_type = create_opts.kb_type or "document"
     local enrichment_agent_id = create_opts.enrichment_agent_id or ""
     local root_node = nil
@@ -844,7 +850,7 @@ function writer.update_config(component_id: any, config: any, expected_snapshot:
     local db, err = ops.get_db()
     if err then return nil, err end
     local query = "UPDATE kb10_stores SET config = $1, updated_at = CURRENT_TIMESTAMP WHERE component_id = $2"
-    local params = { json.encode(config or {}), component_id }
+    local params = { encode_store_config(config), component_id }
     if expected_snapshot ~= nil then
         query = query .. " AND config = $3"
         params[#params + 1] = expected_snapshot
