@@ -250,6 +250,10 @@ entries:
       kind: knowledge.injection.source
       category: injection
       icon: tabler:database-import
+      registered_checkpoint:
+        writer_ref: proc://kickside.kb10.injection:registered_source_worker
+        target_db_config: kickside.kb10:db_config
+        destinations_key: target_kb_ids
     source: file://source_worker.lua
     modules:
       - json
@@ -273,6 +277,27 @@ entries:
       job_types: kickside.core.jobs:types
       enrichment_consts: kickside.kb10.graph:enrichment_consts
     method: run_proc
+
+  - name: registered_source_worker
+    kind: process.lua
+    meta:
+      type: projection.worker
+      kind: knowledge.injection.source
+      private: true
+      checkpointed_apply: true
+      filtered_checkpoint: true
+      registered_checkpoint_writer: true
+    source: file://registered_source_worker.lua
+    method: run
+    modules: [logger, process]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+      materializer_store: kickside.kb10.injection:materializer_store
+      ops: kickside.kb10.persist:ops
+      ordinary: kickside.kb10.injection:source_worker_lib
+      planner: kickside.kb10.injection:source_publication_plan
+      writer: kickside.kb10.persist:writer
 
   - name: source_worker_lib
     kind: library.lua

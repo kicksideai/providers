@@ -202,7 +202,7 @@ entries:
     kind: contract.binding
     meta:
       events:
-        input: [{type: "app:conflict_page"}]
+        input: [{type: "app:conflict_page"}, {type: "app:registered_fanout_event"}]
         output:
           - {type: "kickside.knowledge.events:content.upserted"}
           - {type: "kickside.knowledge.events:content.deleted"}
@@ -273,4 +273,37 @@ entries:
       projection_owner: app:projection_owner_fixture
       store: kickside.kb10.persist:store
       source_worker: kickside.kb10.injection:source_worker_lib
+      test: wippy.test:test
+
+  - name: registered_fanout_event
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+    schema:
+      type: object
+      properties:
+        text: {type: string}
+      required: [text]
+
+  - name: registered_fanout_extractor
+    kind: function.lua
+    meta:
+      type: projection.extractor
+      source: test.registered.fanout
+      event_types: ["app:registered_fanout_event"]
+    source: file://registered_fanout_extractor.lua
+    method: run
+
+  - name: registered_source_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint}
+    source: file://registered_source_test.lua
+    method: run
+    modules: [channel, contract, json, process, security, sql, time, uuid]
+    imports:
+      enrichment_consts: kickside.kb10.graph:enrichment_consts
+      jobs: kickside.core.jobs:jobs
+      models: kickside.models.persist:repo
+      projection_owner: app:projection_owner_fixture
+      projections: kickside.core.projections.persist:writer
+      store: kickside.kb10.persist:store
       test: wippy.test:test
