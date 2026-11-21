@@ -81,8 +81,9 @@ Existing graph state carries the counts available at cutover.
 
 The ordinary source process also checks its supervised deadline between complete
 inputs. During an upgrade it can acknowledge a prefix under the predecessor
-registration, using Core’s existing cursor and Jobs slot. After a failed claim
-it returns the first eligible input alone before resuming ordinary grouping.
+registration, using Core’s existing cursor and Jobs slot. After a supervised
+execution timeout it returns the first eligible input alone before resuming
+ordinary grouping.
 One input still has to complete within one claim.
 
 ## Browse document populations

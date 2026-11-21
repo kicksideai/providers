@@ -76,7 +76,7 @@ local function define_tests()
             test.eq(result.error_native.message, "thread_id is required")
         end)
 
-        test.it("returns a complete ordinary prefix at the deadline or after a failed claim", function()
+        test.it("returns a complete ordinary prefix at the deadline or after a supervised timeout", function()
             local now = require("time").now():unix_nano()
             local function run(deadline, last_error)
                 return source_worker.run_proc({
@@ -90,7 +90,8 @@ local function define_tests()
             -- The next eligible source is at eight. A closed prefix includes
             -- the filtered gap and leaves that source for the next claim.
             test.eq(run(now - 1, nil).last_seq, 7)
-            test.eq(run(now + 60000000000, "previous retryable failure").last_seq, 7)
+            test.eq(run(now + 60000000000, "projection worker exceeded max_execution_ms").last_seq, 7)
+            test.eq(run(now + 60000000000, "temporary provider outage").last_seq, 12)
             test.eq(run(now + 60000000000, "").last_seq, 12)
             test.eq(run(nil, nil).last_seq, 12)
         end)
