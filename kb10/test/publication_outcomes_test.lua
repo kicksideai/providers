@@ -52,7 +52,7 @@ return {run=test.run_cases(function()
         end)
         test.it("reads indexed, missing and inaccessible publication receipts from the native store",function()
             local db=assert(sql.get("app:db"))
-            local kb_id,indexed_publication,missing_publication,private_kb=uuid(),uuid(),uuid(),uuid()
+            local kb_id,indexed_publication,failed_publication,old_publication,private_kb=uuid(),uuid(),uuid(),uuid(),uuid()
             local created,create_err=store.create_store(kb_id,"",{}, {})
             test.is_nil(create_err,tostring(create_err));test.eq(created,kb_id)
             local metadata=assert(json.encode({external_source="knowledge.kb",external_id="visible",upload_publication_id=indexed_publication,status="completed"}))
@@ -60,6 +60,12 @@ return {run=test.run_cases(function()
                 (id,store_id,parent_id,node_type,content,content_type,metadata,source_scope,external_source,external_id)
                 VALUES ($1,$2,NULL,'document','fixture','text/plain',$3,'','knowledge.kb','visible')]],{uuid(),kb_id,metadata})
             test.is_nil(insert_err,tostring(insert_err))
+            local failed_metadata=assert(json.encode({external_source="knowledge.kb",external_id="failed",
+                upload_publication_id=failed_publication,status="failed",error="fixture failed"}))
+            local _,failed_err=db:execute([[INSERT INTO kb10_nodes
+                (id,store_id,parent_id,node_type,content,content_type,metadata,source_scope,external_source,external_id)
+                VALUES ($1,$2,NULL,'document','fixture','text/plain',$3,'','knowledge.kb','failed')]],{uuid(),kb_id,failed_metadata})
+            test.is_nil(failed_err,tostring(failed_err))
             local component={ACCESS={READ=1},validate_access=function(id:any)
                 if id == private_kb then return nil,"denied" end
                 return true,nil
@@ -67,12 +73,14 @@ return {run=test.run_cases(function()
             local services={get_store=function(id:any) return {id=id},nil end,publication_outcomes=store.publication_outcomes}
             local results,read_err=outcomes.lookup_for_test(component,services,{
                 {kb_id=kb_id,external_id="visible",publication_id=indexed_publication},
-                {kb_id=kb_id,external_id="missing",publication_id=missing_publication},
+                {kb_id=kb_id,external_id="failed",publication_id=failed_publication},
+                {kb_id=kb_id,external_id="visible",publication_id=old_publication},
                 {kb_id=private_kb,external_id="private",publication_id=uuid()},
             })
             cleanup(db,kb_id);db:release()
             test.is_nil(read_err,tostring(read_err));test.eq(results[1].status,"indexed")
-            test.is_nil(next(results[2]));test.is_nil(next(results[3]))
+            test.eq(results[2].status,"failed");test.eq(results[2].reason,"fixture failed")
+            test.is_nil(next(results[3]));test.is_nil(next(results[4]))
         end)
     end)
 end)}
