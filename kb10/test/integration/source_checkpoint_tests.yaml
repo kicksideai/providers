@@ -248,3 +248,29 @@ entries:
               - {type: "kickside.knowledge.events:content.upserted"}
               - {type: "kickside.knowledge.events:content.deleted"}
               - {type: "app:finalizer_empty_source"}
+
+  - name: source_fanout_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint}
+    source: file://source_fanout_test.lua
+    method: run
+    modules: [contract, funcs, security, sql]
+    imports:
+      fixtures: app:source_worker_fixtures
+      projection_owner: app:projection_owner_fixture
+      store: kickside.kb10.persist:store
+      source_worker: kickside.kb10.injection:source_worker_lib
+      test: wippy.test:test
+
+  - name: fanout_materialize_fixture
+    kind: function.lua
+    meta: {type: test_helper}
+    source: file://source_fanout_test.lua
+    method: materialize
+    modules: [contract, funcs, security, sql]
+    imports:
+      fixtures: app:source_worker_fixtures
+      projection_owner: app:projection_owner_fixture
+      store: kickside.kb10.persist:store
+      source_worker: kickside.kb10.injection:source_worker_lib
+      test: wippy.test:test

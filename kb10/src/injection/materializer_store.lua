@@ -8,6 +8,7 @@
 -- DTO/colon-methods so the engine-agnostic source_materializer planner drives it.
 
 local kb10_store = require("kb10_store")
+local writer = require("writer")
 local trim = require("text_trim").trim
 
 local M = {}
@@ -153,7 +154,8 @@ end
 -- ─── source write surface (DTO/colon methods) ───────────────────────────
 
 function M.get_store(_self: any, args: any): (any, string?)
-    return kb10_store.get_store(arg_table(args).component_id)
+    local a = arg_table(args)
+    return kb10_store.get_store(a.component_id, a.fanout_snapshot)
 end
 
 function M.vector_dimensions(_self: any, _args: any): (number, string?)
@@ -218,6 +220,32 @@ function M.delete_documents_by_external_id(self: any, args: any): (any, any?)
     if not ok then return nil, lineage_err end
     if self and self.plan then return self.plan("delete", a) end
     return kb10_store.delete_document(a.store_id, a)
+end
+
+M.encode_fanout_embeddings = writer.encode_source_fanout_embeddings
+
+function M.write_fanout(stores, write)
+    return writer.write_source_fanout(stores, function(tx, dialect)
+        local adapter = setmetatable({}, {__index = M})
+        adapter.plan = function(kind, args)
+            local id = args.store_id
+            if not stores[id] then return nil, "source mutation has an unlocked destination" end
+            if kind == "replace" then
+                return writer.replace_source_fanout_document_tx(tx, dialect, id, {
+                    document = args.document,
+                    children = args.children,
+                    source_thread_id = args.document.metadata.source_ref.thread_id,
+                })
+            end
+            if kind == "reject" then
+                local _, err, receipt = writer.reject_source_revision_tx(tx, dialect, id,
+                    args.metadata.source_ref.thread_id, args.metadata, args.code)
+                return receipt, err
+            end
+            return writer.delete_document_tx(tx, dialect, id, args)
+        end
+        return write(adapter)
+    end)
 end
 
 return M
