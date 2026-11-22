@@ -33,7 +33,7 @@ From this module directory:
 make lockrefresh
 make lint
 make test
-(cd test && wippy test --profile postgres --set vars.pg_database=kickside_readme_test)
+make test WIPPY_TEST_ARGS="--profile postgres --set vars.pg_database=kickside_readme_test"
 ```
 
 Create a dedicated PostgreSQL database before the profile run and drop it
