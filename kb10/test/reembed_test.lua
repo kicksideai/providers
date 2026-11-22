@@ -152,6 +152,67 @@ local function define_tests()
             cleanup(d, store_id)
             d:release()
         end)
+
+        test.it("visits the remaining node after a deletion without expanding the maintenance range", function()
+            local component_id = uuid()
+            local store_id = uuid()
+            local d = db()
+            local _, err = d:execute(
+                "INSERT INTO kb10_stores (id, component_id, embedding_model, config) VALUES ($1, $2, $3, $4)",
+                { store_id, component_id, "class:embed", "{}" }
+            )
+            test.is_nil(err, tostring(err))
+
+            local prefix = uuid():sub(1, 24)
+            local function node_id(index: number): string
+                return prefix .. string.format("%012d", index)
+            end
+            local function insert(index: number, content: string)
+                local _, insert_err = d:execute(
+                    "INSERT INTO kb10_nodes (id, store_id, node_type, content, metadata) VALUES ($1, $2, 'chunk', $3, '{}')",
+                    { node_id(index), store_id, content }
+                )
+                test.is_nil(insert_err, tostring(insert_err))
+            end
+            for i = 1, 200 do insert(i, "") end
+            insert(201, "last node at the start of the pass")
+
+            local sent: { string } = {}
+            local moved = false
+            local result, run_err = reembed.run_with_deps(component_id, {
+                embedder = function(texts, _, dims)
+                    local vectors: { { number } } = {}
+                    for i, text in ipairs(texts) do
+                        sent[#sent + 1] = text
+                        local vector: { number } = {}
+                        for index = 1, dims do vector[index] = 0.1 end
+                        vectors[i] = vector
+                    end
+                    return { result = vectors }, nil
+                end,
+                progress = function(counts)
+                    if counts.scanned == 200 and not moved then
+                        moved = true
+                        local _, delete_err = d:execute("DELETE FROM kb10_nodes WHERE id = $1", { node_id(1) })
+                        test.is_nil(delete_err, tostring(delete_err))
+                        insert(202, "node admitted beyond this pass")
+                    end
+                end,
+            })
+            test.is_nil(run_err, tostring(run_err))
+            test.is_true(moved)
+            test.eq((result :: any).total, 201)
+            test.eq((result :: any).scanned, 201)
+            test.eq((result :: any).embedded, 1)
+            test.eq(#sent, 1)
+            test.eq(sent[1], "last node at the start of the pass")
+            local rows, read_err = d:query("SELECT node_id FROM kb10_embeddings WHERE store_id = $1", { store_id })
+            test.is_nil(read_err, tostring(read_err))
+            test.eq(#rows, 1)
+            test.eq(tostring(rows[1].node_id), node_id(201))
+            cleanup(d, store_id)
+            d:release()
+        end)
     end)
 end
 

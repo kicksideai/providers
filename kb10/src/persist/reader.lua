@@ -273,6 +273,39 @@ function reader.browse_nodes(store_id: any, opts: any)
     return rows
 end
 
+-- Maintenance walks nodes in ID order without borrowing the public browse
+-- order. The upper bound and progress total come from the same read snapshot.
+function reader.maintenance_window(store_id: string, node_type: string?)
+    local db, err = ops.get_db()
+    if err then return nil, err end
+    local filter, params = browse_filter(ops.get_db_type(db), store_id, { node_type = node_type })
+    local rows, query_err = db:query("SELECT COUNT(*) AS total, (SELECT id" .. filter ..
+        " ORDER BY id DESC LIMIT 1) AS through_id" .. filter, params)
+    db:release()
+    if query_err then return nil, query_err end
+    return rows[1], nil
+end
+
+function reader.maintenance_page(store_id: string, opts: any)
+    local db, err = ops.get_db()
+    if err then return nil, err end
+    local filter, params = browse_filter(ops.get_db_type(db), store_id, { node_type = opts.node_type })
+    table.insert(params, opts.through_id)
+    filter = filter .. " AND id <= $" .. #params
+    if opts.after_id then
+        table.insert(params, opts.after_id)
+        filter = filter .. " AND id > $" .. #params
+    end
+    table.insert(params, opts.limit)
+    local rows, query_err = db:query("SELECT id, parent_id, node_type, content, content_type, metadata" ..
+        filter .. " ORDER BY id LIMIT $" .. #params, params)
+    db:release()
+    if query_err then return nil, query_err end
+    rows = rows or {}
+    ops.decode_metadata(rows)
+    return rows, nil
+end
+
 function reader.browse_page(store_id: any, opts: any)
     local db, err = ops.get_db()
     if err then return nil, err end
