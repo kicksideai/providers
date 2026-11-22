@@ -9,6 +9,7 @@ return require("migration").define(function()
         for _, dialect in ipairs({"sqlite", "postgres"}) do
             database(dialect, function()
                 up(function(db)
+                    execute(db, "ALTER TABLE kb10_stores ADD COLUMN placement_cursor_id TEXT")
                     execute(db, "ALTER TABLE kb10_nodes ADD COLUMN placement_wake_id TEXT")
                     execute(db, "ALTER TABLE kb10_nodes ADD COLUMN placement_identity TEXT")
                     execute(db, [[CREATE INDEX idx_kb10_placement_pending

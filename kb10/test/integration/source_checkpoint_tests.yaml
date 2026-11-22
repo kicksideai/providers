@@ -217,6 +217,7 @@ entries:
           - {type: "kickside.knowledge.events:graph.changed"}
           - {type: "kickside.knowledge.events:digest.requested"}
           - {type: "kickside.knowledge.events:treatment.requested"}
+          - {type: "kickside.kb10.graph.events:placement.requested", system_only: true}
     contracts:
       - contract: kickside.contract:component
         methods: {get_status: "kickside.core.threads:thread_status"}
@@ -299,6 +300,12 @@ entries:
       source: test.registered.fanout
       event_types: ["app:registered_fanout_event"]
     source: file://registered_fanout_extractor.lua
+    method: run
+
+  - name: placement_probe_worker
+    kind: function.lua
+    meta: {type: projection.worker, kind: app.placement_probe}
+    source: file://placement_probe_worker.lua
     method: run
 
   - name: registered_source_test

@@ -47,7 +47,8 @@ function reader.get_store(component_id: any, fanout_snapshot: boolean?)
 
     local query = "SELECT id, component_id, embedding_model, config, auto_summary, auto_description, kb_type, enrichment_agent_id FROM kb10_stores WHERE component_id = $1"
     if fanout_snapshot then
-        query = [[SELECT id, component_id, embedding_model, CAST(config AS TEXT) AS config, kb_type, source_publication_token
+        query = [[SELECT id, component_id, embedding_model, CAST(config AS TEXT) AS config, kb_type,
+            source_publication_token, enrichment_agent_id, placement_cursor_id
             FROM kb10_stores WHERE component_id = $1]]
     end
     local rows, query_err = db:query(query, { component_id })

@@ -532,7 +532,7 @@ function writer.lock_source_fanout_tx(tx, dialect, stores)
     local lock = dialect == sql.type.POSTGRES and " FOR NO KEY UPDATE" or ""
     for _, id in ipairs(ids) do
         local rows, lock_err = tx:query([[SELECT component_id, embedding_model, CAST(config AS TEXT) AS config,
-            kb_type, source_publication_token
+            kb_type, source_publication_token, enrichment_agent_id, placement_cursor_id
             FROM kb10_stores WHERE id = $1]] .. lock, {id})
         if lock_err then return lock_err end
         local current, expected = rows[1], stores[id]
@@ -541,7 +541,9 @@ function writer.lock_source_fanout_tx(tx, dialect, stores)
         if not current or current.component_id ~= expected.component_id
             or current.source_publication_token ~= expected.source_publication_token
             or current.embedding_model ~= expected.embedding_model
-            or current.config ~= expected.config_snapshot or current.kb_type ~= expected.kb_type then
+            or current.config ~= expected.config_snapshot or current.kb_type ~= expected.kb_type
+            or current.enrichment_agent_id ~= expected.enrichment_agent_id
+            or current.placement_cursor_id ~= expected.placement_cursor_id then
             return errors.new({kind = errors.CONFLICT, retryable = true,
                 message = "source fan-out destination changed during preparation"})
         end

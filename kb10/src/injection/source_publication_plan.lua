@@ -130,10 +130,16 @@ function M.new(store_id, thread_id, ordered)
     return page
 end
 
-function M.write(tx, dialect, id, plans, encoded_embeddings)
+function M.write(tx, dialect, id, plans, encoded_embeddings, placement)
     for _, plan in ipairs(plans) do
+        local pending
+        if placement and plan.change.kind == "replace"
+            and placement.documents[plan.change.replacement.document.id]
+            and plan.change.replacement.document.metadata.status == "completed" then
+            pending = placement
+        end
         local ok, err = writer.write_source_checkpoint_tx(tx, dialect, id, plan.selector, plan.before, plan.change, plan.delta,
-            encoded_embeddings)
+            encoded_embeddings, pending)
         if not ok then return nil, err end
     end
     return true, nil

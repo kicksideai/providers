@@ -259,6 +259,8 @@ entries:
           - type: kickside.knowledge.events:graph.changed
           - type: kickside.knowledge.events:digest.requested
           - type: kickside.knowledge.events:treatment.requested
+          - type: kickside.kb10.graph.events:placement.requested
+            system_only: true
       # Component autoinit reads projections from the registered impl binding
       # (engine.impl_id == kickside.kb10:embeddable). Keep the read-model
       # declarations here so KB create remains registry-driven and declarative.

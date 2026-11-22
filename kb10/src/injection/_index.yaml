@@ -259,6 +259,7 @@ entries:
         writer_ref: proc://kickside.kb10.injection:registered_source_worker
         target_db_config: kickside.kb10:db_config
         destinations_key: target_kb_ids
+        protected_outputs: [kickside.kb10.graph.events:placement.requested]
     source: file://source_worker.lua
     modules:
       - json
@@ -295,7 +296,7 @@ entries:
       registered_checkpoint_writer: true
     source: file://registered_source_worker.lua
     method: run
-    modules: [logger, process]
+    modules: [logger, process, uuid, json]
     imports:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types

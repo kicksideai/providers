@@ -1,0 +1,14 @@
+version: "1.0"
+namespace: kickside.kb10.graph.events
+entries:
+  - name: placement.requested
+    kind: registry.entry
+    meta:
+      type: kickside.core.threads.event
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        wake_id: { type: string }
+      required: [wake_id]
+      additionalProperties: false
