@@ -53,8 +53,9 @@ entries:
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: run
-    modules: [channel, fs, hash, json, process, sql, time, uuid]
+    modules: [channel, fs, hash, json, process, time, uuid]
     imports:
+      source_checkpoint_fixture: app:source_checkpoint_fixture
       projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
@@ -72,8 +73,9 @@ entries:
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: ordinary
-    modules: [channel, fs, hash, json, process, sql, time, uuid]
+    modules: [channel, fs, hash, json, process, time, uuid]
     imports:
+      source_checkpoint_fixture: app:source_checkpoint_fixture
       projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
@@ -110,8 +112,9 @@ entries:
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
     source: file://source_checkpoint_outage_test.lua
     method: finalizer_edges
-    modules: [channel, fs, hash, json, process, sql, time, uuid]
+    modules: [channel, fs, hash, json, process, time, uuid]
     imports:
+      source_checkpoint_fixture: app:source_checkpoint_fixture
       projection_owner: app:projection_owner_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
@@ -168,24 +171,28 @@ entries:
   - name: same_revision_retry_test
     kind: function.lua
     meta: {type: test, suite: kb10_source_checkpoint, timeout: 75s}
-    source: file://source_checkpoint_outage_test.lua
-    method: same_revision
-    modules: [channel, contract, fs, hash, http_client, json, process, registry, security, sql, time, uuid]
+    source: file://same_revision_retry_test.lua
+    method: run
+    modules: [contract, hash, http_client, json, process, registry, security, uuid]
     imports:
       projection_owner: app:projection_owner_fixture
+      source_checkpoint_fixture: app:source_checkpoint_fixture
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
-      enrichment_consts: kickside.kb10.graph:enrichment_consts
+      groups: kickside.users.persist:user_groups_repo
       jobs: kickside.core.jobs:jobs
       models: kickside.models.persist:repo
-      provision: kickside.core.threads:provision
       projections: kickside.core.projections.persist:writer
-      groups: kickside.users.persist:user_groups_repo
+      provision: kickside.core.threads:provision
       session: kickside.users:session
       store: kickside.kb10.persist:store
       test: wippy.test:test
-      threads: kickside.core.threads.persist:writer
       uploads: kickside.uploads.persist:upload_record_repo
+
+  - name: source_checkpoint_fixture
+    kind: library.lua
+    source: file://source_checkpoint_fixture.lua
+    modules: [json, sql, time]
 
   - name: conflict_page
     kind: registry.entry
