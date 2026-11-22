@@ -41,6 +41,7 @@ local llm = require("llm")
 local prompt = require("prompt")
 local artifact_content_repo = require("artifact_content_repo")
 local source_materializer = require("source_materializer")
+local source_deadline = require("source_deadline")
 local materializer_store = require("materializer_store")
 local execution_identity = require("execution_identity")
 local enrichment_consts = require("enrichment_consts")
@@ -1654,7 +1655,18 @@ local function run_page(input_raw, deps)
 end
 
 local function run_proc(input_raw)
-    local result, err = run_page(input_raw)
+    local input = decode_object(input_raw)
+    local deps = {}
+    if type(input.execution_deadline_ns) == "number" and type(input.events) == "table" and #input.events > 1 then
+        -- A later input may have exceeded the previous estimate. Isolate
+        -- the first source on timeout and preserve ordinary outage retries.
+        local single = input.previous_execution_timed_out == true
+        local full = source_deadline.new(time.now():unix_nano())
+        deps.close_before = function()
+            return full(time.now():unix_nano(), input.execution_deadline_ns, single)
+        end
+    end
+    local result, err = run_page(input, deps)
     if err then return {ok = false, error_native = job_types.error_to_data(err)} end
     return result
 end

@@ -106,13 +106,12 @@ end
 
 local SCOPE_ORDER = { "concept", "document", "chunk", "summary" }
 local SCOPE_PLURAL = { concept = "concepts", document = "documents", chunk = "chunks", summary = "summaries" }
-local function scope_line(meta: any): string
-    local m = type(meta) == "table" and meta or {}
+local function scope_line(stats: { [string]: number }): string
     local types = {
-        concept = tonumber(m.concept_count) or 0,
-        document = tonumber(m.document_count) or 0,
-        chunk = tonumber(m.chunk_count) or 0,
-        summary = tonumber(m.summary_count) or 0,
+        concept = stats.concept_count,
+        document = stats.document_count,
+        chunk = stats.chunk_count,
+        summary = stats.summary_count,
     }
     local parts: {string} = {}
     for _, t in ipairs(SCOPE_ORDER) do
@@ -265,10 +264,10 @@ end
 
 -- One KB's holistic overview: a scope line, then a concept map (graph KB) or
 -- document summaries (document KB).
-local function survey_one(kb_id: string, limit: integer, meta: any): (string?, error?)
+local function survey_one(kb_id: string, limit: integer, stats: { [string]: number }): (string?, error?)
     local is_graph, graph_err = kb_nodes.is_graph(kb_id)
     if graph_err then return nil, graph_err end
-    local scope = scope_line(meta)
+    local scope = scope_line(stats)
     local head = (scope ~= "") and (scope .. "\n") or ""
     local body, err
     if is_graph then
@@ -288,7 +287,7 @@ local function kb_title(kb_id: string, meta: any): string
     return kb_id
 end
 
--- summaries (SurveyKB): a holistic, type-aware overview of the bound KB — it leads with public component meta counts and then:
+-- summaries (SurveyKB): a holistic, type-aware overview of the bound KB — it leads with store counts and then:
 --   * graph/wiki KB → a deterministic CONCEPT MAP (labels + doc counts, no content)
 --     that the agent navigates by id (TraverseKBGraph / BrowseKB / GetKBNode);
 --   * document KB → summary node identifiers, labels and parent document ids.
@@ -298,9 +297,22 @@ function M.summaries(args: any, context: any): (any?, error?)
     local a = (type(args) == "table") and (args :: { limit: any }) or {}
     local kb_ids = pick_kb_ids(args, context) :: { string }
     if #kb_ids == 0 then return tool_result.domain_error("kb_id is required") end
+    -- Count each authorized store once while preserving the pinned render order.
+    local authorized_ids: { string } = {}
+    local authorized: { [string]: boolean } = {}
     for _, kb_id in ipairs(kb_ids) do
-        local access_err = readable(kb_id)
-        if access_err then return nil, access_err end
+        if not authorized[kb_id] then
+            local access_err = readable(kb_id)
+            if access_err then return nil, access_err end
+            authorized[kb_id] = true
+            authorized_ids[#authorized_ids + 1] = kb_id
+        end
+    end
+    local rows, store_err = kb_nodes.get_store_statistics(authorized_ids, false)
+    if store_err then return nil, store_err end
+    local stats_by_kb: { [string]: { [string]: number } } = {}
+    for _, row in ipairs(rows or {}) do
+        stats_by_kb[row.component_id] = row.stats
     end
     local limit = norm_limit(a.limit) :: integer
 
@@ -308,11 +320,18 @@ function M.summaries(args: any, context: any): (any?, error?)
     -- so the agent gets a holistic overview of every KB without passing a kb_id.
     local parts: { string } = {}
     for _, kb_id in ipairs(kb_ids) do
-        local meta, meta_err = kb_nodes.public_meta(kb_id)
-        if meta_err then return nil, meta_err end
-        local survey, survey_err = survey_one(kb_id, limit, meta)
+        local stats = stats_by_kb[kb_id]
+        if not stats then
+            return nil, errors.new({ message = "store not found for component " .. kb_id, kind = errors.NOT_FOUND })
+        end
+        local survey, survey_err = survey_one(kb_id, limit, stats)
         if not survey then return nil, survey_err end
-        parts[#parts + 1] = #kb_ids == 1 and survey or ("# " .. kb_title(kb_id, meta) .. "\n\n" .. survey)
+        if #kb_ids > 1 then
+            local meta, meta_err = kb_nodes.public_meta(kb_id)
+            if meta_err then return nil, meta_err end
+            survey = "# " .. kb_title(kb_id, meta) .. "\n\n" .. survey
+        end
+        parts[#parts + 1] = survey
     end
     return table.concat(parts, "\n\n"), nil
 end

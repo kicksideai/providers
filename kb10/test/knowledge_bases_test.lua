@@ -486,6 +486,16 @@ local function define_tests()
                 return cid, store_id
             end
 
+            local function seed_stale_count(cid: string, key: string): ()
+                local rows, err = db:query(
+                    "UPDATE kickside_component_meta SET value = $1 WHERE component_id = $2 AND key = $3 RETURNING value",
+                    { "99", cid, key }
+                )
+                test.is_nil(err, tostring(err))
+                test.eq(#rows, 1)
+                test.eq(rows[1].value, "99")
+            end
+
             test.it("SurveyKB maps every concept and names the BrowseKB call for the rest", function()
                 local cid, store_id = seeded_wiki("survey")
                 for index = 1, 40 do
@@ -493,8 +503,10 @@ local function define_tests()
                         node_type = "concept", content = "Topic " .. index, metadata = { label = string.format("Topic %02d", index) } } })
                     test.is_nil(insert_err)
                 end
+                seed_stale_count(cid, "concept_count")
                 local text, err = exec:call("kickside.kb10.traits:kb_summaries_tool", { kb_id = cid, limit = 35 })
                 test.is_nil(err)
+                test.eq(text:match("^[^\n]+"), "# 40 concepts")
                 test.contains(text, "## Concept map (35)")
                 test.contains(text, "Topic 30")
                 test.contains(text, "more concepts: list them with BrowseKB node_type=concept")
@@ -550,14 +562,27 @@ local function define_tests()
                     metadata = { role = "summary" },
                 })
                 test.is_nil(summary_err)
+                seed_stale_count(cid, "document_count")
+                seed_stale_count(cid, "summary_count")
                 local text, err = exec:call("kickside.kb10.traits:kb_summaries_tool", { kb_id = cid })
                 test.is_nil(err)
+                test.eq(text:match("^[^\n]+"), "# 1 documents · 1 summaries")
                 test.contains(text, "- " .. summary_id .. " [summary]")
                 test.contains(text, "document " .. doc_id)
                 test.is_nil((text:find(summary, 1, true)))
                 local detail, detail_err = exec:call("kickside.kb10.traits:kb_get_node_tool", {kb_id = cid, node_id = summary_id})
                 test.is_nil(detail_err)
                 test.contains(detail, summary)
+
+                local reader_id = prefix .. "outside"
+                local user_err = ensure_test_user(db, reader_id)
+                test.is_nil(user_err, tostring(user_err))
+                local unauthorized, denied = new_executor(reader_id):call(
+                    "kickside.kb10.traits:kb_summaries_tool", { kb_id = cid }
+                )
+                test.is_nil(unauthorized)
+                test.is_true(errors.is(denied, errors.PERMISSION_DENIED), tostring(denied))
+
                 call(exec, "kb_delete", { component_id = cid })
             end)
 

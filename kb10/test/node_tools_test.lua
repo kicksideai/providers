@@ -103,6 +103,20 @@ local function define_tests()
             test.eq(r, "# doc-2 [document]\n\nReturns are accepted for thirty days.")
         end)
 
+        test.it("surveys each pinned KB with its store totals and preserves pinned order", function()
+            local result, err = node_tools.summaries({}, { kb_ids = { "kb-1", "kb-2" } })
+            test.is_nil(err)
+            test.eq(result:find("# Policies\n\n# 2 documents\n", 1, true), 1)
+            test.contains(result, "# Archive\n\n# 1 documents\n")
+        end)
+
+        test.it("checks all pinned KBs before reading store statistics", function()
+            kb_nodes.failure = errors.new({ kind = errors.UNAVAILABLE, message = "node store unavailable" })
+            local result, err = node_tools.summaries({}, { kb_ids = { "kb-1", "denied-kb" } })
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.PERMISSION_DENIED))
+        end)
+
         test.it("fails with the typed access refusal", function()
             for _, tool in ipairs({ "get_node", "browse", "graph", "summaries" }) do
                 local r, err = (node_tools :: any)[tool]({ kb_id = "denied-kb", node_id = "doc-1" })

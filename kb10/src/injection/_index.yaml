@@ -140,11 +140,16 @@ entries:
     imports:
       component: kickside.component:component
       store: kickside.kb10.persist:store
+  - name: source_deadline
+    kind: library.lua
+    source: file://source_deadline.lua
+
   - name: source_publication_plan
     kind: library.lua
     source: file://source_publication_plan.lua
     modules: [uuid, json]
     imports:
+      source_deadline: kickside.kb10.injection:source_deadline
       materializer_store: kickside.kb10.injection:materializer_store
       writer: kickside.kb10.persist:writer
 
@@ -294,6 +299,7 @@ entries:
       - process
       - uuid
     imports:
+      source_deadline: kickside.kb10.injection:source_deadline
       text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt
@@ -341,6 +347,7 @@ entries:
       - process
       - uuid
     imports:
+      source_deadline: kickside.kb10.injection:source_deadline
       text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt

@@ -1,5 +1,6 @@
 local component = require("component")
 local node_store = require("node_store")
+local store_reader = require("store_reader")
 local engines = require("engines")
 
 -- Deterministic node/graph access over kb10's internal persist:node_store.
@@ -9,6 +10,8 @@ local engines = require("engines")
 -- kickside.knowledge:kb_store_lifecycle contract seam. Access control is the
 -- caller's boundary concern (validate_access); this module is pure resolution.
 local M = {}
+
+M.get_store_statistics = store_reader.get_store_statistics
 
 local trim = require("text_trim").trim
 
