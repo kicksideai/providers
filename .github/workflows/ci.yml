@@ -50,10 +50,15 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      with:
+        node-version: '22'
     - uses: kicksideai/.github/actions/setup-wippy@5401fa65bed7d8648125957520e94206ed1ffd0b
       with:
         version: 0.3.66a
         hub-url: https://hub.wippy.ai
+    - name: Verify provider connection secret declarations
+      run: make verify-connection-secrets
     - name: Materialize Wippy frontend build inputs
       run: make ui-kit
     - uses: kicksideai/.github/actions/legal-check@e1186b6a3f9aac84125b7d5300077b7b23a70804

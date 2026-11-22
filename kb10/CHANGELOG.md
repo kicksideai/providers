@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.50](https://github.com/kicksideai/providers/compare/kb10-v0.2.49...kb10-v0.2.50) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** acknowledge ordinary source prefixes before the deadline ([#224](https://github.com/kicksideai/providers/issues/224)) ([3a2fa3b](https://github.com/kicksideai/providers/commit/3a2fa3b03372c348324aec246c5d93048fb5dd43))
+
+## [0.2.49](https://github.com/kicksideai/providers/compare/kb10-v0.2.48...kb10-v0.2.49) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** read SurveyKB totals from the store ([#225](https://github.com/kicksideai/providers/issues/225)) ([4872ad7](https://github.com/kicksideai/providers/commit/4872ad7495d676c99c3ab074474bb9cf35f49fde))
+
 ## [0.2.48](https://github.com/kicksideai/providers/compare/kb10-v0.2.47...kb10-v0.2.48) (2026-11-21)
 
 
