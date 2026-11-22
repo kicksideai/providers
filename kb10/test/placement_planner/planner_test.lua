@@ -1,0 +1,124 @@
+local contract = require("contract")
+local funcs = require("funcs")
+local materializer = require("materializer")
+local node_store = require("node_store")
+local planner = require("planner")
+local security = require("security")
+local sql = require("sql")
+local test = require("test")
+local uuid = require("uuid")
+
+local PLAN_REF = "app.placement_planner:plan"
+
+local function executor(id)
+    local actor = assert(security.new_actor(id, {}))
+    local scope = assert(security.named_scope("wippy.security:process"))
+    local components = assert(assert(contract.get("kickside.component:component_service")):with_actor(actor):with_scope(scope):open())
+    return funcs.new():with_actor(actor):with_scope(scope), components
+end
+
+local function fixture(summary, legacy)
+    local exec, components = executor("placement-planner-owner")
+    local component_id, event = uuid.v7(), uuid.v7()
+    local registered, register_err = components:register({component_id = component_id, impl_id = "kickside.kb10:embeddable"})
+    assert(registered and registered.success, tostring(register_err or (registered and registered.error)))
+    local store_id = assert(node_store:create_store({component_id = component_id, embedding_model = "fixture",
+        config = {concept_context = "Use the fixture taxonomy"}, opts = {kb_type = "wiki", is_graph = true}}))
+    local taxonomy = assert(node_store:concept_taxonomy({store_id = store_id}))
+    local function concept(label)
+        local id = legacy and ("legacy-concept:" .. label) or uuid.v7()
+        return assert(node_store:insert_graph_node({store_id = store_id,
+            node = {id = id, node_type = "concept", metadata = {label = label}},
+            parent_edge = {to_node_id = taxonomy.root_id, edge_type = "subtopic_of"}}))
+    end
+    local existing, alternate = concept("Existing target"), concept("Alternate target")
+    local materialized = assert(materializer:replace_document({store_id = store_id,
+        document = {id = legacy and "legacy-document:plan" or nil, node_type = "document", content = summary, metadata = {
+            status = "completed", external_source = "fixture", external_id = "doc", external_version = "1",
+            thread_event_id = event, thread_event_seq = 1,
+            source_ref = {thread_id = component_id, external_source = "fixture", external_id = "doc",
+                external_version = "1", thread_event_id = event, thread_event_seq = 1}}},
+        children = {}}))
+    return exec, {component_id = component_id, store_id = store_id, document_node_id = materialized.document_node_id,
+        extraction_model = "kb10-placement-planner-fixture"}, existing, alternate
+end
+
+local function read_edges(args)
+    return assert(node_store:get_edges({store_id = args.store_id, node_id = args.document_node_id,
+        opts = {direction = "out", edge_type = "categorized_as"}}))
+end
+
+local function run_placement(legacy)
+    local exec, args, existing, alternate = fixture("Plan a small piece of content.", legacy)
+    if legacy then test.eq(args.document_node_id, "legacy-document:plan") end
+    local planned, plan_err = exec:call(PLAN_REF, args)
+    assert(planned, tostring(plan_err))
+    test.eq(planned.version, 1)
+    test.eq(planned.action, "planned")
+    test.eq(planned.store_id, args.store_id)
+    test.eq(planned.document_node_id, args.document_node_id)
+    local ops = planned.operations
+    test.eq(#ops, 4)
+    test.eq(ops[1].kind, "create_concept")
+    test.is_true(uuid.validate(ops[1].id))
+    test.eq(ops[2].kind, "attach_document")
+    test.eq(ops[2].concept_id, ops[1].id)
+    test.eq(ops[3].kind, "merge_concepts")
+    test.eq(ops[3].from_id, ops[1].id)
+    test.eq(ops[3].into_id, existing)
+    test.eq(ops[4].kind, "move_document")
+    test.eq(ops[4].concept_id, alternate)
+    test.eq(#assert(node_store:concept_taxonomy({store_id = args.store_id})).concepts, 3)
+    test.eq(#read_edges(args), 0)
+end
+
+local function define()
+    test.describe("default placement planner", function()
+        test.it("plans real model-tool turns and dependent draft reads without graph writes", function()
+            run_placement(false)
+        end)
+        test.it("preserves stored legacy SQLite IDs", function()
+            local db = assert(sql.get("app:db"))
+            local is_sqlite = db:type() == sql.type.SQLITE
+            assert(db:release())
+            if is_sqlite then run_placement(true) end
+        end)
+        test.it("refuses cross-component graph addresses, foreign tools, and incomplete plans", function()
+            local exec, args = fixture("refuse-tool")
+            local unrelated, other_args = fixture("incomplete-tool")
+            local wrong = {component_id = other_args.component_id, store_id = args.store_id,
+                document_node_id = args.document_node_id, extraction_model = args.extraction_model}
+            local absent, mismatched = unrelated:call(PLAN_REF, wrong)
+            test.is_nil(absent)
+            test.contains(tostring(mismatched), "store not found")
+            local stranger = executor("placement-planner-stranger")
+            local unauthorized, access_err = stranger:call(PLAN_REF, args)
+            test.is_nil(unauthorized)
+            test.is_true(errors.is(access_err, errors.PERMISSION_DENIED), tostring(access_err))
+            local foreign, foreign_err = exec:call(PLAN_REF, args)
+            test.is_nil(foreign)
+            test.contains(tostring(foreign_err), "unrecognized tool call")
+            local incomplete, incomplete_err = unrelated:call(PLAN_REF, other_args)
+            test.is_nil(incomplete)
+            test.contains(tostring(incomplete_err), "did not attach")
+            local invalid_exec, invalid_args = fixture("invalid-args-tool")
+            local invalid_plan, invalid_err = invalid_exec:call(PLAN_REF, invalid_args)
+            test.is_nil(invalid_plan)
+            test.contains(tostring(invalid_err), "did not attach")
+            test.eq(#assert(node_store:concept_taxonomy({store_id = invalid_args.store_id})).concepts, 3)
+            test.eq(#read_edges(args), 0)
+        end)
+        test.it("respects an existing manual categorization without calling the model", function()
+            local exec, args, existing = fixture("must-not-generate")
+            assert(node_store:insert_edge({store_id = args.store_id, edge = {from_node_id = args.document_node_id,
+                to_node_id = existing, edge_type = "categorized_as", metadata = {manual = true}}}))
+            local planned, err = exec:call(PLAN_REF, args)
+            assert(planned, tostring(err))
+            test.eq(planned.action, "locked_categorization_skipped")
+            test.eq(#planned.operations, 0)
+            test.is_true(read_edges(args)[1].metadata.manual)
+        end)
+    end)
+end
+
+return {run = test.run_cases(define), plan = planner.plan}

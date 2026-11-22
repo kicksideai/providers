@@ -115,3 +115,13 @@ entries:
     imports:
       ops: kickside.kb10.persist:ops
       text_limits: kickside.kb10:text_limits
+
+  - name: placement_snapshot
+    kind: library.lua
+    meta:
+      internal: true
+      comment: Bounded repeatable read for the default placement draft.
+    source: file://placement_snapshot.lua
+    modules: [json, sql]
+    imports:
+      ops: kickside.kb10.persist:ops

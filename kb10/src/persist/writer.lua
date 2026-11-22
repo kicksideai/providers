@@ -1514,13 +1514,7 @@ function writer.insert_edges(store_id: any, edges: any): (boolean?, any?)
     return commit_tx(tx, db, "edge batch insert")
 end
 
-local function locked_graph_metadata(field: string, db_type: any): string
-    if db_type == sql.type.POSTGRES then
-        return "(" .. field .. "->'manual' = 'true'::jsonb OR " .. field .. "->'locked' = 'true'::jsonb)"
-    end
-    return "(CASE WHEN json_valid(" .. field .. ") THEN json_type(" .. field ..
-        ", '$.manual') = 'true' OR json_type(" .. field .. ", '$.locked') = 'true' ELSE FALSE END)"
-end
+local locked_graph_metadata = ops.locked_graph_metadata
 
 local function invalid_merge(message: string): (nil, any)
     return nil, errors.new({kind = errors.INVALID, message = message})

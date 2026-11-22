@@ -94,8 +94,7 @@ type ConceptTreeState = {
     non_root_count: number,
 }
 
-local function placement_link_depth(): number
-    local value = ctx.get("graph_link_depth")
+local function placement_link_depth(value: any): number
     local n: number? = nil
     if type(value) == "number" then
         n = value
@@ -205,11 +204,8 @@ local function page_args(args: table): (number, number)
     return limit, offset
 end
 
-local function browse_tree(args: table): (any?, error?)
-    local store_id: string? = ctx.get("graph_store_id") :: string?
-    if not store_id then return tool_result.domain_error("no store_id in context") end
-
-    local tree, err = graph_fn.fetch_concept_tree({ store_id = store_id })
+local function browse_tree_in(store_id: string, draft: any?): (any?, error?)
+    local tree, err = graph_fn.fetch_concept_tree({ store_id = store_id }, draft)
     if not tree then return nil, err end
 
     local text: string = tree.tree_text or ""
@@ -220,14 +216,13 @@ local function browse_tree(args: table): (any?, error?)
     return text
 end
 
-local function create_concept(args: CreateConceptArgs): any
-    local store_id: string? = ctx.get("graph_store_id") :: string?
-    local embedding_model: string? = ctx.get("graph_embedding_model") :: string?
-
+local function browse_tree(_args: table): (any?, error?)
+    local store_id = ctx.get("graph_store_id")
     if not store_id then return tool_result.domain_error("no store_id in context") end
+    return browse_tree_in(store_id)
+end
 
-    local store = node_store
-
+local function create_concept_in(args: CreateConceptArgs, store: any, store_id: string, max_depth: number): (any?, any?)
     local label = args.label
     if not label or label == "" then return tool_result.domain_error("label is required") end
     local description: string = args.description or ""
@@ -259,7 +254,6 @@ local function create_concept(args: CreateConceptArgs): any
     end
     local parent_depth = state.depth_by_id[parent_id] or 0
     local child_depth = parent_depth + 1
-    local max_depth = placement_link_depth()
     if child_depth > max_depth then
         return tool_result.domain_error(string.format("link depth limit is %d; choose a shallower parent concept", max_depth))
     end
@@ -281,6 +275,17 @@ local function create_concept(args: CreateConceptArgs): any
     } })
     if node_err then return nil, errors.wrap(node_err, "creating concept failed") end
 
+    return { success = true, result = "created", concept_id = node_id, label = label, parent_id = parent_id }
+end
+
+local function create_concept(args: CreateConceptArgs): (any?, any?)
+    local store_id = ctx.get("graph_store_id")
+    if not store_id then return tool_result.domain_error("no store_id in context") end
+    local result, err = create_concept_in(args, node_store, store_id, placement_link_depth(ctx.get("graph_link_depth")))
+    if err or not result or result.result ~= "created" then return result, err end
+    local embedding_model = ctx.get("graph_embedding_model")
+    local store, label, node_id, parent_id = node_store, result.label, result.concept_id, result.parent_id
+    local description = args.description or ""
     if embedding_model then
         local embed_str = label
         if description ~= "" then
@@ -315,9 +320,7 @@ local function create_concept(args: CreateConceptArgs): any
     return { success = true, result = "created", concept_id = node_id, label = label, parent_id = parent_id }
 end
 
-local function categorize_document(args: AttachDocumentArgs, replace: boolean): any
-    local store_id: string? = ctx.get("graph_store_id") :: string?
-    if not store_id then return tool_result.domain_error("no store_id in context") end
+local function categorize_document_in(args: AttachDocumentArgs, store: any, store_id: string, replace: boolean): (any?, any?)
 
     local document_node_id = args.document_node_id
     local concept_id = args.concept_id
@@ -325,7 +328,7 @@ local function categorize_document(args: AttachDocumentArgs, replace: boolean): 
         return tool_result.domain_error("document_node_id and concept_id are required")
     end
 
-    local result, err = node_store:categorize_automatically({
+    local result, err = store:categorize_automatically({
         store_id = store_id,
         document_node_id = document_node_id,
         concept_id = concept_id,
@@ -333,6 +336,15 @@ local function categorize_document(args: AttachDocumentArgs, replace: boolean): 
     })
     if errors.is(err, errors.INVALID) then return tool_result.domain_error(tostring(err)) end
     if err then return nil, errors.wrap(err, "categorizing document failed") end
+    return { success = true, result = result, document_node_id = document_node_id, concept_id = concept_id }
+end
+
+local function categorize_document(args: AttachDocumentArgs, replace: boolean): (any?, any?)
+    local store_id = ctx.get("graph_store_id")
+    if not store_id then return tool_result.domain_error("no store_id in context") end
+    local response, err = categorize_document_in(args, node_store, store_id, replace)
+    if err or not response or not response.success then return response, err end
+    local result, document_node_id, concept_id = response.result, response.document_node_id, response.concept_id
     if result ~= "unchanged" then
         log:info("document " .. result .. " via placement tool", { doc = document_node_id, concept = concept_id })
         local emit_err = emit_graph_change({
@@ -354,14 +366,10 @@ local function move_document(args: AttachDocumentArgs): any
     return categorize_document(args, true)
 end
 
-local function get_concept_documents(args: GetConceptDocumentsArgs): any
-    local store_id: string? = ctx.get("graph_store_id") :: string?
-    if not store_id then return tool_result.domain_error("no store_id in context") end
+local function get_concept_documents_in(args: GetConceptDocumentsArgs, store: any, store_id: string): (any?, any?)
 
     local concept_id = args.concept_id
     if not concept_id then return tool_result.domain_error("concept_id is required") end
-
-    local store = node_store
 
     local limit, offset = page_args(args)
     local edges, edge_err = store:get_edges({
@@ -389,6 +397,12 @@ local function get_concept_documents(args: GetConceptDocumentsArgs): any
         next_offset = has_more and offset + scanned or nil }
 end
 
+local function get_concept_documents(args: GetConceptDocumentsArgs): (any?, any?)
+    local store_id = ctx.get("graph_store_id")
+    if not store_id then return tool_result.domain_error("no store_id in context") end
+    return get_concept_documents_in(args, node_store, store_id)
+end
+
 type MergeConceptArgs = {
     from_id: string?,
     into_id: string?,
@@ -399,10 +413,7 @@ type MergeConceptArgs = {
 
 -- Resolve labels for the tool. The writer makes the merge decision on the
 -- addressed concepts and their current relationships inside its transaction.
-local function merge_concept(args: MergeConceptArgs): any
-    local store_id: string? = ctx.get("graph_store_id") :: string?
-    if not store_id then return tool_result.domain_error("no store_id in context") end
-    local store = node_store
+local function merge_concept_in(args: MergeConceptArgs, store: any, store_id: string): (any?, any?)
     local from_id = args.from_id
     local into_id = args.into_id
 
@@ -427,7 +438,15 @@ local function merge_concept(args: MergeConceptArgs): any
     local merged, merge_err = store:merge_concepts({store_id = store_id, from_id = from_id, into_id = into_id})
     if errors.is(merge_err, errors.INVALID) then return tool_result.domain_error(tostring(merge_err)) end
     if merge_err then return nil, errors.wrap(merge_err, "merging concepts failed") end
-    local moved = merged.moved_edges
+    return { success = true, result = "merged", from_id = from_id, into_id = into_id, moved_edges = merged.moved_edges }
+end
+
+local function merge_concept(args: MergeConceptArgs): (any?, any?)
+    local store_id = ctx.get("graph_store_id")
+    if not store_id then return tool_result.domain_error("no store_id in context") end
+    local result, err = merge_concept_in(args, node_store, store_id)
+    if err or not result or not result.success then return result, err end
+    local from_id, into_id, moved = result.from_id, result.into_id, result.moved_edges
     log:info("concepts merged via tool", { from = from_id, into = into_id, moved = moved })
     local emit_err = emit_graph_change({
         reason = "concept.merged",
@@ -439,6 +458,27 @@ local function merge_concept(args: MergeConceptArgs): any
     return { success = true, result = "merged", from_id = from_id, into_id = into_id, moved_edges = moved }
 end
 
+-- Only the placement planner calls these closures. The public tool entries
+-- always bind the live node store; a model call cannot select a store adapter.
+local function draft_tools(store: any, store_id: string, depth: number?): {[string]: any}
+    local max_depth = placement_link_depth(depth)
+    return {
+        BrowseTree = function() return browse_tree_in(store_id, store) end,
+        CreateConcept = function(args) return create_concept_in(args, store, store_id, max_depth) end,
+        AttachDocument = function(args) return categorize_document_in(args, store, store_id, false) end,
+        MoveDocument = function(args) return categorize_document_in(args, store, store_id, true) end,
+        GetConceptDocuments = function(args)
+            local result, err = get_concept_documents_in(args, store, store_id)
+            if not result or not result.success then return result, err end
+            for index, doc in ipairs(result.documents) do
+                result.documents[index] = {id = doc.id, title = metadata_of(doc).title, node_type = doc.node_type}
+            end
+            return result, nil
+        end,
+        MergeConcept = function(args) return merge_concept_in(args, store, store_id) end,
+    }
+end
+
 return {
     browse_tree = browse_tree,
     create_concept = create_concept,
@@ -447,6 +487,8 @@ return {
     get_concept_documents = get_concept_documents,
     merge_concept = merge_concept,
     categorization_lock = categorization_lock,
+    draft_tools = draft_tools,
+    locked_meta = locked_meta,
     _concept_tree_state_for_test = concept_tree_state,
     _metadata_of_for_test = metadata_of,
 }

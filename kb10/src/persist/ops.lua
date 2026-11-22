@@ -164,6 +164,14 @@ function ops.decode_metadata(rows: any)
     end
 end
 
+function ops.locked_graph_metadata(field: string, db_type: any): string
+    if db_type == sql.type.POSTGRES then
+        return "(" .. field .. "->'manual' = 'true'::jsonb OR " .. field .. "->'locked' = 'true'::jsonb)"
+    end
+    return "(CASE WHEN json_valid(" .. field .. ") THEN json_type(" .. field ..
+        ", '$.manual') = 'true' OR json_type(" .. field .. ", '$.locked') = 'true' ELSE FALSE END)"
+end
+
 ops.VECTOR_DIMENSIONS = search_index.VECTOR_DIMENSIONS
 
 return ops

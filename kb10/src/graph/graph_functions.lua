@@ -210,11 +210,11 @@ local function build_tree_text(
     return table.concat(parts, "\n")
 end
 
-local function fetch_concept_tree(input: {store_id: string}): (ConceptTree?, error?)
+local function fetch_concept_tree(input: {store_id: string}, draft: any?): (ConceptTree?, error?)
     local store_id = input.store_id
     if not store_id then return nil, (errors.new({ message = "store_id required", kind = errors.INVALID }) :: error) end
 
-    local store = store_impl
+    local store = draft or store_impl
 
     local taxonomy, taxonomy_err = store:concept_taxonomy({ store_id = store_id })
     if taxonomy_err then return nil, (taxonomy_err :: error) end

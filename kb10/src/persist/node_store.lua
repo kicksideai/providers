@@ -276,24 +276,16 @@ end
 -- none flagged it is the single concept without a parent. Several flagged roots,
 -- or no flag and several parentless concepts, is an ambiguous taxonomy and an
 -- error. A store without concepts has no root.
-function M:concept_taxonomy(args: any): (any, any?)
-    local a = arg_table(args)
-    local concepts, browse_err = self:browse_all_nodes({ store_id = a.store_id, opts = {
-        node_type = kb10.NODE_TYPE.CONCEPT, include_content = a.include_content == true,
-    } })
-    if browse_err then return nil, browse_err end
+function M.build_concept_taxonomy(concepts: {any}, edges: {any}): (any, any?)
     local nodes_by_id: { [string]: any } = {}
     local concept_ids: { string } = {}
     for _, concept in ipairs(concepts) do
         nodes_by_id[concept.id] = concept
         concept_ids[#concept_ids + 1] = concept.id
     end
-    local edges, edge_err = self:get_all_edges_batch({ store_id = a.store_id, node_ids = concept_ids,
-        opts = { direction = "out", edge_type = kb10.EDGE_TYPE.SUBTOPIC_OF } })
-    if edge_err then return nil, edge_err end
     local parent_by_child: { [string]: string } = {}
     for _, edge in ipairs(edges) do
-        if nodes_by_id[edge.to_node_id] then parent_by_child[edge.from_node_id] = edge.to_node_id end
+        if edge.edge_type == kb10.EDGE_TYPE.SUBTOPIC_OF and nodes_by_id[edge.to_node_id] then parent_by_child[edge.from_node_id] = edge.to_node_id end
     end
 
     local flagged: { string } = {}
@@ -315,6 +307,20 @@ function M:concept_taxonomy(args: any): (any, any?)
             message = "ambiguous root concept: no concept is flagged as root and " .. tostring(#parentless) .. " concepts have no parent" })
     end
     return { concepts = concepts, nodes_by_id = nodes_by_id, parent_by_child = parent_by_child, root_id = root_id }, nil
+end
+
+function M:concept_taxonomy(args: any): (any, any?)
+    local a = arg_table(args)
+    local concepts, browse_err = self:browse_all_nodes({ store_id = a.store_id, opts = {
+        node_type = kb10.NODE_TYPE.CONCEPT, include_content = a.include_content == true,
+    } })
+    if browse_err then return nil, browse_err end
+    local concept_ids: {string} = {}
+    for _, concept in ipairs(concepts) do concept_ids[#concept_ids + 1] = concept.id end
+    local edges, edge_err = self:get_all_edges_batch({ store_id = a.store_id, node_ids = concept_ids,
+        opts = { direction = "out", edge_type = kb10.EDGE_TYPE.SUBTOPIC_OF } })
+    if edge_err then return nil, edge_err end
+    return M.build_concept_taxonomy(concepts, edges)
 end
 
 -- Every edge of a node matching opts.direction/opts.edge_type, read page by page.

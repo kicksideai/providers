@@ -354,3 +354,31 @@ entries:
       resources: userspace.dataflow.node.agent:node
       actions: [process.spawn, process.spawn.monitored, process.spawn.linked]
       effect: allow
+
+  - name: placement_draft
+    kind: library.lua
+    meta: { internal: true }
+    source: file://placement_draft.lua
+    modules: [uuid]
+    imports:
+      kb_types: kickside.kb10:types
+      node_store: kickside.kb10.persist:node_store
+      placement_tools: kickside.kb10.graph:placement_tools
+
+  - name: placement_planner
+    kind: library.lua
+    meta:
+      internal: true
+      comment: Prepare KB10 default placement operations without writing the graph.
+    source: file://placement_planner.lua
+    modules: [json, registry]
+    imports:
+      agent_context: wippy.agent:context
+      agent_registry: wippy.agent.discovery:registry
+      component: kickside.component:component
+      kb_types: kickside.kb10:types
+      placement_draft: kickside.kb10.graph:placement_draft
+      placement_snapshot: kickside.kb10.persist:placement_snapshot
+      placement_tools: kickside.kb10.graph:placement_tools
+      prompt: wippy.llm:prompt
+      text_trim: kickside.contract:text_trim

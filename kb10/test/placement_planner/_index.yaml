@@ -1,0 +1,55 @@
+version: "1.0"
+namespace: app.placement_planner
+entries:
+  - name: test
+    kind: function.lua
+    meta: { type: test, suite: placement_planner }
+    source: file://planner_test.lua
+    method: run
+    modules: [contract, funcs, security, sql, uuid]
+    imports:
+      test: wippy.test:test
+      materializer: kickside.kb10.injection:materializer_store
+      node_store: kickside.kb10.persist:node_store
+      planner: kickside.kb10.graph:placement_planner
+  - name: plan
+    kind: function.lua
+    source: file://planner_test.lua
+    method: plan
+    modules: [contract, funcs, security, sql, uuid]
+    imports:
+      test: wippy.test:test
+      materializer: kickside.kb10.injection:materializer_store
+      node_store: kickside.kb10.persist:node_store
+      planner: kickside.kb10.graph:placement_planner
+  - name: model
+    kind: registry.entry
+    meta:
+      type: llm.model
+      name: kb10-placement-planner-fixture
+      capabilities: [generate, tool_use]
+    max_tokens: 16000
+    output_tokens: 2000
+    providers:
+      - id: app.placement_planner:provider
+        provider_model: placement-planner-fixture
+  - name: provider
+    kind: registry.entry
+    meta: { type: llm.provider, name: placement-planner-fixture }
+    driver: { id: app.placement_planner:driver }
+  - name: driver
+    kind: contract.binding
+    contracts:
+      - contract: wippy.llm:provider
+        methods: { status: app.placement_planner:status }
+      - contract: wippy.llm:generator
+        methods: { generate: app.placement_planner:generate }
+  - name: generate
+    kind: function.lua
+    source: file://provider.lua
+    method: generate
+    modules: [json]
+  - name: status
+    kind: function.lua
+    source: file://provider.lua
+    method: status
