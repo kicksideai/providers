@@ -431,3 +431,27 @@ entries:
       placement_tools: kickside.kb10.graph:placement_tools
       prompt: wippy.llm:prompt
       text_trim: kickside.contract:text_trim
+
+  - name: placement_worker
+    kind: process.lua
+    meta:
+      type: projection.worker
+      kind: kickside.kb10.graph.placement
+      private: true
+      checkpointed_apply: true
+      enrollment_producer: kickside.kb10.graph:enroll_placement
+    source: file://placement_worker.lua
+    method: run
+    modules: [ctx, json, logger, security, uuid]
+    imports:
+      apply: kickside.core.projections:apply
+      engines: kickside.knowledge:engines
+      graph_functions: kickside.kb10.graph:graph_functions
+      job_types: kickside.core.jobs:types
+      ops: kickside.kb10.persist:ops
+      planner: kickside.kb10.graph:placement_planner
+      placement_tools: kickside.kb10.graph:placement_tools
+      reader: kickside.kb10.persist:reader
+      threads_writer: kickside.core.threads.persist:writer
+      trace: kickside.execution:trace
+      writer: kickside.kb10.persist:writer

@@ -213,6 +213,8 @@ function ops.taxonomy_root_tx(tx: any, db_type: any, store_id: string, placement
     return nil, errors.new({kind = errors.CONFLICT, message = "ambiguous root concept"})
 end
 
+ops.PLACEMENT_MAX_INCIDENT = 128
+ops.PLACEMENT_MAX_ANCESTORS = 64
 ops.VECTOR_DIMENSIONS = search_index.VECTOR_DIMENSIONS
 
 return ops

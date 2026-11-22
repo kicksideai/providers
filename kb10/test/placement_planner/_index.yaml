@@ -13,6 +13,9 @@ entries:
       store: kickside.kb10.persist:store
       node_store: kickside.kb10.persist:node_store
       planner: kickside.kb10.graph:placement_planner
+      reader: kickside.kb10.persist:reader
+      tools: kickside.kb10.graph:placement_tools
+      writer: kickside.kb10.persist:writer
   - name: plan
     kind: function.lua
     source: file://planner_test.lua
@@ -24,6 +27,9 @@ entries:
       store: kickside.kb10.persist:store
       node_store: kickside.kb10.persist:node_store
       planner: kickside.kb10.graph:placement_planner
+      reader: kickside.kb10.persist:reader
+      tools: kickside.kb10.graph:placement_tools
+      writer: kickside.kb10.persist:writer
   - name: model
     kind: registry.entry
     meta:

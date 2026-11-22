@@ -12,8 +12,8 @@ local PARENT = kb.EDGE_TYPE.SUBTOPIC_OF
 local CATEGORY = kb.EDGE_TYPE.CATEGORIZED_AS
 local CONCEPT = kb.NODE_TYPE.CONCEPT
 local DOCUMENT = kb.NODE_TYPE.DOCUMENT
-local MAX_INCIDENT = 128
-local MAX_ANCESTORS = 64
+local MAX_INCIDENT = ops.PLACEMENT_MAX_INCIDENT
+local MAX_ANCESTORS = ops.PLACEMENT_MAX_ANCESTORS
 
 local function invalid(message: string): error
     return errors.new({kind = errors.INVALID, message = message})

@@ -486,6 +486,7 @@ return {
     draft_tools = draft_tools,
     locked_meta = locked_meta,
     concept_node = concept_node,
+    link_depth = placement_link_depth,
     _concept_tree_state_for_test = concept_tree_state,
     _metadata_of_for_test = metadata_of,
 }

@@ -35,7 +35,7 @@ local function decode_node(row: any): (any?, error?)
     return row, nil
 end
 
-local function read_input(tx: any, dialect: string, store_id: string, component_id: string, document_id: string): (table?, error?)
+local function read_input(tx: any, dialect: string, store_id: string, component_id: string, document_id: string, wake_id: string?): (table?, error?)
     local stores, store_err = tx:query([[SELECT substr(CAST(config AS TEXT),1,$1) AS config
         FROM kb10_stores WHERE id=$2 AND component_id=$3]], {MAX_METADATA_CHARS + 1, store_id, component_id})
     if store_err then return nil, store_err end
@@ -47,8 +47,9 @@ local function read_input(tx: any, dialect: string, store_id: string, component_
 
     local docs, doc_err = tx:query([[SELECT id,node_type,substr(content,1,2000) AS content,
         substr(CAST(metadata AS TEXT),1,$1) AS metadata
-        FROM kb10_nodes WHERE store_id=$2 AND id=$3 AND node_type='document' AND parent_id IS NULL]],
-        {MAX_METADATA_CHARS + 1, store_id, document_id})
+        FROM kb10_nodes WHERE store_id=$2 AND id=$3 AND node_type='document' AND parent_id IS NULL]]
+        .. (wake_id and " AND placement_wake_id=$4" or ""),
+        {MAX_METADATA_CHARS + 1, store_id, document_id, wake_id})
     if doc_err then return nil, doc_err end
     local document, decode_err = decode_node(docs[1])
     if decode_err then return nil, decode_err end
@@ -68,7 +69,7 @@ local function read_input(tx: any, dialect: string, store_id: string, component_
         root_id = root, postgres = dialect == sql.type.POSTGRES}, nil
 end
 
-function reader.input(store_id: string, component_id: string, document_id: string): (table?, error?)
+function reader.input(store_id: string, component_id: string, document_id: string, wake_id: string?): (table?, error?)
     local db, open_err = ops.get_db()
     if not db then return nil, open_err end
     local dialect, type_err = ops.get_db_type(db)
@@ -79,7 +80,7 @@ function reader.input(store_id: string, component_id: string, document_id: strin
     end
     local tx, begin_err = db:begin({isolation = sql.isolation.REPEATABLE_READ, read_only = true})
     if not tx then db:release(); return nil, begin_err end
-    local value, err = read_input(tx, dialect, store_id, component_id, document_id)
+    local value, err = read_input(tx, dialect, store_id, component_id, document_id, wake_id)
     local _, end_err = tx:rollback()
     local _, release_err = db:release()
     if err or end_err or release_err then return nil, err or end_err or release_err end

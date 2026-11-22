@@ -1371,13 +1371,29 @@ function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: s
     return true, nil
 end
 
+local function placement_conflict(message: string): error
+    return errors.new({kind = errors.CONFLICT, retryable = true, message = message})
+end
+
 -- Call before graph writes in the same transaction. A stale wake cannot clear
 -- a newer revision and any graph or checkpoint failure rolls this change back.
 function writer.consume_placement_tx(tx: any, dialect: string, store_id: string, wake_id: string,
-        document_id: string): (boolean?, any?)
+        document_id: string, expected: table?): (boolean?, any?)
     local store_row, lock_err = lock_store_tx(tx, dialect, store_id, true)
     if lock_err then return nil, lock_err end
     if not store_row then return false, nil end
+    if expected then
+        local rows, read_err = tx:query([[SELECT component_id,kb_type,placement_cursor_id,enrichment_agent_id,
+            embedding_model,CAST(config AS TEXT) AS config FROM kb10_stores WHERE id=$1]], {store_id})
+        if read_err then return nil, read_err end
+        local current = rows[1]
+        if not current or current.component_id ~= expected.component_id or current.kb_type ~= "wiki"
+            or current.placement_cursor_id ~= expected.placement_cursor_id
+            or current.enrichment_agent_id ~= expected.enrichment_agent_id
+            or current.embedding_model ~= expected.embedding_model or current.config ~= expected.config_snapshot then
+            return nil, placement_conflict("Wiki placement configuration changed during preparation")
+        end
+    end
     local result, write_err = tx:execute([[UPDATE kb10_nodes
         SET placement_wake_id = NULL, placement_identity = NULL
         WHERE store_id = $1 AND placement_wake_id = $2 AND id = $3 AND node_type = 'document']],
@@ -1559,7 +1575,32 @@ local function taxonomy_cycle_tx(tx: any, store_id: string, from_id: string, int
     return #ancestors > 0, nil
 end
 
-local function merge_concepts_tx(tx: any, db_type: any, store_id: string, from_id: string, into_id: string)
+local function placement_cycle_tx(tx: any, store_id: string, from_id: string, into_id: string): (boolean?, error?)
+    local pending, seen = {into_id}, {}
+    local visited = 0
+    while #pending > 0 do
+        local id = table.remove(pending)
+        if id == from_id then return true, nil end
+        if not seen[id] then
+            seen[id] = true
+            visited = visited + 1
+            if visited > ops.PLACEMENT_MAX_ANCESTORS then
+                return nil, placement_conflict("placement ancestry changed beyond the read limit")
+            end
+            local parents, err = tx:query([[SELECT to_node_id FROM kb10_edges
+                WHERE store_id=$1 AND from_node_id=$2 AND edge_type='subtopic_of' LIMIT ]]
+                .. tostring(ops.PLACEMENT_MAX_INCIDENT + 1), {store_id, id})
+            if err then return nil, err end
+            if #parents > ops.PLACEMENT_MAX_INCIDENT then
+                return nil, placement_conflict("placement ancestry changed beyond the incident limit")
+            end
+            for _, parent in ipairs(parents) do pending[#pending + 1] = tostring(parent.to_node_id) end
+        end
+    end
+    return false, nil
+end
+
+local function merge_concepts_tx(tx: any, db_type: any, store_id: string, from_id: string, into_id: string, placement: boolean?)
     local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return nil, lock_err end
     local nodes, read_err = tx:query([[SELECT id, metadata FROM kb10_nodes
@@ -1579,7 +1620,8 @@ local function merge_concepts_tx(tx: any, db_type: any, store_id: string, from_i
         end
     end
 
-    local cycle, ancestry_err = taxonomy_cycle_tx(tx, store_id, from_id, into_id)
+    local check_cycle = placement and placement_cycle_tx or taxonomy_cycle_tx
+    local cycle, ancestry_err = check_cycle(tx, store_id, from_id, into_id)
     if ancestry_err then return nil, ancestry_err end
     if cycle then return invalid_merge("cannot merge a concept into its own descendant") end
 
@@ -1635,6 +1677,21 @@ function writer.merge_concepts(store_id: string, from_id: string, into_id: strin
     return mutate_store(store_id, merge_concepts_tx, from_id, into_id)
 end
 
+local function document_categorization_tx(tx: any, db_type: any, store_id: string, document_id: string, concept_id: string)
+    local rows, edges_err = tx:query([[WITH document_edges AS (
+        SELECT store_id, to_node_id, metadata FROM kb10_edges
+        WHERE store_id = $1 AND from_node_id = $2 AND edge_type = 'categorized_as'
+    ) SELECT
+        MAX(CASE WHEN e.to_node_id = $3 THEN 1 ELSE 0 END) AS attached,
+        MAX(CASE WHEN ]] .. locked_graph_metadata("e.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS edge_locked,
+        MAX(CASE WHEN ]] .. locked_graph_metadata("c.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS concept_locked
+        FROM document_edges e
+        LEFT JOIN kb10_nodes c ON c.store_id = e.store_id AND c.id = e.to_node_id]],
+        {store_id, document_id, concept_id})
+    if edges_err then return nil, edges_err end
+    return rows[1], nil
+end
+
 local function categorize_automatically_tx(tx: any, db_type: any, store_id: string,
     document_id: string, concept_id: string, replace: boolean): (string?, any?)
     if db_type == sql.type.POSTGRES then
@@ -1676,18 +1733,8 @@ local function categorize_automatically_tx(tx: any, db_type: any, store_id: stri
         return nil, errors.new({kind = errors.INVALID, message = "documents cannot be attached to the root concept; create or choose a non-root concept"})
     end
 
-    local rows, edges_err = tx:query([[WITH document_edges AS (
-        SELECT store_id, to_node_id, metadata FROM kb10_edges
-        WHERE store_id = $1 AND from_node_id = $2 AND edge_type = 'categorized_as'
-    ) SELECT
-        MAX(CASE WHEN e.to_node_id = $3 THEN 1 ELSE 0 END) AS attached,
-        MAX(CASE WHEN ]] .. locked_graph_metadata("e.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS edge_locked,
-        MAX(CASE WHEN ]] .. locked_graph_metadata("c.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS concept_locked
-        FROM document_edges e
-        LEFT JOIN kb10_nodes c ON c.store_id = e.store_id AND c.id = e.to_node_id]],
-        {store_id, document_id, concept_id})
+    local existing, edges_err = document_categorization_tx(tx, db_type, store_id, document_id, concept_id)
     if edges_err then return nil, edges_err end
-    local existing = rows[1]
     if not replace and tonumber(existing.attached) == 1 then return "unchanged", nil end
     if tonumber(existing.edge_locked) == 1 then
         return nil, errors.new({kind = errors.INVALID, message = "document categorization edge is locked"})
@@ -1716,6 +1763,104 @@ function writer.categorize_automatically(store_id: string, document_id: string, 
         return nil, errors.new({kind = errors.INVALID, message = "store, document and concept IDs are required"})
     end
     return mutate_store(store_id, categorize_automatically_tx, document_id, concept_id, replace)
+end
+
+-- Replay under the store lock already acquired by consume_placement_tx.
+-- A stale plan rolls back with its revision claim, so the next attempt replans.
+local function bound_placement_incident_tx(tx: any, store_id: string, node_id: string, column: string, filter: string?): error?
+    local rows, err = tx:query("SELECT id FROM kb10_edges WHERE store_id=$1 AND " .. column .. "=$2"
+        .. (filter or "") .. " LIMIT " .. tostring(ops.PLACEMENT_MAX_INCIDENT + 1), {store_id, node_id})
+    if err then return err end
+    if #rows > ops.PLACEMENT_MAX_INCIDENT then
+        return placement_conflict("placement relationships changed beyond the incident limit")
+    end
+    return nil
+end
+
+local function placement_concept_tx(tx: any, db_type: any, store_id: string, op: table, max_depth: number)
+    local root, root_err = ops.taxonomy_root_tx(tx, db_type, store_id, true)
+    if not root then return nil, root_err end
+    local key = ops.placement_label_key(op.label)
+    if not key then return nil, errors.new({kind = errors.INVALID, message = "placement concept label is required"}) end
+    local duplicate, label_err = tx:query([[SELECT id FROM kb10_nodes WHERE store_id=$1
+        AND node_type='concept' AND placement_label_key=$2 AND id<>$3 LIMIT 1]], {store_id, key, root})
+    if label_err then return nil, label_err end
+    if #duplicate > 0 then return nil, placement_conflict("placement concept label now exists") end
+
+    local parent, depth = op.parent_id, 1
+    while parent ~= root do
+        if depth >= max_depth then return nil, placement_conflict("placement parent now exceeds the link depth") end
+        local parents, err = tx:query([[SELECT p.to_node_id FROM kb10_nodes n LEFT JOIN kb10_edges p
+            ON p.store_id=n.store_id AND p.from_node_id=n.id AND p.edge_type='subtopic_of'
+            WHERE n.store_id=$1 AND n.id=$2 AND n.node_type='concept' LIMIT 2]], {store_id, parent})
+        if err then return nil, err end
+        if #parents ~= 1 then return nil, placement_conflict("placement parent is no longer a unique concept") end
+        depth = depth + 1
+        parent = parents[1].to_node_id and tostring(parents[1].to_node_id) or root
+    end
+    local id, insert_err = insert_node_tx(tx, db_type, store_id, op.node)
+    if not id then return nil, insert_err end
+    local _, edge_err = insert_edge_tx(tx, store_id, {from_node_id = id,
+        to_node_id = op.parent_id, edge_type = kb10.EDGE_TYPE.SUBTOPIC_OF, weight = 1})
+    if edge_err then return nil, edge_err end
+    if op.embedding then
+        local _, embed_err = insert_embedding_tx(tx, db_type, store_id, id, kb10.NODE_TYPE.CONCEPT, nil, op.embedding)
+        if embed_err then return nil, embed_err end
+    end
+    return {reason = "concept.created", node_id = id, parent_id = op.parent_id, concept_delta = 1}, nil
+end
+
+function writer.apply_placement_tx(tx: any, db_type: any, store_id: string, document_id: string,
+        plan: table, max_depth: number): (table?, error?)
+    local category_filter = " AND edge_type='categorized_as'"
+    local limit_err = bound_placement_incident_tx(tx, store_id, document_id, "from_node_id", category_filter)
+    if limit_err then return nil, limit_err end
+    local current, current_err = document_categorization_tx(tx, db_type, store_id, document_id, document_id)
+    if current_err then return nil, current_err end
+    if tonumber(current.edge_locked) == 1 or tonumber(current.concept_locked) == 1 then return {}, nil end
+    if plan.action ~= "planned" then return nil, placement_conflict("placement lock changed during preparation") end
+
+    local changes = {}
+    for _, op in ipairs(plan.operations) do
+        local change, err
+        if op.kind == "create_concept" then
+            change, err = placement_concept_tx(tx, db_type, store_id, op, max_depth)
+        elseif op.kind == "merge_concepts" then
+            err = bound_placement_incident_tx(tx, store_id, op.from_id, "from_node_id")
+                or bound_placement_incident_tx(tx, store_id, op.from_id, "to_node_id")
+            if not err then
+                local merged
+                merged, err = merge_concepts_tx(tx, db_type, store_id, op.from_id, op.into_id, true)
+                if merged then
+                    change = {reason = "concept.merged", from_id = op.from_id, into_id = op.into_id, concept_delta = -1}
+                end
+            end
+        elseif op.kind == "attach_document" or op.kind == "move_document" then
+            if op.document_node_id ~= document_id then
+                return nil, errors.new({kind = errors.INVALID, message = "placement can only categorize its own document"})
+            end
+            local result
+            result, err = categorize_automatically_tx(tx, db_type, store_id, document_id, op.concept_id,
+                op.kind == "move_document")
+            if result and result ~= "unchanged" then
+                change = {reason = "document." .. result, document_node_id = document_id, concept_id = op.concept_id}
+            end
+        else
+            return nil, errors.new({kind = errors.INVALID, message = "unknown placement operation"})
+        end
+        if err then
+            if errors.is(err, errors.INVALID) or errors.is(err, errors.NOT_FOUND) then
+                return nil, placement_conflict("placement graph changed during preparation: " .. tostring(err))
+            end
+            return nil, err
+        end
+        if change then changes[#changes + 1] = change end
+    end
+    local categorized, category_err = tx:query([[SELECT id FROM kb10_edges WHERE store_id=$1 AND from_node_id=$2
+        AND edge_type='categorized_as' LIMIT 1]], {store_id, document_id})
+    if category_err then return nil, category_err end
+    if #categorized == 0 then return nil, placement_conflict("placement plan no longer categorizes its document") end
+    return changes, nil
 end
 
 function writer.apply_graph_patch(store_id: any, patch: any)

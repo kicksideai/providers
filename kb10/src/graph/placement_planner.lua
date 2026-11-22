@@ -197,7 +197,7 @@ local function plan(args: any): (table?, error?)
     end
     local _, access_err = component.validate_access(args.component_id, component.ACCESS.WRITE)
     if access_err then return nil, access_err end
-    local snapshot, read_err = snapshot_store.input(args.store_id, args.component_id, args.document_node_id)
+    local snapshot, read_err = snapshot_store.input(args.store_id, args.component_id, args.document_node_id, args.wake_id)
     if not snapshot then return nil, read_err end
     if snapshot.document.id ~= args.document_node_id then return nil, invalid("document ID did not match the stored ID") end
     local draft = draft_store.new(args.store_id, snapshot)

@@ -3,11 +3,14 @@ local funcs = require("funcs")
 local materializer = require("materializer")
 local node_store = require("node_store")
 local planner = require("planner")
+local reader = require("reader")
 local security = require("security")
 local sql = require("sql")
 local store = require("store")
 local test = require("test")
+local tools = require("tools")
 local uuid = require("uuid")
+local writer = require("writer")
 
 local PLAN_REF = "app.placement_planner:plan"
 
@@ -104,8 +107,64 @@ local function populated_wiki()
     test.eq(#read_edges(args), 0)
 end
 
+local function replay_revision()
+    local exec, args, _, alternate = fixture("Replay the draft graph for this document.")
+    local wake, newer, cursor_id = uuid.v7(), uuid.v7(), uuid.v7()
+    local db = assert(sql.get("app:db"))
+    assert(db:execute("UPDATE kb10_stores SET placement_cursor_id=$1 WHERE id=$2", {cursor_id, args.store_id}))
+    local function seed(wake_id)
+        assert(db:execute("UPDATE kb10_nodes SET placement_wake_id=$1,placement_identity=$2 WHERE id=$3",
+            {wake_id, "{}", args.document_node_id}))
+    end
+    seed(wake)
+    assert(db:release())
+
+    args.wake_id = wake
+    local plan = assert(exec:call(PLAN_REF, args))
+    for _, operation in ipairs(plan.operations) do
+        if operation.kind == "create_concept" then
+            operation.node = tools.concept_node(operation.label, operation.description)
+            operation.node.id = operation.id
+        end
+    end
+    local expected = assert(reader.get_store(args.component_id, true))
+    db = assert(sql.get("app:db"))
+    local dialect = assert(db:type())
+    local function replay(tx)
+        assert(writer.consume_placement_tx(tx, dialect, args.store_id, wake, args.document_node_id, expected))
+        local changes, write_err = writer.apply_placement_tx(tx, dialect, args.store_id, args.document_node_id, plan, 3)
+        assert(changes, tostring(write_err))
+        local reasons = {}
+        for _, change in ipairs(changes) do reasons[#reasons + 1] = change.reason end
+        test.eq(table.concat(reasons, ","), "concept.created,document.attached,concept.merged,document.moved")
+    end
+
+    local tx = assert(db:begin())
+    replay(tx)
+    assert(tx:rollback())
+    test.eq(assert(db:query("SELECT placement_wake_id FROM kb10_nodes WHERE id=$1", {args.document_node_id}))[1].placement_wake_id, wake)
+    seed(newer)
+    tx = assert(db:begin())
+    local claimed, claim_err = writer.consume_placement_tx(tx, dialect, args.store_id, wake, args.document_node_id, expected)
+    test.is_nil(claim_err)
+    test.eq(claimed, false)
+    assert(tx:commit())
+    test.eq(assert(db:query("SELECT placement_wake_id FROM kb10_nodes WHERE id=$1", {args.document_node_id}))[1].placement_wake_id, newer)
+    seed(wake)
+    tx = assert(db:begin())
+    replay(tx)
+    assert(tx:commit())
+    test.eq(#assert(db:query("SELECT id FROM kb10_nodes WHERE id=$1 AND placement_wake_id IS NOT NULL",
+        {args.document_node_id})), 0)
+    assert(db:release())
+    local edges = read_edges(args)
+    test.eq(#edges, 1)
+    test.eq(edges[1].to_node_id, alternate)
+end
+
 local function define()
     test.describe("default placement planner", function()
+        test.it("replays graph edits and acknowledges only the exact committed revision", replay_revision)
         test.it("uses indexed label and document pages after bounded discovery on a populated Wiki", populated_wiki)
         test.it("plans real model-tool turns and dependent draft reads without graph writes", function()
             run_placement(false)

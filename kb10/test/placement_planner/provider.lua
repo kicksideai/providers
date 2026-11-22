@@ -93,7 +93,11 @@ local function generate(args)
     if target_count == 6 then return call("MoveDocument", 7, {document_node_id = document_id, concept_id = alternate}) end
     assert(read(7).result == "moved")
     if target_count == 7 then return call("GetConceptDocuments", 8, {concept_id = alternate}) end
-    assert(read(8).documents[1].id == document_id)
+    local on_target = false
+    for _, document in ipairs(read(8).documents) do
+        if document.id == document_id then on_target = true; break end
+    end
+    assert(on_target)
     return {success = true, finish_reason = "stop", result = {content = "placement drafted", tool_calls = {}}}
 end
 
