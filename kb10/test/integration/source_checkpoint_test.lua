@@ -9,6 +9,7 @@ local fs = require("fs")
 local json = require("json")
 local ops = require("ops")
 local projections = require("projections")
+local reader = require("reader")
 local sql = require("sql")
 local store = require("store")
 local test = require("test")
@@ -38,9 +39,9 @@ local function snapshot(cursor_id)
     return current
 end
 
-local function with_registration(check)
+local function with_registration(check, store_options)
     local kb_id = uuid.v7()
-    assert(store.create_store(kb_id, "fixture-embed", {}))
+    assert(store.create_store(kb_id, "fixture-embed", {}, store_options))
     local db = assert(sql.get(DATABASE))
     local dialect = assert(db:type())
     assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
@@ -297,6 +298,119 @@ return {run = test.run_cases(function()
                 test.eq(tonumber(snapshot(current.id).last_seq), 0)
                 test.is_nil((row("SELECT id FROM kickside_event WHERE thread_id=$1 AND type=$2", {kb_id, GRAPH})))
             end)
+        end)
+
+        test.it("commits private placement with its exact document revision", function()
+            with_registration(function(kb_id, events, job, current)
+                local selector = {source_thread_id = kb_id, external_source = "knowledge.kb", external_id = "same-document"}
+                local identity = assert(json.encode({actor_id = "fixture-member", actor_context = "{}"}))
+                local first_wake, second_wake = uuid.v7(), uuid.v7()
+                local function publish(position, wake_id, append_events)
+                    local change = {kind = "replace", replacement = replacement(kb_id, events[position], position)}
+                    local before = assert(writer.source_checkpoint_before(kb_id, selector, "replace"))
+                    local outcome = writer.source_checkpoint_outcome(before, change)
+                    local placement = {wake_id = wake_id, identity_json = identity}
+                    return apply.checkpoint(ops.db_id(), job, snapshot(current.id), 2,
+                        {last_seq = position, append_events = append_events}, function(tx, dialect)
+                            return writer.write_source_checkpoint_tx(tx, dialect, kb_id, selector,
+                                before, change, outcome, false, placement)
+                        end)
+                end
+                local failed, failure = publish(1, first_wake, {{thread_id = uuid.v7(), events = {{type = GRAPH}}}})
+                test.is_nil(failed)
+                test.is_true(errors.is(failure, errors.NOT_FOUND), tostring(failure))
+                test.eq(#assert(reader.pending_placements(kb_id, first_wake, 8)), 0)
+                test.is_nil(document(kb_id))
+
+                assert(publish(1, first_wake))
+                local id = document(kb_id).id
+                local rows = assert(reader.pending_placements(kb_id, first_wake, 8))
+                test.eq(#rows, 1)
+                test.eq(tostring(rows[1].id), tostring(id))
+                test.eq(rows[1].placement_identity, identity)
+                local public = assert(store.get_node(kb_id, id))
+                test.is_nil(public.placement_identity)
+                test.is_nil(public.placement_wake_id)
+
+                assert(publish(2, second_wake))
+                test.eq(document(kb_id).id, id)
+                test.eq(#assert(reader.pending_placements(kb_id, first_wake, 8)), 0)
+                test.eq(#assert(reader.pending_placements(kb_id, second_wake, 8)), 1)
+
+                local db = assert(sql.get(DATABASE))
+                local dialect = assert(db:type())
+                local tx = assert(db:begin())
+                local stale, stale_err = writer.consume_placement_tx(tx, dialect, kb_id, first_wake, tostring(id))
+                test.is_nil(stale_err)
+                test.is_false(stale)
+                assert(writer.consume_placement_tx(tx, dialect, kb_id, second_wake, tostring(id)))
+                assert(select(2, tx:rollback()) == nil)
+                assert(select(2, db:release()) == nil)
+                test.eq(#assert(reader.pending_placements(kb_id, second_wake, 8)), 1)
+
+                local next_doc = replacement(kb_id, uuid.v7(), 3)
+                assert(writer.replace_document(kb_id, next_doc))
+                test.eq(document(kb_id).id, id)
+                test.eq(#assert(reader.pending_placements(kb_id, second_wake, 8)), 0)
+                test.is_nil(row("SELECT id FROM kb10_nodes WHERE id=$1 AND placement_identity IS NOT NULL", {id}))
+            end, {kb_type = "wiki"})
+        end)
+
+        test.it("drains placement in indexed pages and leaves nothing on store deletion", function()
+            with_registration(function(kb_id, events, job, current)
+                local wake_id = uuid.v7()
+                local placement = {wake_id = wake_id, identity_json = assert(json.encode({
+                    actor_id = "fixture-member", actor_context = "{}",
+                }))}
+                local plans = {}
+                for _, external_id in ipairs({"placement-a", "placement-b"}) do
+                    local selector = {source_thread_id = kb_id, external_source = "knowledge.kb", external_id = external_id}
+                    local change = {kind = "replace", replacement = replacement(kb_id, events[1], 1, external_id)}
+                    local before = assert(writer.source_checkpoint_before(kb_id, selector, change.kind))
+                    plans[#plans + 1] = {selector = selector, change = change, before = before,
+                        outcome = writer.source_checkpoint_outcome(before, change)}
+                end
+                assert(apply.checkpoint(ops.db_id(), job, current, 2, {last_seq = 1}, function(tx, dialect)
+                    for _, plan in ipairs(plans) do
+                        local ok, err = writer.write_source_checkpoint_tx(tx, dialect, kb_id,
+                            plan.selector, plan.before, plan.change, plan.outcome, false, placement)
+                        if err then return nil, err end
+                        if not ok then return nil, "placement fixture write returned no result" end
+                    end
+                    return true, nil
+                end))
+                local invalid, invalid_err = reader.pending_placements(kb_id, wake_id, 0)
+                test.is_nil(invalid)
+                test.is_true(errors.is(invalid_err, errors.INVALID))
+                local first_page = assert(reader.pending_placements(kb_id, wake_id, 1))
+                test.eq(#first_page, 1)
+                local first_id = tostring(first_page[1].id)
+                local db = assert(sql.get(DATABASE))
+                local dialect = assert(db:type())
+                local tx = assert(db:begin())
+                assert(writer.consume_placement_tx(tx, dialect, kb_id, wake_id, first_id))
+                assert(select(2, tx:commit()) == nil)
+                assert(select(2, db:release()) == nil)
+                local rest = assert(reader.pending_placements(kb_id, wake_id, 1))
+                test.eq(#rest, 1)
+                local retained_id = tostring(rest[1].id)
+                test.is_true(retained_id ~= first_id)
+
+                assert(store.delete_store(kb_id))
+                db = assert(sql.get(DATABASE))
+                tx = assert(db:begin())
+                local absent, absent_err = writer.consume_placement_tx(tx, dialect, kb_id, wake_id, retained_id)
+                test.is_nil(absent_err)
+                test.is_false(absent)
+                assert(select(2, tx:commit()) == nil)
+                assert(select(2, db:release()) == nil)
+                assert(store.create_store(kb_id, "fixture-embed", {}, {kb_type = "wiki"}))
+                local newcomer = replacement(kb_id, events[2], 2)
+                newcomer.document.id = retained_id
+                assert(store.replace_document(kb_id, newcomer))
+                test.eq(document(kb_id).id, retained_id)
+                test.eq(#assert(reader.pending_placements(kb_id, wake_id, 1)), 0)
+            end, {kb_type = "wiki"})
         end)
 
         test.it("records a missing stored blob and accepts the next document in the same execution", function()

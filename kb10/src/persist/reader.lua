@@ -12,6 +12,22 @@ local search_index = require("search_index")
 
 local reader = {}
 
+-- A wake is specific to one publication and destination. Revised and deleted
+-- documents disappear from the old wake's indexed range.
+function reader.pending_placements(store_id: string, wake_id: string, limit: number): (any?, any?)
+    if type(limit) ~= "number" or limit < 1 or limit > 64 or limit ~= math.floor(limit) then
+        return nil, errors.new({kind = errors.INVALID, message = "placement page size must be between 1 and 64"})
+    end
+    local db, err = ops.get_db()
+    if not db then return nil, err end
+    local rows, read_err = db:query([[SELECT id, placement_identity FROM kb10_nodes
+        WHERE store_id = $1 AND placement_wake_id = $2 AND placement_wake_id IS NOT NULL
+        ORDER BY id LIMIT $3]], {store_id, wake_id, limit})
+    local _, release_err = db:release()
+    if read_err or release_err then return nil, read_err or release_err end
+    return rows, nil
+end
+
 local function decode_store_config(row: any): any
     row.config_snapshot = row.config
     if type(row.config) == "string" then

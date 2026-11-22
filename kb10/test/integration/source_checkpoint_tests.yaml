@@ -9,6 +9,7 @@ entries:
     modules: [sql, json, time, uuid, fs]
     imports:
       apply: kickside.core.projections:apply
+      reader: kickside.kb10.persist:reader
       artifact_input: kickside.kb10.injection:artifact_input
       artifacts: kickside.uploads.persist:artifact_content_repo
       artifact_cleanup: kickside.uploads.persist:artifact_cleanup_repo

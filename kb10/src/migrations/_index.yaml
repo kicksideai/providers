@@ -181,3 +181,15 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 17_graph_placement
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-22T12:00:00Z"
+    source: file://17_graph_placement.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

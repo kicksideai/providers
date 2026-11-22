@@ -196,6 +196,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:16_export_page_indexes
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:17_graph_placement
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 

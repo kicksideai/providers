@@ -69,12 +69,18 @@ end
 
 local insert_rows_tx = search_index.insert_rows_tx
 
-function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}, bindings: any?): ({string}?, any?)
+function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {any}, bindings: any?,
+        placement: table?): ({string}?, any?)
     local sqlite = db_type == sql.type.SQLITE
     local columns = { "id", "store_id", "parent_id", "node_type", "content", "content_type",
         "external_source", "external_id", "source_scope" }
     if sqlite then columns[#columns + 1] = "fts_rowid" end
-    columns[#columns + 1] = "metadata"
+    local metadata_index = #columns + 1
+    columns[metadata_index] = "metadata"
+    if placement then
+        columns[metadata_index + 1] = "placement_wake_id"
+        columns[metadata_index + 2] = "placement_identity"
+    end
     local ids: {string} = {}
     local rows: {any} = {}
     local fts: {any} = {}
@@ -106,8 +112,12 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
         local row = { id, store_id, input.parent_id, input.node_type, input.content,
             input.content_type, binding and binding.external_source,
             binding and binding.external_id, binding and binding.source_scope }
-        if sqlite then row[#columns - 1] = fts_rowid end
-        row[#columns] = json.encode(input.metadata or {})
+        if sqlite then row[metadata_index - 1] = fts_rowid end
+        row[metadata_index] = json.encode(input.metadata or {})
+        if placement then
+            row[metadata_index + 1] = placement.wake_id
+            row[metadata_index + 2] = placement.identity_json
+        end
         rows[i] = row
     end
     local err = insert_rows_tx(tx, "kb10_nodes", columns, rows)
@@ -117,9 +127,10 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
     return ids, nil
 end
 
-local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any, binding: any?): (string?, any?)
+local function insert_node_tx(tx: any, db_type: any, store_id: any, node: any, binding: any?,
+        placement: table?): (string?, any?)
     local ids, err = writer.insert_nodes_tx(tx, db_type, store_id,
-        { type(node) == "table" and node or {} }, binding and {binding})
+        { type(node) == "table" and node or {} }, binding and {binding}, placement)
     if err or not ids then return nil, err end
     return ids[1], nil
 end
@@ -474,14 +485,18 @@ end
 -- lineage and status are the whole truth about the document, so a prior
 -- status=failed and its error do not survive into a completed materialization.
 -- node_type is not written — the row was selected as a document and stays one.
-local function overwrite_document_tx(tx: any, db_type: any, store_id: any, node_id: any, document: any): any?
+local function overwrite_document_tx(tx: any, db_type: any, store_id: any, node_id: any, document: any,
+        placement: table?): any?
     local node_input = (type(document) == "table" and document or {}) :: kb10.NodeInput
     local metadata_json = json.encode(node_input.metadata or {})
 
-    local _, exec_err = tx:execute(
-        "UPDATE kb10_nodes SET content = $1, content_type = $2, metadata = $3, parent_id = $4, updated_at = CURRENT_TIMESTAMP WHERE store_id = $5 AND id = $6",
-        { node_input.content, node_input.content_type, metadata_json, node_input.parent_id, store_id, node_id }
-    )
+    -- The new document revision supersedes any unfinished placement.
+    local query = [[UPDATE kb10_nodes SET content = $1, content_type = $2, metadata = $3,
+        parent_id = $4, updated_at = CURRENT_TIMESTAMP, placement_wake_id = $5, placement_identity = $6
+        WHERE store_id = $7 AND id = $8]]
+    local _, exec_err = tx:execute(query,
+        {node_input.content, node_input.content_type, metadata_json, node_input.parent_id,
+            placement and placement.wake_id, placement and placement.identity_json, store_id, node_id})
     if exec_err then return exec_err end
 
     if db_type == sql.type.SQLITE then
@@ -566,7 +581,7 @@ end
 -- are content. A caller-supplied document.id only seeds a first
 -- materialization: on replacement the stored identity wins.
 local function replace_document_tx(tx: any, db_type: any, store_id: any, replacement: any, before: table?,
-        encoded_embeddings: boolean?)
+        encoded_embeddings: boolean?, placement: table?)
     if not is_str(store_id) then return nil, errors.new({ message = "store_id is required", kind = errors.INVALID }) end
     local spec = type(replacement) == "table" and replacement or {}
     local document = type(spec.document) == "table" and spec.document or nil
@@ -614,11 +629,11 @@ local function replace_document_tx(tx: any, db_type: any, store_id: any, replace
 
         local children_err = delete_children_tx(tx, db_type, store_id, reused_id)
         if children_err then return nil, errors.wrap(children_err, "delete prior generation failed") end
-        local overwrite_err = overwrite_document_tx(tx, db_type, store_id, reused_id, document)
+        local overwrite_err = overwrite_document_tx(tx, db_type, store_id, reused_id, document, placement)
         if overwrite_err then return nil, errors.wrap(overwrite_err, "replace document failed") end
         doc_id = reused_id
     else
-        local new_id, doc_err = insert_node_tx(tx, db_type, store_id, document, binding)
+        local new_id, doc_err = insert_node_tx(tx, db_type, store_id, document, binding, placement)
         if doc_err or not new_id then return nil, errors.wrap(doc_err, "insert document failed") end
         doc_id = new_id
     end
@@ -1299,7 +1314,11 @@ function writer.source_checkpoint_outcome(before: table, change: table): table
 end
 
 function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: string, selector: table,
-        before: table, change: table, expected: table, encoded_embeddings: boolean?): (boolean?, any?)
+        before: table, change: table, expected: table, encoded_embeddings: boolean?, placement: table?): (boolean?, any?)
+    if placement and (change.kind ~= "replace" or change.replacement.document.metadata.status ~= "completed"
+        or not uuid.validate(placement.wake_id) or not is_str(placement.identity_json)) then
+        return nil, errors.new({kind = errors.INVALID, message = "placement requires a completed document revision"})
+    end
     if change.kind == "reject" then
         local id, err = reject_source_revision_tx(tx, dialect, store_id, selector.source_thread_id, change.metadata,
             change.code, before, change.document_id)
@@ -1311,7 +1330,7 @@ function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: s
     if change.kind == "delete" then
         written, write_err = delete_document_tx(tx, dialect, store_id, selector, before)
     else
-        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before, encoded_embeddings)
+        written, write_err = replace_document_tx(tx, dialect, store_id, change.replacement, before, encoded_embeddings, placement)
         if change.replacement.document.metadata.status == "failed" then failed = 1 else added = 1 end
     end
     if write_err or not written then return nil, write_err end
@@ -1324,6 +1343,25 @@ function writer.write_source_checkpoint_tx(tx: any, dialect: string, store_id: s
             message = "source writer result differs from checkpoint outcome"})
     end
     return true, nil
+end
+
+-- Call before graph writes in the same transaction. A stale wake cannot clear
+-- a newer revision and any graph or checkpoint failure rolls this change back.
+function writer.consume_placement_tx(tx: any, dialect: string, store_id: string, wake_id: string,
+        document_id: string): (boolean?, any?)
+    local store_row, lock_err = lock_store_tx(tx, dialect, store_id, true)
+    if lock_err then return nil, lock_err end
+    if not store_row then return false, nil end
+    local result, write_err = tx:execute([[UPDATE kb10_nodes
+        SET placement_wake_id = NULL, placement_identity = NULL
+        WHERE store_id = $1 AND placement_wake_id = $2 AND id = $3 AND node_type = 'document']],
+        {store_id, wake_id, document_id})
+    if write_err then return nil, write_err end
+    local changed = result and tonumber(result.rows_affected)
+    if changed ~= 0 and changed ~= 1 then
+        return nil, errors.new({kind = errors.INTERNAL, message = "placement returned no document update count"})
+    end
+    return changed == 1, nil
 end
 
 local function delete_documents(store_id: any, mutate: any, ...)
