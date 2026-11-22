@@ -50,6 +50,7 @@ store.set_descriptions = writer.set_descriptions
 store.insert_edge = writer.insert_edge
 store.delete_edge = writer.delete_edge
 store.apply_graph_patch = writer.apply_graph_patch
+store.merge_concepts = writer.merge_concepts
 
 store.VECTOR_DIMENSIONS = ops.VECTOR_DIMENSIONS
 

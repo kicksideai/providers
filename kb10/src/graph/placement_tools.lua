@@ -475,81 +475,37 @@ type MergeConceptArgs = {
 }
 
 
--- Merge a duplicate concept (from) into a canonical one (into): re-point every
--- inbound edge (documents categorized into `from`, and child concepts whose
--- subtopic_of points at `from`) onto `into`, then delete `from` (its edges +
--- embedding cascade away). Outbound parent edges are dropped — `into` keeps its
--- own placement. Colliding edges are skipped so the kb10_edges UNIQUE constraint
--- holds. This is the tool the placement/treatment agent uses to fold duplicates.
+-- Resolve labels for the tool. The writer makes the merge decision on the
+-- addressed concepts and their current relationships inside its transaction.
 local function merge_concept(args: MergeConceptArgs): any
     local store_id: string? = ctx.get("graph_store_id") :: string?
     if not store_id then return tool_result.domain_error("no store_id in context") end
     local store = node_store
-
-    local state, state_err = concept_tree_state(store, store_id)
-    if not state then return nil, state_err end
     local from_id = args.from_id
     local into_id = args.into_id
-    if (not from_id or from_id == "") and args.from_label then
-        local from = find_concept_by_label(state :: ConceptTreeState, args.from_label :: string)
-        from_id = from and from.id or nil
-    end
-    if (not into_id or into_id == "") and args.into_label then
-        local into = find_concept_by_label(state :: ConceptTreeState, args.into_label :: string)
-        into_id = into and into.id or nil
+
+    local from_label = (not from_id or from_id == "") and args.from_label or nil
+    local into_label = (not into_id or into_id == "") and args.into_label or nil
+    if from_label or into_label then
+        local state, state_err = concept_tree_state(store, store_id)
+        if not state then return nil, state_err end
+        if from_label then
+            local from = find_concept_by_label(state, from_label)
+            from_id = from and from.id or nil
+        end
+        if into_label then
+            local into = find_concept_by_label(state, into_label)
+            into_id = into and into.id or nil
+        end
     end
     if not from_id or from_id == "" or not into_id or into_id == "" then
         return tool_result.domain_error("from (from_id/from_label) and into (into_id/into_label) concepts are required")
     end
-    if from_id == into_id then return tool_result.domain_error("cannot merge a concept into itself") end
 
-    local from_node, from_err = store:get_node({ store_id = store_id, node_id = from_id })
-    if from_err then return nil, errors.wrap(from_err, "reading source concept failed") end
-    if not from_node then return nil, errors.wrap(from_id, "source concept not found") end
-    if from_id == state.root_id then return tool_result.domain_error("cannot merge a root concept") end
-    local into_node, into_err = store:get_node({ store_id = store_id, node_id = into_id })
-    if into_err then return nil, errors.wrap(into_err, "reading target concept failed") end
-    if not into_node then return nil, errors.wrap(into_id, "target concept not found") end
-    if locked_node(from_node) or locked_node(into_node) then
-        return tool_result.domain_error("a concept is locked and cannot be merged")
-    end
-    local descends, descent_err = store:is_descendant({ store_id = store_id, ancestor_id = from_id, node_id = into_id })
-    if descent_err then return nil, errors.wrap(descent_err, "reading concept ancestry failed") end
-    if descends then return tool_result.domain_error("cannot merge a concept into its own descendant") end
-
-    local function key(f: any, t: any, ty: any): string return tostring(f) .. "|" .. tostring(t) .. "|" .. tostring(ty) end
-    local seen: { [string]: boolean } = {}
-    local into_in, into_in_err = store:get_all_edges({ store_id = store_id, node_id = into_id, opts = { direction = "in" } })
-    if into_in_err then return nil, errors.wrap(into_in_err, "reading target concept edges failed") end
-    for _, e in ipairs(into_in) do seen[key(e.from_node_id, e.to_node_id, e.edge_type)] = true end
-
-    local from_in, from_in_err = store:get_all_edges({ store_id = store_id, node_id = from_id, opts = { direction = "in" } })
-    if from_in_err then return nil, errors.wrap(from_in_err, "reading source concept edges failed") end
-    local insert_edges: { any } = {}
-    local moved = 0
-    for _, e in ipairs(from_in) do
-        if e.from_node_id ~= into_id then
-            local k = key(e.from_node_id, into_id, e.edge_type)
-            if not seen[k] then
-                seen[k] = true
-                insert_edges[#insert_edges + 1] = {
-                    from_node_id = e.from_node_id,
-                    to_node_id = into_id,
-                    edge_type = e.edge_type,
-                    weight = e.weight or 1.0,
-                }
-                moved = moved + 1
-            end
-        end
-    end
-
-    local _, patch_err = store:apply_graph_patch({
-        store_id = store_id,
-        insert_edges = insert_edges,
-        delete_node_id = from_id,
-    })
-    if patch_err then return nil, errors.wrap(patch_err, "merging concepts failed") end
-
+    local merged, merge_err = store:merge_concepts({store_id = store_id, from_id = from_id, into_id = into_id})
+    if errors.is(merge_err, errors.INVALID) then return tool_result.domain_error(tostring(merge_err)) end
+    if merge_err then return nil, errors.wrap(merge_err, "merging concepts failed") end
+    local moved = merged.moved_edges
     log:info("concepts merged via tool", { from = from_id, into = into_id, moved = moved })
     local emit_err = emit_graph_change({
         reason = "concept.merged",
