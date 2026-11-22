@@ -172,6 +172,47 @@ function ops.locked_graph_metadata(field: string, db_type: any): string
         ", '$.manual') = 'true' OR json_type(" .. field .. ", '$.locked') = 'true' ELSE FALSE END)"
 end
 
+function ops.normalize_concept_label(value: any): string
+    if type(value) ~= "string" then return "" end
+    local normalized = trim(value:lower()):gsub("%s+", " ")
+    return normalized
+end
+
+-- The planner accepts at most 256 bytes of label input. Leave extra headroom
+-- in the exact B-tree key while keeping oversized historical labels readable
+-- by ID and within PostgreSQL's per-index-entry limit.
+function ops.placement_label_key(value: any): string?
+    local normalized = ops.normalize_concept_label(value)
+    if normalized == "" or #normalized > 1024 then return nil end
+    return normalized
+end
+
+function ops.taxonomy_root_flag_sql(db_type: any): string
+    return db_type == sql.type.POSTGRES
+        and "(metadata->'is_root' = 'true'::jsonb OR metadata->>'concept_type' = 'root')"
+        or "(CASE WHEN json_valid(metadata) THEN json_type(metadata, '$.is_root') = 'true'"
+            .. " OR json_extract(metadata, '$.concept_type') = 'root' ELSE FALSE END)"
+end
+
+function ops.taxonomy_root_tx(tx: any, db_type: any, store_id: string, placement: boolean?): (string?, any?)
+    local indexed = placement and db_type == sql.type.SQLITE and " INDEXED BY idx_kb10_placement_root" or ""
+    local flagged, flag_err = tx:query("SELECT id FROM kb10_nodes" .. indexed
+        .. " WHERE store_id = $1 AND node_type = 'concept' AND " .. ops.taxonomy_root_flag_sql(db_type) .. " LIMIT 2", {store_id})
+    if flag_err then return nil, flag_err end
+    if #flagged == 1 then return tostring(flagged[1].id), nil end
+    if #flagged == 0 then
+        local parentless, parent_err = tx:query([[SELECT n.id FROM kb10_nodes n
+            WHERE n.store_id = $1 AND n.node_type = 'concept' AND NOT EXISTS (
+                SELECT 1 FROM kb10_edges e
+                JOIN kb10_nodes p ON p.store_id = e.store_id AND p.id = e.to_node_id AND p.node_type = 'concept'
+                WHERE e.store_id = n.store_id AND e.from_node_id = n.id AND e.edge_type = 'subtopic_of'
+            ) LIMIT 2]], {store_id})
+        if parent_err then return nil, parent_err end
+        if #parentless == 1 then return tostring(parentless[1].id), nil end
+    end
+    return nil, errors.new({kind = errors.CONFLICT, message = "ambiguous root concept"})
+end
+
 ops.VECTOR_DIMENSIONS = search_index.VECTOR_DIMENSIONS
 
 return ops

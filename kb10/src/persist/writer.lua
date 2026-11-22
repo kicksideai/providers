@@ -74,13 +74,22 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
     local sqlite = db_type == sql.type.SQLITE
     local columns = { "id", "store_id", "parent_id", "node_type", "content", "content_type",
         "external_source", "external_id", "source_scope" }
-    if sqlite then columns[#columns + 1] = "fts_rowid" end
-    local metadata_index = #columns + 1
-    columns[metadata_index] = "metadata"
-    if placement then
-        columns[metadata_index + 1] = "placement_wake_id"
-        columns[metadata_index + 2] = "placement_identity"
+    local fts_column = #columns + 1
+    if sqlite then columns[fts_column] = "fts_rowid" end
+    local label_column = #columns + 1
+    for _, node in ipairs(nodes) do
+        if node.node_type == kb10.NODE_TYPE.CONCEPT then
+            columns[label_column] = "placement_label_key"
+            break
+        end
     end
+    local wake_column = #columns + 1
+    if placement then
+        columns[wake_column] = "placement_wake_id"
+        columns[wake_column + 1] = "placement_identity"
+    end
+    local metadata_column = #columns + 1
+    columns[metadata_column] = "metadata"
     local ids: {string} = {}
     local rows: {any} = {}
     local fts: {any} = {}
@@ -112,11 +121,15 @@ function writer.insert_nodes_tx(tx: any, db_type: any, store_id: any, nodes: {an
         local row = { id, store_id, input.parent_id, input.node_type, input.content,
             input.content_type, binding and binding.external_source,
             binding and binding.external_id, binding and binding.source_scope }
-        if sqlite then row[metadata_index - 1] = fts_rowid end
-        row[metadata_index] = json.encode(input.metadata or {})
+        if sqlite then row[fts_column] = fts_rowid end
+        local metadata = input.metadata or {}
+        row[metadata_column] = json.encode(metadata)
+        if input.node_type == kb10.NODE_TYPE.CONCEPT then
+            row[label_column] = ops.placement_label_key(type(metadata) == "table" and metadata.label or nil)
+        end
         if placement then
-            row[metadata_index + 1] = placement.wake_id
-            row[metadata_index + 2] = placement.identity_json
+            row[wake_column] = placement.wake_id
+            row[wake_column + 1] = placement.identity_json
         end
         rows[i] = row
     end
@@ -1027,10 +1040,21 @@ local function update_node_tx(tx: any, db_type: any, store_id: any, node_id: any
     if type(node_patch.metadata) == "table" then
         -- json.encode returns (string, err); bind to a local so table.insert gets
         -- a single value, not the 2-value expansion (which Lua reads as pos+value).
-        local meta_json = json.encode(merged_metadata(node.metadata, node_patch.metadata))
+        local metadata = merged_metadata(node.metadata, node_patch.metadata)
+        local meta_json = json.encode(metadata)
         idx = idx + 1
         table.insert(sets, "metadata = $" .. idx)
         table.insert(params, meta_json)
+        if node.node_type == kb10.NODE_TYPE.CONCEPT then
+            local key = ops.placement_label_key(metadata.label)
+            if key then
+                idx = idx + 1
+                table.insert(sets, "placement_label_key = $" .. idx)
+                table.insert(params, key)
+            else
+                table.insert(sets, "placement_label_key = NULL")
+            end
+        end
     end
     if node_patch.content ~= nil then
         idx = idx + 1
@@ -1520,27 +1544,7 @@ local function invalid_merge(message: string): (nil, any)
     return nil, errors.new({kind = errors.INVALID, message = message})
 end
 
-local function taxonomy_root_tx(tx: any, db_type: any, store_id: string): (string?, any?)
-    local root_metadata = db_type == sql.type.POSTGRES
-        and "(metadata->'is_root' = 'true'::jsonb OR metadata->>'concept_type' = 'root')"
-        or "(CASE WHEN json_valid(metadata) THEN json_type(metadata, '$.is_root') = 'true'"
-            .. " OR json_extract(metadata, '$.concept_type') = 'root' ELSE FALSE END)"
-    local flagged, flag_err = tx:query([[SELECT id FROM kb10_nodes
-        WHERE store_id = $1 AND node_type = 'concept' AND ]] .. root_metadata .. " LIMIT 2", {store_id})
-    if flag_err then return nil, flag_err end
-    if #flagged == 1 then return tostring(flagged[1].id), nil end
-    if #flagged == 0 then
-        local parentless, parent_err = tx:query([[SELECT n.id FROM kb10_nodes n
-            WHERE n.store_id = $1 AND n.node_type = 'concept' AND NOT EXISTS (
-                SELECT 1 FROM kb10_edges e
-                JOIN kb10_nodes p ON p.store_id = e.store_id AND p.id = e.to_node_id AND p.node_type = 'concept'
-                WHERE e.store_id = n.store_id AND e.from_node_id = n.id AND e.edge_type = 'subtopic_of'
-            ) LIMIT 2]], {store_id})
-        if parent_err then return nil, parent_err end
-        if #parentless == 1 then return tostring(parentless[1].id), nil end
-    end
-    return nil, errors.new({kind = errors.CONFLICT, message = "ambiguous root concept"})
-end
+local taxonomy_root_tx = ops.taxonomy_root_tx
 
 -- Follow all retained parent links. UNION also terminates on a pre-existing cycle.
 local function taxonomy_cycle_tx(tx: any, store_id: string, from_id: string, into_id: string): (boolean?, any?)

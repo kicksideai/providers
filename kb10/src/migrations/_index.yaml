@@ -193,3 +193,17 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 18_placement_read_indexes
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [kickside, kb10, schema]
+      target_db: ""
+      timestamp: "2026-11-22T12:01:00Z"
+    source: file://18_placement_read_indexes.lua
+    modules: [json, sql]
+    imports:
+      migration: wippy.migration:migration
+      ops: kickside.kb10.persist:ops
+    method: migrate

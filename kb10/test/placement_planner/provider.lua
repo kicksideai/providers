@@ -46,7 +46,39 @@ local function generate(args)
     local root = assert(tree:match("id=([^,%)]+)"), tree)
     local existing = assert(tree:match("%[Existing target%] %(id=([^,%)]+)"))
     local alternate = assert(tree:match("%[Alternate target%] %(id=([^,%)]+)"))
+    assert(tree:find("[Existing target] (id=" .. existing .. ", parent=" .. root .. ")", 1, true))
+    assert(tree:find("[Alternate target] (id=" .. alternate .. ", parent=" .. root .. ")", 1, true))
     local read = function(index) return assert(json.decode(results[index].content[1].text)) end
+    if user:find("large-wiki-probe", 1, true) then
+        assert(tree:find("More concepts are omitted", 1, true))
+        assert(not tree:find("Hidden", 1, true))
+        if target_count == 1 then
+            return call("CreateConcept", 2, {label = " hidden  NORMALIZED label ", parent_id = root})
+        end
+        local hidden = read(2)
+        assert(hidden.success and hidden.result == "reused" and hidden.concept_id:sub(1, 8) == "ffffffff")
+        if target_count == 2 then return call("GetConceptDocuments", 3, {limit = 3, concept_id = hidden.concept_id}) end
+        local first = read(3)
+        assert(#first.documents == 3 and first.next_offset == 3)
+        if target_count == 3 then
+            return call("GetConceptDocuments", 4, {limit = 3, offset = first.next_offset, concept_id = hidden.concept_id})
+        end
+        local second = read(4)
+        assert(#second.documents == 3 and second.next_offset == 6)
+        for _, prior in ipairs(first.documents) do
+            for _, later in ipairs(second.documents) do assert(prior.id ~= later.id) end
+        end
+        if target_count == 4 then
+            return call("MergeConcept", 5, {from_id = hidden.concept_id, into_id = existing})
+        end
+        local blocked = read(5)
+        assert(not blocked.success and blocked.error:find("too many incident relationships", 1, true))
+        if target_count == 5 then
+            return call("AttachDocument", 6, {document_node_id = document_id, concept_id = hidden.concept_id})
+        end
+        assert(read(6).result == "attached")
+        return {success = true, finish_reason = "stop", result = {content = "large placement drafted", tool_calls = {}}}
+    end
     if target_count == 1 then return call("CreateConcept", 2, {label = "Draft topic", parent_id = root}) end
     local created = read(2)
     assert(created.success and created.result == "created")

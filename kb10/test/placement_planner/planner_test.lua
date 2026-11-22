@@ -5,6 +5,7 @@ local node_store = require("node_store")
 local planner = require("planner")
 local security = require("security")
 local sql = require("sql")
+local store = require("store")
 local test = require("test")
 local uuid = require("uuid")
 
@@ -72,8 +73,40 @@ local function run_placement(legacy)
     test.eq(#read_edges(args), 0)
 end
 
+local function populated_wiki()
+    local exec, args = fixture("large-wiki-probe")
+    local graph = assert(node_store:concept_taxonomy({store_id = args.store_id}))
+    local root, hidden = graph.root_id, "ffffffff" .. uuid.v7():sub(9)
+    local nodes = {{id = hidden, node_type = "concept", metadata = {label = "Before retitling"}}}
+    local edges = {{from_node_id = hidden, to_node_id = root, edge_type = "subtopic_of"}}
+    for i = 1, 520 do
+        local id = uuid.v7()
+        nodes[#nodes + 1] = {id = id, node_type = "concept", metadata = {label = "Ordinary concept " .. i}}
+        edges[#edges + 1] = {from_node_id = id, to_node_id = root, edge_type = "subtopic_of"}
+    end
+    for i = 1, 4200 do
+        local id = uuid.v7()
+        nodes[#nodes + 1] = {id = id, node_type = "document", metadata = {title = "Indexed document " .. i}}
+        edges[#edges + 1] = {from_node_id = id, to_node_id = hidden, edge_type = "categorized_as"}
+    end
+    -- These are the same bulk writer entry points used by import.
+    assert(store.insert_nodes(args.store_id, nodes))
+    assert(store.insert_edges(args.store_id, edges))
+    local _, update_err = node_store:update_node({store_id = args.store_id, node_id = hidden,
+        metadata = {label = "  Hidden    normalized LABEL  "}})
+    test.is_nil(update_err)
+    local planned, err = exec:call(PLAN_REF, args)
+    assert(planned, tostring(err))
+    test.eq(planned.action, "planned")
+    test.eq(#planned.operations, 1)
+    test.eq(planned.operations[1].kind, "attach_document")
+    test.eq(planned.operations[1].concept_id, hidden)
+    test.eq(#read_edges(args), 0)
+end
+
 local function define()
     test.describe("default placement planner", function()
+        test.it("uses indexed label and document pages after bounded discovery on a populated Wiki", populated_wiki)
         test.it("plans real model-tool turns and dependent draft reads without graph writes", function()
             run_placement(false)
         end)

@@ -10,6 +10,7 @@ entries:
     imports:
       test: wippy.test:test
       materializer: kickside.kb10.injection:materializer_store
+      store: kickside.kb10.persist:store
       node_store: kickside.kb10.persist:node_store
       planner: kickside.kb10.graph:placement_planner
   - name: plan
@@ -20,6 +21,7 @@ entries:
     imports:
       test: wippy.test:test
       materializer: kickside.kb10.injection:materializer_store
+      store: kickside.kb10.persist:store
       node_store: kickside.kb10.persist:node_store
       planner: kickside.kb10.graph:placement_planner
   - name: model

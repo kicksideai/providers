@@ -121,6 +121,7 @@ entries:
     source: file://placement_tools.lua
     modules: [json, logger, ctx]
     imports:
+      ops: kickside.kb10.persist:ops
       text_trim: kickside.contract:text_trim
       tool_result: kickside.contract:tool_result
       graph_fn: kickside.kb10.graph:graph_functions
@@ -362,8 +363,10 @@ entries:
     modules: [uuid]
     imports:
       kb_types: kickside.kb10:types
-      node_store: kickside.kb10.persist:node_store
+      ops: kickside.kb10.persist:ops
+      placement_reader: kickside.kb10.persist:placement_snapshot
       placement_tools: kickside.kb10.graph:placement_tools
+      text_limits: kickside.kb10:text_limits
 
   - name: placement_planner
     kind: library.lua

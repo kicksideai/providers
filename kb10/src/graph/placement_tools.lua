@@ -80,11 +80,7 @@ end
 -- whitespace). The placement agent re-mints topics across documents because the
 -- LLM does not reliably match an existing concept in a large tree; this gives a
 -- deterministic key so create_concept can get-or-create instead of duplicating.
-local function normalize_label(s: any): string
-    local t = type(s) == "string" and (s :: string):lower() or ""
-    t = trim(t):gsub("%s+", " ")
-    return t
-end
+local normalize_label = require("ops").normalize_concept_label
 
 type ConceptTreeState = {
     root_id: string?,
@@ -204,8 +200,8 @@ local function page_args(args: table): (number, number)
     return limit, offset
 end
 
-local function browse_tree_in(store_id: string, draft: any?): (any?, error?)
-    local tree, err = graph_fn.fetch_concept_tree({ store_id = store_id }, draft)
+local function browse_tree_in(store_id: string): (any?, error?)
+    local tree, err = graph_fn.fetch_concept_tree({ store_id = store_id })
     if not tree then return nil, err end
 
     local text: string = tree.tree_text or ""
@@ -220,6 +216,20 @@ local function browse_tree(_args: table): (any?, error?)
     local store_id = ctx.get("graph_store_id")
     if not store_id then return tool_result.domain_error("no store_id in context") end
     return browse_tree_in(store_id)
+end
+
+local function concept_node(label: string, description: string): table
+    return {
+        node_type = kb_types.NODE_TYPE.CONCEPT,
+        content = description,
+        content_type = "text/plain",
+        metadata = {
+            label = label,
+            concept_type = kb_types.CONCEPT_TYPE.TOPIC,
+            external_source = "concept",
+            external_id = "concept:" .. normalize_label(label),
+        },
+    }
 end
 
 local function create_concept_in(args: CreateConceptArgs, store: any, store_id: string, max_depth: number): (any?, any?)
@@ -258,17 +268,7 @@ local function create_concept_in(args: CreateConceptArgs, store: any, store_id: 
         return tool_result.domain_error(string.format("link depth limit is %d; choose a shallower parent concept", max_depth))
     end
 
-    local node_id, node_err = store:insert_graph_node({ store_id = store_id, node = {
-        node_type = kb_types.NODE_TYPE.CONCEPT,
-        content = description,
-        content_type = "text/plain",
-        metadata = {
-            label = label,
-            concept_type = kb_types.CONCEPT_TYPE.TOPIC,
-            external_source = "concept",
-            external_id = "concept:" .. normalize_label(label),
-        },
-    }, parent_edge = {
+    local node_id, node_err = store:insert_graph_node({ store_id = store_id, node = concept_node(label, description), parent_edge = {
         to_node_id = parent_id,
         edge_type = kb_types.EDGE_TYPE.SUBTOPIC_OF,
         weight = 1.0,
@@ -463,19 +463,15 @@ end
 local function draft_tools(store: any, store_id: string, depth: number?): {[string]: any}
     local max_depth = placement_link_depth(depth)
     return {
-        BrowseTree = function() return browse_tree_in(store_id, store) end,
-        CreateConcept = function(args) return create_concept_in(args, store, store_id, max_depth) end,
+        BrowseTree = function() return store:browse() end,
+        CreateConcept = function(args) return store:create(args, max_depth) end,
         AttachDocument = function(args) return categorize_document_in(args, store, store_id, false) end,
         MoveDocument = function(args) return categorize_document_in(args, store, store_id, true) end,
         GetConceptDocuments = function(args)
-            local result, err = get_concept_documents_in(args, store, store_id)
-            if not result or not result.success then return result, err end
-            for index, doc in ipairs(result.documents) do
-                result.documents[index] = {id = doc.id, title = metadata_of(doc).title, node_type = doc.node_type}
-            end
-            return result, nil
+            local limit, offset = page_args(args)
+            return store:concept_documents(args.concept_id, limit, offset)
         end,
-        MergeConcept = function(args) return merge_concept_in(args, store, store_id) end,
+        MergeConcept = function(args) return store:resolve_merge(args) end,
     }
 end
 
@@ -489,6 +485,7 @@ return {
     categorization_lock = categorization_lock,
     draft_tools = draft_tools,
     locked_meta = locked_meta,
+    concept_node = concept_node,
     _concept_tree_state_for_test = concept_tree_state,
     _metadata_of_for_test = metadata_of,
 }

@@ -1,7 +1,9 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local kb = require("kb_types")
-local node_store = require("node_store")
+local ops = require("ops")
+local reader = require("placement_reader")
 local tools = require("placement_tools")
+local text_limits = require("text_limits")
 local uuid = require("uuid")
 
 local Draft = {}
@@ -10,235 +12,378 @@ local PARENT = kb.EDGE_TYPE.SUBTOPIC_OF
 local CATEGORY = kb.EDGE_TYPE.CATEGORIZED_AS
 local CONCEPT = kb.NODE_TYPE.CONCEPT
 local DOCUMENT = kb.NODE_TYPE.DOCUMENT
+local MAX_INCIDENT = 128
+local MAX_ANCESTORS = 64
 
 local function invalid(message: string): error
     return errors.new({kind = errors.INVALID, message = message})
 end
 
-local function categorization(edges: {any}, document_id: string): {any}
-    local selected = {}
-    for _, edge in ipairs(edges) do
-        if edge.from_node_id == document_id and edge.edge_type == CATEGORY then selected[#selected + 1] = edge end
-    end
-    return selected
+local function refused(message: string): (table, nil)
+    return {success = false, error = message}, nil
 end
 
--- Shared taxonomy rendering follows one parent per concept. Refuse malformed
--- branches before they can cause recursion or an exponential rendering walk.
-local function check_taxonomy(draft: any): error?
-    local parents = {}
-    for _, edge in ipairs(draft.edges) do
-        local child, parent = draft.nodes[edge.from_node_id], draft.nodes[edge.to_node_id]
-        if edge.edge_type == PARENT and child and child.node_type == CONCEPT and parent and parent.node_type == CONCEPT then
-            if parents[child.id] then return invalid("placement draft requires one parent per concept") end
-            parents[child.id] = parent.id
-        end
-    end
-    local checked = {}
-    for _, node in ipairs(draft.concepts) do
-        local chain, current = {}, node.id
-        while current and not checked[current] do
-            if chain[current] then return invalid("placement draft found a cycle in the taxonomy") end
-            chain[current] = true
-            current = parents[current]
-        end
-        for id in pairs(chain) do checked[id] = true end
-    end
-    return nil
+function Draft.new(store_id: string, input: table): any
+    return setmetatable({store_id = store_id, root_id = input.root_id, postgres = input.postgres,
+        nodes = {[input.document.id] = input.document}, removed = {}, added = {}, edge_changes = {},
+        hidden_documents = {}, operations = {}, pages = {}}, Draft)
 end
 
-function Draft.new(snapshot: any): (any?, error?)
-    local draft = setmetatable({nodes = snapshot.nodes, concepts = snapshot.concepts, edges = snapshot.edges,
-        operations = {}}, Draft)
-    local err = check_taxonomy(draft)
+function Draft:address(id: string): string?
+    if self.postgres then return uuid.format(id) end
+    return id
+end
+
+function Draft:node(raw_id: string): (any?, error?)
+    local id = self:address(raw_id)
+    if not id or self.removed[id] then return nil, nil end
+    if self.nodes[id] ~= nil then return self.nodes[id] or nil, nil end
+    local node, err = reader.node(self.store_id, id, self.postgres)
     if err then return nil, err end
-    local taxonomy, root_err = draft:concept_taxonomy({})
-    if root_err then return nil, root_err end
-    if not taxonomy.root_id then return nil, invalid("placement draft has no taxonomy root") end
-    return draft, nil
-end
-
-function Draft:concept_taxonomy(_args: any): (any?, error?)
-    return node_store.build_concept_taxonomy(self.concepts, self.edges)
+    self.nodes[id] = node or false
+    return node, nil
 end
 
 function Draft:get_node(args: any): (any?, error?)
-    return self.nodes[args.node_id], nil
+    return self:node(args.node_id)
 end
 
-function Draft:get_nodes(args: any): {any}
-    local nodes = {}
-    for _, id in ipairs(args.node_ids) do
-        local node = self.nodes[id]
-        if node then nodes[#nodes + 1] = node end
-    end
-    return nodes
-end
-
-local function select_edges(edges: {any}, ids: {[string]: boolean}, opts: any): {any}
-    local rows = {}
-    local direction = opts.direction
+function Draft:prime_nodes(edges: {any}): error?
+    local ids, seen = {}, {}
     for _, edge in ipairs(edges) do
-        local touches = (direction ~= "out" and ids[edge.to_node_id]) or (direction ~= "in" and ids[edge.from_node_id])
-        if touches and (not opts.edge_type or edge.edge_type == opts.edge_type) then rows[#rows + 1] = edge end
+        local id = edge.from_node_id
+        if self.nodes[id] == nil and not self.removed[id] and not seen[id] then
+            seen[id] = true
+            ids[#ids + 1] = id
+        end
     end
-    return rows
+    local found, err = reader.nodes(self.store_id, ids, self.postgres)
+    if err then return err end
+    for _, id in ipairs(ids) do self.nodes[id] = found[id] or false end
+    return nil
 end
 
-function Draft:get_all_edges_batch(args: any): {any}
-    local ids = {}
-    for _, id in ipairs(args.node_ids) do ids[id] = true end
-    return select_edges(self.edges, ids, args.opts)
+local function edge_in_scope(edge: any, node_id: string, direction: string, edge_type: string?): boolean
+    return (direction == "in" and edge.to_node_id == node_id or direction == "out" and edge.from_node_id == node_id)
+        and (not edge_type or edge_type == edge.edge_type)
 end
 
-function Draft:get_all_edges(args: any): {any}
-    return select_edges(self.edges, {[args.node_id] = true}, args.opts)
+function Draft:edges(node_id: string, direction: string, edge_type: string?): ({any}?, error?)
+    local stored = {}
+    if not self.added[node_id] then
+        local err
+        stored, err = reader.edges(self.store_id, node_id, self.postgres, direction, edge_type, MAX_INCIDENT + 1)
+        if err then return nil, err end
+        if #stored > MAX_INCIDENT then return nil, invalid("too many incident relationships for this placement operation") end
+    end
+    local edges = {}
+    for _, edge in ipairs(stored) do
+        if self.edge_changes[edge.id] == nil then edges[#edges + 1] = edge end
+    end
+    for _, edge in pairs(self.edge_changes) do
+        if edge and edge_in_scope(edge, node_id, direction, edge_type) then edges[#edges + 1] = edge end
+    end
+    if #edges > MAX_INCIDENT then return nil, invalid("too many incident relationships for this placement operation") end
+    return edges, nil
 end
 
-function Draft:get_edges(args: any): {any}
-    local rows = self:get_all_edges(args)
-    local page = {}
-    local offset = args.opts.offset or 0
-    for index = offset + 1, math.min(#rows, offset + args.opts.limit) do page[#page + 1] = rows[index] end
-    return page
+function Draft:get_all_edges(args: any): ({any}?, error?)
+    return self:edges(args.node_id, args.opts.direction, args.opts.edge_type)
 end
 
-function Draft:categorized(document_id: string): boolean
-    return #categorization(self.edges, document_id) > 0
+function Draft:categorized(document_id: string): (boolean?, error?)
+    local edges, err = self:edges(document_id, "out", CATEGORY)
+    if err then return nil, err end
+    return #edges > 0, nil
 end
 
-function Draft:insert_graph_node(args: any): (string?, error?)
-    local node = args.node
+function Draft:change_edge(id: string, edge: any, original: any?): ()
+    if self.edge_changes[id] == nil and original and original.edge_type == CATEGORY then
+        local target = original.to_node_id
+        self.hidden_documents[target] = (self.hidden_documents[target] or 0) + 1
+    end
+    self.edge_changes[id] = edge
+    self.pages = {}
+end
+
+function Draft:append_edge(from_id: string, into_id: string, edge_type: string): ()
+    local id = uuid.v7()
+    self:change_edge(id, {id = id, from_node_id = from_id, to_node_id = into_id, edge_type = edge_type, metadata = {}})
+end
+
+function Draft:discovery(): ({any}?, boolean?, error?)
+    local excluded = {[self.root_id] = true}
+    for id in pairs(self.removed) do excluded[id] = true end
+    return reader.discovery(self.store_id, excluded, self.postgres)
+end
+
+local function safe_label(node: table): string
+    local label = node.metadata.label
+    if type(label) ~= "string" or label == "" then label = "Untitled" end
+    return text_limits.prefix(label, 256)
+end
+
+function Draft:browse(): (string?, error?)
+    local root, root_err = self:node(self.root_id)
+    if root_err then return nil, root_err end
+    if not root then return nil, invalid("placement taxonomy root changed") end
+    local rows, more, err = self:discovery()
+    if err then return nil, err end
+    local lines = {"[" .. safe_label(root) .. "] (id=" .. root.id .. ")"}
+    local draft_parents = {}
+    for _, edge in pairs(self.edge_changes) do
+        if edge and edge.edge_type == PARENT then
+            local selected = draft_parents[edge.from_node_id]
+            if not selected or edge.id < selected.id then draft_parents[edge.from_node_id] = edge end
+        end
+    end
+    local function line(node: table): string
+        local lock = tools.locked_meta(node.metadata) and ", locked" or ""
+        local draft_parent = draft_parents[node.id]
+        local parent_id = draft_parent and draft_parent.to_node_id
+            or (node.parent_edge_id and self.edge_changes[node.parent_edge_id] == nil and node.parent_id)
+        local parent = parent_id and ", parent=" .. parent_id or ""
+        return "  [" .. safe_label(node) .. "] (id=" .. node.id .. parent .. lock .. ")"
+    end
+    for _, node in ipairs(rows) do lines[#lines + 1] = line(node) end
+    for _, op in ipairs(self.operations) do
+        if op.kind == "create_concept" and not self.removed[op.id] then lines[#lines + 1] = line(self.nodes[op.id]) end
+    end
+    if more then lines[#lines + 1] = "More concepts are omitted. CreateConcept checks exact labels across the knowledge base." end
+    return table.concat(lines, "\n"), nil
+end
+
+function Draft:label(label: string): (table?, error?)
+    local key = ops.placement_label_key(label)
+    if not key then return nil, nil end
+    local excluded = {[self.root_id] = true}
+    for id in pairs(self.removed) do excluded[id] = true end
+    local stored, err = reader.label(self.store_id, key, excluded, self.postgres)
+    if err or stored then return stored, err end
+    for _, op in ipairs(self.operations) do
+        if op.kind == "create_concept" and not self.removed[op.id]
+            and ops.placement_label_key(op.label) == key then return self.nodes[op.id], nil end
+    end
+    return nil, nil
+end
+
+function Draft:parent_depth(id: string): (number?, error?)
+    local visited = {}
+    local depth = 0
+    local current = id
+    while current ~= self.root_id do
+        if visited[current] or depth >= MAX_ANCESTORS then return nil, invalid("placement ancestry exceeds the read limit") end
+        visited[current] = true
+        local parents, err = self:edges(current, "out", PARENT)
+        if err then return nil, err end
+        if #parents == 0 then return depth + 1, nil end
+        if #parents > 1 then return nil, invalid("placement draft requires one parent per concept") end
+        current = parents[1].to_node_id
+        depth = depth + 1
+    end
+    return depth, nil
+end
+
+local function tool_error(err: error): (any?, any?)
+    if errors.is(err, errors.INVALID) then return refused(tostring(err)) end
+    return nil, err
+end
+
+function Draft:create(args: table, max_depth: number): (any?, error?)
+    local existing, read_err = self:label(args.label)
+    if read_err then return nil, read_err end
+    if existing then
+        return {success = true, result = "reused", concept_id = existing.id, label = existing.metadata.label,
+            message = "A topic with this name already exists. Use AttachDocument to attach the document to this concept."}, nil
+    end
+    local parent_id = args.parent_id
+    if not parent_id then
+        local rows, _, err = self:discovery()
+        if err then return nil, err end
+        local has_concepts = #rows > 0
+        for id in pairs(self.added) do
+            if not self.removed[id] then has_concepts = true; break end
+        end
+        if has_concepts then return refused("parent_id is required once the tree has concepts") end
+        parent_id = self.root_id
+    end
+    local parent, parent_err = self:node(parent_id)
+    if parent_err then return nil, parent_err end
+    if not parent or parent.node_type ~= CONCEPT then return refused("parent concept not found") end
+    local depth, depth_err = self:parent_depth(parent.id)
+    if depth_err then return tool_error(depth_err) end
+    if depth + 1 > max_depth then return refused("link depth limit is " .. tostring(max_depth)) end
+
+    local node = tools.concept_node(args.label, args.description or "")
     node.id = uuid.v7()
     if self.nodes[node.id] then return nil, invalid("placement draft generated a duplicate concept ID") end
-    self.nodes[node.id] = node
-    self.concepts[#self.concepts + 1] = node
-    local parent_id = args.parent_edge.to_node_id
-    self.edges[#self.edges + 1] = {id = uuid.v7(), from_node_id = node.id, to_node_id = parent_id,
-        edge_type = PARENT, metadata = {}}
+    self.nodes[node.id], self.added[node.id] = node, true
+    self:append_edge(node.id, parent.id, PARENT)
     local operations = self.operations
-    operations[#operations + 1] = {kind = "create_concept", id = node.id, parent_id = parent_id,
+    operations[#operations + 1] = {kind = "create_concept", id = node.id, parent_id = parent.id,
         label = node.metadata.label, description = node.content}
-    return node.id, nil
+    return {success = true, result = "created", concept_id = node.id, parent_id = parent.id, label = args.label}, nil
 end
 
 function Draft:categorize_automatically(args: any): (string?, error?)
-    local document_id, concept_id = args.document_node_id, args.concept_id
-    local document, concept = self.nodes[document_id], self.nodes[concept_id]
+    local document, doc_err = self:node(args.document_node_id)
+    if doc_err then return nil, doc_err end
+    local concept, concept_err = self:node(args.concept_id)
+    if concept_err then return nil, concept_err end
     if not document or document.node_type ~= DOCUMENT or not concept or concept.node_type ~= CONCEPT then
         return nil, invalid("document and target concept must exist in this knowledge base")
     end
-    local taxonomy, root_err = self:concept_taxonomy({})
-    if root_err then return nil, root_err end
-    if taxonomy.root_id == concept_id then
-        return nil, invalid("documents cannot be attached to the root concept; create or choose a non-root concept")
-    end
+    if self.root_id == concept.id then return nil, invalid("documents cannot be attached to the root concept") end
+    local edges, err = self:edges(document.id, "out", CATEGORY)
+    if err then return nil, err end
     if not args.replace then
-        for _, edge in ipairs(categorization(self.edges, document_id)) do
-            if edge.to_node_id == concept_id then return "unchanged", nil end
-        end
+        for _, edge in ipairs(edges) do if edge.to_node_id == concept.id then return "unchanged", nil end end
     end
-    local reason, lock_err = tools.categorization_lock(self, args.store_id, document_id)
+    local reason, lock_err = tools.categorization_lock(self, self.store_id, document.id)
     if lock_err then return nil, lock_err end
     if reason then return nil, invalid(reason) end
     if tools.locked_meta(concept.metadata) then return nil, invalid("target concept is locked") end
-
     if args.replace then
-        local retained = {}
-        for _, edge in ipairs(self.edges) do
-            if edge.from_node_id ~= document_id or edge.edge_type ~= CATEGORY then retained[#retained + 1] = edge end
-        end
-        self.edges = retained
+        for _, edge in ipairs(edges) do self:change_edge(edge.id, false, edge) end
     end
-    self.edges[#self.edges + 1] = {id = uuid.v7(), from_node_id = document_id, to_node_id = concept_id,
-        edge_type = CATEGORY, metadata = {}}
+    self:append_edge(document.id, concept.id, CATEGORY)
     local operations = self.operations
     operations[#operations + 1] = {kind = args.replace and "move_document" or "attach_document",
-        document_node_id = document_id, concept_id = concept_id}
+        document_node_id = document.id, concept_id = concept.id}
     return args.replace and "moved" or "attached", nil
 end
 
-local function is_descendant(edges: {any}, from_id: string, into_id: string): boolean
-    local parents = {}
-    for _, edge in ipairs(edges) do
-        if edge.edge_type == PARENT then
-            local list = parents[edge.from_node_id] or {}
-            list[#list + 1] = edge.to_node_id
-            parents[edge.from_node_id] = list
+function Draft:concept_documents(id: string, limit: number, offset: number): (any?, error?)
+    local concept, err = self:node(id)
+    if err then return nil, err end
+    if not concept or concept.node_type ~= CONCEPT then return refused("concept not found") end
+    local pages = self.pages[concept.id] or {}
+    local after = pages[offset]
+    if offset > 0 and not after then return refused("use next_offset from the previous document page") end
+    local rows = {}
+    if not self.added[concept.id] then
+        rows, err = reader.edges(self.store_id, concept.id, self.postgres, "in", CATEGORY, limit + (self.hidden_documents[concept.id] or 0) + 1, after, true)
+        if err then return nil, err end
+    end
+    local selected = {}
+    for _, edge in ipairs(rows) do
+        if self.edge_changes[edge.id] == nil then selected[#selected + 1] = edge end
+    end
+    for _, edge in pairs(self.edge_changes) do
+        if edge and edge_in_scope(edge, concept.id, "in", CATEGORY) and (not after or edge.id > after) then
+            selected[#selected + 1] = edge
         end
     end
+    table.sort(selected, function(left, right) return left.id < right.id end)
+    local count = math.min(#selected, limit)
+    local ids = {}
+    for i = 1, count do ids[i] = selected[i].from_node_id end
+    local documents, doc_err = reader.documents(self.store_id, ids, self.postgres)
+    if doc_err then return nil, doc_err end
+    local result = {}
+    for _, document_id in ipairs(ids) do
+        if documents[document_id] then result[#result + 1] = documents[document_id] end
+    end
+    local next_offset
+    if #selected > count then
+        next_offset = offset + count
+        pages[next_offset] = selected[count].id
+        self.pages[concept.id] = pages
+    end
+    return {success = true, concept_id = concept.id, documents = result, offset = offset, next_offset = next_offset}, nil
+end
+
+function Draft:is_descendant(from_id: string, into_id: string): (boolean?, error?)
     local seen, pending = {}, {into_id}
+    local read = 0
     while #pending > 0 do
         local id = table.remove(pending)
-        if id == from_id then return true end
+        if id == from_id then return true, nil end
         if not seen[id] then
             seen[id] = true
-            for _, parent in ipairs(parents[id] or {}) do pending[#pending + 1] = parent end
+            read = read + 1
+            if read > MAX_ANCESTORS then return nil, invalid("placement ancestry exceeds the read limit") end
+            local edges, err = self:edges(id, "out", PARENT)
+            if err then return nil, err end
+            for _, edge in ipairs(edges) do pending[#pending + 1] = edge.to_node_id end
         end
     end
-    return false
+    return false, nil
 end
 
-local function retarget_edges(draft: any, from_id: string, into_id: string, into_root: boolean): ({any}?, number?, error?)
-    local collisions, moved, retained = {}, 0, {}
-    for _, edge in ipairs(draft.edges) do
-        local source = draft.nodes[edge.from_node_id]
-        if edge.from_node_id == from_id or edge.to_node_id == from_id then
-            if tools.locked_meta(edge.metadata) or (edge.to_node_id == from_id and source
-                and (edge.edge_type == PARENT or edge.edge_type == CATEGORY) and tools.locked_meta(source.metadata)) then
-                return nil, nil, invalid("cannot merge a concept with protected relationships or stored child nodes")
-            end
-        elseif edge.to_node_id == into_id then
-            local types = collisions[edge.from_node_id] or {}
-            types[edge.edge_type] = true
-            collisions[edge.from_node_id] = types
-        end
+local function collision_key(edge: any): string
+    return edge.from_node_id .. "\0" .. edge.edge_type
+end
+
+function Draft:merge(from: table, into: table): (any?, error?)
+    if from.id == into.id then return refused("cannot merge a concept into itself") end
+    if self.root_id == from.id then return refused("cannot merge a root concept") end
+    if tools.locked_meta(from.metadata) or tools.locked_meta(into.metadata) or tonumber(from.has_children) == 1 then
+        return refused("cannot merge a concept with protected relationships or stored child nodes")
     end
-    for _, edge in ipairs(draft.edges) do
-        if edge.from_node_id ~= from_id and edge.to_node_id ~= from_id then
-            retained[#retained + 1] = edge
-        elseif edge.to_node_id == from_id and edge.from_node_id ~= from_id and edge.from_node_id ~= into_id then
-            local source = draft.nodes[edge.from_node_id]
+    local cycle, cycle_err = self:is_descendant(from.id, into.id)
+    if cycle_err then return tool_error(cycle_err) end
+    if cycle then return refused("cannot merge a concept into its own descendant") end
+    local incoming, in_err = self:edges(from.id, "in")
+    if in_err then return tool_error(in_err) end
+    local outgoing, out_err = self:edges(from.id, "out")
+    if out_err then return tool_error(out_err) end
+    local node_err = self:prime_nodes(incoming)
+    if node_err then return nil, node_err end
+    for _, edge in ipairs(outgoing) do
+        if tools.locked_meta(edge.metadata) then return refused("cannot merge a concept with protected relationships") end
+    end
+    local members = {}
+    for _, edge in ipairs(incoming) do
+        local source = self.nodes[edge.from_node_id]
+        if tools.locked_meta(edge.metadata) or (source and (edge.edge_type == PARENT or edge.edge_type == CATEGORY)
+            and tools.locked_meta(source.metadata)) then return refused("cannot merge a concept with protected relationships") end
+        if edge.from_node_id ~= from.id and edge.from_node_id ~= into.id then
             if not source or source.node_type == kb.NODE_TYPE.SUMMARY or source.node_type == kb.NODE_TYPE.CHUNK
-                or (source.node_type == DOCUMENT and (edge.edge_type ~= CATEGORY or into_root)) then
-                return nil, nil, invalid("merge would produce an invalid graph relationship")
+                or (source.node_type == DOCUMENT and (edge.edge_type ~= CATEGORY or into.id == self.root_id)) then
+                return refused("merge would produce an invalid graph relationship")
             end
-            local types = collisions[edge.from_node_id]
-            if not types or not types[edge.edge_type] then
-                retained[#retained + 1] = {id = edge.id, from_node_id = edge.from_node_id, to_node_id = into_id,
-                    edge_type = edge.edge_type, metadata = edge.metadata}
-                moved = moved + 1
-            end
+            members[#members + 1] = edge
         end
     end
-    return retained, moved, nil
+    local matches = {}
+    if not self.added[into.id] then
+        local err
+        matches, err = reader.edge_matches(self.store_id, into.id, members, self.postgres)
+        if err then return nil, err end
+    end
+    local present = {}
+    for key, id in pairs(matches) do if self.edge_changes[id] == nil then present[key] = true end end
+    for _, edge in pairs(self.edge_changes) do
+        if edge and edge.to_node_id == into.id then present[collision_key(edge)] = true end
+    end
+    for _, edge in ipairs(outgoing) do self:change_edge(edge.id, false, edge) end
+    for _, edge in ipairs(incoming) do self:change_edge(edge.id, false, edge) end
+    local moved = 0
+    for _, edge in ipairs(members) do
+        if not present[collision_key(edge)] then
+            self:change_edge(edge.id, {id = edge.id, from_node_id = edge.from_node_id, to_node_id = into.id,
+                edge_type = edge.edge_type, metadata = edge.metadata})
+            moved = moved + 1
+        end
+    end
+    self.removed[from.id] = true
+    local operations = self.operations
+    operations[#operations + 1] = {kind = "merge_concepts", from_id = from.id, into_id = into.id}
+    return {success = true, result = "merged", from_id = from.id, into_id = into.id, moved_edges = moved}, nil
 end
 
-function Draft:merge_concepts(args: any): (any?, error?)
-    local from_id, into_id = args.from_id, args.into_id
-    local from, into = self.nodes[from_id], self.nodes[into_id]
-    if from_id == into_id then return nil, invalid("cannot merge a concept into itself") end
+function Draft:resolve_merge(args: any): (any?, error?)
+    local from, from_err
+    if args.from_id then from, from_err = self:node(args.from_id) else from, from_err = self:label(args.from_label) end
+    if from_err then return nil, from_err end
+    local into, into_err
+    if args.into_id then into, into_err = self:node(args.into_id) else into, into_err = self:label(args.into_label) end
+    if into_err then return nil, into_err end
     if not from or from.node_type ~= CONCEPT or not into or into.node_type ~= CONCEPT then
-        return nil, invalid("both concepts must exist in this knowledge base")
+        return refused("both concepts must exist in this knowledge base")
     end
-    local taxonomy, root_err = self:concept_taxonomy({})
-    if root_err then return nil, root_err end
-    if taxonomy.root_id == from_id then return nil, invalid("cannot merge a root concept") end
-    if tools.locked_meta(from.metadata) or tools.locked_meta(into.metadata) then
-        return nil, invalid("a concept is locked and cannot be merged")
-    end
-    if tonumber(from.has_children) == 1 then return nil, invalid("cannot merge a concept with stored child nodes") end
-    if is_descendant(self.edges, from_id, into_id) then return nil, invalid("cannot merge a concept into its own descendant") end
-    local edges, moved, err = retarget_edges(self, from_id, into_id, taxonomy.root_id == into_id)
-    if err then return nil, err end
-    self.edges = edges
-    self.nodes[from_id] = nil
-    for index, concept in ipairs(self.concepts) do
-        if concept.id == from_id then table.remove(self.concepts, index); break end
-    end
-    local operations = self.operations
-    operations[#operations + 1] = {kind = "merge_concepts", from_id = from_id, into_id = into_id}
-    return {moved_edges = moved}, nil
+    return self:merge(from, into)
 end
 
 return Draft

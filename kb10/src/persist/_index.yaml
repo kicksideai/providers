@@ -120,8 +120,8 @@ entries:
     kind: library.lua
     meta:
       internal: true
-      comment: Bounded repeatable read for the default placement draft.
+      comment: Store-bound initial and indexed reads for the default placement draft.
     source: file://placement_snapshot.lua
-    modules: [json, sql]
+    modules: [json, sql, uuid]
     imports:
       ops: kickside.kb10.persist:ops

@@ -119,7 +119,8 @@ local function run_agent(args: table, snapshot: table, draft: any): (table?, err
     local configured = {}
     for key, value in pairs(spec) do configured[key] = value end
     if type(configured.prompt) ~= "string" then return nil, invalid("default placement agent has no prompt") end
-    configured.prompt = configured.prompt .. prompt_guidance(snapshot.config)
+    configured.prompt = configured.prompt .. "\n\nBrowseTree shows a bounded set of concepts. "
+        .. "CreateConcept checks exact normalized labels across the knowledge base." .. prompt_guidance(snapshot.config)
     configured.max_tokens = MAX_MODEL_OUTPUT_TOKENS
     configured.delegates = {}
     local context = agent_context.new()
@@ -139,8 +140,10 @@ local function run_agent(args: table, snapshot: table, draft: any): (table?, err
         local tool_calls = step.tool_calls or {}
         if type(tool_calls) ~= "table" then return nil, invalid("default placement returned malformed tool calls") end
         if #tool_calls == 0 then
-            if step.finish_reason == "stop" and attached and draft:categorized(args.document_node_id) then
-                return make_plan(args, draft, "planned"), nil
+            if step.finish_reason == "stop" and attached then
+                local categorized, category_err = draft:categorized(args.document_node_id)
+                if category_err then return nil, category_err end
+                if categorized then return make_plan(args, draft, "planned"), nil end
             end
             return nil, incomplete("default placement did not attach the document")
         end
@@ -158,12 +161,12 @@ local function run_agent(args: table, snapshot: table, draft: any): (table?, err
             local result, tool_err
             if args_err then
                 result = {success = false, error = args_err}
-            elseif call.name == "AttachDocument" and attached and call.arguments.document_node_id == args.document_node_id then
+            elseif call.name == "AttachDocument" and attached and draft:address(call.arguments.document_node_id) == args.document_node_id then
                 result = {success = false, error = "the target document was already attached in this plan"}
             else
                 result, tool_err = handler(call.arguments)
                 if tool_err then return nil, tool_err end
-                if call.name == "AttachDocument" and result.success and call.arguments.document_node_id == args.document_node_id then
+                if call.name == "AttachDocument" and result.success and draft:address(call.arguments.document_node_id) == args.document_node_id then
                     attached = true
                 end
             end
@@ -194,11 +197,10 @@ local function plan(args: any): (table?, error?)
     end
     local _, access_err = component.validate_access(args.component_id, component.ACCESS.WRITE)
     if access_err then return nil, access_err end
-    local snapshot, read_err = snapshot_store.read(args.store_id, args.component_id, args.document_node_id)
+    local snapshot, read_err = snapshot_store.input(args.store_id, args.component_id, args.document_node_id)
     if not snapshot then return nil, read_err end
     if snapshot.document.id ~= args.document_node_id then return nil, invalid("document ID did not match the stored ID") end
-    local draft, draft_err = draft_store.new(snapshot)
-    if not draft then return nil, draft_err end
+    local draft = draft_store.new(args.store_id, snapshot)
     local locked, lock_err = placement_tools.categorization_lock(draft, args.store_id, args.document_node_id)
     if lock_err then return nil, lock_err end
     if locked then return make_plan(args, draft, "locked_categorization_skipped"), nil end
