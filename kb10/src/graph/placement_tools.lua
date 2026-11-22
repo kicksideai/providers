@@ -76,12 +76,6 @@ local function categorization_lock(store: any, store_id: string, document_node_i
     return nil, nil
 end
 
-local function concept_locked(store: any, store_id: string, concept_id: string): (boolean, any?)
-    local concept, err = store:get_node({ store_id = store_id, node_id = concept_id })
-    if err then return false, err end
-    return locked_node(concept), nil
-end
-
 -- Concept identity is the normalized label (lowercased, trimmed, collapsed
 -- whitespace). The placement agent re-mints topics across documents because the
 -- LLM does not reliably match an existing concept in a large tree; this gives a
@@ -168,15 +162,6 @@ local function concept_tree_state(store: any, store_id: string): (ConceptTreeSta
     }, nil
 end
 
-local function root_document_target_error(state: ConceptTreeState, concept_id: string): string?
-    local node = state.nodes_by_id[concept_id]
-    if not node then return "target concept not found: " .. tostring(concept_id) end
-    if concept_id == state.root_id then
-        return "documents cannot be attached to the root concept; create or choose a non-root concept"
-    end
-    return nil
-end
-
 -- Find an existing concept in the store whose normalized label matches. Returns
 -- the node (or nil). The root concept is never matched/merged.
 local function find_concept_by_label(state: ConceptTreeState, label: string): any?
@@ -197,11 +182,6 @@ type CreateConceptArgs = {
 }
 
 type AttachDocumentArgs = {
-    document_node_id: string?,
-    concept_id: string?,
-}
-
-type MoveDocumentArgs = {
     document_node_id: string?,
     concept_id: string?,
 }
@@ -335,11 +315,9 @@ local function create_concept(args: CreateConceptArgs): any
     return { success = true, result = "created", concept_id = node_id, label = label, parent_id = parent_id }
 end
 
-local function attach_document(args: AttachDocumentArgs): any
+local function categorize_document(args: AttachDocumentArgs, replace: boolean): any
     local store_id: string? = ctx.get("graph_store_id") :: string?
     if not store_id then return tool_result.domain_error("no store_id in context") end
-
-    local store = node_store
 
     local document_node_id = args.document_node_id
     local concept_id = args.concept_id
@@ -347,89 +325,33 @@ local function attach_document(args: AttachDocumentArgs): any
         return tool_result.domain_error("document_node_id and concept_id are required")
     end
 
-    local state, state_err = concept_tree_state(store, store_id)
-    if not state then return nil, state_err end
-    local root_err = root_document_target_error(state, concept_id)
-    if root_err then return tool_result.domain_error(root_err) end
-
-    local existing, existing_err = store:get_all_edges({ store_id = store_id, node_id = document_node_id,
-        opts = { direction = "out", edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS } })
-    if existing_err then return nil, errors.wrap(existing_err, "reading document categorization failed") end
-    for _, e in ipairs(existing) do
-        if e.to_node_id == concept_id then
-            return { success = true, result = "unchanged", document_node_id = document_node_id, concept_id = concept_id }
-        end
-    end
-
-    local _, edge_err = store:insert_edge({ store_id = store_id, edge = {
-        from_node_id = document_node_id,
-        to_node_id = concept_id,
-        edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS,
-        weight = 1.0,
-    } })
-    if edge_err then return nil, errors.wrap(edge_err, "attaching document failed") end
-
-    log:info("document attached via placement tool", { doc = document_node_id, concept = concept_id })
-    local emit_err = emit_graph_change({
-        reason = "document.attached",
+    local result, err = node_store:categorize_automatically({
+        store_id = store_id,
         document_node_id = document_node_id,
         concept_id = concept_id,
+        replace = replace,
     })
-    if emit_err then return nil, emit_err end
+    if errors.is(err, errors.INVALID) then return tool_result.domain_error(tostring(err)) end
+    if err then return nil, errors.wrap(err, "categorizing document failed") end
+    if result ~= "unchanged" then
+        log:info("document " .. result .. " via placement tool", { doc = document_node_id, concept = concept_id })
+        local emit_err = emit_graph_change({
+            reason = "document." .. result,
+            document_node_id = document_node_id,
+            concept_id = concept_id,
+        })
+        if emit_err then return nil, emit_err end
+    end
 
-    return { success = true, result = "attached", document_node_id = document_node_id, concept_id = concept_id }
+    return { success = true, result = result, document_node_id = document_node_id, concept_id = concept_id }
 end
 
-local function move_document(args: MoveDocumentArgs): any
-    local store_id: string? = ctx.get("graph_store_id") :: string?
-    if not store_id then return tool_result.domain_error("no store_id in context") end
+local function attach_document(args: AttachDocumentArgs): any
+    return categorize_document(args, false)
+end
 
-    local store = node_store
-
-    local document_node_id = args.document_node_id
-    local concept_id = args.concept_id
-    if not document_node_id or not concept_id then
-        return tool_result.domain_error("document_node_id and concept_id are required")
-    end
-
-    local state, state_err = concept_tree_state(store, store_id)
-    if not state then return nil, state_err end
-    local root_err = root_document_target_error(state, concept_id)
-    if root_err then return tool_result.domain_error(root_err) end
-
-    local locked_reason, lock_err = categorization_lock(store, store_id, document_node_id)
-    if lock_err then return nil, errors.wrap(lock_err, "reading document categorization failed") end
-    if locked_reason then return tool_result.domain_error(locked_reason) end
-    local target_locked, target_err = concept_locked(store, store_id, concept_id)
-    if target_err then return nil, errors.wrap(target_err, "reading target concept failed") end
-    if target_locked then
-        return tool_result.domain_error("target concept is locked")
-    end
-
-    local _, patch_err = store:apply_graph_patch({
-        store_id = store_id,
-        replace_out_edges = {{
-            from_node_id = document_node_id,
-            edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS,
-        }},
-        insert_edges = {{
-            from_node_id = document_node_id,
-            to_node_id = concept_id,
-            edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS,
-            weight = 1.0,
-        }},
-    })
-    if patch_err then return nil, errors.wrap(patch_err, "moving document failed") end
-
-    log:info("document moved via placement tool", { doc = document_node_id, concept = concept_id })
-    local emit_err = emit_graph_change({
-        reason = "document.moved",
-        document_node_id = document_node_id,
-        concept_id = concept_id,
-    })
-    if emit_err then return nil, emit_err end
-
-    return { success = true, result = "moved", document_node_id = document_node_id, concept_id = concept_id }
+local function move_document(args: AttachDocumentArgs): any
+    return categorize_document(args, true)
 end
 
 local function get_concept_documents(args: GetConceptDocumentsArgs): any

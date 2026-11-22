@@ -548,6 +548,78 @@ local function define_tests()
                 test.eq((result :: any).result, "unchanged")
             end)
 
+            test.it("preserves manual categorization when automatic placement tries to attach or move", function()
+                local current = concept_under(root_concept_id, "Curated topic")
+                local initial_target = concept_under(root_concept_id, "Suggested topic")
+                local doc_id, doc_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document with curated placement",
+                    metadata = { title = "Curated placement" },
+                })
+                test.is_nil(doc_err)
+                local edge_id, edge_err = kb_store():insert_edge({ store_id = test_store_id, edge = {
+                    from_node_id = doc_id, to_node_id = current, edge_type = "categorized_as",
+                    metadata = { manual = true },
+                } })
+                test.is_nil(edge_err)
+                local exec = tool_exec(test_store_id)
+                for _, method in ipairs({"attach_document", "move_document"}) do
+                    local result, err = exec:call("kickside.kb10.graph:" .. method, {
+                        document_node_id = doc_id, concept_id = initial_target,
+                    })
+                    test.is_nil(err)
+                    test.is_false((result :: any).success)
+                    test.eq((result :: any).error, "document categorization edge is locked")
+                end
+                local repeat_result, repeat_err = exec:call("kickside.kb10.graph:attach_document", {
+                    document_node_id = doc_id, concept_id = current,
+                })
+                test.is_nil(repeat_err)
+                test.eq((repeat_result :: any).result, "unchanged")
+                local edges, read_err = kb_store():get_edges({ store_id = test_store_id, node_id = doc_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(read_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].id, edge_id)
+                test.is_true(edges[1].metadata.manual)
+            end)
+
+            test.it("refuses automatic attachment to a locked destination", function()
+                local target = concept_under(root_concept_id, "Locked destination", { locked = true })
+                local doc_id, doc_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document awaiting placement",
+                    metadata = { title = "Pending placement" },
+                })
+                test.is_nil(doc_err)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:attach_document", {
+                    document_node_id = doc_id, concept_id = target,
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                test.eq((result :: any).error, "target concept is locked")
+                local _, count = categorized_targets(doc_id)
+                test.eq(count, 0)
+            end)
+
+            test.it("rejects an unmarked legacy root regardless of UUID case", function()
+                local _, meta_err = kb_store():update_node({
+                    store_id = test_store_id, node_id = root_concept_id, metadata = { label = "Legacy root" },
+                })
+                test.is_nil(meta_err)
+                local doc_id, doc_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document awaiting placement",
+                    metadata = { title = "Pending placement" },
+                })
+                test.is_nil(doc_err)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:attach_document", {
+                    document_node_id = doc_id, concept_id = root_concept_id:upper(),
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                test.contains((result :: any).error, "root concept")
+                local _, count = categorized_targets(doc_id)
+                test.eq(count, 0)
+            end)
+
             test.it("move_document replaces every categorization of the document", function()
                 local parent = concept_under(root_concept_id, "Move Many")
                 local target = concept_under(parent, "Move Many Target")

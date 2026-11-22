@@ -51,6 +51,7 @@ store.insert_edge = writer.insert_edge
 store.delete_edge = writer.delete_edge
 store.apply_graph_patch = writer.apply_graph_patch
 store.merge_concepts = writer.merge_concepts
+store.categorize_automatically = writer.categorize_automatically
 
 store.VECTOR_DIMENSIONS = ops.VECTOR_DIMENSIONS
 
