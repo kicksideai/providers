@@ -1486,7 +1486,7 @@ local function invalid_merge(message: string): (nil, any)
     return nil, errors.new({kind = errors.INVALID, message = message})
 end
 
-local function merge_root_tx(tx: any, db_type: any, store_id: string): (string?, any?)
+local function taxonomy_root_tx(tx: any, db_type: any, store_id: string): (string?, any?)
     local root_metadata = db_type == sql.type.POSTGRES
         and "(metadata->'is_root' = 'true'::jsonb OR metadata->>'concept_type' = 'root')"
         or "(CASE WHEN json_valid(metadata) THEN json_type(metadata, '$.is_root') = 'true'"
@@ -1530,7 +1530,7 @@ local function merge_concepts_tx(tx: any, db_type: any, store_id: string, from_i
     if read_err then return nil, read_err end
     if #nodes ~= 2 then return invalid_merge("both concepts must exist in this knowledge base") end
     from_id, into_id = tostring(nodes[1].id), tostring(nodes[2].id)
-    local root_id, root_err = merge_root_tx(tx, db_type, store_id)
+    local root_id, root_err = taxonomy_root_tx(tx, db_type, store_id)
     if root_err then return nil, root_err end
     if root_id == from_id then return invalid_merge("cannot merge a root concept") end
     local target_is_root = root_id == into_id
@@ -1595,6 +1595,83 @@ function writer.merge_concepts(store_id: string, from_id: string, into_id: strin
     end
     if from_id == into_id then return invalid_merge("cannot merge a concept into itself") end
     return mutate_store(store_id, merge_concepts_tx, from_id, into_id)
+end
+
+local function categorize_automatically_tx(tx: any, db_type: any, store_id: string,
+    document_id: string, concept_id: string, replace: boolean): (string?, any?)
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+
+    local endpoints, read_err = tx:query([[SELECT c.metadata,
+        CASE WHEN EXISTS (
+            SELECT 1 FROM kb10_edges e
+            JOIN kb10_nodes p ON p.store_id = e.store_id AND p.id = e.to_node_id AND p.node_type = 'concept'
+            WHERE e.store_id = c.store_id AND e.from_node_id = c.id AND e.edge_type = 'subtopic_of'
+        ) THEN 1 ELSE 0 END AS has_parent
+        FROM kb10_nodes c WHERE c.store_id = $1
+        AND EXISTS (SELECT 1 FROM kb10_nodes d WHERE d.store_id = c.store_id AND d.id = $2 AND d.node_type = 'document')
+        AND c.id = $3 AND c.node_type = 'concept']],
+        {store_id, document_id, concept_id})
+    if read_err then return nil, read_err end
+    if #endpoints == 0 then
+        return nil, errors.new({kind = errors.INVALID, message = "document and target concept must exist in this knowledge base"})
+    end
+    local target = decode_metadata(endpoints[1].metadata)
+    local is_root = kb10.is_root_metadata(target)
+    -- Unflagged legacy roots have no concept parent. The ordinary case relies
+    -- on the target's indexed edges and never scans the taxonomy.
+    if not is_root and tonumber(endpoints[1].has_parent) == 0 then
+        local root_id, root_err = taxonomy_root_tx(tx, db_type, store_id)
+        if root_err then return nil, root_err end
+        is_root = root_id == concept_id
+    end
+    if is_root then
+        return nil, errors.new({kind = errors.INVALID, message = "documents cannot be attached to the root concept; create or choose a non-root concept"})
+    end
+
+    local rows, edges_err = tx:query([[WITH document_edges AS (
+        SELECT store_id, to_node_id, metadata FROM kb10_edges
+        WHERE store_id = $1 AND from_node_id = $2 AND edge_type = 'categorized_as'
+    ) SELECT
+        MAX(CASE WHEN e.to_node_id = $3 THEN 1 ELSE 0 END) AS attached,
+        MAX(CASE WHEN ]] .. locked_graph_metadata("e.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS edge_locked,
+        MAX(CASE WHEN ]] .. locked_graph_metadata("c.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS concept_locked
+        FROM document_edges e
+        LEFT JOIN kb10_nodes c ON c.store_id = e.store_id AND c.id = e.to_node_id]],
+        {store_id, document_id, concept_id})
+    if edges_err then return nil, edges_err end
+    local existing = rows[1]
+    if not replace and tonumber(existing.attached) == 1 then return "unchanged", nil end
+    if tonumber(existing.edge_locked) == 1 then
+        return nil, errors.new({kind = errors.INVALID, message = "document categorization edge is locked"})
+    end
+    if tonumber(existing.concept_locked) == 1 then
+        return nil, errors.new({kind = errors.INVALID, message = "document target concept is locked"})
+    end
+    if target.manual == true or target.locked == true then
+        return nil, errors.new({kind = errors.INVALID, message = "target concept is locked"})
+    end
+
+    if replace then
+        local _, delete_err = tx:execute([[DELETE FROM kb10_edges
+            WHERE store_id = $1 AND from_node_id = $2 AND edge_type = 'categorized_as']], {store_id, document_id})
+        if delete_err then return nil, delete_err end
+    end
+    local _, insert_err = insert_edge_tx(tx, store_id, {
+        from_node_id = document_id, to_node_id = concept_id, edge_type = kb10.EDGE_TYPE.CATEGORIZED_AS,
+    })
+    if insert_err then return nil, insert_err end
+    return replace and "moved" or "attached", nil
+end
+
+function writer.categorize_automatically(store_id: string, document_id: string, concept_id: string, replace: boolean)
+    local store_key = uuid.format(store_id)
+    local document_key = uuid.format(document_id)
+    local concept_key = uuid.format(concept_id)
+    if not store_key or not document_key or not concept_key then
+        return nil, errors.new({kind = errors.INVALID, message = "store, document and concept IDs must be UUIDs"})
+    end
+    return mutate_store(store_key, categorize_automatically_tx, document_key, concept_key, replace)
 end
 
 function writer.apply_graph_patch(store_id: any, patch: any)
