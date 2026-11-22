@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.54](https://github.com/kicksideai/providers/compare/kb10-v0.2.53...kb10-v0.2.54) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** preserve curated document categorization ([#239](https://github.com/kicksideai/providers/issues/239)) ([03dbf2e](https://github.com/kicksideai/providers/commit/03dbf2e5a109b50fe5f283a03bb6abaa9ef3d3a6))
+
 ## [0.2.53](https://github.com/kicksideai/providers/compare/kb10-v0.2.52...kb10-v0.2.53) (2026-11-22)
 
 
