@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.55](https://github.com/kicksideai/providers/compare/kb10-v0.2.54...kb10-v0.2.55) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** preserve SQLite graph node identifiers ([#241](https://github.com/kicksideai/providers/issues/241)) ([18175cc](https://github.com/kicksideai/providers/commit/18175cc347d085bfb70abea21ef20c16782d4eaa))
+
 ## [0.2.54](https://github.com/kicksideai/providers/compare/kb10-v0.2.53...kb10-v0.2.54) (2026-11-22)
 
 
