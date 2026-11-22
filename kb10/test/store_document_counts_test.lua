@@ -72,6 +72,39 @@ end
 
 return {run = test.run_cases(function()
     test.describe("Store-owned document populations", function()
+        test.it("keeps delayed standalone node writes out of a deleted store", function()
+            local id = uuid.v7()
+            assert(store.create_store(id, "test-model", {}, {}))
+            assert(store.delete_store(id))
+
+            local vector = {}
+            for index = 1, 512 do vector[index] = index == 1 and 1 or 0 end
+            local node = { node_type = "concept", content = "late node after teardown" }
+            local results = {
+                {writer.insert_node(id, node)},
+                {writer.insert_graph_node(id, node)},
+                {writer.write_node_with_embedding(id, node, vector)},
+            }
+
+            local db = assert(sql.get("app:db"))
+            local nodes = assert(db:query("SELECT COUNT(*) AS n FROM kb10_nodes WHERE store_id=$1", { id }))[1].n
+            local embeddings = assert(db:query("SELECT COUNT(*) AS n FROM kb10_embeddings WHERE store_id=$1", { id }))[1].n
+            local lexical = 0
+            if db:type() == sql.type.SQLITE then
+                lexical = assert(db:query([[SELECT COUNT(*) AS n FROM kb10_nodes_fts
+                    WHERE kb10_nodes_fts MATCH '"late node after teardown"']]))[1].n
+            end
+            assert(select(2, db:release()) == nil)
+            test.eq(tonumber(nodes), 0)
+            test.eq(tonumber(lexical), 0)
+            test.eq(tonumber(embeddings), 0)
+            for _, result in ipairs(results) do
+                test.is_nil(result[1])
+                test.not_nil(result[2])
+                test.eq(result[2]:kind(), errors.NOT_FOUND)
+            end
+        end)
+
         test.it("returns the same failed-root delta on an ordinary rejection replay", function()
             with_store(function(id)
                 local metadata = source_metadata("missing", 7)
