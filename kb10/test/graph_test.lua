@@ -623,6 +623,106 @@ local function define_tests()
                 test.not_nil(still)
             end)
 
+            test.it("merge_concept preserves manually curated relationships on an unlocked concept", function()
+                local from_id = concept_under(root_concept_id, "Curated Merge Source")
+                local into_id = concept_under(root_concept_id, "Curated Merge Target")
+                local document_id, document_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Keep my categorization", metadata = { title = "Curated" },
+                })
+                test.is_nil(document_err)
+                local edge_id, edge_err = kb_store():insert_edge({ store_id = test_store_id, edge = {
+                    from_node_id = document_id, to_node_id = from_id, edge_type = "categorized_as",
+                    metadata = { manual = true },
+                } })
+                test.is_nil(edge_err)
+                local prior, prior_err = kb_store():get_edges({ store_id = test_store_id, node_id = document_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(prior_err)
+                test.is_true(prior[1].metadata.manual)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = into_id,
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                local source, read_err = kb_store():get_node({ store_id = test_store_id, node_id = from_id })
+                test.is_nil(read_err)
+                test.not_nil(source)
+                local edges, edges_err = kb_store():get_edges({ store_id = test_store_id, node_id = document_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(edges_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].id, edge_id)
+                test.eq(edges[1].to_node_id, from_id)
+                test.is_true(edges[1].metadata.manual)
+            end)
+
+            test.it("keeps a moved edge's metadata and its stable id", function()
+                local from_id = concept_under(root_concept_id, "Merge Metadata Source")
+                local into_id = concept_under(root_concept_id, "Merge Metadata Target")
+                local neighbor = concept_under(root_concept_id, "Merge Metadata Neighbor")
+                local edge_id, edge_err = kb_store():insert_edge({ store_id = test_store_id, edge = {
+                    from_node_id = neighbor, to_node_id = from_id, edge_type = "related_to",
+                    weight = 0.5, metadata = { reason = "keep this relation" },
+                } })
+                test.is_nil(edge_err)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = into_id,
+                })
+                test.is_nil(err)
+                test.eq((result :: any).moved_edges, 1)
+                local edges, read_err = kb_store():get_edges({ store_id = test_store_id, node_id = neighbor,
+                    opts = { direction = "out", edge_type = "related_to" } })
+                test.is_nil(read_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].id, edge_id)
+                test.eq(edges[1].to_node_id, into_id)
+                test.eq(edges[1].weight, 0.5)
+                test.eq(edges[1].metadata.reason, "keep this relation")
+            end)
+
+            test.it("does not retarget document edges onto an alternate spelling of the root id", function()
+                local from_id = concept_under(root_concept_id, "Merge Root Target Source")
+                local document_id, document_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document must stay categorized", metadata = { title = "Root test" },
+                })
+                test.is_nil(document_err)
+                categorize(document_id, from_id)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = root_concept_id:upper(),
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                local edges, read_err = kb_store():get_edges({ store_id = test_store_id, node_id = document_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(read_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].to_node_id, from_id)
+            end)
+
+            test.it("refuses a stale reparenting plan once a merge makes its target a descendant", function()
+                local from_id = concept_under(root_concept_id, "Merge Reparent Source")
+                local into_id = concept_under(root_concept_id, "Merge Reparent Target")
+                local child = concept_under(from_id, "Merge Reparent Child")
+                local patch = {
+                    store_id = test_store_id,
+                    replace_out_edges = {{ from_node_id = into_id, edge_type = "subtopic_of" }},
+                    insert_edges = {{ from_node_id = into_id, to_node_id = child, edge_type = "subtopic_of" }},
+                }
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = into_id,
+                })
+                test.is_nil(err)
+                test.eq((result :: any).result, "merged")
+                local applied, apply_err = kb_store():apply_graph_patch(patch)
+                test.is_nil(applied)
+                test.contains(tostring(apply_err), "parent cannot be a descendant")
+                local parents, parents_err = kb_store():get_edges({ store_id = test_store_id, node_id = into_id,
+                    opts = { direction = "out", edge_type = "subtopic_of" } })
+                test.is_nil(parents_err)
+                test.eq(#parents, 1)
+                test.eq(parents[1].to_node_id, root_concept_id)
+            end)
+
             test.it("node_store answers taxonomy descent and reads node batches beyond one page", function()
                 local top = concept_under(root_concept_id, "Descent Top")
                 local middle = concept_under(top, "Descent Middle")
