@@ -8,6 +8,7 @@
 local store = require("store")
 local security = require("security")
 local kb10 = require("kb10")
+local placement = require("placement_activation")
 
 local M = {}
 
@@ -16,9 +17,15 @@ local function arg_table(args: any): kb10.Map
     return {}
 end
 
-function M.create_store(args: any): (any, string?)
+function M.create_store(args: any): (any, error?)
     local a = (arg_table(args) :: any) :: kb10.StoreCreateArgs
-    return store.create_store(a.component_id, a.embedding_model, a.config, a.opts)
+    local id, err = store.create_store(a.component_id, a.embedding_model, a.config, a.opts)
+    if err or not id then return nil, err end
+    local opts = a.opts
+    if opts and placement.is_default_wiki(opts.kb_type, opts.enrichment_agent_id) then
+        placement.after_create(id)
+    end
+    return id, nil
 end
 
 function M.get_store(args: any): (any, error?)

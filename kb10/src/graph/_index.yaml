@@ -7,6 +7,52 @@ namespace: kickside.kb10.graph
 # control plane's.
 
 entries:
+
+  - name: enroll_placement
+    kind: function.lua
+    meta:
+      private: true
+      comment: Enrolls and activates the installed default Wiki placement checkpoint.
+    source: file://placement_enrollment.lua
+    method: enroll
+    modules: [contract, uuid]
+    imports:
+      apply: kickside.core.projections:apply
+      component: kickside.component:component
+      enrollment: kickside.core.projections:enrollment
+      ops: kickside.kb10.persist:ops
+
+  - name: placement_upgrade
+    kind: function.lua
+    meta:
+      type: bootloader
+      private: true
+      order: 61
+      requires: [wippy.migration:migration_bootloader]
+      comment: Enrolls retained default Wikis after migration, resuming from a bounded database cursor.
+    source: file://placement_upgrade.lua
+    method: run
+    modules: [json, logger]
+    imports:
+      component: kickside.component:component
+      execution_identity: kickside.execution:execution_identity
+      ops: kickside.kb10.persist:ops
+    security:
+      policies: [kickside.kb10.graph:placement_upgrade_defer]
+
+  - name: placement_upgrade_defer
+    kind: security.policy
+    meta: {private: true, service_only: true}
+    policy:
+      resources: [kickside.kb10.graph:placement_upgrade]
+      actions: [kickside.execution.defer]
+      effect: allow
+
+  - name: placement_activation
+    kind: library.lua
+    source: file://placement_activation.lua
+    modules: [funcs, logger]
+
   - name: concept_placement
     kind: function.lua
     source: file://concept_placement.lua

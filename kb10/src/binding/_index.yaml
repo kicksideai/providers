@@ -114,6 +114,7 @@ entries:
     imports: &kb_store_imports
       store: kickside.kb10.persist:store
       kb10: kickside.kb10:types
+      placement_activation: kickside.kb10.graph:placement_activation
 
   - name: get_store
     kind: function.lua

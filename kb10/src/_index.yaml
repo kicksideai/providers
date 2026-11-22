@@ -200,6 +200,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.kb10.migrations:18_placement_read_indexes
         path: .meta.target_db
+      - entry: kickside.kb10.migrations:19_placement_enrollment
+        path: .meta.target_db
       - entry: kickside.kb10:db_config
         path: .meta.db_id
 
@@ -263,6 +265,12 @@ entries:
           - type: kickside.knowledge.events:treatment.requested
           - type: kickside.kb10.graph.events:placement.requested
             system_only: true
+      optional_projections:
+        placement:
+          kind: kickside.kb10.graph.placement
+          producer: kickside.kb10.graph:enroll_placement
+          worker_ref: proc://kickside.kb10.graph:placement_worker
+          input_mode: prefetch_events
       # Component autoinit reads projections from the registered impl binding
       # (engine.impl_id == kickside.kb10:embeddable). Keep the read-model
       # declarations here so KB create remains registry-driven and declarative.

@@ -1,0 +1,14 @@
+version: "1.0"
+namespace: app
+
+entries:
+  - name: placement_enrollment_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_placement_enrollment}
+    source: file://placement_enrollment_test.lua
+    method: run
+    modules: [fs, funcs, json, security, sql, uuid]
+    imports:
+      projection_owner: app:projection_owner_fixture
+      store: kickside.kb10.persist:store
+      test: wippy.test:test

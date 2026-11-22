@@ -12,6 +12,7 @@ local ctx = require("ctx")
 local store_lib = require("store")
 local ops = require("ops")
 local pio = require("portable_io")
+local placement = require("placement_activation")
 
 local M = {}
 
@@ -191,6 +192,10 @@ function M.handler(args: any): any
     if type(imap.rows.kb10_nodes) ~= "table" then imap.rows.kb10_nodes = {} end
     for k, v in pairs(node_map) do imap.rows.kb10_nodes[k] = v end
 
+    if placement.is_default_wiki(store.kb_type, store.enrichment_agent_id) then
+        local warning = placement.after_create(component_id)
+        if warning then warnings[#warnings + 1] = warning end
+    end
     return { success = true, id_map = imap, warnings = warnings }
 end
 

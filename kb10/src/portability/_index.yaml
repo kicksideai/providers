@@ -27,4 +27,5 @@ entries:
       store: kickside.kb10.persist:store
       ops: kickside.kb10.persist:ops
       portable_io: kickside.component.portability:portable_io
+      placement_activation: kickside.kb10.graph:placement_activation
     method: handler
