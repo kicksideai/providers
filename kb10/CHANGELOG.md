@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.53](https://github.com/kicksideai/providers/compare/kb10-v0.2.52...kb10-v0.2.53) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** preserve curated relationships in concept merges ([5fe1907](https://github.com/kicksideai/providers/commit/5fe19076c2f4e0c4e4fc51744863677438ff593d))
+
 ## [0.2.52](https://github.com/kicksideai/providers/compare/kb10-v0.2.51...kb10-v0.2.52) (2026-11-22)
 
 
