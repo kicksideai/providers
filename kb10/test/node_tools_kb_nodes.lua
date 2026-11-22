@@ -27,7 +27,20 @@ function M.browse(_kb_id: string, opts: any): (any?, error?)
     end
     return out, nil
 end
-function M.public_meta(_kb_id: string): (any?, error?) return { title = "Policies", document_count = 2 }, nil end
+function M.get_store_statistics(kb_ids: {string}, _include_config: boolean): (any?, error?)
+    if M.failure then return nil, M.failure end
+    local rows = {}
+    for index = #kb_ids, 1, -1 do
+        local kb_id = kb_ids[index]
+        local stats = { document_count = kb_id == "kb-1" and #NODES or 1, summary_count = 0, chunk_count = 0, concept_count = 0 }
+        rows[#rows + 1] = { component_id = kb_id, stats = stats }
+    end
+    return rows, nil
+end
+
+function M.public_meta(kb_id: string): (any?, error?)
+    return { title = kb_id == "kb-1" and "Policies" or "Archive", document_count = 99 }, nil
+end
 function M.is_graph(_kb_id: string): (boolean, error?) return false, nil end
 function M.concept_doc_counts(): (any?, error?) return {}, nil end
 function M.graph(): (any?, error?)
