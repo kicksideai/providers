@@ -1599,6 +1599,15 @@ end
 
 local function categorize_automatically_tx(tx: any, db_type: any, store_id: string,
     document_id: string, concept_id: string, replace: boolean): (string?, any?)
+    if db_type == sql.type.POSTGRES then
+        local store_key = uuid.format(store_id)
+        local document_key = uuid.format(document_id)
+        local concept_key = uuid.format(concept_id)
+        if not store_key or not document_key or not concept_key then
+            return nil, errors.new({kind = errors.INVALID, message = "store, document and concept IDs must be UUIDs"})
+        end
+        store_id, document_id, concept_id = store_key, document_key, concept_key
+    end
     local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return nil, lock_err end
 
@@ -1665,13 +1674,10 @@ local function categorize_automatically_tx(tx: any, db_type: any, store_id: stri
 end
 
 function writer.categorize_automatically(store_id: string, document_id: string, concept_id: string, replace: boolean)
-    local store_key = uuid.format(store_id)
-    local document_key = uuid.format(document_id)
-    local concept_key = uuid.format(concept_id)
-    if not store_key or not document_key or not concept_key then
-        return nil, errors.new({kind = errors.INVALID, message = "store, document and concept IDs must be UUIDs"})
+    if not is_str(store_id) or not is_str(document_id) or not is_str(concept_id) then
+        return nil, errors.new({kind = errors.INVALID, message = "store, document and concept IDs are required"})
     end
-    return mutate_store(store_key, categorize_automatically_tx, document_key, concept_key, replace)
+    return mutate_store(store_id, categorize_automatically_tx, document_id, concept_id, replace)
 end
 
 function writer.apply_graph_patch(store_id: any, patch: any)
