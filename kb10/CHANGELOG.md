@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.51](https://github.com/kicksideai/providers/compare/kb10-v0.2.50...kb10-v0.2.51) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** reject node writes to deleted stores ([#232](https://github.com/kicksideai/providers/issues/232)) ([cf9707d](https://github.com/kicksideai/providers/commit/cf9707d235a4d3af5f0c2ad1724053fa57f57db7))
+
 ## [0.2.50](https://github.com/kicksideai/providers/compare/kb10-v0.2.49...kb10-v0.2.50) (2026-11-22)
 
 
