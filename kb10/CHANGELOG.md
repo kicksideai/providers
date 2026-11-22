@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.52](https://github.com/kicksideai/providers/compare/kb10-v0.2.51...kb10-v0.2.52) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** walk maintenance records in bounded node ID order ([07480aa](https://github.com/kicksideai/providers/commit/07480aa8b735536c33214d64b6c1f824596fa1ae))
+
 ## [0.2.51](https://github.com/kicksideai/providers/compare/kb10-v0.2.50...kb10-v0.2.51) (2026-11-22)
 
 
