@@ -600,7 +600,7 @@ local function define_tests()
                 test.eq(count, 0)
             end)
 
-            test.it("rejects an unmarked legacy root regardless of UUID case", function()
+            test.it("rejects an unmarked legacy root, including alternate PostgreSQL UUID spelling", function()
                 local _, meta_err = kb_store():update_node({
                     store_id = test_store_id, node_id = root_concept_id, metadata = { label = "Legacy root" },
                 })
@@ -610,14 +610,39 @@ local function define_tests()
                     metadata = { title = "Pending placement" },
                 })
                 test.is_nil(doc_err)
+                local root_id = db:type() == sql.type.POSTGRES and root_concept_id:upper() or root_concept_id
                 local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:attach_document", {
-                    document_node_id = doc_id, concept_id = root_concept_id:upper(),
+                    document_node_id = doc_id, concept_id = root_id,
                 })
                 test.is_nil(err)
                 test.is_false((result :: any).success)
                 test.contains((result :: any).error, "root concept")
                 local _, count = categorized_targets(doc_id)
                 test.eq(count, 0)
+            end)
+
+            test.it("categorizes an existing document with the store's native node identifiers", function()
+                local sqlite = db:type() == sql.type.SQLITE
+                local concept_id = sqlite and "CuratedTopic/handbook" or uuid()
+                local document_id = sqlite and "PublishedDoc/Handbook-01" or uuid()
+                local topic, topic_err = kb_store():insert_graph_node({ store_id = test_store_id, node = {
+                    id = concept_id, node_type = "concept", metadata = { label = "Native topic" },
+                }, parent_edge = { to_node_id = root_concept_id, edge_type = "subtopic_of" } })
+                test.is_nil(topic_err)
+                test.eq(topic, concept_id)
+                local document, doc_err = insert_materialized_node(test_store_id, {
+                    id = document_id, node_type = "document", content = "Retained document",
+                })
+                test.is_nil(doc_err)
+                test.eq(document, document_id)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:attach_document", {
+                    document_node_id = document_id, concept_id = concept_id,
+                })
+                test.is_nil(err)
+                test.eq((result :: any).result, "attached")
+                local targets, count = categorized_targets(document_id)
+                test.eq(count, 1)
+                test.is_true(targets[concept_id] == true)
             end)
 
             test.it("move_document replaces every categorization of the document", function()
