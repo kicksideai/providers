@@ -931,7 +931,7 @@ function writer.insert_node(store_id: any, node: any)
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return fail_tx(tx, db, lock_err) end
 
     local id, insert_err = insert_node_tx(tx, db_type, store_id, node_input)
@@ -950,7 +950,7 @@ function writer.insert_graph_node(store_id: any, node: any, parent_edge: any)
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return fail_tx(tx, db, lock_err) end
 
     local id, insert_err = insert_node_tx(tx, db_type, store_id, node_input)
@@ -1094,7 +1094,7 @@ function writer.write_node_with_embedding(store_id: any, node: any, embedding: a
     if db_type_err then db:release(); return nil, db_type_err end
     local tx, tx_err = db:begin()
     if tx_err then db:release(); return nil, errors.wrap(tx_err, "failed to begin transaction") end
-    local _, lock_err = lock_store_tx(tx, db_type, store_id)
+    local lock_err = require_store_tx(tx, db_type, store_id)
     if lock_err then return fail_tx(tx, db, lock_err) end
 
     local node_id: any = input.id
