@@ -299,7 +299,8 @@ end
 -- deps.batch_enricher(doc_content, summary, chunks, model) -> prefixes?, err?
 -- deps.embedder(texts, model, dims) -> ({ result = {vector, ...} }, err?)
 -- deps.browse_nodes(store_id, filter) -> (nodes?, err?)
--- deps.count_nodes(store_id, filter) -> (count?, err?)
+-- deps.maintenance_window(store_id, node_type) -> ({total, through_id}?, err?)
+-- deps.maintenance_page(store_id, range) -> (nodes?, err?)
 -- deps.progress(counts) -> (any?, err?) receives the same shape the run returns,
 --   as it stands so far: once with the document total before any work, then
 --   after every document. A progress report that fails is logged and the
@@ -309,7 +310,8 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
     local summarize = deps.summarizer or source_worker.default_summarizer
     local embed_texts = deps.embedder or embedder
     local browse = deps.browse_nodes or kb10_store.browse_nodes
-    local count_nodes = deps.count_nodes or kb10_store.count_nodes
+    local window = deps.maintenance_window or kb10_store.maintenance_window
+    local read_page = deps.maintenance_page or kb10_store.maintenance_page
     local report = deps.progress
     -- Enricher selection mirrors the source worker's: the batch enricher is the
     -- default (one model round-trip per batch of chunks), and an explicitly
@@ -393,15 +395,13 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
         end,
     }
 
-    -- The document total is read once, before any model call, so a surface
-    -- polling this run can say how far along it is rather than only how much it
-    -- has done.
-    local total, count_err = count_nodes(store_id, { node_type = kb_types.NODE_TYPE.DOCUMENT })
-    if count_err then return nil, "count documents: " .. tostring(count_err) end
+    local document = kb_types.NODE_TYPE.DOCUMENT
+    local range, range_err = window(store_id, document)
+    if range_err then return nil, "read maintenance window: " .. tostring(range_err) end
 
     local counts = {
         success = true,
-        total = tonumber(total) or 0,
+        total = tonumber(range.total) or 0,
         scanned = 0,
         resummarized = 0,
         chunks_reenriched = 0,
@@ -420,13 +420,13 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
 
     local document_failures = 0
     local first_error: string? = nil
-    local offset = 0
-    while true do
-        local docs, berr = browse(store_id, {
-            node_type = kb_types.NODE_TYPE.DOCUMENT,
+    local after_id: string? = nil
+    while range.through_id do
+        local docs, berr = read_page(store_id, {
+            node_type = document,
             limit = PAGE,
-            offset = offset,
-            include_content = true,
+            after_id = after_id,
+            through_id = range.through_id,
         })
         if berr then return nil, "browse: " .. tostring(berr) end
         if type(docs) ~= "table" or #(docs :: { any }) == 0 then break end
@@ -436,10 +436,7 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
             local outcome, doc_err = resummarize_document(ctx, doc)
             if doc_err then return nil, doc_err end
             counts.scanned = counts.scanned + 1
-            -- The total is a single count taken before the walk; a document
-            -- ingested while the run is in flight is still walked, so the total
-            -- rises to what has been seen rather than reporting fewer documents
-            -- than the run has already done.
+            -- A concurrent insertion inside the remaining range can raise the total.
             if counts.scanned > counts.total then counts.total = counts.scanned end
             if outcome.resummarized then
                 counts.resummarized = counts.resummarized + 1
@@ -456,8 +453,8 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
             publish()
         end
 
-        offset = offset + count
-        if count < PAGE then break end
+        after_id = docs[count].id
+        if count < PAGE or after_id == range.through_id then break end
     end
 
     if not counts.success then

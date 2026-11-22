@@ -400,7 +400,7 @@ local function define_tests()
             local result, err = resummarize.run_with_deps(component_id, {
                 summarizer = stub_summarizer,
                 embedder = fixtures.fake_embedder,
-                browse_nodes = function(_store_id: any, _filter: any): (any, string?)
+                maintenance_page = function(_store_id: any, _filter: any): (any, string?)
                     return nil, "database is unavailable"
                 end,
             })
