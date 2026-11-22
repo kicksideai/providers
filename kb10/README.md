@@ -64,6 +64,26 @@ Placement requests use the live enrichment service after the checkpoint
 commits. Physically separate databases and durable placement delivery are
 tracked in [Providers #170](https://github.com/kicksideai/providers/issues/170).
 
+## Wiki placement upgrades
+
+Default Wikis on a shared Component, Core, Jobs and KB10 database enroll a
+placement checkpoint at the current thread head. New and imported Wikis enroll
+during provisioning. The post-migration bootloader enrolls retained Wikis in
+indexed pages and resumes from its last recorded store. If it cannot establish a
+Component incarnation or finds pending intents without an enrolled cursor, the
+Wiki stays on its legacy route and appears in the upgrade's unresolved count.
+Registered fan-out can publish durable placement intents after enrollment.
+Primary and single-target source publication and custom enrichment keep their
+existing delivery paths.
+
+For a live upgrade, stop new source intake and let already-running source
+publishers finish while the existing enrichment service remains available.
+Allow delivered placement messages to finish their debounced work before
+replacing the service. This drains the resident mailbox without replaying
+completed work. Prior versions kept legacy delivery in process memory, so work
+lost in an earlier crash or unconfirmed at cutover remains unknown. The
+upgrade preserves the historical graph and begins at the live head.
+
 ## Original document delivery
 
 A reader with KB READ access can open the original file attached to a document.

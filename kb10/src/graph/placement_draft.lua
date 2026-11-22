@@ -297,7 +297,7 @@ function Draft:is_descendant(from_id: string, into_id: string): (boolean?, error
     local seen, pending = {}, {into_id}
     local read = 0
     while #pending > 0 do
-        local id = table.remove(pending)
+        local id = table.remove(pending) :: string
         if id == from_id then return true, nil end
         if not seen[id] then
             seen[id] = true

@@ -110,7 +110,7 @@ local function process_wake(input: table, assignment: table, event: table, pinne
                 local exact, claim_err = writer.consume_placement_tx(tx, dialect, store.id, wake_id, document_id, store)
                 if claim_err then return nil, claim_err end
                 if not exact or custom then return true, nil end
-                if not plan then return nil, plan_err or invalid("placement plan did not return operations") end
+                if not plan or not max_depth then return nil, plan_err or invalid("placement plan did not return operations") end
                 local changes, write_err = writer.apply_placement_tx(tx, dialect, store.id, document_id, plan, max_depth)
                 if not changes then return nil, write_err end
                 return graph_output(tx, dialect, input.thread_id, wake_id, document_id, assignment.cursor.actor_id,

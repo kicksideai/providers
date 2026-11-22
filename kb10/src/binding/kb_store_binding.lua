@@ -22,7 +22,7 @@ function M.create_store(args: any): (any, error?)
     local id, err = store.create_store(a.component_id, a.embedding_model, a.config, a.opts)
     if err or not id then return nil, err end
     local opts = a.opts
-    if opts and placement.is_default_wiki(opts.kb_type, opts.enrichment_agent_id) then
+    if type(opts) == "table" and placement.is_default_wiki(opts.kb_type, opts.enrichment_agent_id) then
         placement.after_create(id)
     end
     return id, nil

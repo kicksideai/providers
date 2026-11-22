@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local apply = require("apply")
 local component = require("component")
+local component_types = require("component_types")
 local contract = require("contract")
 local enrollment = require("enrollment")
 local ops = require("ops")
@@ -59,7 +60,12 @@ function M.enroll(args: any): (any?, error?)
     local store, store_err = read_store(id)
     if store_err then return nil, store_err end
     if not store then return {status = "ineligible"}, nil end
-    local shared, shared_err = apply.require_shared_database(ops.db_id())
+    local db_id = ops.db_id()
+    if db_id ~= component_types.db_id() then
+        return {status = "unresolved", code = "split_database",
+            reason = "Wiki placement enrollment requires a shared Component database"}, nil
+    end
+    local shared, shared_err = apply.require_shared_database(db_id)
     if not shared then return {status = "unresolved", code = "split_database", reason = tostring(shared_err)}, nil end
     if store.placement_cursor_id == nil and (store.has_pending == true or store.has_pending == 1) then
         return {status = "unresolved", code = "unbound_placement_intent",

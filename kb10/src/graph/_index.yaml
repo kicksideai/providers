@@ -19,6 +19,7 @@ entries:
     imports:
       apply: kickside.core.projections:apply
       component: kickside.component:component
+      component_types: kickside.component:types
       enrollment: kickside.core.projections:enrollment
       ops: kickside.kb10.persist:ops
 
@@ -51,7 +52,7 @@ entries:
   - name: placement_activation
     kind: library.lua
     source: file://placement_activation.lua
-    modules: [funcs, logger]
+    modules: [funcs, logger, time]
 
   - name: concept_placement
     kind: function.lua
