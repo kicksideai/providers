@@ -16,17 +16,17 @@
   ],
   "dependencies": {
     "@kickside/ui-kit": "*",
-    "@wippy-fe/theme": "0.0.70",
-    "@wippy-fe/webcomponent-core": "0.0.70",
-    "@wippy-fe/webcomponent-vue": "0.0.70",
+    "@wippy-fe/theme": "0.0.71",
+    "@wippy-fe/webcomponent-core": "0.0.71",
+    "@wippy-fe/webcomponent-vue": "0.0.71",
     "primevue": "^4.5.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
     "@vitest/coverage-v8": "^4.1.9",
     "@vue/test-utils": "^2.4.11",
-    "@wippy-fe/proxy": "0.0.70",
-    "@wippy-fe/vite-plugin": "0.0.70",
+    "@wippy-fe/proxy": "0.0.71",
+    "@wippy-fe/vite-plugin": "0.0.71",
     "happy-dom": "^20.10.6",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.19",
@@ -38,7 +38,7 @@
   },
   "peerDependencies": {
     "@iconify/vue": "*",
-    "@wippy-fe/proxy": "0.0.70",
+    "@wippy-fe/proxy": "0.0.71",
     "vue": "^3.5.0"
   },
   "wippy": {

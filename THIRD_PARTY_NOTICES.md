@@ -151,19 +151,19 @@ Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.jso
 
 LICENSE: [License text](#license-text-d0ac09e8df2b54625ea1606dfae75d5b6af1cbc5d28a17eca1350be9c367175c)
 
-### npm: @wippy-fe/theme@0.0.70
+### npm: @wippy-fe/theme@0.0.71
 
 License: UNLICENSED
 
 Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
 
-### npm: @wippy-fe/webcomponent-core@0.0.70
+### npm: @wippy-fe/webcomponent-core@0.0.71
 
 License: UNLICENSED
 
 Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
 
-### npm: @wippy-fe/webcomponent-vue@0.0.70
+### npm: @wippy-fe/webcomponent-vue@0.0.71
 
 License: UNLICENSED
 
