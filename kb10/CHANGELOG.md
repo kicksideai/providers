@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.56](https://github.com/kicksideai/providers/compare/kb10-v0.2.55...kb10-v0.2.56) (2026-11-23)
+
+
+### Bug Fixes
+
+* **kb10:** distinguish pending indexing from an empty library ([#244](https://github.com/kicksideai/providers/issues/244)) ([62eeb8b](https://github.com/kicksideai/providers/commit/62eeb8b834676543405181227f8a77ca117e8120))
+
 ## [0.2.55](https://github.com/kicksideai/providers/compare/kb10-v0.2.54...kb10-v0.2.55) (2026-11-22)
 
 
