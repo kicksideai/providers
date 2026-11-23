@@ -1,8 +1,7 @@
 -- Re-embed a kb10 knowledge base: regenerate every embeddable node's vector from
 -- its stored content, using the KB's own embedding model. kb10-internal, so it
--- writes vectors straight through the kb10 store (no contract): browse_nodes +
--- insert_embedding, with the same batch_embed ingestion uses so it produces the
--- same vectors. The use case: a KB imported without vectors (the portable export
+-- walks a bounded range of node IDs and writes through the kb10 store. The use
+-- case is a KB imported without vectors (the portable export
 -- excludes them as model-specific); this brings it back to searchable locally.
 --
 -- A node whose vector the store refuses keeps the one it had and the pass carries
@@ -42,8 +41,8 @@ end
 -- the store reads overridable -- the seam the unit suite uses to prove the store
 -- wiring without a live embedding round-trip, mirroring resummarize.
 -- deps.embedder(texts, model, dims) -> ({ result = {vector, ...} }, err?)
--- deps.browse_nodes(store_id, filter) -> (nodes?, err?)
--- deps.count_nodes(store_id, filter) -> (count?, err?)
+-- deps.maintenance_window(store_id) -> ({total, through_id}?, err?)
+-- deps.maintenance_page(store_id, range) -> (nodes?, err?)
 -- deps.progress(counts) -> (any?, err?) receives the same shape the run returns,
 --   as it stands so far: once with the node total before any work, then after
 --   every page. A progress report that fails is logged and the re-embedding
@@ -51,8 +50,8 @@ end
 function M.run_with_deps(kb_id: string, deps: any): (any, string?)
     deps = deps or {}
     local embed_texts = deps.embedder or embedder
-    local browse = deps.browse_nodes or kb10_store.browse_nodes
-    local count_nodes = deps.count_nodes or kb10_store.count_nodes
+    local window = deps.maintenance_window or kb10_store.maintenance_window
+    local read_page = deps.maintenance_page or kb10_store.maintenance_page
     local report = deps.progress
 
     local store_row, serr = kb10_store.get_store(kb_id)
@@ -65,13 +64,10 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
     local dims = kb10_store.VECTOR_DIMENSIONS
     if type(dims) ~= "number" then return nil, "vector_dimensions unavailable" end
 
-    -- The node total is read once, before any embedding call, so a surface
-    -- polling this run can say how far along it is rather than only how much it
-    -- has done.
-    local total, count_err = count_nodes(store_id, {})
-    if count_err then return nil, "count nodes: " .. tostring(count_err) end
+    local range, range_err = window(store_id)
+    if range_err then return nil, "read maintenance window: " .. tostring(range_err) end
 
-    local counts = { success = true, total = tonumber(total) or 0, scanned = 0, embedded = 0 }
+    local counts = { success = true, total = tonumber(range.total) or 0, scanned = 0, embedded = 0 }
     local write_failures = 0
 
     local function publish()
@@ -83,17 +79,14 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
     end
     publish()
 
-    local offset = 0
-    while true do
-        local nodes, berr = browse(store_id, { limit = PAGE, offset = offset, include_content = true })
+    local after_id: string? = nil
+    while range.through_id do
+        local nodes, berr = read_page(store_id, { limit = PAGE, after_id = after_id, through_id = range.through_id })
         if berr then return nil, "browse: " .. tostring(berr) end
         if type(nodes) ~= "table" or #(nodes :: { any }) == 0 then break end
         local count = #(nodes :: { any })
         counts.scanned = counts.scanned + count
-        -- The total is a single count taken before the walk; a node written
-        -- while the run is in flight is still walked, so the total rises to what
-        -- has been seen rather than reporting fewer nodes than the run has
-        -- already done.
+        -- A concurrent insertion inside the remaining range can raise the total.
         if counts.scanned > counts.total then counts.total = counts.scanned end
 
         -- Embed every content-bearing node except the source document node (its content
@@ -132,8 +125,8 @@ function M.run_with_deps(kb_id: string, deps: any): (any, string?)
         end
         publish()
 
-        offset = offset + count
-        if count < PAGE then break end
+        after_id = nodes[count].id
+        if count < PAGE or after_id == range.through_id then break end
     end
 
     if write_failures > 0 then

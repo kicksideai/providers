@@ -76,12 +76,6 @@ local function categorization_lock(store: any, store_id: string, document_node_i
     return nil, nil
 end
 
-local function concept_locked(store: any, store_id: string, concept_id: string): (boolean, any?)
-    local concept, err = store:get_node({ store_id = store_id, node_id = concept_id })
-    if err then return false, err end
-    return locked_node(concept), nil
-end
-
 -- Concept identity is the normalized label (lowercased, trimmed, collapsed
 -- whitespace). The placement agent re-mints topics across documents because the
 -- LLM does not reliably match an existing concept in a large tree; this gives a
@@ -168,15 +162,6 @@ local function concept_tree_state(store: any, store_id: string): (ConceptTreeSta
     }, nil
 end
 
-local function root_document_target_error(state: ConceptTreeState, concept_id: string): string?
-    local node = state.nodes_by_id[concept_id]
-    if not node then return "target concept not found: " .. tostring(concept_id) end
-    if concept_id == state.root_id then
-        return "documents cannot be attached to the root concept; create or choose a non-root concept"
-    end
-    return nil
-end
-
 -- Find an existing concept in the store whose normalized label matches. Returns
 -- the node (or nil). The root concept is never matched/merged.
 local function find_concept_by_label(state: ConceptTreeState, label: string): any?
@@ -197,11 +182,6 @@ type CreateConceptArgs = {
 }
 
 type AttachDocumentArgs = {
-    document_node_id: string?,
-    concept_id: string?,
-}
-
-type MoveDocumentArgs = {
     document_node_id: string?,
     concept_id: string?,
 }
@@ -335,11 +315,9 @@ local function create_concept(args: CreateConceptArgs): any
     return { success = true, result = "created", concept_id = node_id, label = label, parent_id = parent_id }
 end
 
-local function attach_document(args: AttachDocumentArgs): any
+local function categorize_document(args: AttachDocumentArgs, replace: boolean): any
     local store_id: string? = ctx.get("graph_store_id") :: string?
     if not store_id then return tool_result.domain_error("no store_id in context") end
-
-    local store = node_store
 
     local document_node_id = args.document_node_id
     local concept_id = args.concept_id
@@ -347,89 +325,33 @@ local function attach_document(args: AttachDocumentArgs): any
         return tool_result.domain_error("document_node_id and concept_id are required")
     end
 
-    local state, state_err = concept_tree_state(store, store_id)
-    if not state then return nil, state_err end
-    local root_err = root_document_target_error(state, concept_id)
-    if root_err then return tool_result.domain_error(root_err) end
-
-    local existing, existing_err = store:get_all_edges({ store_id = store_id, node_id = document_node_id,
-        opts = { direction = "out", edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS } })
-    if existing_err then return nil, errors.wrap(existing_err, "reading document categorization failed") end
-    for _, e in ipairs(existing) do
-        if e.to_node_id == concept_id then
-            return { success = true, result = "unchanged", document_node_id = document_node_id, concept_id = concept_id }
-        end
-    end
-
-    local _, edge_err = store:insert_edge({ store_id = store_id, edge = {
-        from_node_id = document_node_id,
-        to_node_id = concept_id,
-        edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS,
-        weight = 1.0,
-    } })
-    if edge_err then return nil, errors.wrap(edge_err, "attaching document failed") end
-
-    log:info("document attached via placement tool", { doc = document_node_id, concept = concept_id })
-    local emit_err = emit_graph_change({
-        reason = "document.attached",
+    local result, err = node_store:categorize_automatically({
+        store_id = store_id,
         document_node_id = document_node_id,
         concept_id = concept_id,
+        replace = replace,
     })
-    if emit_err then return nil, emit_err end
+    if errors.is(err, errors.INVALID) then return tool_result.domain_error(tostring(err)) end
+    if err then return nil, errors.wrap(err, "categorizing document failed") end
+    if result ~= "unchanged" then
+        log:info("document " .. result .. " via placement tool", { doc = document_node_id, concept = concept_id })
+        local emit_err = emit_graph_change({
+            reason = "document." .. result,
+            document_node_id = document_node_id,
+            concept_id = concept_id,
+        })
+        if emit_err then return nil, emit_err end
+    end
 
-    return { success = true, result = "attached", document_node_id = document_node_id, concept_id = concept_id }
+    return { success = true, result = result, document_node_id = document_node_id, concept_id = concept_id }
 end
 
-local function move_document(args: MoveDocumentArgs): any
-    local store_id: string? = ctx.get("graph_store_id") :: string?
-    if not store_id then return tool_result.domain_error("no store_id in context") end
+local function attach_document(args: AttachDocumentArgs): any
+    return categorize_document(args, false)
+end
 
-    local store = node_store
-
-    local document_node_id = args.document_node_id
-    local concept_id = args.concept_id
-    if not document_node_id or not concept_id then
-        return tool_result.domain_error("document_node_id and concept_id are required")
-    end
-
-    local state, state_err = concept_tree_state(store, store_id)
-    if not state then return nil, state_err end
-    local root_err = root_document_target_error(state, concept_id)
-    if root_err then return tool_result.domain_error(root_err) end
-
-    local locked_reason, lock_err = categorization_lock(store, store_id, document_node_id)
-    if lock_err then return nil, errors.wrap(lock_err, "reading document categorization failed") end
-    if locked_reason then return tool_result.domain_error(locked_reason) end
-    local target_locked, target_err = concept_locked(store, store_id, concept_id)
-    if target_err then return nil, errors.wrap(target_err, "reading target concept failed") end
-    if target_locked then
-        return tool_result.domain_error("target concept is locked")
-    end
-
-    local _, patch_err = store:apply_graph_patch({
-        store_id = store_id,
-        replace_out_edges = {{
-            from_node_id = document_node_id,
-            edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS,
-        }},
-        insert_edges = {{
-            from_node_id = document_node_id,
-            to_node_id = concept_id,
-            edge_type = kb_types.EDGE_TYPE.CATEGORIZED_AS,
-            weight = 1.0,
-        }},
-    })
-    if patch_err then return nil, errors.wrap(patch_err, "moving document failed") end
-
-    log:info("document moved via placement tool", { doc = document_node_id, concept = concept_id })
-    local emit_err = emit_graph_change({
-        reason = "document.moved",
-        document_node_id = document_node_id,
-        concept_id = concept_id,
-    })
-    if emit_err then return nil, emit_err end
-
-    return { success = true, result = "moved", document_node_id = document_node_id, concept_id = concept_id }
+local function move_document(args: AttachDocumentArgs): any
+    return categorize_document(args, true)
 end
 
 local function get_concept_documents(args: GetConceptDocumentsArgs): any
@@ -475,81 +397,37 @@ type MergeConceptArgs = {
 }
 
 
--- Merge a duplicate concept (from) into a canonical one (into): re-point every
--- inbound edge (documents categorized into `from`, and child concepts whose
--- subtopic_of points at `from`) onto `into`, then delete `from` (its edges +
--- embedding cascade away). Outbound parent edges are dropped — `into` keeps its
--- own placement. Colliding edges are skipped so the kb10_edges UNIQUE constraint
--- holds. This is the tool the placement/treatment agent uses to fold duplicates.
+-- Resolve labels for the tool. The writer makes the merge decision on the
+-- addressed concepts and their current relationships inside its transaction.
 local function merge_concept(args: MergeConceptArgs): any
     local store_id: string? = ctx.get("graph_store_id") :: string?
     if not store_id then return tool_result.domain_error("no store_id in context") end
     local store = node_store
-
-    local state, state_err = concept_tree_state(store, store_id)
-    if not state then return nil, state_err end
     local from_id = args.from_id
     local into_id = args.into_id
-    if (not from_id or from_id == "") and args.from_label then
-        local from = find_concept_by_label(state :: ConceptTreeState, args.from_label :: string)
-        from_id = from and from.id or nil
-    end
-    if (not into_id or into_id == "") and args.into_label then
-        local into = find_concept_by_label(state :: ConceptTreeState, args.into_label :: string)
-        into_id = into and into.id or nil
+
+    local from_label = (not from_id or from_id == "") and args.from_label or nil
+    local into_label = (not into_id or into_id == "") and args.into_label or nil
+    if from_label or into_label then
+        local state, state_err = concept_tree_state(store, store_id)
+        if not state then return nil, state_err end
+        if from_label then
+            local from = find_concept_by_label(state, from_label)
+            from_id = from and from.id or nil
+        end
+        if into_label then
+            local into = find_concept_by_label(state, into_label)
+            into_id = into and into.id or nil
+        end
     end
     if not from_id or from_id == "" or not into_id or into_id == "" then
         return tool_result.domain_error("from (from_id/from_label) and into (into_id/into_label) concepts are required")
     end
-    if from_id == into_id then return tool_result.domain_error("cannot merge a concept into itself") end
 
-    local from_node, from_err = store:get_node({ store_id = store_id, node_id = from_id })
-    if from_err then return nil, errors.wrap(from_err, "reading source concept failed") end
-    if not from_node then return nil, errors.wrap(from_id, "source concept not found") end
-    if from_id == state.root_id then return tool_result.domain_error("cannot merge a root concept") end
-    local into_node, into_err = store:get_node({ store_id = store_id, node_id = into_id })
-    if into_err then return nil, errors.wrap(into_err, "reading target concept failed") end
-    if not into_node then return nil, errors.wrap(into_id, "target concept not found") end
-    if locked_node(from_node) or locked_node(into_node) then
-        return tool_result.domain_error("a concept is locked and cannot be merged")
-    end
-    local descends, descent_err = store:is_descendant({ store_id = store_id, ancestor_id = from_id, node_id = into_id })
-    if descent_err then return nil, errors.wrap(descent_err, "reading concept ancestry failed") end
-    if descends then return tool_result.domain_error("cannot merge a concept into its own descendant") end
-
-    local function key(f: any, t: any, ty: any): string return tostring(f) .. "|" .. tostring(t) .. "|" .. tostring(ty) end
-    local seen: { [string]: boolean } = {}
-    local into_in, into_in_err = store:get_all_edges({ store_id = store_id, node_id = into_id, opts = { direction = "in" } })
-    if into_in_err then return nil, errors.wrap(into_in_err, "reading target concept edges failed") end
-    for _, e in ipairs(into_in) do seen[key(e.from_node_id, e.to_node_id, e.edge_type)] = true end
-
-    local from_in, from_in_err = store:get_all_edges({ store_id = store_id, node_id = from_id, opts = { direction = "in" } })
-    if from_in_err then return nil, errors.wrap(from_in_err, "reading source concept edges failed") end
-    local insert_edges: { any } = {}
-    local moved = 0
-    for _, e in ipairs(from_in) do
-        if e.from_node_id ~= into_id then
-            local k = key(e.from_node_id, into_id, e.edge_type)
-            if not seen[k] then
-                seen[k] = true
-                insert_edges[#insert_edges + 1] = {
-                    from_node_id = e.from_node_id,
-                    to_node_id = into_id,
-                    edge_type = e.edge_type,
-                    weight = e.weight or 1.0,
-                }
-                moved = moved + 1
-            end
-        end
-    end
-
-    local _, patch_err = store:apply_graph_patch({
-        store_id = store_id,
-        insert_edges = insert_edges,
-        delete_node_id = from_id,
-    })
-    if patch_err then return nil, errors.wrap(patch_err, "merging concepts failed") end
-
+    local merged, merge_err = store:merge_concepts({store_id = store_id, from_id = from_id, into_id = into_id})
+    if errors.is(merge_err, errors.INVALID) then return tool_result.domain_error(tostring(merge_err)) end
+    if merge_err then return nil, errors.wrap(merge_err, "merging concepts failed") end
+    local moved = merged.moved_edges
     log:info("concepts merged via tool", { from = from_id, into = into_id, moved = moved })
     local emit_err = emit_graph_change({
         reason = "concept.merged",

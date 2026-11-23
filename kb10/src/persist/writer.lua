@@ -678,7 +678,7 @@ function writer.replace_source_fanout_document_tx(tx: any, db_type: any, store_i
     return replace_document_tx(tx, db_type, store_id, replacement, nil, true)
 end
 
-local function mutate_source_document(store_id: any, mutate: any, ...)
+local function mutate_store(store_id: any, mutate: any, ...)
     local db, err = ops.get_db()
     if err then return nil, err end
     local db_type, db_type_err = ops.get_db_type(db)
@@ -688,13 +688,13 @@ local function mutate_source_document(store_id: any, mutate: any, ...)
 
     local result, write_err = mutate(tx, db_type, store_id, ...)
     if write_err then return fail_tx(tx, db, write_err) end
-    local ok, commit_err = commit_tx(tx, db, "document replacement")
+    local ok, commit_err = commit_tx(tx, db, "store mutation")
     if not ok then return nil, commit_err end
     return result, nil
 end
 
 function writer.replace_document(store_id: any, replacement: any)
-    return mutate_source_document(store_id, writer.replace_document_tx, replacement)
+    return mutate_store(store_id, writer.replace_document_tx, replacement)
 end
 
 -- Record an attempted immutable revision without rewriting an accepted tree.
@@ -784,7 +784,7 @@ local function reject_source_revision_tx(tx: any, db_type: any, store_id: any, s
 end
 
 function writer.reject_source_revision(store_id: string, source_thread_id: string, metadata: kb10.Map, code: string)
-    return mutate_source_document(store_id, function(tx, dialect, id)
+    return mutate_store(store_id, function(tx, dialect, id)
         local _, err, receipt = reject_source_revision_tx(tx, dialect, id, source_thread_id, metadata, code)
         return receipt, err
     end)
@@ -1392,13 +1392,19 @@ end
 function writer.delete_edge(store_id: any, edge_id: any)
     local db, err = ops.get_db()
     if err then return false, err end
+    local dialect, type_err = ops.get_db_type(db)
+    if type_err then db:release(); return false, type_err end
 
-    local _, exec_err = db:execute(
-        "DELETE FROM kb10_edges WHERE id = $1 AND store_id = $2",
-        { edge_id, store_id }
-    )
+    local statement = "DELETE FROM kb10_edges WHERE id = $1 AND store_id = $2"
+    if dialect == sql.type.POSTGRES then
+        -- Take the same store lock as rewrites before touching an edge. A
+        -- merge's duplicate check and deletion now see one order.
+        statement = [[WITH owner AS (SELECT id FROM kb10_stores WHERE id = $1 FOR NO KEY UPDATE)
+            DELETE FROM kb10_edges e USING owner WHERE e.store_id = owner.id AND e.id = $2]]
+    end
+    local params = dialect == sql.type.POSTGRES and {store_id, edge_id} or {edge_id, store_id}
+    local _, exec_err = db:execute(statement, params)
     db:release()
-
     if exec_err then return false, exec_err end
     return true
 end
@@ -1468,6 +1474,212 @@ function writer.insert_edges(store_id: any, edges: any): (boolean?, any?)
     return commit_tx(tx, db, "edge batch insert")
 end
 
+local function locked_graph_metadata(field: string, db_type: any): string
+    if db_type == sql.type.POSTGRES then
+        return "(" .. field .. "->'manual' = 'true'::jsonb OR " .. field .. "->'locked' = 'true'::jsonb)"
+    end
+    return "(CASE WHEN json_valid(" .. field .. ") THEN json_type(" .. field ..
+        ", '$.manual') = 'true' OR json_type(" .. field .. ", '$.locked') = 'true' ELSE FALSE END)"
+end
+
+local function invalid_merge(message: string): (nil, any)
+    return nil, errors.new({kind = errors.INVALID, message = message})
+end
+
+local function taxonomy_root_tx(tx: any, db_type: any, store_id: string): (string?, any?)
+    local root_metadata = db_type == sql.type.POSTGRES
+        and "(metadata->'is_root' = 'true'::jsonb OR metadata->>'concept_type' = 'root')"
+        or "(CASE WHEN json_valid(metadata) THEN json_type(metadata, '$.is_root') = 'true'"
+            .. " OR json_extract(metadata, '$.concept_type') = 'root' ELSE FALSE END)"
+    local flagged, flag_err = tx:query([[SELECT id FROM kb10_nodes
+        WHERE store_id = $1 AND node_type = 'concept' AND ]] .. root_metadata .. " LIMIT 2", {store_id})
+    if flag_err then return nil, flag_err end
+    if #flagged == 1 then return tostring(flagged[1].id), nil end
+    if #flagged == 0 then
+        local parentless, parent_err = tx:query([[SELECT n.id FROM kb10_nodes n
+            WHERE n.store_id = $1 AND n.node_type = 'concept' AND NOT EXISTS (
+                SELECT 1 FROM kb10_edges e
+                JOIN kb10_nodes p ON p.store_id = e.store_id AND p.id = e.to_node_id AND p.node_type = 'concept'
+                WHERE e.store_id = n.store_id AND e.from_node_id = n.id AND e.edge_type = 'subtopic_of'
+            ) LIMIT 2]], {store_id})
+        if parent_err then return nil, parent_err end
+        if #parentless == 1 then return tostring(parentless[1].id), nil end
+    end
+    return nil, errors.new({kind = errors.CONFLICT, message = "ambiguous root concept"})
+end
+
+-- Follow all retained parent links. UNION also terminates on a pre-existing cycle.
+local function taxonomy_cycle_tx(tx: any, store_id: string, from_id: string, into_id: string): (boolean?, any?)
+    local ancestors, err = tx:query([[WITH RECURSIVE parents(id) AS (
+        SELECT to_node_id FROM kb10_edges
+        WHERE store_id = $1 AND from_node_id = $2 AND edge_type = 'subtopic_of'
+        UNION
+        SELECT e.to_node_id FROM parents p JOIN kb10_edges e ON e.from_node_id = p.id
+        WHERE e.store_id = $1 AND e.edge_type = 'subtopic_of'
+    ) SELECT id FROM parents WHERE id = $3 LIMIT 1]], {store_id, into_id, from_id})
+    if err then return nil, err end
+    return #ancestors > 0, nil
+end
+
+local function merge_concepts_tx(tx: any, db_type: any, store_id: string, from_id: string, into_id: string)
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+    local nodes, read_err = tx:query([[SELECT id, metadata FROM kb10_nodes
+        WHERE store_id = $1 AND id IN ($2, $3) AND node_type = 'concept'
+        ORDER BY CASE WHEN id = $2 THEN 0 ELSE 1 END]], {store_id, from_id, into_id})
+    if read_err then return nil, read_err end
+    if #nodes ~= 2 then return invalid_merge("both concepts must exist in this knowledge base") end
+    from_id, into_id = tostring(nodes[1].id), tostring(nodes[2].id)
+    local root_id, root_err = taxonomy_root_tx(tx, db_type, store_id)
+    if root_err then return nil, root_err end
+    if root_id == from_id then return invalid_merge("cannot merge a root concept") end
+    local target_is_root = root_id == into_id
+    for _, node in ipairs(nodes) do
+        local metadata = decode_metadata(node.metadata)
+        if metadata.manual == true or metadata.locked == true then
+            return invalid_merge("a concept is locked and cannot be merged")
+        end
+    end
+
+    local cycle, ancestry_err = taxonomy_cycle_tx(tx, store_id, from_id, into_id)
+    if ancestry_err then return nil, ancestry_err end
+    if cycle then return invalid_merge("cannot merge a concept into its own descendant") end
+
+    local edge_locked = locked_graph_metadata("e.metadata", db_type)
+    local node_locked = locked_graph_metadata("n.metadata", db_type)
+    local protected, protected_err = tx:query([[SELECT 1 AS present FROM (
+        SELECT 1 FROM kb10_edges e WHERE e.store_id = $1 AND e.from_node_id = $2 AND ]] .. edge_locked .. [[
+        UNION ALL
+        SELECT 1 FROM kb10_edges e JOIN kb10_nodes n ON n.store_id = e.store_id AND n.id = e.from_node_id
+        WHERE e.store_id = $1 AND e.to_node_id = $2 AND (]] .. edge_locked .. [[
+            OR (e.edge_type IN ('subtopic_of', 'categorized_as') AND ]] .. node_locked .. [[))
+        UNION ALL
+        SELECT 1 FROM kb10_nodes n WHERE n.store_id = $1 AND n.parent_id = $2
+    ) protected LIMIT 1]], {store_id, from_id})
+    if protected_err then return nil, protected_err end
+    if #protected > 0 then return invalid_merge("cannot merge a concept with protected relationships or stored child nodes") end
+
+    -- This set-based update keeps the existing edge IDs and metadata. Store
+    -- scoping and endpoint validation must match the ordinary edge writer.
+    local invalid, invalid_err = tx:query([[SELECT 1 AS present
+        FROM kb10_edges e LEFT JOIN kb10_nodes n ON n.store_id = e.store_id AND n.id = e.from_node_id
+        WHERE e.store_id = $1 AND e.to_node_id = $2 AND e.from_node_id NOT IN ($2, $3)
+        AND (n.id IS NULL OR n.node_type IN ('summary', 'chunk') OR
+            (n.node_type = 'document' AND (e.edge_type <> 'categorized_as' OR $4)))
+        LIMIT 1]], {store_id, from_id, into_id, target_is_root})
+    if invalid_err then return nil, invalid_err end
+    if #invalid > 0 then return invalid_merge("merge would produce an invalid graph relationship") end
+
+    local moved, move_err = tx:execute([[UPDATE kb10_edges AS edge SET to_node_id = $1
+        WHERE store_id = $2 AND to_node_id = $3 AND from_node_id NOT IN ($3, $1)
+        AND NOT EXISTS (
+            SELECT 1 FROM kb10_edges existing WHERE existing.store_id = $2
+            AND existing.to_node_id = $1 AND existing.from_node_id = edge.from_node_id
+            AND existing.edge_type = edge.edge_type
+        )]], {into_id, store_id, from_id})
+    if move_err then return nil, move_err end
+    local count = moved and tonumber(moved.rows_affected)
+    if count == nil then
+        return nil, errors.new({kind = errors.INTERNAL, message = "merge returned no edge update count"})
+    end
+
+    -- The source is neither root nor the owner of any stored child nodes.
+    local deleted, delete_err = delete_node_tx(tx, db_type, store_id, from_id, {root_count = 0})
+    if not deleted then return nil, delete_err end
+    return { moved_edges = count }, nil
+end
+
+function writer.merge_concepts(store_id: string, from_id: string, into_id: string)
+    if not is_str(store_id) or not is_str(from_id) or not is_str(into_id) then
+        return invalid_merge("store and concept IDs are required")
+    end
+    if from_id == into_id then return invalid_merge("cannot merge a concept into itself") end
+    return mutate_store(store_id, merge_concepts_tx, from_id, into_id)
+end
+
+local function categorize_automatically_tx(tx: any, db_type: any, store_id: string,
+    document_id: string, concept_id: string, replace: boolean): (string?, any?)
+    if db_type == sql.type.POSTGRES then
+        local store_key = uuid.format(store_id)
+        local document_key = uuid.format(document_id)
+        local concept_key = uuid.format(concept_id)
+        if not store_key or not document_key or not concept_key then
+            return nil, errors.new({kind = errors.INVALID, message = "store, document and concept IDs must be UUIDs"})
+        end
+        store_id, document_id, concept_id = store_key, document_key, concept_key
+    end
+    local lock_err = require_store_tx(tx, db_type, store_id)
+    if lock_err then return nil, lock_err end
+
+    local endpoints, read_err = tx:query([[SELECT c.metadata,
+        CASE WHEN EXISTS (
+            SELECT 1 FROM kb10_edges e
+            JOIN kb10_nodes p ON p.store_id = e.store_id AND p.id = e.to_node_id AND p.node_type = 'concept'
+            WHERE e.store_id = c.store_id AND e.from_node_id = c.id AND e.edge_type = 'subtopic_of'
+        ) THEN 1 ELSE 0 END AS has_parent
+        FROM kb10_nodes c WHERE c.store_id = $1
+        AND EXISTS (SELECT 1 FROM kb10_nodes d WHERE d.store_id = c.store_id AND d.id = $2 AND d.node_type = 'document')
+        AND c.id = $3 AND c.node_type = 'concept']],
+        {store_id, document_id, concept_id})
+    if read_err then return nil, read_err end
+    if #endpoints == 0 then
+        return nil, errors.new({kind = errors.INVALID, message = "document and target concept must exist in this knowledge base"})
+    end
+    local target = decode_metadata(endpoints[1].metadata)
+    local is_root = kb10.is_root_metadata(target)
+    -- Unflagged legacy roots have no concept parent. The ordinary case relies
+    -- on the target's indexed edges and never scans the taxonomy.
+    if not is_root and tonumber(endpoints[1].has_parent) == 0 then
+        local root_id, root_err = taxonomy_root_tx(tx, db_type, store_id)
+        if root_err then return nil, root_err end
+        is_root = root_id == concept_id
+    end
+    if is_root then
+        return nil, errors.new({kind = errors.INVALID, message = "documents cannot be attached to the root concept; create or choose a non-root concept"})
+    end
+
+    local rows, edges_err = tx:query([[WITH document_edges AS (
+        SELECT store_id, to_node_id, metadata FROM kb10_edges
+        WHERE store_id = $1 AND from_node_id = $2 AND edge_type = 'categorized_as'
+    ) SELECT
+        MAX(CASE WHEN e.to_node_id = $3 THEN 1 ELSE 0 END) AS attached,
+        MAX(CASE WHEN ]] .. locked_graph_metadata("e.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS edge_locked,
+        MAX(CASE WHEN ]] .. locked_graph_metadata("c.metadata", db_type) .. [[ THEN 1 ELSE 0 END) AS concept_locked
+        FROM document_edges e
+        LEFT JOIN kb10_nodes c ON c.store_id = e.store_id AND c.id = e.to_node_id]],
+        {store_id, document_id, concept_id})
+    if edges_err then return nil, edges_err end
+    local existing = rows[1]
+    if not replace and tonumber(existing.attached) == 1 then return "unchanged", nil end
+    if tonumber(existing.edge_locked) == 1 then
+        return nil, errors.new({kind = errors.INVALID, message = "document categorization edge is locked"})
+    end
+    if tonumber(existing.concept_locked) == 1 then
+        return nil, errors.new({kind = errors.INVALID, message = "document target concept is locked"})
+    end
+    if target.manual == true or target.locked == true then
+        return nil, errors.new({kind = errors.INVALID, message = "target concept is locked"})
+    end
+
+    if replace then
+        local _, delete_err = tx:execute([[DELETE FROM kb10_edges
+            WHERE store_id = $1 AND from_node_id = $2 AND edge_type = 'categorized_as']], {store_id, document_id})
+        if delete_err then return nil, delete_err end
+    end
+    local _, insert_err = insert_edge_tx(tx, store_id, {
+        from_node_id = document_id, to_node_id = concept_id, edge_type = kb10.EDGE_TYPE.CATEGORIZED_AS,
+    })
+    if insert_err then return nil, insert_err end
+    return replace and "moved" or "attached", nil
+end
+
+function writer.categorize_automatically(store_id: string, document_id: string, concept_id: string, replace: boolean)
+    if not is_str(store_id) or not is_str(document_id) or not is_str(concept_id) then
+        return nil, errors.new({kind = errors.INVALID, message = "store, document and concept IDs are required"})
+    end
+    return mutate_store(store_id, categorize_automatically_tx, document_id, concept_id, replace)
+end
+
 function writer.apply_graph_patch(store_id: any, patch: any)
     if not store_id or store_id == "" then return nil, errors.new({ message = "store_id is required", kind = errors.INVALID }) end
     local spec = type(patch) == "table" and patch or {}
@@ -1499,6 +1711,7 @@ function writer.apply_graph_patch(store_id: any, patch: any)
         deleted_edges = deleted_edges + 1
     end
 
+    local reparented: {[string]: boolean} = {}
     for _, spec_edge in ipairs(replace_out_edges) do
         local re = (type(spec_edge) == "table" and spec_edge or {}) :: kb10.EdgeInput
         if not is_str(re.from_node_id) or not is_str(re.edge_type) then
@@ -1509,12 +1722,20 @@ function writer.apply_graph_patch(store_id: any, patch: any)
             { store_id, re.from_node_id, re.edge_type }
         )
         if re_err then return fail_tx(tx, db, errors.wrap(re_err, "replace_out_edges delete failed")) end
+        if re.edge_type == kb10.EDGE_TYPE.SUBTOPIC_OF then reparented[re.from_node_id] = true end
     end
 
     local inserted_edge_ids: { string } = {}
     for _, edge in ipairs(insert_edges) do
         local validation_err = validate_edge_insert_tx(tx, store_id, edge, "apply_graph_patch")
         if validation_err then return fail_tx(tx, db, validation_err) end
+        if edge.edge_type == kb10.EDGE_TYPE.SUBTOPIC_OF and reparented[edge.from_node_id] then
+            local cycle, cycle_err = taxonomy_cycle_tx(tx, store_id, edge.from_node_id, edge.to_node_id)
+            if cycle_err then return fail_tx(tx, db, cycle_err) end
+            if cycle or edge.from_node_id == edge.to_node_id then
+                return fail_tx(tx, db, errors.new({kind = errors.INVALID, message = "parent cannot be a descendant of the concept"}))
+            end
+        end
         local edge_id, edge_err = insert_edge_tx(tx, store_id, edge)
         if edge_err or not edge_id then return fail_tx(tx, db, errors.wrap(edge_err, "edge insert failed")) end
         table.insert(inserted_edge_ids, edge_id)

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.55](https://github.com/kicksideai/providers/compare/kb10-v0.2.54...kb10-v0.2.55) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** preserve SQLite graph node identifiers ([#241](https://github.com/kicksideai/providers/issues/241)) ([18175cc](https://github.com/kicksideai/providers/commit/18175cc347d085bfb70abea21ef20c16782d4eaa))
+
+## [0.2.54](https://github.com/kicksideai/providers/compare/kb10-v0.2.53...kb10-v0.2.54) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** preserve curated document categorization ([#239](https://github.com/kicksideai/providers/issues/239)) ([03dbf2e](https://github.com/kicksideai/providers/commit/03dbf2e5a109b50fe5f283a03bb6abaa9ef3d3a6))
+
+## [0.2.53](https://github.com/kicksideai/providers/compare/kb10-v0.2.52...kb10-v0.2.53) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** preserve curated relationships in concept merges ([5fe1907](https://github.com/kicksideai/providers/commit/5fe19076c2f4e0c4e4fc51744863677438ff593d))
+
+## [0.2.52](https://github.com/kicksideai/providers/compare/kb10-v0.2.51...kb10-v0.2.52) (2026-11-22)
+
+
+### Bug Fixes
+
+* **kb10:** walk maintenance records in bounded node ID order ([07480aa](https://github.com/kicksideai/providers/commit/07480aa8b735536c33214d64b6c1f824596fa1ae))
+
 ## [0.2.51](https://github.com/kicksideai/providers/compare/kb10-v0.2.50...kb10-v0.2.51) (2026-11-22)
 
 

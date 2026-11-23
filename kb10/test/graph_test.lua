@@ -548,6 +548,103 @@ local function define_tests()
                 test.eq((result :: any).result, "unchanged")
             end)
 
+            test.it("preserves manual categorization when automatic placement tries to attach or move", function()
+                local current = concept_under(root_concept_id, "Curated topic")
+                local initial_target = concept_under(root_concept_id, "Suggested topic")
+                local doc_id, doc_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document with curated placement",
+                    metadata = { title = "Curated placement" },
+                })
+                test.is_nil(doc_err)
+                local edge_id, edge_err = kb_store():insert_edge({ store_id = test_store_id, edge = {
+                    from_node_id = doc_id, to_node_id = current, edge_type = "categorized_as",
+                    metadata = { manual = true },
+                } })
+                test.is_nil(edge_err)
+                local exec = tool_exec(test_store_id)
+                for _, method in ipairs({"attach_document", "move_document"}) do
+                    local result, err = exec:call("kickside.kb10.graph:" .. method, {
+                        document_node_id = doc_id, concept_id = initial_target,
+                    })
+                    test.is_nil(err)
+                    test.is_false((result :: any).success)
+                    test.eq((result :: any).error, "document categorization edge is locked")
+                end
+                local repeat_result, repeat_err = exec:call("kickside.kb10.graph:attach_document", {
+                    document_node_id = doc_id, concept_id = current,
+                })
+                test.is_nil(repeat_err)
+                test.eq((repeat_result :: any).result, "unchanged")
+                local edges, read_err = kb_store():get_edges({ store_id = test_store_id, node_id = doc_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(read_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].id, edge_id)
+                test.is_true(edges[1].metadata.manual)
+            end)
+
+            test.it("refuses automatic attachment to a locked destination", function()
+                local target = concept_under(root_concept_id, "Locked destination", { locked = true })
+                local doc_id, doc_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document awaiting placement",
+                    metadata = { title = "Pending placement" },
+                })
+                test.is_nil(doc_err)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:attach_document", {
+                    document_node_id = doc_id, concept_id = target,
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                test.eq((result :: any).error, "target concept is locked")
+                local _, count = categorized_targets(doc_id)
+                test.eq(count, 0)
+            end)
+
+            test.it("rejects an unmarked legacy root, including alternate PostgreSQL UUID spelling", function()
+                local _, meta_err = kb_store():update_node({
+                    store_id = test_store_id, node_id = root_concept_id, metadata = { label = "Legacy root" },
+                })
+                test.is_nil(meta_err)
+                local doc_id, doc_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document awaiting placement",
+                    metadata = { title = "Pending placement" },
+                })
+                test.is_nil(doc_err)
+                local root_id = db:type() == sql.type.POSTGRES and root_concept_id:upper() or root_concept_id
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:attach_document", {
+                    document_node_id = doc_id, concept_id = root_id,
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                test.contains((result :: any).error, "root concept")
+                local _, count = categorized_targets(doc_id)
+                test.eq(count, 0)
+            end)
+
+            test.it("categorizes an existing document with the store's native node identifiers", function()
+                local sqlite = db:type() == sql.type.SQLITE
+                local concept_id = sqlite and "CuratedTopic/handbook" or uuid()
+                local document_id = sqlite and "PublishedDoc/Handbook-01" or uuid()
+                local topic, topic_err = kb_store():insert_graph_node({ store_id = test_store_id, node = {
+                    id = concept_id, node_type = "concept", metadata = { label = "Native topic" },
+                }, parent_edge = { to_node_id = root_concept_id, edge_type = "subtopic_of" } })
+                test.is_nil(topic_err)
+                test.eq(topic, concept_id)
+                local document, doc_err = insert_materialized_node(test_store_id, {
+                    id = document_id, node_type = "document", content = "Retained document",
+                })
+                test.is_nil(doc_err)
+                test.eq(document, document_id)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:attach_document", {
+                    document_node_id = document_id, concept_id = concept_id,
+                })
+                test.is_nil(err)
+                test.eq((result :: any).result, "attached")
+                local targets, count = categorized_targets(document_id)
+                test.eq(count, 1)
+                test.is_true(targets[concept_id] == true)
+            end)
+
             test.it("move_document replaces every categorization of the document", function()
                 local parent = concept_under(root_concept_id, "Move Many")
                 local target = concept_under(parent, "Move Many Target")
@@ -621,6 +718,106 @@ local function define_tests()
                 local still, still_err = kb_store():get_node({ store_id = test_store_id, node_id = from_id })
                 test.is_nil(still_err)
                 test.not_nil(still)
+            end)
+
+            test.it("merge_concept preserves manually curated relationships on an unlocked concept", function()
+                local from_id = concept_under(root_concept_id, "Curated Merge Source")
+                local into_id = concept_under(root_concept_id, "Curated Merge Target")
+                local document_id, document_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Keep my categorization", metadata = { title = "Curated" },
+                })
+                test.is_nil(document_err)
+                local edge_id, edge_err = kb_store():insert_edge({ store_id = test_store_id, edge = {
+                    from_node_id = document_id, to_node_id = from_id, edge_type = "categorized_as",
+                    metadata = { manual = true },
+                } })
+                test.is_nil(edge_err)
+                local prior, prior_err = kb_store():get_edges({ store_id = test_store_id, node_id = document_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(prior_err)
+                test.is_true(prior[1].metadata.manual)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = into_id,
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                local source, read_err = kb_store():get_node({ store_id = test_store_id, node_id = from_id })
+                test.is_nil(read_err)
+                test.not_nil(source)
+                local edges, edges_err = kb_store():get_edges({ store_id = test_store_id, node_id = document_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(edges_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].id, edge_id)
+                test.eq(edges[1].to_node_id, from_id)
+                test.is_true(edges[1].metadata.manual)
+            end)
+
+            test.it("keeps a moved edge's metadata and its stable id", function()
+                local from_id = concept_under(root_concept_id, "Merge Metadata Source")
+                local into_id = concept_under(root_concept_id, "Merge Metadata Target")
+                local neighbor = concept_under(root_concept_id, "Merge Metadata Neighbor")
+                local edge_id, edge_err = kb_store():insert_edge({ store_id = test_store_id, edge = {
+                    from_node_id = neighbor, to_node_id = from_id, edge_type = "related_to",
+                    weight = 0.5, metadata = { reason = "keep this relation" },
+                } })
+                test.is_nil(edge_err)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = into_id,
+                })
+                test.is_nil(err)
+                test.eq((result :: any).moved_edges, 1)
+                local edges, read_err = kb_store():get_edges({ store_id = test_store_id, node_id = neighbor,
+                    opts = { direction = "out", edge_type = "related_to" } })
+                test.is_nil(read_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].id, edge_id)
+                test.eq(edges[1].to_node_id, into_id)
+                test.eq(edges[1].weight, 0.5)
+                test.eq(edges[1].metadata.reason, "keep this relation")
+            end)
+
+            test.it("does not retarget document edges onto an alternate spelling of the root id", function()
+                local from_id = concept_under(root_concept_id, "Merge Root Target Source")
+                local document_id, document_err = insert_materialized_node(test_store_id, {
+                    node_type = "document", content = "Document must stay categorized", metadata = { title = "Root test" },
+                })
+                test.is_nil(document_err)
+                categorize(document_id, from_id)
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = root_concept_id:upper(),
+                })
+                test.is_nil(err)
+                test.is_false((result :: any).success)
+                local edges, read_err = kb_store():get_edges({ store_id = test_store_id, node_id = document_id,
+                    opts = { direction = "out", edge_type = "categorized_as" } })
+                test.is_nil(read_err)
+                test.eq(#edges, 1)
+                test.eq(edges[1].to_node_id, from_id)
+            end)
+
+            test.it("refuses a stale reparenting plan once a merge makes its target a descendant", function()
+                local from_id = concept_under(root_concept_id, "Merge Reparent Source")
+                local into_id = concept_under(root_concept_id, "Merge Reparent Target")
+                local child = concept_under(from_id, "Merge Reparent Child")
+                local patch = {
+                    store_id = test_store_id,
+                    replace_out_edges = {{ from_node_id = into_id, edge_type = "subtopic_of" }},
+                    insert_edges = {{ from_node_id = into_id, to_node_id = child, edge_type = "subtopic_of" }},
+                }
+                local result, err = tool_exec(test_store_id):call("kickside.kb10.graph:merge_concept", {
+                    from_id = from_id, into_id = into_id,
+                })
+                test.is_nil(err)
+                test.eq((result :: any).result, "merged")
+                local applied, apply_err = kb_store():apply_graph_patch(patch)
+                test.is_nil(applied)
+                test.contains(tostring(apply_err), "parent cannot be a descendant")
+                local parents, parents_err = kb_store():get_edges({ store_id = test_store_id, node_id = into_id,
+                    opts = { direction = "out", edge_type = "subtopic_of" } })
+                test.is_nil(parents_err)
+                test.eq(#parents, 1)
+                test.eq(parents[1].to_node_id, root_concept_id)
             end)
 
             test.it("node_store answers taxonomy descent and reads node batches beyond one page", function()

@@ -322,15 +322,8 @@ local function move_concept()
     local parent, p_status, p_err = get_concept(ctx.store, ctx.store_id, parent_id)
     if not parent then return reply(res, p_status, { success = false, error = p_err }) end
 
-    local cycle, cycle_err = ctx.store:is_descendant({ store_id = ctx.store_id, ancestor_id = node.id, node_id = parent.id })
-    if cycle_err then return reply(res, http.STATUS.INTERNAL_ERROR, { success = false, error = "cycle check failed: " .. tostring(cycle_err) }) end
-    if cycle then
-        return reply(res, http.STATUS.BAD_REQUEST, { success = false, error = "parent cannot be a descendant of the concept" })
-    end
-
-    -- Atomically drop ALL existing parent edges and add the new one in one
-    -- transaction (replace_out_edges), instead of deleting a pre-fetched id list
-    -- — that race could leave a concept with two parents.
+    -- The graph writer checks ancestry under the same transaction as the
+    -- parent change, including a move planned before a concurrent merge.
     local _, patch_err = ctx.store:apply_graph_patch({
         store_id = ctx.store_id,
         replace_out_edges = {{
@@ -346,6 +339,9 @@ local function move_concept()
         }},
     })
     if patch_err then
+        if errors.is(patch_err, errors.INVALID) then
+            return reply(res, http.STATUS.BAD_REQUEST, { success = false, error = tostring(patch_err) })
+        end
         return reply(res, http.STATUS.INTERNAL_ERROR, { success = false, error = "parent edge update failed: " .. tostring(patch_err) })
     end
 

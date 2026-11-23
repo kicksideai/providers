@@ -364,6 +364,16 @@ function M:delete_edge(args: any): (any, string?)
     return store.delete_edge(a.store_id, a.edge_id)
 end
 
+function M:merge_concepts(args: any): (any?, any?)
+    local a = arg_table(args)
+    return store.merge_concepts(a.store_id, a.from_id, a.into_id)
+end
+
+function M:categorize_automatically(args: any): (string?, any?)
+    local a = arg_table(args)
+    return store.categorize_automatically(a.store_id, a.document_node_id, a.concept_id, a.replace == true)
+end
+
 function M:apply_graph_patch(args: any): (any, string?)
     local a = (arg_table(args) :: any) :: kb10.GraphPatchArgs
     if trim(a.delete_node_id) ~= "" then

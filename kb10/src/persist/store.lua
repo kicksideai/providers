@@ -15,6 +15,8 @@ store.get_store = reader.get_store
 store.get_store_statistics = reader.get_store_statistics
 store.vector_search = reader.vector_search
 store.browse_nodes = reader.browse_nodes
+store.maintenance_window = reader.maintenance_window
+store.maintenance_page = reader.maintenance_page
 store.browse_page = reader.browse_page
 store.count_nodes = reader.count_nodes
 store.get_summaries = reader.get_summaries
@@ -48,6 +50,8 @@ store.set_descriptions = writer.set_descriptions
 store.insert_edge = writer.insert_edge
 store.delete_edge = writer.delete_edge
 store.apply_graph_patch = writer.apply_graph_patch
+store.merge_concepts = writer.merge_concepts
+store.categorize_automatically = writer.categorize_automatically
 
 store.VECTOR_DIMENSIONS = ops.VECTOR_DIMENSIONS
 
