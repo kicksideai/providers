@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.sendgrid.security
+entries:
+  - name: module_access
+    kind: security.policy
+    meta:
+      title: SendGrid Mail
+      surface: kickside.mail.sendgrid
+      intent: module_access
+      includes:
+        - kickside.mail.sendgrid.security:module_runtime
+    groups: []
+    policy:
+      resources: [kickside.mail.sendgrid:definition]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: module_runtime
+    kind: security.policy
+    meta: { private: true }
+    groups: []
+    policy:
+      resources: [kickside.mail.sendgrid:transport, kickside.mail.sendgrid:send, kickside.mail.sendgrid:available]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: driver_admin
+    kind: security.policy
+    meta:
+      title: Administer SendGrid mail delivery
+      surface: kickside.mail.sendgrid
+      intent: settings_access
+    groups: []
+    policy:
+      resources:
+        - kickside.mail.sendgrid:driver
+        - kickside.mail.sendgrid:settings_block
+        - kickside.mail.sendgrid:setting_api_key
+        - kickside.mail.sendgrid:available
+      actions: [registry.get, registry.find, funcs.call]
+      effect: allow
+  - name: user_security_scope
+    kind: ns.requirement
+    default: kickside.security.groups:members
+    meta: { value_kind: security.scope }
+    targets:
+      - { entry: kickside.mail.sendgrid.security:module_access, path: ".groups +=" }
+      - { entry: kickside.mail.sendgrid.security:module_runtime, path: ".groups +=" }
+  - name: driver_descriptor
+    kind: ns.requirement
+    default: kickside.mail.sendgrid:driver
+    meta: { value_kind: registry.entry }
+    targets:
+      - { entry: kickside.mail.security:driver_discovery, path: ".policy.resources +=" }
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: driver_binding
+    kind: ns.requirement
+    default: kickside.mail.sendgrid:transport
+    meta: { value_kind: contract.binding }
+    targets:
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: driver_available
+    kind: ns.requirement
+    default: kickside.mail.sendgrid:available
+    meta: { value_kind: function.lua }
+    targets:
+      - { entry: "kickside.mail.security:driver_dispatch", path: ".policy.resources +=" }
+  - name: driver_send
+    kind: ns.requirement
+    default: kickside.mail.sendgrid:send
+    meta: { value_kind: function.lua }
+    targets:
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: http_access
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources:
+        - https://api.sendgrid.com/v3/mail/send
+      actions: [http_client.request]
+      effect: allow
+  - name: provider_reads
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [kickside.mail.sendgrid:endpoints]
+      actions: [registry.get]
+      effect: allow

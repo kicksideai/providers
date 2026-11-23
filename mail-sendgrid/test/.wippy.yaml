@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+workspace:
+  replacements:
+    kickside/mail: ../../../components/mail
+    kickside/mail-sendgrid: ..
+    kickside/component: ../../../kickside/core/component
+    kickside/contract: ../../../kickside/core/contract
+    kickside/core: ../../../kickside/core/core
+    kickside/execution: ../../../kickside/core/execution
+    kickside/jobs: ../../../kickside/core/jobs
+    kickside/realtime-dispatch: ../../../kickside/core/realtime-dispatch
+    kickside/security: ../../../kickside/platform/security
+    kickside/settings: ../../../kickside/platform/settings
+    kickside/uploads: ../../../kickside/platform/uploads
+    kickside/users: ../../../kickside/platform/users
+    kickside/doc2md: ../../../converters/doc2md
+override:
+  kickside.mail.security:send_access:groups: [app:mail_senders]
+vars:
+  pg_host: localhost
+  pg_port: 5433
+  pg_database: kickside_test_mail_sendgrid
+  pg_username: kickside
+  pg_password: kickside
+profiles:
+  postgres:
+    override:
+      app:db:kind: db.sql.postgres
+      app:db:host: ${pg_host}
+      app:db:port: ${pg_port}
+      app:db:database: ${pg_database}
+      app:db:username: ${pg_username}
+      app:db:password: ${pg_password}
+      app:db:options.sslmode: disable
+      app:db:pool.max_open: 16
+      app:db:pool.max_idle: 8
+registry:
+  dispatch_internal_kinds:
+    - registry.entry
+    - ns.requirement
+    - ns.dependency
+    - ns.definition
+    - security.scope

@@ -2,6 +2,28 @@
   "repository": "providers",
   "checks": [],
   "modules": {
+    "mail-sendgrid": {
+      "path": "mail-sendgrid",
+      "organization": "kickside",
+      "module": "mail-sendgrid",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lockrefresh",
+        "lint",
+        "check-dependencies",
+        "test",
+        "verify",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_mail_sendgrid",
+      "extra_tests": []
+    },
     "mail-resend": {
       "path": "mail-resend",
       "organization": "kickside",

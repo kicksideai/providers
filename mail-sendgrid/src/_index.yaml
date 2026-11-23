@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.sendgrid
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta: { title: SendGrid Mail }
+  - name: dep.mail
+    kind: ns.dependency
+    component: kickside/mail
+    version: "*"
+  - name: dep.settings
+    kind: ns.dependency
+    component: kickside/settings
+    version: "*"
+  - name: types
+    kind: library.lua
+    source: file://types.lua
+  - name: driver
+    kind: registry.entry
+    meta: { type: "kickside.mail:driver" }
+    id: sendgrid
+    label: SendGrid
+    icon: simple-icons:sendgrid
+    description: Deliver mail through SendGrid.
+    binding: kickside.mail.sendgrid:transport
+    settings_ns: kickside.mail.sendgrid
+    available_func: kickside.mail.sendgrid:available
+  - name: setting_api_key
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition" }
+    namespace: kickside.mail.sendgrid
+    key: api_key
+    title: API key
+    description: API key authorized to send mail through SendGrid.
+    scope: global
+    value_type: secret
+    read_access: admin
+    default: ""
+    order: 10
+  - name: settings_block
+    kind: registry.entry
+    meta: { type: "kickside.settings:block" }
+    key: mail_sendgrid
+    title: SendGrid
+    icon: simple-icons:sendgrid
+    group: Integrations
+    order: 60
+    namespace: kickside.mail.sendgrid
+  - name: endpoints
+    kind: registry.entry
+    endpoints: {}
+  - name: api_base_url
+    kind: ns.requirement
+    default: https://api.sendgrid.com
+    targets:
+      - { entry: "kickside.mail.sendgrid:endpoints", path: ".endpoints.api" }
+  - name: transport
+    kind: contract.binding
+    contracts:
+      - contract: kickside.mail:transport
+        methods: { send: "kickside.mail.sendgrid:send" }
+  - name: send
+    kind: function.lua
+    source: file://sendgrid.lua
+    method: send
+    imports:
+      types: kickside.mail.sendgrid:types
+      mail_types: kickside.mail:types
+      settings: kickside.mail:settings
+      delivery: kickside.mail.service:delivery
+    security:
+      policies:
+        - kickside.mail.security:settings_read
+        - kickside.mail.security:settings_admin_read
+        - kickside.mail.sendgrid.security:http_access
+        - kickside.mail.sendgrid.security:provider_reads
+  - name: available
+    kind: function.lua
+    source: file://sendgrid.lua
+    method: available
+    imports:
+      types: kickside.mail.sendgrid:types
+      mail_types: kickside.mail:types
+      settings: kickside.mail:settings
+      delivery: kickside.mail.service:delivery
+    security:
+      policies: [kickside.mail.security:settings_read, kickside.mail.security:settings_admin_read]

@@ -90,6 +90,7 @@ verify_module sso-google kickside/sso kickside/settings
 verify_module sso-microsoft kickside/sso kickside/settings
 verify_module sso-oidc kickside/sso kickside/settings
 verify_module mail-resend kickside/mail kickside/contract kickside/settings
+verify_module mail-sendgrid kickside/mail kickside/settings
 
 for service_file in \
   slack/src/socket/_index.yaml \
@@ -110,4 +111,4 @@ if [[ "$failed" != 0 ]]; then
   exit 1
 fi
 
-printf 'provider dependency declarations verified (25 modules)\n'
+printf 'provider dependency declarations verified (26 modules)\n'

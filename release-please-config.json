@@ -7,6 +7,16 @@
   "bump-patch-for-minor-pre-major": true,
   "bootstrap-sha": "686ff9190d6924dd6df9d73b5d85879bcac31449",
   "packages": {
+    "mail-sendgrid": {
+      "component": "mail-sendgrid",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0",
+      "exclude-paths": [
+        "mail-sendgrid/test",
+        "mail-sendgrid/.wippy",
+        "mail-sendgrid/wippy.lock"
+      ]
+    },
     "mail-resend": {
       "component": "mail-resend",
       "changelog-path": "CHANGELOG.md",
