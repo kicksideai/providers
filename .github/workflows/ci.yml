@@ -72,6 +72,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
+        - module: mail-mailgun
+          engine: sqlite
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-mailgun/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            make -C mail-mailgun verify
+            version=$(jq -er '.["mail-mailgun"] // "0.1.0"' .release-please-manifest.json)
+            wippy publish --config mail-mailgun --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: mail-mailgun
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-mailgun/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_mail_mailgun"
+            createdb "$database"
+            trap 'dropdb "$database"' EXIT
+            make -C mail-mailgun verify WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$database"
         - module: mail-sendgrid
           engine: sqlite
           commands: |

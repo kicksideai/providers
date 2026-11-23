@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app.live
+entries:
+  - name: getenv
+    kind: env.storage.os
+  - name: api_key
+    kind: env.variable
+    meta: { private: true }
+    storage: app.live:getenv
+    variable: MAILGUN_API_KEY
+  - name: domain
+    kind: env.variable
+    storage: app.live:getenv
+    variable: MAILGUN_DOMAIN
+  - name: from
+    kind: env.variable
+    storage: app.live:getenv
+    variable: MAILGUN_FROM
+  - name: to
+    kind: env.variable
+    storage: app.live:getenv
+    variable: MAILGUN_TO
+  - name: artifacts
+    kind: fs.directory
+    directory: ../../../components/mail/test/fixtures
+  - name: live_notice
+    kind: process.lua
+    source: file://notice.lua
+    method: main
+    modules: [env, registry, fs, io]
+    imports:
+      fixture: app:fixture
+    security:
+      policies: [app.live:read_environment, app.live:read_assets, app.live:fixture_authority]
+  - name: read_environment
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [app.live:api_key, app.live:domain, app.live:from, app.live:to]
+      actions: [env.get]
+      effect: allow
+  - name: read_assets
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [app.live:artifacts, kickside.mail.mailgun:endpoints]
+      actions: [fs.get, registry.get]
+      effect: allow
+  - name: fixture_authority
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources:
+        - app:db
+        - app:actor_probe
+        - "a5c66173-40ac-41df-91b0-e438a913f900"
+        - wippy.security:process
+        - app:user
+        - kickside.mail.security:send_access
+        - security
+        - kickside.core:threads
+        - kickside.core:threads_binding
+        - kickside.core:db_config
+        - kickside.core.retention:notify
+        - kickside.component:kind_declaration
+        - upsert
+        - kickside.uploads:uploads_component
+      actions: [db.get, funcs.call, security.actor.create, security.policy_group.get, security.policy.get, funcs.security, contract.get, contract.open, contract.call, contract.security, registry.get, registry.find]
+      effect: allow

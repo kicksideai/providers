@@ -1,0 +1,230 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: definition
+    kind: ns.definition
+  - name: db
+    kind: db.sql.sqlite
+    file: ":memory:"
+    foreign_keys: true
+    pool: { max_open: 1, max_idle: 1 }
+  - name: env_storage
+    kind: env.storage.file
+    meta: { type: envstorage }
+    file_path: ./.wippy/test.env
+    auto_create: true
+  - name: uploads
+    kind: fs.directory
+    directory: ./.wippy/uploads
+    auto_init: true
+  - name: processes
+    kind: process.host
+    lifecycle: { auto_start: true }
+  - name: gateway
+    kind: http.service
+    addr: "127.0.0.1:0"
+    lifecycle: { auto_start: true }
+  - name: api
+    kind: http.router
+    meta: { server: app:gateway }
+    prefix: /api
+  - name: public
+    kind: http.router
+    meta: { server: app:gateway }
+    prefix: /public
+  - name: user
+    kind: security.scope
+  - name: mail_senders
+    kind: security.scope
+  - name: dep.test
+    kind: ns.dependency
+    component: wippy/test
+    version: "*"
+  - name: dep.bootloader
+    kind: ns.dependency
+    component: wippy/bootloader
+    version: "*"
+    parameters:
+      - { name: wippy.bootloader:application_host, value: "app:processes" }
+      - { name: wippy.bootloader:env_storage, value: "app:env_storage" }
+  - name: dep.migration
+    kind: ns.dependency
+    component: wippy/migration
+    version: "*"
+    parameters:
+      - { name: wippy.migration:app_db, value: "app:db" }
+  - name: dep.uploads
+    kind: ns.dependency
+    component: kickside/uploads
+    version: "*"
+    parameters:
+      - { name: "kickside.uploads:database_resource", value: "app:db" }
+      - { name: "kickside.uploads:storage_id", value: "app:uploads" }
+      - { name: "kickside.uploads:env_storage", value: "app:env_storage" }
+      - { name: "kickside.uploads:api_router", value: "app:api" }
+      - { name: "kickside.uploads:ui_server", value: "app:gateway" }
+      - { name: "kickside.uploads.security:user_security_scope", value: "app:user" }
+      - { name: "kickside.component:target_db", value: "app:db" }
+      - { name: "kickside.component:api_router", value: "app:api" }
+      - { name: "kickside.core:target_db", value: "app:db" }
+      - { name: "kickside.core.lifecycle:process_host", value: "app:processes" }
+      - { name: "kickside.core.lifecycle:user_lifecycle_grant", value: { subject_id: "app:user", subject_type: group, access_mask: 2 } }
+      - { name: "kickside.core.lifecycle:admin_lifecycle_grant", value: { subject_id: "app:user", subject_type: group, access_mask: 3 } }
+      - { name: "kickside.core.retention:process_host", value: "app:processes" }
+      - { name: "kickside.core.threads:process_host", value: "app:processes" }
+      - { name: "kickside.core.retention:api_router", value: "app:api" }
+      - { name: "kickside.core.threads:api_router", value: "app:api" }
+      - { name: "kickside.core.projections:api_router", value: "app:api" }
+      - { name: "kickside.core.jobs:target_db", value: "app:db" }
+      - { name: "kickside.core.jobs:process_host", value: "app:processes" }
+  - name: dep.users
+    kind: ns.dependency
+    component: kickside/users
+    version: "*"
+    parameters:
+      - { name: "kickside.users:env_storage", value: "app:env_storage" }
+      - { name: "kickside.users:public_router", value: "app:public" }
+      - { name: "kickside.users:api_router", value: "app:api" }
+      - { name: "kickside.users:ui_server", value: "app:gateway" }
+      - { name: "kickside.users:target_db", value: "app:db" }
+      - { name: "kickside.users:admin_security_scope", value: "app:user" }
+      - { name: "kickside.users:login_role_resource", value: "app:*" }
+      - { name: "kickside.security:target_db", value: "app:db" }
+      - { name: "kickside.security:process_host", value: "app:processes" }
+      - { name: "kickside.security:api_router", value: "app:api" }
+      - { name: "kickside.security:ui_server", value: "app:gateway" }
+      - { name: "kickside.settings:target_db", value: "app:db" }
+      - { name: "kickside.settings:api_router", value: "app:api" }
+      - { name: "kickside.settings:ui_server", value: "app:gateway" }
+  - name: dep.views
+    kind: ns.dependency
+    component: wippy/views
+    version: "*"
+    parameters:
+      - { name: api_router, value: "app:public" }
+      - { name: env_storage, value: "app:env_storage" }
+  - name: dep.session
+    kind: ns.dependency
+    component: wippy/session
+    version: "*"
+    parameters:
+      - { name: api_router, value: "app:api" }
+      - { name: database_resource, value: "app:db" }
+      - { name: default_host, value: "app:processes" }
+      - { name: env_storage, value: "app:env_storage" }
+      - { name: delegation_func_id, value: "userspace.dataflow.session:delegate" }
+  - name: dep.driver
+    kind: ns.dependency
+    component: kickside/mail-mailgun
+    version: "*"
+    parameters:
+      - { name: "kickside.mail.mailgun:us_api_base_url", value: "http://127.0.0.1:24637" }
+      - { name: "kickside.mail.mailgun:eu_api_base_url", value: "http://localhost:24637" }
+      - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
+      - { name: "kickside.mail:target_db", value: "app:db" }
+      - { name: "kickside.mail.mailgun.security:user_security_scope", value: "app:user" }
+  - name: mailgun_gateway
+    kind: http.service
+    addr: "127.0.0.1:24637"
+    lifecycle: { auto_start: true }
+  - name: mailgun_router
+    kind: http.router
+    meta: { server: "app:mailgun_gateway" }
+    prefix: /
+  - name: mailgun_messages
+    kind: http.endpoint
+    meta: { router: "app:mailgun_router" }
+    method: POST
+    path: /v3/mail.example.org/messages
+    func: app:mailgun_stub
+  - name: mailgun_requests
+    kind: fs.directory
+    directory: ./.wippy/mailgun-requests
+    auto_init: true
+  - name: mailgun_stub
+    kind: function.lua
+    source: file://mailgun_stub.lua
+    method: handle
+    modules: [http, fs, json, uuid, base64]
+    security:
+      policies: [app:stub_capture_access]
+  - name: stub_capture_access
+    kind: security.policy
+    policy:
+      resources: ['app:mailgun_requests']
+      actions: [fs.get]
+      effect: allow
+  - name: test_scope
+    kind: security.policy
+    groups: [app:user]
+    policy:
+      resources: ['app:actor_probe']
+      actions: [funcs.call]
+      effect: allow
+  - name: upload_data_access
+    kind: security.policy
+    groups: [app:user]
+    policy:
+      resources: [app:db, app:uploads]
+      actions: [db.get, fs.get, registry.get]
+      effect: allow
+  - name: upload_contract_access
+    kind: security.policy
+    groups: [app:user]
+    policy:
+      resources:
+        - kickside.contract:content_provider
+        - kickside.component:*
+        - kickside.component.binding:*
+        - kickside.component.env:*
+        - get_info
+        - get_content
+        - get_access_context
+        - security
+      actions: [registry.get, contract.get, contract.open, contract.call, contract.security, funcs.call, funcs.security, env.get]
+      effect: allow
+  - name: stub_request_access
+    kind: security.policy
+    groups: [app:user]
+    policy:
+      resources:
+        - http://127.0.0.1:24637/v3/mail.example.org/messages
+        - http://localhost:24637/v3/mail.example.org/messages
+      actions: [http_client.request]
+      effect: allow
+  - name: stub_private_ip
+    kind: security.policy
+    groups: [app:user]
+    policy:
+      resources: ['127.0.0.1', '::1']
+      actions: [http_client.private_ip]
+      effect: allow
+  - name: actor_probe
+    kind: function.lua
+    source: file://actor_probe.lua
+    method: run
+    modules: [security, contract, funcs]
+    imports:
+      client: kickside.mail:client
+      settings: kickside.mail:settings
+      uploads: kickside.uploads:uploads
+    security:
+      policies: [kickside.mail.security:settings_read]
+  - name: driver_test
+    kind: function.lua
+    meta: { type: test, suite: mail_mailgun }
+    source: file://driver_test.lua
+    method: run
+    modules: [uuid, fs, json, registry, base64, sql, funcs, security]
+    imports:
+      test: wippy.test:test
+      fixture: app:fixture
+      render: kickside.mail.views:render
+      settings_writer: kickside.settings.persist:settings_writer
+  - name: fixture
+    kind: library.lua
+    source: file://fixture.lua
+    modules: [security, funcs, sql, uuid, time]
+    imports:
+      provision: kickside.core.threads:provision

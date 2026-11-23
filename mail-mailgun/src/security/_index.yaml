@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.mailgun.security
+entries:
+  - name: module_access
+    kind: security.policy
+    meta:
+      title: Mailgun Mail
+      surface: kickside.mail.mailgun
+      intent: module_access
+      includes:
+        - kickside.mail.mailgun.security:module_runtime
+    groups: []
+    policy:
+      resources: [kickside.mail.mailgun:definition]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: module_runtime
+    kind: security.policy
+    meta: { private: true }
+    groups: []
+    policy:
+      resources: [kickside.mail.mailgun:transport, kickside.mail.mailgun:send, kickside.mail.mailgun:available]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: driver_admin
+    kind: security.policy
+    meta:
+      title: Administer Mailgun mail delivery
+      surface: kickside.mail.mailgun
+      intent: settings_access
+    groups: []
+    policy:
+      resources:
+        - kickside.mail.mailgun:driver
+        - kickside.mail.mailgun:settings_block
+        - kickside.mail.mailgun:setting_api_key
+        - kickside.mail.mailgun:setting_domain
+        - kickside.mail.mailgun:setting_region
+        - kickside.mail.mailgun:available
+        - kickside.mail.mailgun.config:validate_domain
+        - kickside.mail.mailgun.config:validate_region
+      actions: [registry.get, registry.find, funcs.call]
+      effect: allow
+  - name: user_security_scope
+    kind: ns.requirement
+    default: kickside.security.groups:members
+    meta: { value_kind: security.scope }
+    targets:
+      - { entry: kickside.mail.mailgun.security:module_access, path: ".groups +=" }
+      - { entry: kickside.mail.mailgun.security:module_runtime, path: ".groups +=" }
+  - name: driver_descriptor
+    kind: ns.requirement
+    default: kickside.mail.mailgun:driver
+    meta: { value_kind: registry.entry }
+    targets:
+      - { entry: kickside.mail.security:driver_discovery, path: ".policy.resources +=" }
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: driver_binding
+    kind: ns.requirement
+    default: kickside.mail.mailgun:transport
+    meta: { value_kind: contract.binding }
+    targets:
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: driver_available
+    kind: ns.requirement
+    default: kickside.mail.mailgun:available
+    meta: { value_kind: function.lua }
+    targets:
+      - { entry: "kickside.mail.security:driver_dispatch", path: ".policy.resources +=" }
+  - name: driver_send
+    kind: ns.requirement
+    default: kickside.mail.mailgun:send
+    meta: { value_kind: function.lua }
+    targets:
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: http_access
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources:
+        - https://api.mailgun.net/v3/*
+        - https://api.eu.mailgun.net/v3/*
+      actions: [http_client.request]
+      effect: allow
+  - name: provider_reads
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [kickside.mail.mailgun:endpoints]
+      actions: [registry.get]
+      effect: allow

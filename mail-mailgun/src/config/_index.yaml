@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.mailgun.config
+entries:
+  - name: validate
+    kind: library.lua
+    source: file://validate.lua
+    imports: &validation_imports
+      mail_types: kickside.mail:types
+      message: kickside.mail:message
+  - name: validate_domain
+    kind: function.lua
+    source: file://validate.lua
+    method: domain
+    imports: *validation_imports
+  - name: validate_region
+    kind: function.lua
+    source: file://validate.lua
+    method: region
+    imports: *validation_imports
