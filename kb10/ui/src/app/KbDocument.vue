@@ -39,7 +39,7 @@ const listTitle = computed(() => scope.value === 'documents' ? 'Documents' : 'In
 // Browse + delete + realtime reconciliation come from the shared composable.
 // Pagination is server-side: documents holds only the current page, total is the
 // real match count, and the pager walks pages.
-const { loading, notice, indexingNotice, documents, deleting, scheduleRefresh, remove, findDoc,
+const { loading, notice, indexingNotice, indexingRetrying, documents, deleting, scheduleRefresh, remove, findDoc,
   page, pageSize, total, hasPrev, hasNext, next, prev } =
   useKbBrowse(() => kbId.value, { includeIndexing: true, scope: () => scope.value })
 
@@ -194,6 +194,7 @@ watch([kbId, routeParam], async ([id, route]) => {
   <div class="kb-page kd">
     <KbNotice v-if="notice" class="kd-notice">{{ notice }}</KbNotice>
     <KbNotice v-if="indexingNotice" class="kd-notice" role="status">{{ indexingNotice }}</KbNotice>
+    <KbNotice v-if="indexingNotice && indexingRetrying" class="kd-notice" role="status">Work is delayed and will retry automatically.</KbNotice>
     <KbNotice v-if="retryNotice" class="kd-notice" role="status">{{ retryNotice }}</KbNotice>
 
     <KbShell>
@@ -246,9 +247,11 @@ watch([kbId, routeParam], async ([id, route]) => {
               @click="askRemove(n)"
             />
           </div>
-          <div v-if="!loading && !filtered.length" class="kd-list-empty">
+          <div v-if="!loading && !notice && !filtered.length" class="kd-list-empty">
             <template v-if="scope === 'failures'">{{ documents.length ? 'No indexing failures match.' : 'No indexing failures.' }}</template>
-            <template v-else>{{ documents.length ? 'No documents match.' : 'No documents yet — add one with +.' }}</template>
+            <template v-else-if="documents.length">No documents match.</template>
+            <template v-else-if="indexingNotice">Documents appear here after indexing.</template>
+            <template v-else>No documents yet.</template>
           </div>
         </nav>
 
