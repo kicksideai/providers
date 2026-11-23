@@ -8,13 +8,13 @@ request explains how to sign.
 ## Development and testing
 
 Install the Wippy CLI version used by [CI](.github/workflows/ci.yml), Make,
-Python 3, and Node.js/npm for providers with UI (CI uses Node.js 20).
+Python 3, and Node.js/npm for providers with UI (CI uses Node.js 22).
 From the repository root:
 
 ```sh
-make verify-declarations
-make lint
-make test
+bash scripts/verify_provider_dependencies.sh
+make verify-connection-secrets
+make -C mail-resend verify
 ```
 
 For a focused change, use the provider's own targets, such as

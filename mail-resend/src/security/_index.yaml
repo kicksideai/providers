@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.resend.security
+entries:
+  - name: module_access
+    kind: security.policy
+    meta:
+      title: Resend Mail
+      surface: kickside.mail.resend
+      intent: module_access
+      includes:
+        - kickside.mail.resend.security:module_runtime
+    groups: []
+    policy:
+      resources: [kickside.mail.resend:definition]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: module_runtime
+    kind: security.policy
+    meta: { private: true }
+    groups: []
+    policy:
+      resources: [kickside.mail.resend:transport, kickside.mail.resend:send, kickside.mail.resend:available]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: driver_admin
+    kind: security.policy
+    meta:
+      title: Administer Resend mail delivery
+      surface: kickside.mail.resend
+      intent: settings_access
+    groups: []
+    policy:
+      resources:
+        - kickside.mail.resend:driver
+        - kickside.mail.resend:settings_block
+        - kickside.mail.resend:setting_api_key
+        - kickside.mail.resend:available
+      actions: [registry.get, registry.find, funcs.call]
+      effect: allow
+  - name: user_security_scope
+    kind: ns.requirement
+    default: kickside.security.groups:members
+    meta: { value_kind: security.scope }
+    targets:
+      - { entry: kickside.mail.resend.security:module_access, path: ".groups +=" }
+      - { entry: kickside.mail.resend.security:module_runtime, path: ".groups +=" }
+  - name: driver_descriptor
+    kind: ns.requirement
+    default: kickside.mail.resend:driver
+    meta: { value_kind: registry.entry }
+    targets:
+      - { entry: kickside.mail.security:driver_discovery, path: ".policy.resources +=" }
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: driver_binding
+    kind: ns.requirement
+    default: kickside.mail.resend:transport
+    meta: { value_kind: contract.binding }
+    targets:
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: driver_available
+    kind: ns.requirement
+    default: kickside.mail.resend:available
+    meta: { value_kind: function.lua }
+    targets:
+      - { entry: "kickside.mail.security:driver_dispatch", path: ".policy.resources +=" }
+  - name: driver_send
+    kind: ns.requirement
+    default: kickside.mail.resend:send
+    meta: { value_kind: function.lua }
+    targets:
+      - { entry: kickside.mail.security:driver_dispatch, path: ".policy.resources +=" }
+  - name: http_access
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources:
+        - https://api.resend.com/emails
+      actions: [http_client.request]
+      effect: allow
+  - name: provider_reads
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [kickside.mail.resend:endpoints]
+      actions: [registry.get]
+      effect: allow

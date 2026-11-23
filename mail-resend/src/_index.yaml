@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.resend
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta: { title: Resend Mail }
+  - name: dep.mail
+    kind: ns.dependency
+    component: kickside/mail
+    version: "*"
+  - name: dep.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: "*"
+  - name: dep.settings
+    kind: ns.dependency
+    component: kickside/settings
+    version: "*"
+  - name: types
+    kind: library.lua
+    source: file://types.lua
+  - name: driver
+    kind: registry.entry
+    meta: { type: "kickside.mail:driver" }
+    id: resend
+    label: Resend
+    icon: simple-icons:resend
+    description: Deliver mail through Resend.
+    binding: kickside.mail.resend:transport
+    settings_ns: kickside.mail.resend
+    available_func: kickside.mail.resend:available
+  - name: setting_api_key
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition" }
+    namespace: kickside.mail.resend
+    key: api_key
+    title: API key
+    description: API key authorized to send mail through Resend.
+    scope: global
+    value_type: secret
+    read_access: admin
+    default: ""
+    order: 10
+  - name: settings_block
+    kind: registry.entry
+    meta: { type: "kickside.settings:block" }
+    key: mail_resend
+    title: Resend
+    icon: simple-icons:resend
+    group: Integrations
+    order: 50
+    namespace: kickside.mail.resend
+  - name: endpoints
+    kind: registry.entry
+    endpoints: {}
+  - name: api_base_url
+    kind: ns.requirement
+    default: https://api.resend.com
+    targets:
+      - { entry: "kickside.mail.resend:endpoints", path: ".endpoints.api" }
+  - name: transport
+    kind: contract.binding
+    contracts:
+      - contract: kickside.mail:transport
+        methods: { send: "kickside.mail.resend:send" }
+  - name: send
+    kind: function.lua
+    source: file://resend.lua
+    method: send
+    modules: [json]
+    imports:
+      types: kickside.mail.resend:types
+      mail_types: kickside.mail:types
+      settings: kickside.mail:settings
+      message: kickside.mail:message
+      delivery: kickside.mail.service:delivery
+      error_envelope: kickside.contract:error_envelope
+    security:
+      policies:
+        - kickside.mail.security:settings_read
+        - kickside.mail.security:settings_admin_read
+        - kickside.mail.resend.security:http_access
+        - kickside.mail.resend.security:provider_reads
+  - name: available
+    kind: function.lua
+    source: file://resend.lua
+    method: available
+    modules: [json]
+    imports:
+      types: kickside.mail.resend:types
+      mail_types: kickside.mail:types
+      settings: kickside.mail:settings
+      message: kickside.mail:message
+      delivery: kickside.mail.service:delivery
+      error_envelope: kickside.contract:error_envelope
+    security:
+      policies: [kickside.mail.security:settings_read, kickside.mail.security:settings_admin_read]
