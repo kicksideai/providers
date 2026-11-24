@@ -1,0 +1,7 @@
+directories:
+    modules: .wippy
+    src: src
+modules:
+    - name: kickside/ui-kit
+      version: 1.7.10
+      hash: eea41b7e7f92babf11014a47f40ed8b5739a2569480b9fbb120f9d6fcb86a351

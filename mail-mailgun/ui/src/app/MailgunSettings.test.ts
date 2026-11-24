@@ -58,6 +58,24 @@ describe('Mailgun settings panel', () => {
     expect(last('validity')).toEqual({ valid: true })
   })
 
+  it('lets a key replacement be cancelled, dropping the typed key from the changes', async () => {
+    const wrapper = await render({ values: { domain: 'mg.example.com' }, secrets: { api_key: true } })
+    await wrapper.findAll('button').find(node => node.text() === 'Replace')!.trigger('click')
+    await wrapper.find('input[type="password"]').setValue('key-new')
+    await nextTick()
+    expect(last('change')).toEqual({ values: { api_key: 'key-new' } })
+    await wrapper.findAll('button').find(node => node.text() === 'Cancel')!.trigger('click')
+    await nextTick()
+    expect(last('change')).toEqual({ values: {} })
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+  })
+
+  it('starts from the block\'s draft when the block holds one', async () => {
+    const wrapper = await render({ values: { domain: 'mg.example.com', region: 'us' }, secrets: { api_key: true }, draft: { domain: 'mg.example.net', api_key: 'key-kept' } })
+    expect((wrapper.find('input[aria-label="Sending domain"]').element as HTMLInputElement).value).toBe('mg.example.net')
+    expect((wrapper.find('input[type="password"]').element as HTMLInputElement).value).toBe('key-kept')
+  })
+
   it('shows the server refusal for a value', async () => {
     const wrapper = await render({ values: { domain: 'mg.example.com' }, secrets: { api_key: true }, errors: { domain: 'Enter a valid sending domain' } })
     expect(wrapper.text()).toContain('Enter a valid sending domain')

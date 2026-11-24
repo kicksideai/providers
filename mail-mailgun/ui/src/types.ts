@@ -5,6 +5,7 @@ export interface PanelProps {
   values?: Values | null
   secrets?: { [key: string]: boolean } | null
   errors?: { [key: string]: string } | null
+  draft?: Values | null
   disabled?: boolean
 }
 export interface PanelEvents {

@@ -31,7 +31,7 @@ license: [License text](#license-text-48da2f39e100d4085767e94966b43f4fa95ff6a069
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
 
 license.txt: [License text](#license-text-045ce74712fc613fdd74d1c55f5140a08d623836ff2aca44132b38d68fbc67ad)
 
@@ -39,7 +39,7 @@ license.txt: [License text](#license-text-045ce74712fc613fdd74d1c55f5140a08d6238
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
 
 license.txt: [License text](#license-text-7cef50a4477dcd1f0ea036d3c7031430851ea21228e65658c6c84a57754e1b65)
 
@@ -55,7 +55,15 @@ LICENSE: [License text](#license-text-769d154fbde32a915af110b1123650bc79f4cbe675
 
 License: MIT
 
-Lockfiles: `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+LICENSE: [License text](#license-text-b8778b155bfde5a28b023a558753c0fa058a52bb9de35c343c250be1bbcdedab)
+
+### npm: @jridgewell/resolve-uri@3.1.3
+
+License: MIT
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-b8778b155bfde5a28b023a558753c0fa058a52bb9de35c343c250be1bbcdedab)
 
@@ -72,6 +80,12 @@ LICENSE: [License text](#license-text-769d154fbde32a915af110b1123650bc79f4cbe675
 License: LicenseRef-KickSide-Community-1.0
 
 Lockfiles: `kb10/ui/package-lock.json`
+
+### npm: @kickside/ui-kit@1.7.10
+
+License: LicenseRef-KickSide-Community-1.0
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 ### npm: @kickside/ui-kit@1.7.2
 
@@ -171,19 +185,37 @@ LICENSE: [License text](#license-text-d0ac09e8df2b54625ea1606dfae75d5b6af1cbc5d2
 
 License: UNLICENSED
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+### npm: @wippy-fe/theme@0.0.70
+
+License: UNLICENSED
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 ### npm: @wippy-fe/webcomponent-core@0.0.60
 
 License: UNLICENSED
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+### npm: @wippy-fe/webcomponent-core@0.0.70
+
+License: UNLICENSED
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 ### npm: @wippy-fe/webcomponent-vue@0.0.60
 
 License: UNLICENSED
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+### npm: @wippy-fe/webcomponent-vue@0.0.70
+
+License: UNLICENSED
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 ### npm: any-promise@1.3.0
 
@@ -261,7 +293,7 @@ LICENSE: [License text](#license-text-04512a63dce4d2d506ad612dc0bd7681ccf6e3655f
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
 
 LICENSE-MIT.txt: [License text](#license-text-483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a)
 
@@ -363,7 +395,15 @@ license: [License text](#license-text-85fe65eefab89e2a683232b96e6f689279821a0bd3
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+LICENSE: [License text](#license-text-5c496ce5ae47eb8e5ddcaa5e29c27c446a3855b19e3a66991b52f361bed22b28)
+
+### npm: is-core-module@2.18.0
+
+License: MIT
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-5c496ce5ae47eb8e5ddcaa5e29c27c446a3855b19e3a66991b52f361bed22b28)
 
@@ -395,7 +435,15 @@ LICENSE: [License text](#license-text-35bdd8a44339719441900fb50fbefc5e2dca1ca662
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+LICENSE: [License text](#license-text-d70f9e316930b4333b6f51af5f0d0cb7ded6a4a2641549aa088027aaff91e950)
+
+### npm: lilconfig@3.1.5
+
+License: MIT
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-d70f9e316930b4333b6f51af5f0d0cb7ded6a4a2641549aa088027aaff91e950)
 
@@ -443,7 +491,15 @@ LICENSE: [License text](#license-text-e70ff771504ba41f2be55de812a017ff46433d7a25
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+LICENSE: [License text](#license-text-acf17aff719bfab70f6bec3a93f1ba82ce9fe27ab74f83c0f2e1efb1273fa220)
+
+### npm: nostics@1.4.0
+
+License: MIT
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-acf17aff719bfab70f6bec3a93f1ba82ce9fe27ab74f83c0f2e1efb1273fa220)
 
@@ -491,7 +547,15 @@ LICENSE: [License text](#license-text-d0cd141b0c322fded5dfad1d4645bb2fedfc05b732
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `memory/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+LICENSE: [License text](#license-text-91a2845c4db44e7497b514b98634a674c737986ad0db81599307cf733bf850b2)
+
+### npm: pinia@4.1.0
+
+License: MIT
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-91a2845c4db44e7497b514b98634a674c737986ad0db81599307cf733bf850b2)
 
@@ -539,7 +603,15 @@ LICENSE: [License text](#license-text-02a0c8b164b043f19148b472dbe53a337d53149aca
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+LICENSE-MIT: [License text](#license-text-2998094b38f7ace25f141fb36f334d8338f65a1812978d618b1161f4d77ae10e)
+
+### npm: postcss-selector-parser@6.1.6
+
+License: MIT
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 LICENSE-MIT: [License text](#license-text-2998094b38f7ace25f141fb36f334d8338f65a1812978d618b1161f4d77ae10e)
 
@@ -587,7 +659,15 @@ LICENSE: [License text](#license-text-dffec71d93f273d2af7b54c6c7e7e70b3289c632ec
 
 License: MIT
 
-Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mail-mailgun/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+Lockfiles: `atlassian/ui/package-lock.json`, `code_execution/ui/package-lock.json`, `github/ui/package-lock.json`, `google/ui/package-lock.json`, `hubspot/ui/package-lock.json`, `kb10/ui/package-lock.json`, `mcp-client/ui/package-lock.json`, `phantombuster/ui/package-lock.json`, `simplefin/ui/package-lock.json`
+
+LICENSE: [License text](#license-text-60acd7711e6c138e6041836e32d922705254cc1568a30fdf16aa8f59bb87aeaa)
+
+### npm: resolve@1.22.14
+
+License: MIT
+
+Lockfiles: `mail-mailgun/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-60acd7711e6c138e6041836e32d922705254cc1568a30fdf16aa8f59bb87aeaa)
 
