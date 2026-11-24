@@ -15,6 +15,7 @@ entries:
     read_access: admin
     default: ""
     order: 10
+    validate_func: kickside.mail.settings:validate_api_key
   - name: setting_domain
     kind: registry.entry
     meta: { type: "kickside.settings:definition" }

@@ -124,6 +124,14 @@ return { run = test.run_cases(function()
             test.eq(0, #requests(input.idempotency_key))
         end)
 
+        test.it("rejects whitespace and invalid text in saved API keys", function()
+            for _, key in ipairs({" key", "key ", "key\t", "key\u{00a0}", "key" .. string.char(255), 42}) do
+                local result = configure({["kickside.mail.resend"] = {api_key = key}})
+                test.is_false(result.success)
+            end
+            test.is_true(assert(fixture.probe(fixture.admin(), "available")).available)
+        end)
+
         test.it("carries the provider retry hint on rate limiting", function()
             local _, err = transport(fixture_message("Retry hint"))
             test.eq(errors.RATE_LIMITED, err:kind())
