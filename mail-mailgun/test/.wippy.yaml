@@ -24,11 +24,6 @@ vars:
   pg_username: kickside
   pg_password: kickside
 profiles:
-  live:
-    override:
-      app:mailgun_gateway:lifecycle.auto_start: false
-      kickside.mail.mailgun:endpoints:endpoints.us: https://api.mailgun.net
-      kickside.mail.mailgun:endpoints:endpoints.eu: https://api.eu.mailgun.net
   postgres:
     override:
       app:db:kind: db.sql.postgres
