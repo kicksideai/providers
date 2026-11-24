@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local uuid = require("uuid")
+local time = require("time")
 local fs = require("fs")
 local json = require("json")
 local registry = require("registry")
@@ -194,17 +195,31 @@ return {run = test.run_cases(function()
             end)
         end
 
-        test.it("classifies a 401 by status when the provider returns only prose", function()
+        test.it("classifies credits by HTTP status and exposes the provider reason only to log administrators", function()
             local input = fixture_message("Credits exhausted")
-            local result, err = transport(input)
+            local result, err = transport({to = input.to, subject = input.subject, text = input.text})
             test.is_nil(result)
             test.not_nil(err)
             test.eq(errors.PERMISSION_DENIED, err:kind())
             test.eq("credentials_invalid", err:details().code)
             test.eq(401, err:details().status)
             test.eq("The mail service refused authorization", err:message())
+            test.eq("Maximum credits exceeded", err:details().provider_detail)
             test.is_false(err:retryable())
-            test.eq(1, #requests("POST", input.subject))
+            local queued = assert(send(owner, input))
+            local deadline = time.now():add(25 * time.SECOND):unix_nano()
+            local sender_log
+            repeat
+                sender_log = assert(fixture.probe(owner, "get_message", {message_id = queued.message_id}))
+                if sender_log.status == "failed" then break end
+                time.sleep("25ms")
+            until time.now():unix_nano() >= deadline
+            test.eq("failed", sender_log.status)
+            test.eq("credentials_invalid", sender_log.last_error.code)
+            test.is_nil(sender_log.last_error.provider_detail)
+            local admin_log = assert(fixture.probe(fixture.admin(), "get_message", {message_id = queued.message_id}))
+            test.eq("Maximum credits exceeded", admin_log.last_error.provider_detail)
+            test.eq(2, #requests("POST", input.subject))
         end)
 
         test.it("requires a To recipient before egress", function()
