@@ -188,8 +188,8 @@ return {run = test.run_cases(function()
 
         local cases = {
             {400, errors.INVALID, "message_rejected", false},
-            {401, errors.PERMISSION_DENIED, "credentials_invalid", false},
-            {403, errors.PERMISSION_DENIED, "credentials_invalid", false},
+            {401, errors.PERMISSION_DENIED, "authorization_refused", false},
+            {403, errors.PERMISSION_DENIED, "authorization_refused", false},
             {413, errors.INVALID, "message_rejected", false},
             {429, errors.RATE_LIMITED, "rate_limited", true},
             {500, errors.UNAVAILABLE, "provider_unavailable", true},
@@ -211,13 +211,13 @@ return {run = test.run_cases(function()
             end)
         end
 
-        test.it("classifies credits by HTTP status and exposes the provider reason only to log administrators", function()
-            local input = fixture_message("Credits exhausted")
+        test.it("preserves ambiguous authorization failures and restricts the provider reason to log administrators", function()
+            local input = fixture_message("Plan allowance")
             local result, err = transport({to = input.to, subject = input.subject, text = input.text})
             test.is_nil(result)
             test.not_nil(err)
             test.eq(errors.PERMISSION_DENIED, err:kind())
-            test.eq("credentials_invalid", err:details().code)
+            test.eq("authorization_refused", err:details().code)
             test.eq(401, err:details().status)
             test.eq("The mail service refused authorization", err:message())
             test.eq("Maximum credits exceeded", err:details().provider_detail)
@@ -231,11 +231,22 @@ return {run = test.run_cases(function()
                 time.sleep("25ms")
             until time.now():unix_nano() >= deadline
             test.eq("failed", sender_log.status)
-            test.eq("credentials_invalid", sender_log.last_error.code)
+            test.eq("provider_rejected", sender_log.last_error.code)
             test.is_nil(sender_log.last_error.provider_detail)
             local admin_log = assert(fixture.probe(fixture.admin(), "get_message", {message_id = queued.message_id}))
+            test.eq("authorization_refused", admin_log.last_error.code)
             test.eq("Maximum credits exceeded", admin_log.last_error.provider_detail)
             test.eq(2, #requests("POST", input.subject))
+        end)
+
+        test.it("preserves an unverified sender diagnostic in an ambiguous 403", function()
+            local input = fixture_message("Unverified sender")
+            local result, err = transport({to = input.to, subject = input.subject, text = input.text})
+            test.is_nil(result)
+            test.eq(errors.PERMISSION_DENIED, assert(err):kind())
+            test.eq("authorization_refused", err:details().code)
+            test.eq("The from address does not match a verified Sender Identity.", err:details().provider_detail)
+            test.is_false(err:retryable())
         end)
 
         test.it("validates and normalizes attachment names from both input and Uploads", function()

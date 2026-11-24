@@ -17,10 +17,6 @@ local function response_error(response: mail.HttpResponse, key: string): error
     if status == 420 then
         return delivery.failure(errors.RATE_LIMITED, "rate_limited", "Mail sending rate limit exceeded", true, status, hint, detail)
     end
-    if status == 403 then
-        return delivery.failure(errors.PERMISSION_DENIED, "sender_or_recipient_not_allowed",
-            "The mail service did not allow the sender or recipient", false, status, nil, detail)
-    end
     return delivery.status_error(status, 413, hint, detail)
 end
 

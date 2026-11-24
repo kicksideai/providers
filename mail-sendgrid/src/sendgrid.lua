@@ -19,8 +19,10 @@ local function request(key: string, body: string): (mail.HttpResponse?, error?)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code ~= 202 then
+        local detail = delivery.response_detail(response, key)
+        if response.status_code == 401 then return nil, delivery.authorization_refused(401, detail) end
         local hint = delivery.retry_hint(response, "x-ratelimit-reset", "epoch_seconds")
-        return nil, delivery.status_error(response.status_code, 413, hint, delivery.response_detail(response, key))
+        return nil, delivery.status_error(response.status_code, 413, hint, detail)
     end
     return response, nil
 end

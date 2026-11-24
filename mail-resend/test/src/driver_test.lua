@@ -148,7 +148,12 @@ return { run = test.run_cases(function()
 
         local cases = {
             {401, errors.PERMISSION_DENIED, "credentials_invalid", false},
-            {403, errors.PERMISSION_DENIED, "credentials_invalid", false},
+            {400, errors.INVALID, "request_rejected", false, "validation_error"},
+            {400, errors.INVALID, "message_rejected", false, "invalid_idempotency_key"},
+            {401, errors.PERMISSION_DENIED, "credentials_invalid", false, "validation_error"},
+            {403, errors.PERMISSION_DENIED, "credentials_invalid", false, "restricted_api_key"},
+            {403, errors.PERMISSION_DENIED, "sender_or_recipient_not_allowed", false, "validation_error"},
+            {403, errors.PERMISSION_DENIED, "authorization_refused", false},
             {422, errors.INVALID, "message_rejected", false},
             {409, errors.CONFLICT, "idempotency_conflict", false, "invalid_idempotent_request"},
             {409, errors.CONFLICT, "send_in_progress", true, "concurrent_idempotent_requests"},
@@ -161,8 +166,10 @@ return { run = test.run_cases(function()
             local subject = "HTTP " .. case[1]
             if case[5] then subject = subject .. " " .. case[5] end
             test.it("classifies " .. subject, function()
-                local _, err = transport(fixture_message(subject))
+                local result, err = transport(fixture_message(subject))
+                test.is_nil(result)
                 test.not_nil(err)
+                test.eq(case[1], err:details().status)
                 test.eq(case[2], err:kind())
                 test.eq(case[3], err:details().code)
                 test.eq(case[4], err:retryable())

@@ -12,23 +12,33 @@ local function response_error(response: mail.HttpResponse, api_key: string): err
     local status, body = response.status_code, response.body
     local hint = delivery.retry_hint(response, "ratelimit-reset", "seconds")
     local detail = delivery.response_detail(response, api_key)
-    if status == 409 or status == 429 then
+    if status == 400 or status == 403 or status == 409 or status == 429 then
         local decoded, err = json.decode(body)
         if err and status == 409 then
             return delivery.failure(errors.INTERNAL, "provider_response_invalid",
                 "The mail service returned an invalid conflict response", false, status, nil, detail)
         end
-        if not err and type(decoded) == "table" then
-            local code = (decoded :: types.ErrorResponse).name
-            if status == 409 and code == "concurrent_idempotent_requests" then
-                return delivery.failure(errors.CONFLICT, "send_in_progress", "A request with this key is in progress", true, status, hint, detail)
-            end
-            if status == 409 and code == "invalid_idempotent_request" then
-                return delivery.failure(errors.CONFLICT, "idempotency_conflict", "This key already identifies a different request", false, status, nil, detail)
-            end
-            if status == 429 and (code == "daily_quota_exceeded" or code == "monthly_quota_exceeded") then
-                return delivery.failure(errors.RATE_LIMITED, "quota_exhausted", "The mail service sending quota is exhausted", false, status, nil, detail)
-            end
+        local code = not err and type(decoded) == "table" and (decoded :: types.ErrorResponse).name or nil
+        if status == 400 and code == "validation_error" then
+            return delivery.failure(errors.INVALID, "request_rejected", "The mail service refused the request",
+                false, status, nil, detail)
+        end
+        if status == 403 and (code == "restricted_api_key" or code == "suspended_api_key") then
+            return delivery.failure(errors.PERMISSION_DENIED, "credentials_invalid",
+                "The mail service refused authorization", false, status, nil, detail)
+        end
+        if status == 403 and code == "validation_error" then
+            return delivery.failure(errors.PERMISSION_DENIED, "sender_or_recipient_not_allowed",
+                "The mail service did not allow the sender or recipient", false, status, nil, detail)
+        end
+        if status == 409 and code == "concurrent_idempotent_requests" then
+            return delivery.failure(errors.CONFLICT, "send_in_progress", "A request with this key is in progress", true, status, hint, detail)
+        end
+        if status == 409 and code == "invalid_idempotent_request" then
+            return delivery.failure(errors.CONFLICT, "idempotency_conflict", "This key already identifies a different request", false, status, nil, detail)
+        end
+        if status == 429 and (code == "daily_quota_exceeded" or code == "monthly_quota_exceeded") then
+            return delivery.failure(errors.RATE_LIMITED, "quota_exhausted", "The mail service sending quota is exhausted", false, status, nil, detail)
         end
     end
     return delivery.status_error(status, 422, hint, detail)

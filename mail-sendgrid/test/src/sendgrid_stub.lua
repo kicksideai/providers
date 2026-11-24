@@ -27,9 +27,15 @@ local function handle()
         return
     end
 
-    if payload.subject:match("^Credits exhausted ") then
+    if payload.subject:match("^Plan allowance ") then
         res:set_status(401)
         res:write_json({errors = {{message = "Maximum credits exceeded"}}})
+        return
+    end
+
+    if payload.subject:match("^Unverified sender ") then
+        res:set_status(403)
+        res:write_json({errors = {{message = "The from address does not match a verified Sender Identity."}}})
         return
     end
 

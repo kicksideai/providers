@@ -261,7 +261,7 @@ return {run = test.run_cases(function()
         local cases = {
             {400, errors.INVALID, "message_rejected", false},
             {401, errors.PERMISSION_DENIED, "credentials_invalid", false},
-            {403, errors.PERMISSION_DENIED, "sender_or_recipient_not_allowed", false},
+            {403, errors.PERMISSION_DENIED, "authorization_refused", false},
             {413, errors.INVALID, "message_rejected", false},
             {429, errors.RATE_LIMITED, "rate_limited", true},
             {500, errors.UNAVAILABLE, "provider_unavailable", true},
@@ -281,7 +281,7 @@ return {run = test.run_cases(function()
                 test.eq(case[4], err:retryable())
                 test.eq(1, #requests("POST", input.subject))
                 if case[1] == 403 then
-                    test.eq("The mail service did not allow the sender or recipient", err:message())
+                    test.eq("Please add the address to your authorized recipients.", err:details().provider_detail)
                 end
             end)
         end
