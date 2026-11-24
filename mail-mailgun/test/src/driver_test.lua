@@ -117,17 +117,17 @@ return {run = test.run_cases(function()
                 bcc = {"bcc@example.org", "bcc2@example.org"},
                 ["h:Reply-To"] = "reply@example.org",
                 subject = data.subject,
-                text = "Ready\n\nNotice image\n\nKickSide\n",
+                text = "Ready\n\nNotice image\n\nExample Workspace\n",
                 html = expected.html,
             }
             test.eq(assert(json.encode(fields)), assert(json.encode(request.values)))
+            test.not_nil(request.values.html:find(">Example Workspace</strong>", 1, true))
+            test.is_nil(request.values.html:find('src="cid:kickside-layout-logo"', 1, true))
             local files = {
                 attachment = {{
                     filename = 'report "weekly".pdf', content_type = "application/pdf", bytes = assert(base64.encode(pdf_bytes)),
                 }},
                 inline = {
-                    {filename = "kickside-layout-logo", content_type = "image/png",
-                        bytes = assert(base64.encode(expected.attachments[1].content))},
                     {filename = data.inline_content_id, content_type = "image/png", bytes = assert(base64.encode(png_bytes))},
                 },
             }

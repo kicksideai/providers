@@ -4,6 +4,7 @@ namespace: app
 entries:
   - name: definition
     kind: ns.definition
+    meta: { title: Example Workspace }
   - name: db
     kind: db.sql.sqlite
     file: ":memory:"

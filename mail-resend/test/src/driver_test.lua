@@ -81,17 +81,15 @@ return { run = test.run_cases(function()
             test.not_nil(body:find("<title>Status &amp; progress</title>", 1, true))
             test.not_nil(body:find("Ready</p>", 1, true))
             test.not_nil(body:find('src="cid:logo"', 1, true))
-            test.not_nil(body:find('src="cid:kickside-layout-logo"', 1, true))
-            test.eq(3, #captured.payload.attachments)
-            local logo = captured.payload.attachments[1].content
-            test.eq("iVBORw0KGgo", logo:sub(1, 11))
+            test.not_nil(body:find(">Example Workspace</strong>", 1, true))
+            test.is_nil(body:find('src="cid:kickside-layout-logo"', 1, true))
+            test.eq(2, #captured.payload.attachments)
             local expected = {
                 from = [["Support, \"North\"" <sender@example.org>]], to = {"to@example.org", "second@example.org"},
                 cc = {"cc@example.org"}, bcc = {"bcc@example.org"}, reply_to = "reply@example.org",
-                subject = "Status & progress", text = "Ready\n\nNotice image\n\nKickSide\n",
+                subject = "Status & progress", text = "Ready\n\nNotice image\n\nExample Workspace\n",
                 html = body,
                 attachments = {
-                    {filename = "kickside-logo.png", content_type = "image/png", content = logo, content_id = "kickside-layout-logo"},
                     {filename = "report.pdf", content_type = "application/pdf", content = "cGRmAGJ5dGVz"},
                     {filename = "logo.png", content_type = "image/png", content = "iVBORwD/", content_id = "logo"},
                 },
@@ -213,7 +211,8 @@ return { run = test.run_cases(function()
             test.eq("rate_limited", retry.last_error.code)
             local captured = requests(queued.message_id)
             test.eq(1, #captured)
-            test.eq("c2hhcmVkIGJ5dGVz", captured[1].payload.attachments[2].content)
+            test.eq(1, #captured[1].payload.attachments)
+            test.eq("c2hhcmVkIGJ5dGVz", captured[1].payload.attachments[1].content)
             local revoked = assert(acl:call("kickside.component.binding:revoke_subtree_func", target))
             test.is_true(revoked.success, revoked.error)
             local failed = fixture.await_message(reader, queued.message_id, function(message) return message.status == "failed" end)

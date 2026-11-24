@@ -84,10 +84,9 @@ return {run = test.run_cases(function()
             test.not_nil(body:find("<title>Status &amp; progress</title>", 1, true))
             test.not_nil(body:find("Ready</p>", 1, true))
             test.not_nil(body:find('src="cid:logo"', 1, true))
-            test.not_nil(body:find('src="cid:kickside-layout-logo"', 1, true))
-            test.eq(3, #captured.payload.attachments)
-            local logo = captured.payload.attachments[1].content
-            test.eq("iVBORw0KGgo", logo:sub(1, 11))
+            test.not_nil(body:find(">Example Workspace</strong>", 1, true))
+            test.is_nil(body:find('src="cid:kickside-layout-logo"', 1, true))
+            test.eq(2, #captured.payload.attachments)
             local expected = {
                 from = {email = "sender@example.org", name = 'Support, "North"'},
                 personalizations = {{
@@ -97,12 +96,10 @@ return {run = test.run_cases(function()
                 reply_to = {email = "reply@example.org"},
                 subject = "Status & progress",
                 content = {
-                    {type = "text/plain", value = "Ready\n\nNotice image\n\nKickSide\n"},
+                    {type = "text/plain", value = "Ready\n\nNotice image\n\nExample Workspace\n"},
                     {type = "text/html", value = body},
                 },
                 attachments = {
-                    {filename = "kickside-logo.png", type = "image/png", content = logo,
-                        disposition = "inline", content_id = "kickside-layout-logo"},
                     {filename = "report.pdf", type = "application/pdf", content = "cGRmAGJ5dGVz", disposition = "attachment"},
                     {filename = "logo.png", type = "image/png", content = "iVBORwD/", disposition = "inline", content_id = "logo"},
                 },
@@ -124,8 +121,7 @@ return {run = test.run_cases(function()
             test.is_nil(captured.personalizations[1].cc)
             test.is_nil(captured.personalizations[1].bcc)
             test.is_nil(captured.reply_to)
-            test.eq(1, #captured.attachments)
-            test.eq("kickside-layout-logo", captured.attachments[1].content_id)
+            test.is_nil(captured.attachments)
             test.eq(1, #captured.content)
             test.eq("text/html", captured.content[1].type)
         end)
@@ -263,9 +259,10 @@ return {run = test.run_cases(function()
                 end
             end
             local files = requests("POST", input.subject)[1].payload.attachments
-            test.eq("résumé.txt", files[2].filename)
-            test.eq("notes.txt", files[3].filename)
-            test.eq("attachment", files[4].filename)
+            test.eq(3, #files)
+            test.eq("résumé.txt", files[1].filename)
+            test.eq("notes.txt", files[2].filename)
+            test.eq("attachment", files[3].filename)
         end)
 
         test.it("requires a To recipient before egress", function()
