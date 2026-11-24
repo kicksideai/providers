@@ -76,6 +76,13 @@ describe('Mailgun settings panel', () => {
     expect((wrapper.find('input[type="password"]').element as HTMLInputElement).value).toBe('key-kept')
   })
 
+  it('shows the server refusal of a key beside the key the block kept in its draft', async () => {
+    const wrapper = await render({ values: { domain: 'mg.example.com' }, secrets: { api_key: true }, draft: { api_key: 'key with space' },
+      errors: { api_key: 'Enter a Mailgun API key without spaces or line breaks.' } })
+    expect((wrapper.find('input[type="password"]').element as HTMLInputElement).value).toBe('key with space')
+    expect(wrapper.find('.mg-error').text()).toBe('Enter a Mailgun API key without spaces or line breaks.')
+  })
+
   it('shows the server refusal for a value', async () => {
     const wrapper = await render({ values: { domain: 'mg.example.com' }, secrets: { api_key: true }, errors: { domain: 'Enter a valid sending domain' } })
     expect(wrapper.text()).toContain('Enter a valid sending domain')
