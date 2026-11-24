@@ -53,6 +53,16 @@ return {run = test.run_cases(function()
             test.eq("kickside.mail.mailgun", entry.data.settings_ns)
         end)
 
+        test.it("names its own settings panel and serves the panel bundle", function()
+            local entry = assert(registry.get("kickside.mail.mailgun:driver"))
+            local view = assert(registry.get("kickside.mail.mailgun.ui:settings_view"))
+            test.eq(view.meta.type, "view.component")
+            test.eq(entry.data.settings_view, view.meta.tag_name)
+            test.eq(view.meta.base_path, "kickside-mail-mailgun")
+            local static = assert(registry.get("kickside.mail.mailgun.ui:ui_static"))
+            test.eq(static.data.path, "/" .. view.meta.base_path)
+        end)
+
         test.it("permits delivery to configured domains on the US and EU API origins", function()
             local scope = assert(security.new_scope({
                 assert(security.policy("app:test_scope")),

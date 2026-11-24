@@ -80,7 +80,7 @@ jobs:
             mkdir -p "$TMPDIR"
             make -C mail-mailgun verify
             version=$(jq -er '.["mail-mailgun"] // "0.1.0"' .release-please-manifest.json)
-            wippy publish --config mail-mailgun --version "$version" --dry-run --create --module-visibility public --module-type plugin
+            wippy publish --config mail-mailgun --version "$version" --dry-run --create --module-visibility public --module-type plugin --embed kickside.mail.mailgun.ui:ui_fs
         - module: mail-mailgun
           engine: postgres
           commands: |

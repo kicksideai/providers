@@ -29,6 +29,7 @@ entries:
     description: Deliver mail through Mailgun.
     binding: kickside.mail.mailgun:transport
     settings_ns: kickside.mail.mailgun
+    settings_view: kickside-mailgun-settings
     available_func: kickside.mail.mailgun:available
   - name: endpoints
     kind: registry.entry

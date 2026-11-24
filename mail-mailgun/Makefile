@@ -5,9 +5,18 @@ SHELL := bash
 ENCRYPTION_KEY ?= 0000000000000000000000000000000000000000000000000000000000000000
 export ENCRYPTION_KEY
 
-.PHONY: lockrefresh lint check-dependencies test verify publish
+.PHONY: lockrefresh build ui-test typecheck lint check-dependencies test verify publish
 lockrefresh:
 	cd test && $(WIPPY) update
+
+build:
+	cd ui && npm ci --no-audit --no-fund && npm run build
+
+ui-test:
+	npm --prefix ui test
+
+typecheck:
+	npm --prefix ui run type-check
 
 lint:
 	cd test && $(WIPPY) lint --ns 'kickside.mail.mailgun' --ns 'kickside.mail.mailgun.*' $(WIPPY_ARGS)
@@ -22,7 +31,7 @@ check-dependencies:
 	bash ../scripts/verify_provider_dependencies.sh
 
 verify: lockrefresh
-	$(MAKE) lint check-dependencies test
+	$(MAKE) build typecheck ui-test lint check-dependencies test
 
 publish:
 	@echo "Releases use GitHub Release Please (.github/workflows/release.yml)." >&2

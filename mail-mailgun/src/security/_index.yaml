@@ -40,7 +40,20 @@ entries:
         - kickside.mail.mailgun:available
         - kickside.mail.mailgun.settings:validate_domain
         - kickside.mail.mailgun.settings:validate_region
+        - kickside.mail.mailgun.ui:settings_view
       actions: [registry.get, registry.find, funcs.call]
+      effect: allow
+  - name: settings_view_access
+    kind: security.policy
+    meta:
+      title: Mailgun settings panel
+      surface: kickside.mail.mailgun
+      intent: settings_access
+      comment: Lets delivery administrators load the panel the Mail settings block mounts.
+    groups: []
+    policy:
+      resources: [kickside.mail.mailgun.ui:settings_view, kickside.mail.mailgun.ui:ui_static]
+      actions: [access, registry.get, registry.find]
       effect: allow
   - name: user_security_scope
     kind: ns.requirement
