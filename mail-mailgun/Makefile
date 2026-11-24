@@ -6,16 +6,16 @@ ENCRYPTION_KEY ?= 00000000000000000000000000000000000000000000000000000000000000
 export ENCRYPTION_KEY
 
 .PHONY: lockrefresh build ui-test typecheck lint check-dependencies test verify publish
-lockrefresh:
+lockrefresh: ui-kit-refresh
 	cd test && $(WIPPY) update
 
-build:
-	cd ui && npm ci --no-audit --no-fund && npm run build
+build: ui-install
+	cd ui && npm run build
 
-ui-test:
+ui-test: ui-install
 	npm --prefix ui test
 
-typecheck:
+typecheck: ui-install
 	npm --prefix ui run type-check
 
 lint:
@@ -36,3 +36,6 @@ verify: lockrefresh
 publish:
 	@echo "Releases use GitHub Release Please (.github/workflows/release.yml)." >&2
 	@exit 1
+
+WIPPY_BIN ?= $(WIPPY)
+include ../ui-kit.mk

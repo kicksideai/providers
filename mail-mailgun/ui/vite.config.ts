@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         settings: resolve(__dirname, "src/settings.ts"),
       },
-      external: hostExternals,
+      external: [...hostExternals, /^primevue\//],
       output: {
         manualChunks: wcRuntimeChunk,
         entryFileNames: "[name].js",
