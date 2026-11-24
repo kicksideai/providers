@@ -2,39 +2,36 @@
 local types = require("types")
 local mail = require("mail_types")
 local delivery = require("delivery")
-local error_envelope = require("error_envelope")
 local json = require("json")
 local message = require("message")
 local settings = require("settings")
 
 local M = {}
 
-local function response_error(response: mail.HttpResponse): error
+local function response_error(response: mail.HttpResponse, api_key: string): error
     local status, body = response.status_code, response.body
     local hint = delivery.retry_hint(response, "ratelimit-reset", "seconds")
+    local detail = delivery.response_detail(response, api_key)
     if status == 409 or status == 429 then
         local decoded, err = json.decode(body)
-        if err then
-            if status == 409 then
-                return delivery.invalid_response(err, "The mail service returned an invalid conflict response", status)
-            end
-            return error_envelope.wrap(delivery.status_error(status, 422, hint),
-                "Cannot decode Resend rate limit details", {response_error = error_envelope.encode(err)})
+        if err and status == 409 then
+            return delivery.failure(errors.INTERNAL, "provider_response_invalid",
+                "The mail service returned an invalid conflict response", false, status, nil, detail)
         end
-        if type(decoded) == "table" then
+        if not err and type(decoded) == "table" then
             local code = (decoded :: types.ErrorResponse).name
             if status == 409 and code == "concurrent_idempotent_requests" then
-                return delivery.failure(errors.CONFLICT, "send_in_progress", "A request with this key is in progress", true, status, hint)
+                return delivery.failure(errors.CONFLICT, "send_in_progress", "A request with this key is in progress", true, status, hint, detail)
             end
             if status == 409 and code == "invalid_idempotent_request" then
-                return delivery.failure(errors.CONFLICT, "idempotency_conflict", "This key already identifies a different request", false, status)
+                return delivery.failure(errors.CONFLICT, "idempotency_conflict", "This key already identifies a different request", false, status, nil, detail)
             end
             if status == 429 and (code == "daily_quota_exceeded" or code == "monthly_quota_exceeded") then
-                return delivery.failure(errors.RATE_LIMITED, "quota_exhausted", "The mail service sending quota is exhausted", false, status)
+                return delivery.failure(errors.RATE_LIMITED, "quota_exhausted", "The mail service sending quota is exhausted", false, status, nil, detail)
             end
         end
     end
-    return delivery.status_error(status, 422, hint)
+    return delivery.status_error(status, 422, hint, detail)
 end
 
 function M.available(): (mail.Availability?, error?)
@@ -52,7 +49,7 @@ local function request(api_key: string, body: string, key: string?): (mail.HttpR
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code < 200 or response.status_code >= 300 then
-        return nil, response_error(response)
+        return nil, response_error(response, api_key)
     end
     return response, nil
 end

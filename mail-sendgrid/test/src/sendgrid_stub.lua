@@ -40,6 +40,13 @@ local function handle()
         return
     end
 
+    if payload.subject:match("^Unsafe provider detail") then
+        res:set_status(400)
+        local detail = "Fixture refusal\nsg_fixture " .. string.rep("é", 512)
+        res:write_json({errors = {{message = detail}}})
+        return
+    end
+
     local status = payload.subject and payload.subject:match("^HTTP (%d+) ")
     if status then
         res:set_status(tonumber(status))

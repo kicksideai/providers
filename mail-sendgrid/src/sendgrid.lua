@@ -19,7 +19,8 @@ local function request(key: string, body: string): (mail.HttpResponse?, error?)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code ~= 202 then
-        return nil, delivery.status_error(response.status_code, 413, delivery.retry_hint(response, "x-ratelimit-reset", "epoch_seconds"))
+        local hint = delivery.retry_hint(response, "x-ratelimit-reset", "epoch_seconds")
+        return nil, delivery.status_error(response.status_code, 413, hint, delivery.response_detail(response, key))
     end
     return response, nil
 end

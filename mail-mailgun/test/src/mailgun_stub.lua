@@ -59,6 +59,13 @@ local function handle()
         return
     end
 
+    if values.subject:match("^Unsafe provider detail") then
+        res:set_status(400)
+        local detail = "Fixture refusal\nmg_fixture YXBpOm1nX2ZpeHR1cmU= " .. string.rep("é", 512)
+        res:write_json({message = detail})
+        return
+    end
+
     local requested_status = values.subject:match("^HTTP (%d+) ")
     if requested_status then
         local status = tonumber(requested_status)

@@ -10,17 +10,18 @@ local settings = require("settings")
 local M = {}
 local MIME_TOKEN = "[%w!#$%%&'*+.^_`|~%-]+"
 
-local function response_error(response: mail.HttpResponse): error
+local function response_error(response: mail.HttpResponse, key: string): error
     local status = response.status_code
     local hint = delivery.retry_hint(response, "x-ratelimit-reset", "epoch_milliseconds")
+    local detail = delivery.response_detail(response, key, "api")
     if status == 420 then
-        return delivery.failure(errors.RATE_LIMITED, "rate_limited", "Mail sending rate limit exceeded", true, status, hint)
+        return delivery.failure(errors.RATE_LIMITED, "rate_limited", "Mail sending rate limit exceeded", true, status, hint, detail)
     end
     if status == 403 then
         return delivery.failure(errors.PERMISSION_DENIED, "sender_or_recipient_not_allowed",
-            "The mail service did not allow the sender or recipient", false, status)
+            "The mail service did not allow the sender or recipient", false, status, nil, detail)
     end
-    return delivery.status_error(status, 413, hint)
+    return delivery.status_error(status, 413, hint, detail)
 end
 
 local function configuration(): (types.Config?, error?)
@@ -54,7 +55,7 @@ local function request(config: types.Config, body: string, content_type: string)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code ~= 200 then
-        return nil, response_error(response)
+        return nil, response_error(response, config.key)
     end
     return response, nil
 end

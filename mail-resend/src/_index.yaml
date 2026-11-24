@@ -78,7 +78,6 @@ entries:
       settings: kickside.mail:settings
       message: kickside.mail:message
       delivery: kickside.mail.service:delivery
-      error_envelope: kickside.contract:error_envelope
     security:
       policies:
         - kickside.mail.security:settings_read
@@ -96,6 +95,5 @@ entries:
       settings: kickside.mail:settings
       message: kickside.mail:message
       delivery: kickside.mail.service:delivery
-      error_envelope: kickside.contract:error_envelope
     security:
       policies: [kickside.mail.security:settings_read, kickside.mail.security:settings_admin_read]

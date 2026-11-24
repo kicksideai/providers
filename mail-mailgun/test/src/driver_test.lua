@@ -193,6 +193,19 @@ return {run = test.run_cases(function()
             test.is_true(delay >= 115000 and delay <= 120000)
         end)
 
+        test.it("carries bounded provider text without credentials or controls", function()
+            local result, err = transport(fixture_message("Unsafe provider detail"))
+            test.is_nil(result)
+            test.eq("message_rejected", err:details().code)
+            local detail = err:details().provider_detail
+            test.not_nil(detail)
+            test.not_nil(detail:find("Fixture refusal", 1, true))
+            test.is_nil(detail:find("mg_fixture", 1, true))
+            test.is_nil(detail:find("YXBpOm1nX2ZpeHR1cmU=", 1, true))
+            test.is_nil(detail:find("%c"))
+            test.is_true(#detail <= 512)
+        end)
+
         local cases = {
             {400, errors.INVALID, "message_rejected", false},
             {401, errors.PERMISSION_DENIED, "credentials_invalid", false},
