@@ -35,7 +35,7 @@ local function response_error(response: mail.HttpResponse, api_key: string): err
 end
 
 function M.available(): (mail.Availability?, error?)
-    local _, err = settings.read_api_key("kickside.mail.resend")
+    local _, err = settings.read_api_key("kickside.mail.resend", "Resend")
     return settings.available(err)
 end
 
@@ -55,7 +55,7 @@ local function request(api_key: string, body: string, key: string?): (mail.HttpR
 end
 
 function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
-    local key, key_err = settings.read_api_key("kickside.mail.resend")
+    local key, key_err = settings.read_api_key("kickside.mail.resend", "Resend")
     if key_err then return nil, key_err end
 
     local attachments: {types.Attachment}?

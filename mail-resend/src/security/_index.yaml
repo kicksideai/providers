@@ -33,7 +33,6 @@ entries:
     policy:
       resources:
         - kickside.mail.resend:driver
-        - kickside.mail.resend.settings:settings_block
         - kickside.mail.resend.settings:setting_api_key
         - kickside.mail.resend:available
       actions: [registry.get, registry.find, funcs.call]

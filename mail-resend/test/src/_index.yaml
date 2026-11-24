@@ -218,7 +218,7 @@ entries:
     meta: { type: test, suite: mail_resend }
     source: file://driver_test.lua
     method: run
-    modules: [uuid, fs, json, registry]
+    modules: [base64, uuid, fs, json, registry]
     imports:
       test: wippy.test:test
       fixture: app:fixture

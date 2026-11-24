@@ -33,7 +33,6 @@ entries:
     policy:
       resources:
         - kickside.mail.mailgun:driver
-        - kickside.mail.mailgun.settings:settings_block
         - kickside.mail.mailgun.settings:setting_api_key
         - kickside.mail.mailgun.settings:setting_domain
         - kickside.mail.mailgun.settings:setting_region

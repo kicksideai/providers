@@ -7,7 +7,7 @@ local settings = require("settings")
 local M = {}
 
 function M.available(): (mail.Availability?, error?)
-    local _, err = settings.read_api_key("kickside.mail.sendgrid")
+    local _, err = settings.read_api_key("kickside.mail.sendgrid", "SendGrid")
     return settings.available(err)
 end
 
@@ -54,7 +54,7 @@ local function encode_attachments(attachments: {mail.Attachment}?): ({types.Atta
 end
 
 function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
-    local key, key_err = settings.read_api_key("kickside.mail.sendgrid")
+    local key, key_err = settings.read_api_key("kickside.mail.sendgrid", "SendGrid")
     if key_err then return nil, key_err end
 
     local content: {types.ContentPart} = {}

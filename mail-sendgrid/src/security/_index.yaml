@@ -33,7 +33,6 @@ entries:
     policy:
       resources:
         - kickside.mail.sendgrid:driver
-        - kickside.mail.sendgrid.settings:settings_block
         - kickside.mail.sendgrid.settings:setting_api_key
         - kickside.mail.sendgrid:available
       actions: [registry.get, registry.find, funcs.call]

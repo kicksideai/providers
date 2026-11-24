@@ -9,7 +9,7 @@ Install KickSide Mail and Settings. `us_api_base_url` and `eu_api_base_url` defa
 
 ## Settings
 
-Use **Integrations → Mailgun** to set `api_key` as an encrypted secret, `domain` as the verified sending domain, and `region` as `us` or `eu` (default `us`). Set `kickside.mail.driver` to `mailgun` to select this driver. The **Administer Mailgun mail delivery** capability grants access to the driver’s registry declarations and availability check. Platform Settings controls authorization to edit settings.
+In **Settings → Integrations → Mail**, select **Mailgun** and set `api_key` as an encrypted secret, `domain` as the verified sending domain, and `region` as `us` or `eu` (default `us`). The **Administer Mailgun mail delivery** capability grants access to the driver’s registry declarations and availability check. Platform Settings controls authorization to edit settings.
 
 The descriptor names `kickside-mailgun-settings` as its `settings_view`. The Mail delivery block in **Integrations → Mail** mounts this panel for the API key, sending domain and region when Mailgun is the active service. The panel follows the Mail block's driver panel contract: it receives the saved values, which secrets are set and server errors, and emits `change` and `validity`; the Mail block keeps the one draft and saves it. The panel checks the domain's form as the server does and asks for a key when a domain is set without one.
 

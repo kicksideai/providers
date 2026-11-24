@@ -10,6 +10,7 @@ entries:
     title: API key
     description: API key authorized to send mail through Mailgun.
     scope: global
+    visible: false
     value_type: secret
     read_access: admin
     default: ""
@@ -23,6 +24,7 @@ entries:
     title: Sending domain
     description: Mailgun domain authorized to send mail.
     scope: global
+    visible: false
     value_type: string
     default: ""
     order: 20
@@ -36,20 +38,12 @@ entries:
     title: Region
     description: Mailgun API region for the sending domain.
     scope: global
+    visible: false
     value_type: string
     default: us
     schema: { enum: [us, eu] }
     order: 30
     validate_func: kickside.mail.mailgun.settings:validate_region
-  - name: settings_block
-    kind: registry.entry
-    meta: { type: "kickside.settings:block" }
-    key: mail_mailgun
-    title: Mailgun
-    icon: simple-icons:mailgun
-    group: Integrations
-    order: 40
-    namespace: kickside.mail.mailgun
   - name: validate
     kind: library.lua
     source: file://validate.lua

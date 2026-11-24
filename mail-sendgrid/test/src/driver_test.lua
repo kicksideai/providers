@@ -3,6 +3,7 @@ local test = require("test")
 local uuid = require("uuid")
 local time = require("time")
 local fs = require("fs")
+local base64 = require("base64")
 local json = require("json")
 local registry = require("registry")
 local fixture = require("fixture")
@@ -34,6 +35,11 @@ local function requests(method, subject)
         end
     end
     return matches
+end
+
+local function library_logo()
+    local assets = assert(fs.get("kickside.mail.views:asset_files"))
+    return assert(base64.encode(assert(assets:readfile("logo.png"))))
 end
 
 return {run = test.run_cases(function()
@@ -85,8 +91,8 @@ return {run = test.run_cases(function()
             test.not_nil(body:find("Ready</p>", 1, true))
             test.not_nil(body:find('src="cid:logo"', 1, true))
             test.not_nil(body:find(">Example Workspace</strong>", 1, true))
-            test.is_nil(body:find('src="cid:kickside-layout-logo"', 1, true))
-            test.eq(2, #captured.payload.attachments)
+            test.not_nil(body:find('src="cid:mail-library-logo"', 1, true))
+            test.eq(3, #captured.payload.attachments)
             local expected = {
                 from = {email = "sender@example.org", name = 'Support, "North"'},
                 personalizations = {{
@@ -102,6 +108,7 @@ return {run = test.run_cases(function()
                 attachments = {
                     {filename = "report.pdf", type = "application/pdf", content = "cGRmAGJ5dGVz", disposition = "attachment"},
                     {filename = "logo.png", type = "image/png", content = "iVBORwD/", disposition = "inline", content_id = "logo"},
+                    {filename = "logo.png", type = "image/png", content = library_logo(), disposition = "inline", content_id = "mail-library-logo"},
                 },
             }
             test.eq(assert(json.encode(expected)), assert(json.encode(captured.payload)))
@@ -121,7 +128,8 @@ return {run = test.run_cases(function()
             test.is_nil(captured.personalizations[1].cc)
             test.is_nil(captured.personalizations[1].bcc)
             test.is_nil(captured.reply_to)
-            test.is_nil(captured.attachments)
+            test.eq(1, #captured.attachments)
+            test.eq("mail-library-logo", captured.attachments[1].content_id)
             test.eq(1, #captured.content)
             test.eq("text/html", captured.content[1].type)
         end)
@@ -133,7 +141,10 @@ return {run = test.run_cases(function()
             local values = assert(fixture.probe(owner, "read_settings"))
             test.is_nil(values.api_key)
             test.is_true(configure({["kickside.mail.sendgrid"] = {api_key = ""}}).success)
-            test.is_false(assert(fixture.probe(admin, "available")).available)
+            local unavailable = assert(fixture.probe(admin, "available"))
+            test.is_false(unavailable.available)
+            test.eq("api_key_required", unavailable.code)
+            test.eq("Add a SendGrid API key to send mail.", unavailable.reason)
             local input = fixture_message("Unconfigured driver")
             local result, err = send(owner, input)
             test.is_nil(result)
@@ -259,7 +270,8 @@ return {run = test.run_cases(function()
                 end
             end
             local files = requests("POST", input.subject)[1].payload.attachments
-            test.eq(3, #files)
+            test.eq(4, #files)
+            test.eq("mail-library-logo", files[4].content_id)
             test.eq("résumé.txt", files[1].filename)
             test.eq("notes.txt", files[2].filename)
             test.eq("attachment", files[3].filename)

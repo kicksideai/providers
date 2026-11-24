@@ -28,16 +28,16 @@ local function configuration(): (types.Config?, error?)
     local values, err = settings.read("kickside.mail.mailgun")
     if err then return nil, err end
     values = values :: types.Settings
-    local key, key_err = settings.api_key(values)
+    local key, key_err = settings.api_key(values, "Mailgun")
     if key_err then return nil, key_err end
     if not values.domain or not values.domain:find("%S") then
-        return nil, settings.missing("The active mail driver requires a sending domain")
+        return nil, settings.missing("Enter your Mailgun sending domain.", "sending_domain_required")
     end
     if not validate.is_domain(values.domain) then
-        return nil, settings.missing("The mail sending domain is invalid")
+        return nil, settings.missing("Enter a valid Mailgun sending domain.", "sending_domain_invalid")
     end
     if not validate.is_region(values.region) then
-        return nil, settings.missing("The mail sending region is invalid")
+        return nil, settings.missing("Choose the region that hosts your Mailgun sending domain.", "sending_region_invalid")
     end
     return {key = key, domain = values.domain, region = values.region}, nil
 end

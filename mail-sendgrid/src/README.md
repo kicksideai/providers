@@ -9,7 +9,7 @@ Install KickSide Mail and Settings. `api_base_url` defaults to the SendGrid API 
 
 ## Settings
 
-Use **Integrations → SendGrid** to set `api_key`, an encrypted secret. Set `kickside.mail.driver` to `sendgrid` to select this driver. The **Administer SendGrid mail delivery** capability grants access to the driver’s registry declarations and availability check. Platform Settings controls authorization to edit settings.
+In **Settings → Integrations → Mail**, select **SendGrid** and set `api_key`, an encrypted secret. The **Administer SendGrid mail delivery** capability grants access to the driver’s registry declarations and availability check. Platform Settings controls authorization to edit settings.
 
 ## Contract and tools
 

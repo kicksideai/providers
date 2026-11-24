@@ -41,6 +41,11 @@ local function requests(method, subject)
     return matches
 end
 
+local function library_logo()
+    local assets = assert(fs.get("kickside.mail.views:asset_files"))
+    return assert(base64.encode(assert(assets:readfile("logo.png"))))
+end
+
 return {run = test.run_cases(function()
     test.describe("Mailgun transport via real Settings and Uploads", function()
         test.it("publishes the mailgun settings-backed driver descriptor", function()
@@ -132,19 +137,43 @@ return {run = test.run_cases(function()
             }
             test.eq(assert(json.encode(fields)), assert(json.encode(request.values)))
             test.not_nil(request.values.html:find(">Example Workspace</strong>", 1, true))
-            test.is_nil(request.values.html:find('src="cid:kickside-layout-logo"', 1, true))
+            test.not_nil(request.values.html:find('src="cid:mail-library-logo"', 1, true))
             local files = {
                 attachment = {{
                     filename = 'report "weekly".pdf', content_type = "application/pdf", bytes = assert(base64.encode(pdf_bytes)),
                 }},
                 inline = {
                     {filename = data.inline_content_id, content_type = "image/png", bytes = assert(base64.encode(png_bytes))},
+                    {filename = "mail-library-logo", content_type = "image/png", bytes = library_logo()},
                 },
             }
             test.eq(assert(json.encode(files)), assert(json.encode(request.files)))
             for _, inline in ipairs(request.files.inline) do
                 test.not_nil(request.values.html:find('src="cid:' .. inline.filename .. '"', 1, true))
             end
+        end)
+
+        test.it("sends a message based on Plain without attaching the library logo", function()
+            local input = fixture_message("Plain message")
+            local name = "plain-" .. uuid.v4()
+            local editor = fixture.admin()
+            local message = assert(editor:call("kickside.mail.library:create", {
+                kind = "message", name = name, title = "Plain message", description = "", base = "plain",
+                html = "{{ block body() }}<p>Plain body</p>{{ end }}",
+                text = "{{ block body() }}Plain body{{ end }}", subject = input.subject,
+                schema = {type = "object", properties = {}}, samples = {},
+            }))
+            local queued, err = send(owner, {to = input.to, template = name, vars = {}})
+            assert(editor:call("kickside.mail.library:delete", {
+                kind = "message", name = name, expected_revision = message.revision,
+            }))
+            assert(queued, tostring(err))
+            fixture.terminal(editor, queued.message_id)
+            local request = requests("POST", input.subject)[1]
+            test.not_nil(request)
+            test.not_nil(request.values.html:find("Plain body", 1, true))
+            test.is_nil(request.values.html:find("cid:mail-library-logo", 1, true))
+            test.is_nil(request.files.inline)
         end)
 
         test.it("sends HTML only through the EU endpoint using the configured From", function()
@@ -176,7 +205,10 @@ return {run = test.run_cases(function()
             local values = assert(fixture.probe(owner, "read_settings"))
             test.is_nil(values.api_key)
             test.is_true(configure({["kickside.mail.mailgun"] = {api_key = ""}}).success)
-            test.is_false(assert(fixture.probe(admin, "available")).available)
+            local unavailable = assert(fixture.probe(admin, "available"))
+            test.is_false(unavailable.available)
+            test.eq("api_key_required", unavailable.code)
+            test.eq("Add a Mailgun API key to send mail.", unavailable.reason)
             local input = fixture_message("Unconfigured driver")
             local result, err = send(owner, input)
             test.is_nil(result)
@@ -283,7 +315,9 @@ return {run = test.run_cases(function()
             local result, err = send(owner, input)
             test.is_nil(result)
             test.eq("invalid_config", err:details().code)
-            test.eq("The mail sending domain is invalid", err:message())
+            local unavailable = assert(fixture.probe(fixture.admin(), "available"))
+            test.eq("sending_domain_invalid", unavailable.code)
+            test.eq("Enter a valid Mailgun sending domain.", unavailable.reason)
             local invalid = configure({["kickside.mail.mailgun"] = {region = "other"}})
             test.is_false(invalid.success)
             test.eq("value is not in the declared enum", invalid.error)

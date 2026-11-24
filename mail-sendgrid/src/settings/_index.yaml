@@ -10,16 +10,8 @@ entries:
     title: API key
     description: API key authorized to send mail through SendGrid.
     scope: global
+    visible: false
     value_type: secret
     read_access: admin
     default: ""
     order: 10
-  - name: settings_block
-    kind: registry.entry
-    meta: { type: "kickside.settings:block" }
-    key: mail_sendgrid
-    title: SendGrid
-    icon: simple-icons:sendgrid
-    group: Integrations
-    order: 60
-    namespace: kickside.mail.sendgrid

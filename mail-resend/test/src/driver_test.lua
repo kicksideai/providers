@@ -2,6 +2,7 @@
 local test = require("test")
 local uuid = require("uuid")
 local fs = require("fs")
+local base64 = require("base64")
 local json = require("json")
 local registry = require("registry")
 local fixture = require("fixture")
@@ -32,6 +33,11 @@ local function requests(key)
         if request.idempotency_key == key then matches[#matches + 1] = request end
     end
     return matches
+end
+
+local function library_logo()
+    local assets = assert(fs.get("kickside.mail.views:asset_files"))
+    return assert(base64.encode(assert(assets:readfile("logo.png"))))
 end
 
 return { run = test.run_cases(function()
@@ -82,8 +88,8 @@ return { run = test.run_cases(function()
             test.not_nil(body:find("Ready</p>", 1, true))
             test.not_nil(body:find('src="cid:logo"', 1, true))
             test.not_nil(body:find(">Example Workspace</strong>", 1, true))
-            test.is_nil(body:find('src="cid:kickside-layout-logo"', 1, true))
-            test.eq(2, #captured.payload.attachments)
+            test.not_nil(body:find('src="cid:mail-library-logo"', 1, true))
+            test.eq(3, #captured.payload.attachments)
             local expected = {
                 from = [["Support, \"North\"" <sender@example.org>]], to = {"to@example.org", "second@example.org"},
                 cc = {"cc@example.org"}, bcc = {"bcc@example.org"}, reply_to = "reply@example.org",
@@ -92,6 +98,7 @@ return { run = test.run_cases(function()
                 attachments = {
                     {filename = "report.pdf", content_type = "application/pdf", content = "cGRmAGJ5dGVz"},
                     {filename = "logo.png", content_type = "image/png", content = "iVBORwD/", content_id = "logo"},
+                    {filename = "logo.png", content_type = "image/png", content = library_logo(), content_id = "mail-library-logo"},
                 },
             }
             test.eq(assert(json.encode(expected)), assert(json.encode(captured.payload)))
@@ -104,7 +111,10 @@ return { run = test.run_cases(function()
             local values = assert(fixture.probe(owner, "read_settings"))
             test.is_nil(values.api_key)
             test.is_true(configure({["kickside.mail.resend"] = {api_key = ""}}).success)
-            test.is_false(assert(fixture.probe(admin, "available")).available)
+            local unavailable = assert(fixture.probe(admin, "available"))
+            test.is_false(unavailable.available)
+            test.eq("api_key_required", unavailable.code)
+            test.eq("Add a Resend API key to send mail.", unavailable.reason)
             local input = fixture_message("Unconfigured driver")
             local result, err = send(owner, input)
             test.is_nil(result)
@@ -211,7 +221,8 @@ return { run = test.run_cases(function()
             test.eq("rate_limited", retry.last_error.code)
             local captured = requests(queued.message_id)
             test.eq(1, #captured)
-            test.eq(1, #captured[1].payload.attachments)
+            test.eq(2, #captured[1].payload.attachments)
+            test.eq("mail-library-logo", captured[1].payload.attachments[2].content_id)
             test.eq("c2hhcmVkIGJ5dGVz", captured[1].payload.attachments[1].content)
             local revoked = assert(acl:call("kickside.component.binding:revoke_subtree_func", target))
             test.is_true(revoked.success, revoked.error)
