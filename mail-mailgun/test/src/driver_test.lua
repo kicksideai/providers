@@ -222,6 +222,22 @@ return {run = test.run_cases(function()
             end)
         end
 
+        test.it("refuses an upload whose encoding exceeds the driver's message limit", function()
+            local bytes = string.rep("x", 19000000)
+            local upload = assert(fixture.probe(owner, "store", {
+                bytes = bytes, filename = "large.txt", content_type = "text/plain",
+            }))
+            local input = fixture_message("Too large after encoding")
+            input.attachments = {{upload_id = upload.uuid}}
+            local result, err = send(owner, input)
+            test.is_nil(result)
+            test.eq(errors.INVALID, err:kind())
+            test.eq("message_too_large", err:details().code)
+            test.eq("max_message_bytes", err:details().limit)
+            test.eq(25000000, err:details().maximum)
+            test.eq(0, #requests("POST", input.subject))
+        end)
+
         test.it("validates the sending domain and region before egress", function()
             local input = fixture_message("Invalid sender settings")
             local invalid_domain = configure({["kickside.mail.mailgun"] = {domain = "mail.example.org/../test"}})
