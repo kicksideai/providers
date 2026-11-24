@@ -114,6 +114,15 @@ return { run = test.run_cases(function()
             test.eq(0, #requests(input.idempotency_key))
         end)
 
+        test.it("carries the provider retry hint on rate limiting", function()
+            local _, err = transport(fixture_message("Retry hint"))
+            test.eq(errors.RATE_LIMITED, err:kind())
+            test.is_true(err:retryable())
+            local delay = err:details().retry_after_ms
+            test.not_nil(delay)
+            test.is_true(delay >= 115000 and delay <= 120000)
+        end)
+
         local cases = {
             {401, errors.PERMISSION_DENIED, "credentials_invalid", false},
             {403, errors.PERMISSION_DENIED, "credentials_invalid", false},

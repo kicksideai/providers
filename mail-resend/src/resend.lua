@@ -9,20 +9,22 @@ local settings = require("settings")
 
 local M = {}
 
-local function response_error(status: number, body: string): error
+local function response_error(response: mail.HttpResponse): error
+    local status, body = response.status_code, response.body
+    local hint = delivery.retry_hint(response, "ratelimit-reset", "seconds")
     if status == 409 or status == 429 then
         local decoded, err = json.decode(body)
         if err then
             if status == 409 then
                 return delivery.invalid_response(err, "The mail service returned an invalid conflict response", status)
             end
-            return error_envelope.wrap(delivery.status_error(status, 422),
+            return error_envelope.wrap(delivery.status_error(status, 422, hint),
                 "Cannot decode Resend rate limit details", {response_error = error_envelope.encode(err)})
         end
         if type(decoded) == "table" then
             local code = (decoded :: types.ErrorResponse).name
             if status == 409 and code == "concurrent_idempotent_requests" then
-                return delivery.failure(errors.CONFLICT, "send_in_progress", "A request with this key is in progress", true, status)
+                return delivery.failure(errors.CONFLICT, "send_in_progress", "A request with this key is in progress", true, status, hint)
             end
             if status == 409 and code == "invalid_idempotent_request" then
                 return delivery.failure(errors.CONFLICT, "idempotency_conflict", "This key already identifies a different request", false, status)
@@ -32,7 +34,7 @@ local function response_error(status: number, body: string): error
             end
         end
     end
-    return delivery.status_error(status, 422)
+    return delivery.status_error(status, 422, hint)
 end
 
 function M.available(): (mail.Availability?, error?)
@@ -50,7 +52,7 @@ local function request(api_key: string, body: string, key: string?): (mail.HttpR
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code < 200 or response.status_code >= 300 then
-        return nil, response_error(response.status_code, response.body)
+        return nil, response_error(response)
     end
     return response, nil
 end

@@ -145,7 +145,7 @@ entries:
     kind: function.lua
     source: file://sendgrid_stub.lua
     method: handle
-    modules: [http, fs, json, uuid]
+    modules: [http, fs, json, uuid, time]
     security:
       policies: [app:stub_capture_access]
   - name: stub_capture_access

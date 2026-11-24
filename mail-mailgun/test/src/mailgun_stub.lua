@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local http = require("http")
+local time = require("time")
 local fs = require("fs")
 local json = require("json")
 local uuid = require("uuid")
@@ -48,6 +49,13 @@ local function handle()
     if authorization ~= "Basic YXBpOm1nX2ZpeHR1cmU=" then
         res:set_status(401)
         res:write_json({message = "Forbidden"})
+        return
+    end
+
+    if values.subject:match("^Retry hint") then
+        res:set_status(420)
+        res:set_header("X-RateLimit-Reset", tostring(time.now():unix_nano() // 1000000 + 120000))
+        res:write_json({message = "Retry later"})
         return
     end
 

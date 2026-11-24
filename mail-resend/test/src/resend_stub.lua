@@ -18,6 +18,13 @@ local function handle()
         idempotency_key = req:header("Idempotency-Key"),
         payload = payload,
     }))))
+    if payload.subject:match("^Retry hint") then
+        res:set_status(429)
+        res:set_header("Retry-After", "120")
+        res:write_json({message = "Retry later"})
+        return
+    end
+
     local status, error_name = payload.subject:match("^HTTP (%d+) ?([%w_]*)$")
     if status then
         res:set_status(tonumber(status))

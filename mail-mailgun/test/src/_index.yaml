@@ -146,7 +146,7 @@ entries:
     kind: function.lua
     source: file://mailgun_stub.lua
     method: handle
-    modules: [http, fs, json, uuid, base64]
+    modules: [http, fs, json, uuid, time, base64]
     security:
       policies: [app:stub_capture_access]
   - name: stub_capture_access

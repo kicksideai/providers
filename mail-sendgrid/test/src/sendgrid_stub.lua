@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local http = require("http")
+local time = require("time")
 local fs = require("fs")
 local json = require("json")
 local uuid = require("uuid")
@@ -29,6 +30,13 @@ local function handle()
     if payload.subject:match("^Credits exhausted ") then
         res:set_status(401)
         res:write_json({errors = {{message = "Maximum credits exceeded"}}})
+        return
+    end
+
+    if payload.subject:match("^Retry hint") then
+        res:set_status(429)
+        res:set_header("X-RateLimit-Reset", tostring(time.now():unix() + 120))
+        res:write_json({message = "Retry later"})
         return
     end
 
