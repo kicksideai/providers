@@ -30,6 +30,9 @@ entries:
     kind: http.router
     meta: { server: app:gateway }
     prefix: /api
+    middleware: [token_auth]
+    post_middleware: [endpoint_firewall]
+    options: { token_store: kickside.users.security:tokens }
   - name: public
     kind: http.router
     meta: { server: app:gateway }
@@ -123,6 +126,7 @@ entries:
       - { name: "kickside.mail.resend:api_base_url", value: "http://127.0.0.1:24635" }
       - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
       - { name: "kickside.mail:target_db", value: "app:db" }
+      - { name: "kickside.mail:api_router", value: "app:api" }
       - { name: "kickside.mail.resend.security:user_security_scope", value: "app:user" }
   - name: resend_gateway
     kind: http.service
