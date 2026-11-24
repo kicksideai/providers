@@ -99,9 +99,9 @@ local function multipart(input: mail.TransportRequest, from: string): (string?, 
         end
         local content_type = attachment.content_type
         local media, parameters = content_type:match("^(" .. MIME_TOKEN .. "/" .. MIME_TOKEN .. ")(.*)$")
-        if not filename:find("%S") or filename:find("%c") or content_type:find("%c")
+        if content_type:find("%c")
             or not media or (parameters ~= "" and not parameters:match("^ *;")) then
-            return nil, nil, delivery.failure(errors.INVALID, "invalid_attachment", "Mail attachment filename or media type is invalid", false)
+            return nil, nil, delivery.failure(errors.INVALID, "invalid_attachment", "Mail attachment media type is invalid", false)
         end
         part(attachment.disposition, attachment.content, filename, content_type)
     end

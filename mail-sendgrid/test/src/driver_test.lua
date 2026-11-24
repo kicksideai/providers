@@ -231,6 +231,43 @@ return {run = test.run_cases(function()
             test.eq(2, #requests("POST", input.subject))
         end)
 
+        test.it("validates and normalizes attachment names from both input and Uploads", function()
+            local function upload(name)
+                return assert(fixture.probe(owner, "store", {
+                    bytes = "data", filename = name, content_type = "text/plain",
+                })).uuid
+            end
+            local stored = upload("folder/résumé.txt")
+            local bad = upload("invalid\nname.txt")
+            for _, ref in ipairs({{upload_id = bad}, {upload_id = stored, filename = "bad\rname.txt"},
+                {upload_id = stored, filename = string.rep("é", 128)}}) do
+                local input = fixture_message("Invalid filename")
+                input.attachments = {ref}
+                local result, err = send(owner, input)
+                test.is_nil(result)
+                test.eq(errors.INVALID, err:kind())
+                test.eq("invalid_attachment_filename", err:details().code)
+                test.eq(0, #requests("POST", input.subject))
+            end
+            local input = fixture_message("Normalized filenames")
+            input.attachments = {{upload_id = stored}, {upload_id = stored, filename = "C:\\dir\\notes.txt"},
+                {upload_id = stored, filename = ""}}
+            local queued = assert(send(owner, input))
+            local logged = fixture.terminal(owner, queued.message_id)
+            local definition = assert(registry.get("kickside.mail:mailer"))
+            for _, method in ipairs(definition.data.methods) do
+                if method.name == "get_message" then
+                    local schema = assert(json.decode(method.output_schemas[1].definition))
+                    local valid, validation_err = json.validate(schema, logged)
+                    test.is_true(valid, tostring(validation_err))
+                end
+            end
+            local files = requests("POST", input.subject)[1].payload.attachments
+            test.eq("résumé.txt", files[2].filename)
+            test.eq("notes.txt", files[3].filename)
+            test.eq("attachment", files[4].filename)
+        end)
+
         test.it("requires a To recipient before egress", function()
             local input = fixture_message("Bcc only")
             input.bcc, input.to = input.to, nil
