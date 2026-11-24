@@ -38,6 +38,10 @@ local function handle()
         res:write_json({name = error_name})
         return
     end
+    if payload.subject == "Accepted without ID" then
+        res:write_json({message = "Accepted"})
+        return
+    end
     res:write_json({id = id})
 end
 

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 # KickSide Mail for SendGrid
 
-This driver delivers messages from KickSide Mail through SendGrid. Set an API key with Mail Send permission and configure a verified sender in KickSide Mail. Delivery succeeds when SendGrid accepts the request and returns a message ID header.
+This driver delivers messages from KickSide Mail through SendGrid. Set an API key with Mail Send permission and configure a verified sender in KickSide Mail. Delivery succeeds when SendGrid accepts the request with HTTP 202.
 
 ## Requirements
 
@@ -13,7 +13,7 @@ Use **Integrations → SendGrid** to set `api_key`, an encrypted secret. Set `ki
 
 ## Contract and tools
 
-`kickside.mail.sendgrid:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID on acceptance. `kickside.mail.sendgrid:available` reports whether the driver settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
+`kickside.mail.sendgrid:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID when supplied in the acceptance response. `kickside.mail.sendgrid:available` reports whether the driver settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
 
 ## Error codes
 
@@ -27,7 +27,6 @@ message_rejected                Invalid             No
 provider_endpoint_invalid       Invalid             No
 provider_rejected               Internal            No
 provider_request_failed         Source error        Source flag
-provider_response_invalid       Internal            No
 provider_unavailable            Unavailable         Yes
 rate_limited                    RateLimited         Yes
 settings_read_failed            Internal            No

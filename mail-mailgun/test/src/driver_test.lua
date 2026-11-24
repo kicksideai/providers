@@ -206,6 +206,16 @@ return {run = test.run_cases(function()
             test.is_true(#detail <= 512)
         end)
 
+        test.it("marks an accepted 200 without a provider ID as sent", function()
+            local input = fixture_message("HTTP 200")
+            local queued = assert(send(owner, input))
+            local delivered = fixture.terminal(fixture.admin(), queued.message_id)
+            test.eq("sent", delivered.status)
+            test.not_nil(delivered.sent_at)
+            test.is_nil(delivered.provider_message_id)
+            test.eq(1, #requests("POST", input.subject))
+        end)
+
         local cases = {
             {400, errors.INVALID, "message_rejected", false},
             {401, errors.PERMISSION_DENIED, "credentials_invalid", false},
@@ -215,7 +225,6 @@ return {run = test.run_cases(function()
             {500, errors.UNAVAILABLE, "provider_unavailable", true},
             {503, errors.UNAVAILABLE, "provider_unavailable", true},
             {404, errors.INTERNAL, "provider_rejected", false},
-            {200, errors.INTERNAL, "provider_response_invalid", false},
         }
         for _, case in ipairs(cases) do
             local subject = "HTTP " .. case[1]

@@ -161,6 +161,15 @@ return { run = test.run_cases(function()
             end)
         end
 
+        test.it("marks an accepted 200 without a provider ID as sent", function()
+            local queued = assert(send(owner, fixture_message("Accepted without ID")))
+            local delivered = fixture.terminal(fixture.admin(), queued.message_id)
+            test.eq("sent", delivered.status)
+            test.not_nil(delivered.sent_at)
+            test.is_nil(delivered.provider_message_id)
+            test.eq(1, #requests(queued.message_id))
+        end)
+
         test.it("refuses callers without the send capability and makes no request", function()
             local message = fixture_message("Denied sender")
             local result, err = send(fixture.user(nil, false), message)

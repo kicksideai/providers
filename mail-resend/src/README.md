@@ -13,7 +13,7 @@ Use **Integrations → Resend** to set `api_key`, an encrypted secret. Set `kick
 
 ## Contract and tools
 
-`kickside.mail.resend:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID on acceptance. `kickside.mail.resend:available` reports whether the driver settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
+`kickside.mail.resend:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID when supplied in the acceptance response. `kickside.mail.resend:available` reports whether the driver settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
 
 ## Error codes
 

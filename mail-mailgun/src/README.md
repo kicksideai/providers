@@ -13,7 +13,7 @@ Use **Integrations → Mailgun** to set `api_key` as an encrypted secret, `domai
 
 ## Contract and tools
 
-`kickside.mail.mailgun:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID on acceptance. `kickside.mail.mailgun:available` reports whether the driver settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
+`kickside.mail.mailgun:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID when supplied in the acceptance response. `kickside.mail.mailgun:available` reports whether the driver settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
 
 ## Error codes
 
@@ -27,7 +27,6 @@ message_rejected                Invalid             No
 provider_endpoint_invalid       Invalid             No
 provider_rejected               Internal            No
 provider_request_failed         Source error        Source flag
-provider_response_invalid       Internal            No
 provider_unavailable            Unavailable         Yes
 rate_limited                    RateLimited         Yes
 sender_or_recipient_not_allowed PermissionDenied    No

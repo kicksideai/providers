@@ -86,7 +86,7 @@ function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
             return {provider_message_id = value}, nil
         end
     end
-    return nil, delivery.failure(errors.INTERNAL, "provider_response_invalid", "The mail service did not return a message ID", false, 202)
+    return {}, nil
 end
 
 return M

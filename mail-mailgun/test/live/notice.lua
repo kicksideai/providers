@@ -76,6 +76,10 @@ local function main()
     local queued = checked(result, err, "admission")
     local sent = fixture.terminal(fixture.admin(id), queued.message_id, 180)
     local id = sent.provider_message_id
+    if not id then
+        io.print("Mailgun HTTP 200 | accepted")
+        return 0
+    end
     if not id:match("^<?[^%s<>@]+@[^%s<>@]+>?$") or id:find(api_key, 1, true) then
         error("Mailgun HTTP 200 | Unexpected message ID format")
     end
