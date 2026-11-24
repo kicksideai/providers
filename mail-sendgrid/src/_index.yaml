@@ -21,6 +21,8 @@ entries:
     kind: registry.entry
     meta: { type: "kickside.mail:driver" }
     id: sendgrid
+    max_recipients: 1000
+    max_message_bytes: 29999999
     label: SendGrid
     icon: simple-icons:sendgrid
     description: Deliver mail through SendGrid.

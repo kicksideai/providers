@@ -25,6 +25,8 @@ entries:
     kind: registry.entry
     meta: { type: "kickside.mail:driver" }
     id: resend
+    max_recipients: 50
+    max_message_bytes: 40000000
     label: Resend
     icon: simple-icons:resend
     description: Deliver mail through Resend.

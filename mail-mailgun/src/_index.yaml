@@ -22,6 +22,8 @@ entries:
     kind: registry.entry
     meta: { type: "kickside.mail:driver" }
     id: mailgun
+    max_recipients: 1000
+    max_message_bytes: 25000000
     label: Mailgun
     icon: simple-icons:mailgun
     description: Deliver mail through Mailgun.
