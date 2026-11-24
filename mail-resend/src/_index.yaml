@@ -33,27 +33,6 @@ entries:
     binding: kickside.mail.resend:transport
     settings_ns: kickside.mail.resend
     available_func: kickside.mail.resend:available
-  - name: setting_api_key
-    kind: registry.entry
-    meta: { type: "kickside.settings:definition" }
-    namespace: kickside.mail.resend
-    key: api_key
-    title: API key
-    description: API key authorized to send mail through Resend.
-    scope: global
-    value_type: secret
-    read_access: admin
-    default: ""
-    order: 10
-  - name: settings_block
-    kind: registry.entry
-    meta: { type: "kickside.settings:block" }
-    key: mail_resend
-    title: Resend
-    icon: simple-icons:resend
-    group: Integrations
-    order: 50
-    namespace: kickside.mail.resend
   - name: endpoints
     kind: registry.entry
     endpoints: {}

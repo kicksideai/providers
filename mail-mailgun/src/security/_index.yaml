@@ -33,13 +33,13 @@ entries:
     policy:
       resources:
         - kickside.mail.mailgun:driver
-        - kickside.mail.mailgun:settings_block
-        - kickside.mail.mailgun:setting_api_key
-        - kickside.mail.mailgun:setting_domain
-        - kickside.mail.mailgun:setting_region
+        - kickside.mail.mailgun.settings:settings_block
+        - kickside.mail.mailgun.settings:setting_api_key
+        - kickside.mail.mailgun.settings:setting_domain
+        - kickside.mail.mailgun.settings:setting_region
         - kickside.mail.mailgun:available
-        - kickside.mail.mailgun.config:validate_domain
-        - kickside.mail.mailgun.config:validate_region
+        - kickside.mail.mailgun.settings:validate_domain
+        - kickside.mail.mailgun.settings:validate_region
       actions: [registry.get, registry.find, funcs.call]
       effect: allow
   - name: user_security_scope
