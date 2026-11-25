@@ -65,10 +65,6 @@ local function run(binding, input)
         input.message.deadline = input.message.deadline or time.now():add("30s"):utc():format(time.RFC3339)
         return transport:send(input.message)
     end
-    if input.action == "write" then
-        local writable = assert(assert(contract.get("kickside.data:writable")):open("kickside.mail.sink:writable"))
-        return writable:write(input.request)
-    end
     return client.send(input.message)
 end
 

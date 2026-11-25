@@ -88,7 +88,7 @@ entries:
     meta: { type: test, suite: mail_sendgrid }
     source: file://delivery_test.lua
     method: run
-    modules: [uuid, json, registry, time]
+    modules: [json, registry]
     imports:
       test: wippy.test:test
       cases: app:driver_cases

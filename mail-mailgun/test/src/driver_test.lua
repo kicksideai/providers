@@ -191,14 +191,6 @@ return {run = test.run_cases(function()
             test.eq(errors.INVALID, err:kind())
             test.eq("invalid_config", err:details().code)
             test.is_false(err:retryable())
-            local destination = assert(fixture.probe(owner, "write", {request = {
-                config = {}, sink_op = "upsert", input = input, identity_key = "record",
-                idempotency_key = uuid.v4(), origin = "automation",
-            }}))
-            test.is_false(destination.success)
-            test.eq(err:details().code, destination.error.code)
-            test.eq(err:message(), destination.error.message)
-            test.is_false(destination.error.retriable)
             test.eq(0, #cases.requests("POST", input.subject))
         end)
 

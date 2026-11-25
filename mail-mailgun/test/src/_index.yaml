@@ -95,7 +95,6 @@ entries:
     meta: { type: test, suite: mail_mailgun }
     source: file://delivery_test.lua
     method: run
-    modules: [uuid, registry]
     imports:
       test: wippy.test:test
       cases: app:driver_cases

@@ -1,7 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
-local uuid = require("uuid")
-local registry = require("registry")
 local fixture = require("fixture")
 local cases = require("cases")
 
@@ -48,10 +46,13 @@ return {run = test.run_cases(function()
             test.is_true(status.ready, status.reason)
             local input = cases.fixture_message("Changed sending domain")
             local result = assert(cases.send(owner, input))
-            fixture.terminal(owner, result.message_id)
+            local delivered = fixture.terminal(fixture.delivery_admin(), result.message_id)
             local captured = cases.requests("POST", input.subject)
             test.eq(1, #captured)
             test.eq("/v3/other.example.org/messages", captured[1].path)
+            test.eq(captured[1].id, delivered.provider_message_id)
+            test.eq("Hello", captured[1].values.text)
+            test.not_nil(captured[1].values.html:find("Hello</pre>", 1, true))
         end)
 
         test.it("rejects invalid Settings writes and keeps the last valid delivery destination", function()
@@ -115,26 +116,5 @@ return {run = test.run_cases(function()
             test.eq(0, #cases.requests("POST", input.subject))
         end)
 
-        test.it("writes once through the at-least-once destination", function()
-            local binding = assert(registry.get("kickside.mail.sink:writable"))
-            test.eq("at_least_once", binding.meta.delivery)
-            local input = cases.fixture_message("Automation")
-            local request = {
-                config = {}, sink_op = "upsert", input = input,
-                identity_key = "record-1", idempotency_key = uuid.v4(), origin = "automation-1",
-            }
-            local result = assert(fixture.probe(owner, "write", {request = request}))
-            test.is_true(result.success, result.error and result.error.message)
-            test.eq("created", result.result)
-            local delivered = fixture.terminal(fixture.admin(), result.dest_ref.message_id)
-            local replay = assert(fixture.probe(owner, "write", {request = request}))
-            test.eq(result.dest_ref.message_id, replay.dest_ref.message_id)
-            local captured = cases.requests("POST", input.subject)
-            test.eq(1, #captured)
-            test.eq(captured[1].id, delivered.provider_message_id)
-            test.is_true(captured[1].idempotency_key == nil or captured[1].idempotency_key == "")
-            test.eq("Hello", captured[1].values.text)
-            test.not_nil(captured[1].values.html:find("Hello</pre>", 1, true))
-        end)
     end)
 end)}

@@ -102,14 +102,14 @@ function M.await_publication(editor, request)
 end
 
 function M.await_message(actor, id, matches)
-    local deadline = time.now():add(25 * time.SECOND):unix_nano()
-    local entry
-    repeat
-        entry = assert(M.probe(actor, "get_message", {message_id = id}))
-        if matches(entry) then return entry end
-        time.sleep("25ms")
-    until time.now():unix_nano() >= deadline
-    error("Mail did not reach the expected state")
+    local result, err = await_change("mail.activity", function()
+        return M.probe(actor, "get_message", {message_id = id})
+    end, function(entry)
+        return entry and not matches(entry)
+    end)
+    assert(result, tostring(err))
+    assert(matches(result), "Mail did not reach the expected state: " .. id)
+    return result
 end
 
 function M.terminal(actor, id)

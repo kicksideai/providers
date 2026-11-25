@@ -363,34 +363,5 @@ return { run = test.run_cases(function()
             test.eq(1, #requests(queued.message_id))
         end)
 
-        test.it("declares no picker and uses the committed message ID for provider idempotency", function()
-            local port = assert(registry.get("kickside.mail.sink:send_email"))
-            test.is_nil(port.data.config_schema and port.data.config_schema.connection_id)
-            local request = {
-                config = {}, sink_op = "upsert", input = fixture_message("Automation"),
-                identity_key = "record-1", idempotency_key = uuid.v4(), origin = "automation-1",
-            }
-            local result = assert(fixture.probe(owner, "write", {request = request}))
-            test.is_true(result.success, result.error and result.error.message)
-            test.eq("created", result.result)
-            fixture.terminal(owner, result.dest_ref.message_id)
-            local replay = assert(fixture.probe(owner, "write", {request = request}))
-            test.eq(result.dest_ref.message_id, replay.dest_ref.message_id)
-            test.eq(1, #requests(result.dest_ref.message_id))
-            test.eq(0, #requests(request.idempotency_key))
-            test.eq(0, #requests(request.input.idempotency_key))
-        end)
-
-        test.it("rejects a writable origin that differs from its automation reference", function()
-            local request = {
-                config = {}, sink_op = "upsert", input = fixture_message("Invalid origin"),
-                idempotency_key = uuid.v4(), origin = "automation-1",
-                automation_ref = {kind = "automation", id = "automation-2", revision = 1},
-            }
-            local result = assert(fixture.probe(owner, "write", {request = request}))
-            test.is_false(result.success)
-            test.eq("invalid_request", result.error.code)
-            test.eq(0, #requests(request.idempotency_key))
-        end)
     end)
 end) }

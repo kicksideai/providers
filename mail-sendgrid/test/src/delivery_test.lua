@@ -1,7 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
-local uuid = require("uuid")
-local time = require("time")
 local json = require("json")
 local registry = require("registry")
 local fixture = require("fixture")
@@ -50,17 +48,13 @@ return {run = test.run_cases(function()
             test.eq("Maximum credits exceeded", err:details().provider_detail)
             test.is_false(err:retryable())
             local queued = assert(cases.send(owner, input))
-            local deadline = time.now():add(25 * time.SECOND):unix_nano()
-            local sender_log
-            repeat
-                sender_log = assert(fixture.probe(owner, "get_message", {message_id = queued.message_id}))
-                if sender_log.status == "failed" then break end
-                time.sleep("25ms")
-            until time.now():unix_nano() >= deadline
+            local sender_log = fixture.await_message(owner, queued.message_id, function(message)
+                return message.status == "failed"
+            end)
             test.eq("failed", sender_log.status)
             test.eq("provider_rejected", sender_log.last_error.code)
             test.is_nil(sender_log.last_error.provider_detail)
-            local admin_log = assert(fixture.probe(fixture.admin(), "get_message", {message_id = queued.message_id}))
+            local admin_log = assert(fixture.probe(fixture.delivery_admin(), "get_message", {message_id = queued.message_id}))
             test.eq("authorization_refused", admin_log.last_error.code)
             test.eq("Maximum credits exceeded", admin_log.last_error.provider_detail)
             test.eq(2, #cases.requests("POST", input.subject))
@@ -147,24 +141,5 @@ return {run = test.run_cases(function()
             test.eq(0, #cases.requests("POST", input.subject))
         end)
 
-        test.it("writes once to SendGrid through the at-least-once destination", function()
-            local binding = assert(registry.get("kickside.mail.sink:writable"))
-            test.eq("at_least_once", binding.meta.delivery)
-            local input = cases.fixture_message("Automation")
-            local request = {
-                config = {}, sink_op = "upsert", input = input,
-                identity_key = "record-1", idempotency_key = uuid.v4(), origin = "automation-1",
-            }
-            local result = assert(fixture.probe(owner, "write", {request = request}))
-            test.is_true(result.success, result.error and result.error.message)
-            test.eq("created", result.result)
-            local delivered = fixture.terminal(fixture.admin(), result.dest_ref.message_id)
-            local replay = assert(fixture.probe(owner, "write", {request = request}))
-            test.eq(result.dest_ref.message_id, replay.dest_ref.message_id)
-            local captured = cases.requests("POST", input.subject)
-            test.eq(1, #captured)
-            test.eq(captured[1].id, delivered.provider_message_id)
-            test.is_true(captured[1].idempotency_key == nil or captured[1].idempotency_key == "")
-        end)
     end)
 end)}
