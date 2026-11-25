@@ -67,20 +67,3 @@ entries:
     source: file://validate.lua
     method: api_key
     imports: *validation_imports
-  - name: settings_block
-    kind: registry.entry
-    meta:
-      type: kickside.settings:block
-      comment: The Mailgun entry in System Settings, beside Mail; the shared settings card edits this namespace.
-    key: mail-mailgun
-    title: Mailgun
-    icon: simple-icons:mailgun
-    group: Integrations
-    order: 31
-    component_tag: kickside-settings-provider
-    namespace: kickside.mail.mailgun
-    config:
-      namespace: kickside.mail.mailgun
-      title: Mailgun
-      icon: simple-icons:mailgun
-      help: Mailgun API key, sending domain and region for Mail delivery.

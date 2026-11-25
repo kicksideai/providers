@@ -34,7 +34,6 @@ entries:
     groups: []
     policy:
       resources:
-        - kickside.mail.mailgun.settings:settings_block
         - kickside.mail.mailgun.settings:setting_api_key
         - kickside.mail.mailgun.settings:validate_api_key
         - kickside.mail.mailgun.settings:setting_domain
