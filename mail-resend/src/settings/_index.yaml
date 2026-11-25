@@ -20,3 +20,20 @@ entries:
     source: file://validate.lua
     method: api_key
     imports: {config: kickside.mail.driver:config}
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: The Resend entry in System Settings, beside Mail; the shared settings card edits this namespace.
+    key: mail-resend
+    title: Resend
+    icon: simple-icons:resend
+    group: Integrations
+    order: 32
+    component_tag: kickside-settings-provider
+    namespace: kickside.mail.resend
+    config:
+      namespace: kickside.mail.resend
+      title: Resend
+      icon: simple-icons:resend
+      help: Resend API key for Mail delivery.
