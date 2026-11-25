@@ -188,6 +188,10 @@ entries:
     kind: ns.dependency
     component: kickside/mail-resend
     version: "*"
+  - name: dep.driver_example
+    kind: ns.dependency
+    component: kickside/mail-driver-example
+    version: "*"
   - name: resend_gateway
     kind: http.service
     addr: "127.0.0.1:0"
@@ -271,3 +275,12 @@ entries:
       test: wippy.test:test
       fixture: kickside.mail_driver_fixture.testing:fixture
       uploads_types: kickside.uploads:types
+  - name: driver_example_test
+    kind: function.lua
+    meta: { type: test, suite: mail_resend_driver_example }
+    source: file://driver_example_test.lua
+    method: run
+    modules: [uuid, fs, json]
+    imports:
+      test: wippy.test:test
+      fixture: kickside.mail_driver_fixture.testing:fixture

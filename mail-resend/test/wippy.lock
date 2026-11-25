@@ -16,6 +16,8 @@ modules:
       version: 0.1.101
     - name: kickside/mail
       version: 0.0.0
+    - name: kickside/mail-driver-example
+      version: 0.0.0
     - name: kickside/mail-driver-fixture
       version: 0.0.0
     - name: kickside/mail-resend

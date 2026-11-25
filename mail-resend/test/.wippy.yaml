@@ -2,6 +2,7 @@
 version: "1.0"
 workspace:
   replacements:
+    kickside/mail-driver-example: ../../test-support/mail-driver-example
     kickside/mail-driver-fixture: ../../test-support/mail-driver-fixture
     kickside/mail: ../../../components/mail
     kickside/mail-resend: ..
@@ -23,6 +24,8 @@ override:
       - { name: "kickside.mail:target_db", value: "app:db" }
       - { name: "kickside.mail:api_router", value: "app:api" }
       - { name: "kickside.mail.resend.security:user_security_scope", value: "app:user" }
+  app:dep.driver_example:parameters:
+      - { name: "kickside.mail.example:api_base_url", value: "https://127.0.0.1:${stub_port}/emails" }
   app:resend_gateway:addr: "127.0.0.1:${stub_port}"
 vars:
   stub_port: 0

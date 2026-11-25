@@ -4,3 +4,5 @@
 This driver delivers messages from KickSide Mail through Mailgun. Set a Mailgun API key, verified sending domain, and matching API region. Delivery uses multipart requests with regular and inline attachments.
 
 [Module documentation](src/README.md) covers setup, contracts, error codes, and development commands.
+
+[Write a KickSide Mail driver](../mail-resend/src/driver-authoring.md) to implement the same public transport contract.

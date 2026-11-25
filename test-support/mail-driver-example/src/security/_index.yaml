@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.example.security
+entries:
+  - name: module_access
+    kind: security.policy
+    meta:
+      title: Example Relay
+      surface: kickside.mail.example
+      intent: module_access
+      includes:
+        - kickside.mail.example.security:module_runtime
+    groups: []
+    policy:
+      resources: [kickside.mail.example:definition]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: module_runtime
+    kind: security.policy
+    meta: { private: true }
+    groups: []
+    policy:
+      resources: [kickside.mail.example:transport, kickside.mail.example.transport:send, kickside.mail.example.transport:status]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: driver_admin
+    kind: security.policy
+    meta:
+      title: Administer Example Relay mail delivery
+      surface: kickside.mail.example
+      intent: module_management
+    groups: []
+    policy:
+      resources:
+        - kickside.mail.example.settings:settings_block
+        - kickside.mail.example.settings:setting_api_key
+        - kickside.mail.example.settings:validate_api_key
+      actions: [registry.get, registry.find, funcs.call]
+      effect: allow
+  - name: user_security_scope
+    kind: ns.requirement
+    default: kickside.security.groups:members
+    meta:
+      value_kind: security.scope
+      description: Application member scope with access to the driver module.
+      comment: Grants member discovery of the driver.
+    targets:
+      - { entry: kickside.mail.example.security:module_access, path: ".groups +=" }
+      - { entry: kickside.mail.example.security:module_runtime, path: ".groups +=" }
+  - name: transport_open
+    kind: security.policy
+    meta: { private: true, comment: Admits this driver to the Mail transports group. }
+    groups: [kickside.mail.security:transports]
+    policy:
+      resources: [kickside.mail.example:transport]
+      actions: [contract.open]
+      effect: allow
+  - name: settings_read
+    kind: security.policy
+    meta: { private: true, comment: Opens the Settings contract for the driver namespace. }
+    policy:
+      resources: [kickside.settings:settings, kickside.settings:settings_binding, get_namespace]
+      actions: [contract.get, contract.open, contract.call]
+      effect: allow
+  - name: settings_admin_read
+    kind: security.policy
+    meta: { private: true, comment: Allows the driver to read its protected API key. }
+    policy:
+      resources: [kickside.settings.api:list_settings.endpoint]
+      actions: [access]
+      effect: allow
+  - name: http_access
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: []
+      actions: [http_client.request]
+      effect: allow
+  - name: provider_reads
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [kickside.mail.example:endpoints]
+      actions: [registry.get]
+      effect: allow

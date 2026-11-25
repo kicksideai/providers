@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.example.transport
+entries:
+  - name: send
+    kind: function.lua
+    source: file://relay.lua
+    method: send
+    modules: [registry]
+    imports: &imports
+      config: kickside.mail.driver:config
+      delivery: kickside.mail.driver:http
+      mail: kickside.mail:types
+    security:
+      policies:
+        - kickside.mail.example.security:settings_read
+        - kickside.mail.example.security:settings_admin_read
+        - kickside.mail.example.security:provider_reads
+        - kickside.mail.example.security:http_access
+  - name: status
+    kind: function.lua
+    source: file://relay.lua
+    method: status
+    modules: [registry]
+    imports: *imports
+    security:
+      policies:
+        - kickside.mail.example.security:settings_read
+        - kickside.mail.example.security:settings_admin_read
+        - kickside.mail.example.security:provider_reads

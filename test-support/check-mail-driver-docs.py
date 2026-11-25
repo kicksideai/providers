@@ -16,17 +16,20 @@ def failure_codes(lua):
     return set(re.findall(r'\.failure\(errors\.\w+,\s*"([a-z_]+)"', lua))
 
 
-expected = failure_codes(source)
-expected |= set(re.findall(r'\bcode = "([a-z_]+)"', source))
-expected |= failure_codes(http[:http.index('function M.encode_message')])
-expected |= set(re.findall(r'\bcode = "([a-z_]+)"', http[:http.index('function M.encode_message')]))
-expected |= set(re.findall(r'\bcode = "([a-z_]+)"', config[:config.index('function M.endpoint')]))
+def detail_codes(lua):
+    return set(re.findall(r'(?:details\s*=\s*\{|error_envelope\.wrap\([^\n]*\{)\s*code\s*=\s*"([a-z_]+)"', lua))
+
+
+shared_http = http[:http.index('function M.encode_message')]
+expected = failure_codes(source) | detail_codes(source)
+expected |= failure_codes(shared_http) | detail_codes(shared_http)
+expected |= detail_codes(config[:config.index('function M.endpoint')])
 expected.add('invalid_config')
 for helper in ('encode_message', 'encode_attachment'):
     if f'delivery.{helper}(' in source:
         start = http.index(f'function M.{helper}(')
         end = http.index('\nend', start)
-        expected |= set(re.findall(r'\bcode = "([a-z_]+)"', http[start:end]))
+        expected |= detail_codes(http[start:end])
 
 readme = (module / 'src' / 'README.md').read_text()
 table = readme.split('## Error codes', 1)[1].split('```text\n', 1)[1].split('```', 1)[0]

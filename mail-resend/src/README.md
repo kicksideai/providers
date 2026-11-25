@@ -57,6 +57,8 @@ sender_or_recipient_not_allowed    PermissionDenied   No
 settings_read_failed               Internal           No
 ```
 
+[Write a KickSide Mail driver](driver-authoring.md) for the contract, policies, helpers, and runnable example.
+
 ## Development
 
 Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback HTTPS Resend stub.
