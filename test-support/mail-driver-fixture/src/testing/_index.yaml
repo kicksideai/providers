@@ -12,7 +12,7 @@ entries:
   - name: fixture
     kind: library.lua
     source: file://fixture.lua
-    modules: [security, funcs, sql, uuid, time]
+    modules: [security, funcs, sql, uuid, time, channel, events, fs]
     imports:
       provision: kickside.core.threads:provision
       identity: kickside.execution:execution_identity
@@ -24,3 +24,31 @@ entries:
       client: kickside.mail:client
       settings: kickside.mail.driver:config
       uploads: kickside.uploads:uploads
+  - name: broadcast
+    kind: function.lua
+    source: file://realtime.lua
+    method: broadcast
+    modules: [events, security, fs]
+    security:
+      policies: [kickside.mail_driver_fixture.testing:signal, kickside.mail_driver_fixture.testing:signal_storage]
+  - name: notify
+    kind: function.lua
+    source: file://realtime.lua
+    method: notify
+    modules: [events, security, fs]
+  - name: signal
+    kind: security.policy
+    policy:
+      resources: [mail.driver.fixture]
+      actions: [events.send]
+      effect: allow
+  - name: signals
+    kind: fs.directory
+    directory: ./.wippy/driver-signals
+    auto_init: true
+  - name: signal_storage
+    kind: security.policy
+    policy:
+      resources: [kickside.mail_driver_fixture.testing:signals]
+      actions: [fs.get]
+      effect: allow

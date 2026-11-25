@@ -3,9 +3,7 @@ local test = require("test")
 local uuid = require("uuid")
 local fs = require("fs")
 local json = require("json")
-local registry = require("registry")
 local base64 = require("base64")
-local time = require("time")
 local fixture = require("fixture")
 
 local BINDING = "kickside.mail.mailgun:transport"
@@ -29,16 +27,6 @@ local function mailgun_status(delivery)
         if status.id == BINDING then return status end
     end
     return nil
-end
-
-local function await_live(seq)
-    local deadline = time.now():add("8s"):unix_nano()
-    repeat
-        local marker = registry.get("kickside.mail.projection:marker")
-        if marker and marker.data.seq >= seq then return end
-        time.sleep("15ms")
-    until time.now():unix_nano() >= deadline
-    error("Mailgun fixture template did not publish at sequence " .. seq)
 end
 
 local function fixture_message(subject)
@@ -70,7 +58,7 @@ local function configured_sender()
         ["kickside.mail.mailgun"] = {api_key = "mg_fixture", domain = "mail.example.org", region = "us"},
     })
     test.is_true(configured.success, configured.error)
-    await_live(0)
+    fixture.await_initial_publication()
     return owner
 end
 
@@ -82,7 +70,6 @@ return {
     transport = transport,
     delivery_admin = fixture.delivery_admin,
     mailgun_status = mailgun_status,
-    await_live = await_live,
     fixture_message = fixture_message,
     requests = requests,
     library_logo = library_logo,

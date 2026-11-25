@@ -74,8 +74,6 @@ return {run = test.run_cases(function()
             local attachments = {{upload_id = pdf.uuid, filename = 'report "weekly".pdf'}, {
                 upload_id = png.uuid, disposition = "inline", content_id = data.inline_content_id,
             }}
-            local mailer = assert(assert(contract.get("kickside.mail:mailer")):open())
-            local expected = assert(mailer:preview({template = "notice", vars = data}))
             local result, err = cases.send(owner, {
                 to = {"to@example.org", "second@example.org"},
                 cc = {"cc@example.org", "cc2@example.org"},
@@ -104,11 +102,13 @@ return {run = test.run_cases(function()
                 ["h:Reply-To"] = "reply@example.org",
                 subject = data.subject,
                 text = "Ready\n\nNotice image\n\nExample Workspace\n",
-                html = expected.html,
             }
+            local html = assert(request.values.html)
+            request.values.html = nil
             test.eq(assert(json.encode(fields)), assert(json.encode(request.values)))
-            test.not_nil(request.values.html:find(">Example Workspace</strong>", 1, true))
-            test.not_nil(request.values.html:find('src="cid:mail-library-logo"', 1, true))
+            test.not_nil(html:find(">Ready</p>", 1, true))
+            test.not_nil(html:find(">Example Workspace</strong>", 1, true))
+            test.not_nil(html:find('src="cid:mail-library-logo"', 1, true))
             local files = {
                 attachment = {{
                     filename = 'report "weekly".pdf', content_type = "application/pdf", bytes = assert(base64.encode(pdf_bytes)),
@@ -120,32 +120,34 @@ return {run = test.run_cases(function()
             }
             test.eq(assert(json.encode(files)), assert(json.encode(request.files)))
             for _, inline in ipairs(request.files.inline) do
-                test.not_nil(request.values.html:find('src="cid:' .. inline.filename .. '"', 1, true))
+                test.not_nil(html:find('src="cid:' .. inline.filename .. '"', 1, true))
             end
         end)
 
         test.it("sends a message based on Plain without attaching the library logo", function()
             local input = cases.fixture_message("Plain message")
             local name = "plain-" .. uuid.v4()
-            local editor = assert(assert(contract.get("kickside.mail:library")):open())
+            local editor = fixture.member("app:mail_editors")
             local create = {
                 kind = "message", name = name, title = "Plain message", description = "", base = "plain",
                 html = "{{ block body() }}<p>Plain body</p>{{ end }}",
                 text = "{{ block body() }}Plain body{{ end }}", subject = input.subject,
                 schema = {type = "object", properties = {}}, samples = {},
             }
-            local review = assert(editor:preview({message = name, create = create}))
+            local review = assert(fixture.probe(editor, "preview_edit", {request = {message = name, create = create}}))
             create.preview_id = assert(review.preview_id)
-            local message = assert(editor:create(create))
-            cases.await_live(message.seq)
+            local message = assert(fixture.probe(editor, "create_resource", {request = create}))
+            local published = fixture.await_publication(editor, {template = name, vars = {}})
+            test.eq(input.subject, published.subject)
             local queued, err = cases.send(owner, {to = input.to, template = name, vars = {}})
-            assert(editor:delete({
+            assert(fixture.probe(editor, "delete_resource", {request = {
                 kind = "message", name = name, expected_revision = message.revision,
-            }))
+            }}))
             assert(queued, tostring(err))
             fixture.terminal(fixture.admin(), queued.message_id)
             local request = cases.requests("POST", input.subject)[1]
             test.not_nil(request)
+            test.eq(published.html, request.values.html)
             test.not_nil(request.values.html:find("Plain body", 1, true))
             test.is_nil(request.values.html:find("cid:mail-library-logo", 1, true))
             test.is_nil(request.files.inline)

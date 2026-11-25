@@ -11,7 +11,7 @@ flock -n 9 || { echo "A $module harness is already running" >&2; exit 1; }
 
 export TMPDIR="${TMPDIR:-$PWD/.wippy/tmp}"
 mkdir -p "$TMPDIR"
-rm -rf -- ".wippy/$driver-requests"
+rm -rf -- ".wippy/$driver-requests" .wippy/driver-signals
 rm -f -- .wippy/driver-test.sqlite{,-wal,-shm}
 
 # Linking needs the fixture port before the HTTP service starts.

@@ -32,6 +32,16 @@ local function run(binding, input)
         if err then return nil, err end
         return mailer:delivery_status()
     end
+    if input.action == "preview_template" then
+        return client.preview(input.request)
+    end
+    if input.action == "preview_edit" or input.action == "create_resource" or input.action == "delete_resource" then
+        local library, err = client.library()
+        if err then return nil, err end
+        if input.action == "preview_edit" then return library:preview(input.request) end
+        if input.action == "create_resource" then return library:create(input.request) end
+        return library:delete(input.request)
+    end
     if input.action == "status" then
         local transport, err = contract.open(binding)
         if err then return nil, err end

@@ -22,8 +22,8 @@ return {run = test.run_cases(function()
                 if parameter.name == "kickside.mail:library_editor_grant" then grant = parameter.value end
             end
             test.not_nil(grant)
-            test.eq("wippy.test:runner", grant.subject_id)
-            test.eq("user", grant.subject_type)
+            test.eq("app:mail_editors", grant.subject_id)
+            test.eq("group", grant.subject_type)
             test.eq(3, grant.access_mask)
         end)
 

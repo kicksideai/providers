@@ -23,7 +23,7 @@ override:
       - { name: "kickside.mail.mailgun:sending_domain", value: "mail.example.org" }
       - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
       - { name: "kickside.mail:target_db", value: "app:db" }
-      - { name: "kickside.mail:library_editor_grant", value: {subject_id: "wippy.test:runner", subject_type: user, access_mask: 3} }
+      - { name: "kickside.mail:library_editor_grant", value: {subject_id: "app:mail_editors", subject_type: group, access_mask: 3} }
       - { name: "kickside.mail:api_router", value: "app:api" }
       - { name: "kickside.mail.mailgun.security:user_security_scope", value: "app:user" }
   app:mailgun_gateway:addr: "127.0.0.1:${stub_port}"
@@ -40,7 +40,7 @@ profiles:
       app:dep.driver:parameters:
         - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
         - { name: "kickside.mail:target_db", value: "app:db" }
-        - { name: "kickside.mail:library_editor_grant", value: {subject_id: "wippy.test:runner", subject_type: user, access_mask: 3} }
+        - { name: "kickside.mail:library_editor_grant", value: {subject_id: "app:mail_editors", subject_type: group, access_mask: 3} }
         - { name: "kickside.mail:api_router", value: "app:api" }
         - { name: "kickside.mail.mailgun.security:user_security_scope", value: "app:user" }
       app:defaults_test:meta.type: test

@@ -56,6 +56,13 @@ entries:
     prefix: /public
   - name: user
     kind: security.scope
+  - name: mail_editors
+    kind: security.scope
+  - name: mail_editors_composition
+    kind: registry.entry
+    meta: { type: kickside.security.group_composition }
+    group_id: app:mail_editors
+    policies: [kickside.mail.security:module_access, kickside.mail.security:library_access]
   - name: mail_senders
     kind: security.scope
   - name: mail_senders_composition
@@ -284,7 +291,7 @@ entries:
   - name: driver_cases
     kind: library.lua
     source: file://driver_cases.lua
-    modules: [uuid, fs, json, registry, time, base64]
+    modules: [uuid, fs, json, base64]
     imports:
       test: wippy.test:test
       fixture: kickside.mail_driver_fixture.testing:fixture
