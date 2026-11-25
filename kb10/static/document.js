@@ -13,7 +13,7 @@ class r extends e {
   }
   static get vueConfig() {
     return {
-      ...i(() => import("./document-mount-C3wA7MkN.js").then((o) => o.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the document knowledge base. Reload the page to try again.", timeout: 3e4 })
+      ...i(() => import("./document-mount-D--HThEt.js").then((o) => o.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the document knowledge base. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }

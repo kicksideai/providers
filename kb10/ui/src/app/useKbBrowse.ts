@@ -26,6 +26,7 @@ export function useKbBrowse(kbId: () => string, opts: {
   const loading = ref(false)
   const notice = ref('')
   const indexingNotice = ref('')
+  const indexingRetrying = ref(false)
   const nodes = ref<BrowseNode[]>([])
   // Server-side pagination: one page is fetched at a time (?limit&offset) and the
   // real total comes from the browse API's count. total drives the pager rather
@@ -74,12 +75,13 @@ export function useKbBrowse(kbId: () => string, opts: {
       const { data } = await api.get(`/api/v1/kb10/${id}/browse?${filter}&limit=${pageSize.value}&offset=${offset}${indexing}`)
       if (seq !== loadSeq || kbId() !== id) return
       if (!data?.success) {
-        notice.value = data?.error && isEngineMissing(data.error) ? ENGINE_NOTICE : data?.error || ''
+        notice.value = data?.error && isEngineMissing(data.error) ? ENGINE_NOTICE : data?.error || 'Could not load contents'
         return
       }
       nodes.value = (data.nodes || []) as BrowseNode[]
       total.value = Number(data.total) || 0
       indexingNotice.value = formatIndexingNotice(data.pending_source)
+      indexingRetrying.value = data.pending_source?.retrying === true
       return true
     } catch (e: any) {
       if (seq !== loadSeq) return
@@ -213,12 +215,13 @@ export function useKbBrowse(kbId: () => string, opts: {
     total.value = 0
     nodes.value = []
     indexingNotice.value = ''
+    indexingRetrying.value = false
     void load()
     if (id !== previousId) syncRealtime(id)
   }, { immediate: true })
 
   return {
-    loading, notice, indexingNotice, nodes, documents, deleting, load, reload: load, remove, findDoc,
+    loading, notice, indexingNotice, indexingRetrying, nodes, documents, deleting, load, reload: load, remove, findDoc,
     page, pageSize, total, pageCount, hasPrev, hasNext, next, prev, goToPage, scheduleRefresh,
   }
 }

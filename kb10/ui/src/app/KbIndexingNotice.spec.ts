@@ -91,6 +91,28 @@ it('uses the accepted and failed page totals when switching document scopes', as
   wrapper.unmount()
 })
 
+it('keeps an empty document rail consistent with delayed or pending indexing', async () => {
+  const wrapper = shallowMount(KbDocument, { global: { stubs: { KbShell: false, KbNotice: false } } })
+  try {
+    await flushPromises()
+    expect(wrapper.text()).toContain('No documents yet.')
+    const send = proxy.on.mock.calls[0][1]
+    for (const retrying of [false, true]) {
+      proxy.get.mockResolvedValueOnce({ data: { success: true, pending_source: { count: 2, retrying } } })
+      send({ event: 'component.meta.changed', component_id: 'kb', meta: {} })
+      await vi.advanceTimersByTimeAsync(400)
+      await flushPromises()
+      expect(wrapper.findAll('[role="status"]').map(notice => notice.text())).toEqual(retrying
+        ? ['Indexing — 2 changes waiting', 'Work is delayed and will retry automatically.']
+        : ['Indexing — 2 changes waiting'])
+      expect(wrapper.text()).toContain('Documents appear here after indexing.')
+      expect(wrapper.text()).not.toContain('No documents yet')
+    }
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('retries only the failed indexing attempt offered by the server', async () => {
   const wrapper = shallowMount(KbDocument, { global: { stubs: { KbShell: false, KbTabs: false, KbNotice: false } } })
   try {
