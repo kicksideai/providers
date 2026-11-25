@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.26...llm-ocr-v0.1.28) (2026-11-25)
+
+
+### Bug Fixes
+
+* **llm-ocr:** leave sampling to the configured model ([#246](https://github.com/kicksideai/providers/issues/246)) ([e473ce9](https://github.com/kicksideai/providers/commit/e473ce98fbf613ca7d5529a545ef3ec1fbc5fbe3))
+
 ## [0.1.26](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.25...llm-ocr-v0.1.26) (2026-11-19)
 
 
