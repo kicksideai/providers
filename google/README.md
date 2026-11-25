@@ -117,10 +117,15 @@ Call `GoogleSheetsImport` with, for example:
 The first row supplies field labels. Field names use lowercase Latin letters,
 digits and underscores. Empty headers and duplicate normalized names fail.
 Numbers, booleans and ISO dates retain their types. Mixed columns become text,
-and blank cells are nullable. Localized dates remain text. A missing range and
-sheet selects the first sheet. The values request uses unformatted numbers and
-formatted date strings, as described in the
-[Sheets values API](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/get).
+and blank cells are nullable. A missing range and sheet selects the first visible
+sheet. One values request reads unformatted values and date serials. One
+[formats request](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get)
+reads only each cell's number format type over the same resolved range.
+DATE cells become ISO dates, and DATE_TIME cells become ISO datetimes before
+column inference. Other cells keep their values. Mixed date and number columns
+become text with ISO dates. Dates use the original serial's whole day, and
+datetimes round fractional seconds and clamp the time to 23:59:59. If the store
+has no writable datetime type, datetime columns use dates.
 
 The tool reads the store's type vocabulary and existing fields before defining
 new fields. Compatible existing types stay unchanged, including float fields

@@ -18,6 +18,10 @@ local function args(mode: string?): any
         dataset = {code = "demo_sales", title = "Demo sales"}, mode = mode or "replace"}
 end
 
+local function format_cell(kind: string): any
+    return {effectiveFormat = {numberFormat = {type = kind}}}
+end
+
 local function define_tests()
     test.describe("Google Sheets import", function()
         local old_connect, old_get, old_open
@@ -26,7 +30,7 @@ local function define_tests()
             old_connect, old_get, old_open = transport.connect, transport.get, store.open
             state = {values = {{"Month", "Revenue", "Orders", "Paid"}, {"2026-01", 12.5, 2, true}, {"2026-02", 9, 1, false}},
                 calls = {}, requests = {}, batches = {}, limit = 2, target = "test.store:demo_sales", commits = 0, discarded = 0,
-                definitions = {}, schema = {}, stored_rows = {}}
+                definitions = {}, schema = {}, stored_rows = {}, formats = {}, resolved_range = "Sales!A1:D20"}
             local function response(step: string, answer: any): (any?, error?)
                 state.calls[#state.calls + 1] = step
                 if state.fail == step then
@@ -43,6 +47,7 @@ local function define_tests()
                     {name = "text", coerces_to = "string"}, {name = "int", coerces_to = "integer"},
                     {name = "float", coerces_to = "number"}, {name = "bool", coerces_to = "boolean"},
                     {name = "date", coerces_to = "date"},
+                    {name = "datetime", coerces_to = "datetime", bulk_writable = not state.no_datetime},
                 }})
             end
             function administrator:define(request: any): any
@@ -132,7 +137,18 @@ local function define_tests()
             transport.get = function(_: any, url: string, query: any): (any?, error?)
                 state.requests[#state.requests + 1] = {url = url, query = query}
                 if state.fail == "http" then return {success = false, error = "Google refused", status_code = 403} end
-                if url:find("/values/", 1, true) then return {success = true, data = {values = state.values}} end
+                if url:find("/values/", 1, true) then
+                    return {success = true, data = {values = state.values, range = state.resolved_range}}
+                end
+                if query and query.ranges then
+                    test.eq(query.ranges, state.resolved_range)
+                    test.eq(query.fields, "sheets.data.rowData.values.effectiveFormat.numberFormat.type")
+                    if state.fail == "formats" then return {success = false, error = "Formats refused"} end
+                    local rows = {{}}
+                    for _, row in ipairs(state.formats) do rows[#rows + 1] = row end
+                    return {success = true, data = {sheets = {{properties = {title = "Sales team's data"},
+                        data = {{rowData = rows}}}}}}
+                end
                 return {success = true, data = {sheets = {{properties = {title = "Sales team's data"}}}}}
             end
         end)
@@ -157,7 +173,10 @@ local function define_tests()
             test.eq(state.commit.targets[1].batches, 1)
             test.is_true(state.commit.targets[1].replace_scope.all)
             test.eq(state.requests[1].query.valueRenderOption, "UNFORMATTED_VALUE")
-            test.eq(state.requests[1].query.dateTimeRenderOption, "FORMATTED_STRING")
+            test.eq(state.requests[1].query.dateTimeRenderOption, "SERIAL_NUMBER")
+            test.eq(#state.requests, 2)
+            test.eq(state.requests[2].query.ranges, "Sales!A1:D20")
+            test.eq(state.requests[2].query.fields, "sheets.data.rowData.values.effectiveFormat.numberFormat.type")
         end)
 
         test.it("appends without a replacement scope", function()
@@ -188,13 +207,29 @@ local function define_tests()
             test.contains(state.requests[1].url, "/sales-id/values/%27Sales%20team%27%27s%20data%27")
         end)
 
-        test.it("defaults to the first sheet", function()
+        test.it("defaults to the first visible sheet with one values call and one formats call", function()
             local input = args()
             input.range = nil
             local result = importer.handler(input)
             test.is_true(result.success)
             test.eq(#state.requests, 2)
-            test.contains(state.requests[2].url, "Sales%20team%27%27s%20data")
+            test.contains(state.requests[1].url, "/values/A%3AZZZ")
+            test.eq(state.requests[2].query.ranges, state.resolved_range)
+            test.eq(state.requests[2].query.fields, "sheets.data.rowData.values.effectiveFormat.numberFormat.type")
+        end)
+
+        test.it("normalizes dates from the resolved default sheet range", function()
+            local input = args()
+            input.range = nil
+            state.values = {{"Date"}, {46037}}
+            state.formats = {{values = {format_cell("DATE")}}}
+            local result = importer.handler(input)
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "date")
+            test.eq(state.stored_rows[1].date, "2026-01-15")
+            test.eq(#state.requests, 2)
+            test.eq(state.requests[1].query.dateTimeRenderOption, "SERIAL_NUMBER")
+            test.eq(state.requests[2].query.ranges, state.resolved_range)
         end)
 
         test.it("normalizes field names and infers dates with nullable missing cells", function()
@@ -206,6 +241,226 @@ local function define_tests()
             test.eq(result.preview[1].customer_code, "001")
             test.is_nil(result.preview[2].customer_code)
             test.is_true(result.fields[3].nullable)
+        end)
+
+        test.it("imports locale-formatted DATE cells as ISO dates and leaves numbers numeric", function()
+            -- Both 1/15/2026 and 15.01.2026 are returned as 46037 with SERIAL_NUMBER.
+            state.values = {{"Sale date", "Revenue"}, {46037, 12.5}, {46038, 9}}
+            state.formats = {
+                {values = {format_cell("DATE"), format_cell("CURRENCY")}},
+                {values = {format_cell("DATE"), format_cell("NUMBER")}},
+            }
+            local result, err = importer.handler(args())
+            test.is_nil(err)
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "date")
+            test.eq(result.fields[2].type, "number")
+            test.eq(state.schema.sale_date.type, "date")
+            test.eq(state.stored_rows[1].sale_date, "2026-01-15")
+            test.eq(state.stored_rows[2].sale_date, "2026-01-16")
+            test.eq(state.stored_rows[1].revenue, 12.5)
+            test.eq(#state.requests, 2)
+        end)
+
+        test.it("imports DATE_TIME fractions as Storage moments without a zone", function()
+            state.values = {{"Moment"}, {46037.5}, {46037 + (13 * 3600 + 4 * 60 + 5) / 86400}}
+            state.formats = {{values = {format_cell("DATE_TIME")}}, {values = {format_cell("DATE_TIME")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "datetime")
+            test.eq(state.schema.moment.type, "datetime")
+            test.eq(state.stored_rows[1].moment, "2026-01-15T12:00:00")
+            test.eq(state.stored_rows[2].moment, "2026-01-15T13:04:05")
+        end)
+
+        test.it("rounds DATE_TIME fractions near whole seconds", function()
+            state.values = {{"Moment"}, {46037 + 7 / 86400}}
+            state.formats = {{values = {format_cell("DATE_TIME")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "datetime")
+            test.eq(state.stored_rows[1].moment, "2026-01-15T00:00:07")
+        end)
+
+        test.it("falls back to dates when the store has no writable datetime type", function()
+            state.no_datetime = true
+            state.values = {{"Moment"}, {46037.99999710648}}
+            state.formats = {{values = {format_cell("DATE_TIME")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "date")
+            test.eq(state.schema.moment.type, "date")
+            test.eq(state.stored_rows[1].moment, "2026-01-15")
+        end)
+
+        test.it("ignores blank date cells and converts serial zero and leap days", function()
+            state.values = {{"Label", "Date"}, {"first", ""}, {"epoch", 0}, {"leap", 45351}, {"missing"}}
+            state.formats = {{}, {values = {{}, format_cell("DATE")}}, {values = {{}, format_cell("DATE")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[2].type, "date")
+            test.is_nil(state.stored_rows[1].date)
+            test.eq(state.stored_rows[2].date, "1899-12-30")
+            test.eq(state.stored_rows[3].date, "2024-02-29")
+            test.is_nil(state.stored_rows[4].date)
+        end)
+
+        test.it("reads all formats at the resolved range offset", function()
+            local input = args()
+            input.range = "NamedSales"
+            state.resolved_range = "'Sales team''s data'!Z7:AA50"
+            state.values = {{"Date", "Amount"}}
+            for index = 2, 31 do
+                state.values[index] = {46037, index}
+                state.formats[index - 1] = {values = {format_cell("DATE"), format_cell("NUMBER")}}
+            end
+            local result = importer.handler(input)
+            test.is_true(result.success)
+            test.eq(result.rows, 30)
+            test.eq(state.stored_rows[30].date, "2026-01-15")
+            test.eq(state.requests[2].query.ranges, "'Sales team''s data'!Z7:AA50")
+            test.eq(state.requests[2].query.fields, "sheets.data.rowData.values.effectiveFormat.numberFormat.type")
+            test.eq(#state.requests, 2)
+        end)
+
+        test.it("keeps mixed DATE and NUMBER cells as text with ISO dates", function()
+            state.values = {{"Value"}, {46037}, {46038}}
+            state.formats = {{values = {format_cell("DATE")}}, {values = {format_cell("NUMBER")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "string")
+            test.eq(state.stored_rows[1].value, "2026-01-15")
+            test.eq(state.stored_rows[2].value, "46038")
+        end)
+
+        test.it("keeps a plain number after row 21 unchanged when earlier cells are dates", function()
+            local input = args()
+            input.range = "Sales!A1:A22"
+            state.resolved_range = input.range
+            state.values = {{"Value"}}
+            for index = 2, 21 do
+                state.values[index] = {46037}
+                state.formats[index - 1] = {values = {format_cell("DATE")}}
+            end
+            state.values[22] = {42}
+            state.formats[21] = {values = {format_cell("NUMBER")}}
+            local result = importer.handler(input)
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "string")
+            test.eq(state.stored_rows[1].value, "2026-01-15")
+            test.eq(state.stored_rows[21].value, "42")
+            test.eq(#state.requests, 2)
+        end)
+
+        test.it("normalizes a date after row 21 when earlier cells are plain numbers", function()
+            local input = args()
+            input.range = "Sales!A1:A22"
+            state.resolved_range = input.range
+            state.values = {{"Value"}}
+            for index = 2, 21 do
+                state.values[index] = {42}
+                state.formats[index - 1] = {values = {format_cell("NUMBER")}}
+            end
+            state.values[22] = {46037}
+            state.formats[21] = {values = {format_cell("DATE")}}
+            local result = importer.handler(input)
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "string")
+            test.eq(state.stored_rows[1].value, "42")
+            test.eq(state.stored_rows[21].value, "2026-01-15")
+            test.eq(#state.requests, 2)
+        end)
+
+        test.it("infers dates starting after 20 blank cells", function()
+            local input = args()
+            input.range = "Sales!A1:A23"
+            state.resolved_range = input.range
+            state.values = {{"Date"}}
+            for index = 2, 21 do
+                state.values[index] = {""}
+                state.formats[index - 1] = {}
+            end
+            state.values[22], state.values[23] = {46037}, {46038}
+            state.formats[21] = {values = {format_cell("DATE")}}
+            state.formats[22] = {values = {format_cell("DATE")}}
+            local result = importer.handler(input)
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "date")
+            test.eq(result.rows, 2)
+            test.eq(state.stored_rows[1].date, "2026-01-15")
+            test.eq(state.stored_rows[2].date, "2026-01-16")
+            test.eq(#state.requests, 2)
+        end)
+
+        test.it("preserves a DATE_TIME after row 21 when earlier cells are DATE", function()
+            local input = args()
+            input.range = "Sales!A1:A22"
+            state.resolved_range = input.range
+            state.values = {{"Value"}}
+            for index = 2, 21 do
+                state.values[index] = {46037}
+                state.formats[index - 1] = {values = {format_cell("DATE")}}
+            end
+            state.values[22] = {46037.5}
+            state.formats[21] = {values = {format_cell("DATE_TIME")}}
+            local result = importer.handler(input)
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "string")
+            test.eq(state.stored_rows[1].value, "2026-01-15")
+            test.eq(state.stored_rows[21].value, "2026-01-15T12:00:00")
+            test.eq(#state.requests, 2)
+        end)
+
+        test.it("normalizes DATE cells before inferring a column with ISO text", function()
+            state.values = {{"Date"}, {46037}, {"2026-01-16"}}
+            state.formats = {{values = {format_cell("DATE")}}, {values = {format_cell("TEXT")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "date")
+            test.eq(state.stored_rows[1].date, "2026-01-15")
+            test.eq(state.stored_rows[2].date, "2026-01-16")
+        end)
+
+        test.it("uses the original serial day for DATE cells near midnight", function()
+            state.values = {{"Date"}, {46037.99999710648}}
+            state.formats = {{values = {format_cell("DATE")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "date")
+            test.eq(state.stored_rows[1].date, "2026-01-15")
+        end)
+
+        test.it("clamps rounded DATE_TIME cells near midnight without changing the day", function()
+            state.values = {{"Moment"}, {46037.99999710648}}
+            state.formats = {{values = {format_cell("DATE_TIME")}}}
+            local result = importer.handler(args())
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "datetime")
+            test.eq(state.stored_rows[1].moment, "2026-01-15T23:59:59")
+        end)
+
+        test.it("keeps date schema rules on repeat imports", function()
+            state.values = {{"Date"}, {46037}}
+            state.formats = {{values = {format_cell("DATE")}}}
+            test.is_true(importer.handler(args()).success)
+            state.values = {{"Date"}, {46038}}
+            test.is_true(importer.handler(args("append")).success)
+            test.is_nil(state.definitions[2].columns)
+            test.eq(state.stored_rows[2].date, "2026-01-16")
+            state.formats = {{values = {format_cell("NUMBER")}}}
+            local refused = importer.handler(args())
+            test.is_false(refused.success)
+            test.contains(refused.error, "existing field is date")
+            test.eq(#state.definitions, 2)
+        end)
+
+        test.it("stops before storage changes when the format request fails", function()
+            state.fail = "formats"
+            local result = importer.handler(args())
+            test.is_false(result.success)
+            test.contains(result.error, "Formats refused")
+            test.eq(#state.definitions, 0)
+            test.eq(state.commits, 0)
         end)
 
         test.it("keeps invalid dates as text and mixed cells as strings", function()

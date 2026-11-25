@@ -770,7 +770,7 @@ entries:
   - name: sheets_import_implementation
     kind: library.lua
     source: file://sheets_import_tool.lua
-    modules: [ctx, uuid]
+    modules: [ctx, uuid, time]
     imports:
       tool_result: kickside.contract:tool_result
       transport: kickside.google.client:transport

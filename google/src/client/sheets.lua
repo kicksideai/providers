@@ -29,8 +29,8 @@ function sheets.list_spreadsheets(conn: google_types.Connection, max_results: nu
     return transport.get(conn, drive_api() .. "/files", query)
 end
 
-function sheets.get_spreadsheet(conn: google_types.Connection, spreadsheet_id: string): (google_types.Result?, error?)
-    return transport.get(conn, sheets_api() .. "/" .. spreadsheet_id)
+function sheets.get_spreadsheet(conn: google_types.Connection, spreadsheet_id: string, options: any?): (google_types.Result?, error?)
+    return transport.get(conn, sheets_api() .. "/" .. spreadsheet_id, options)
 end
 
 function sheets.read_range(conn: google_types.Connection, spreadsheet_id: string, range: string, options: any?): (google_types.Result?, error?)

@@ -3,6 +3,7 @@ local sheets = require("sheets")
 local store = require("store")
 local ctx = require("ctx")
 local uuid = require("uuid")
+local time = require("time")
 local tool_result = require("tool_result")
 
 local function trim(value: any): string
@@ -37,11 +38,37 @@ local function cell_type(value: any): string?
     return "invalid"
 end
 
-local function profile(values: any): (any?, string?)
+local function format_range(values: any, resolved_range: any): (string?, string?)
+    if type(values) ~= "table" or type(values[1]) ~= "table" or #values[1] == 0 or #values < 2 then return nil, nil end
+    -- Values.get resolves sheet names, named ranges and offsets into an A1 range.
+    if type(resolved_range) ~= "string" or not resolved_range:match("^.+![A-Z]+%d+") then
+        return nil, "Google did not return the resolved A1 range"
+    end
+    return resolved_range, nil
+end
+
+local function serial_text(value: number, kind: string): string?
+    if value < -693593 or value >= 2958466 then return nil end
+    -- Sheets serials count days since 1899-12-30. Storage moments have no zone.
+    local serial_day = math.floor(value)
+    local seconds = (serial_day - 25569) * 86400
+    if kind ~= "date" then
+        seconds = seconds + math.min(math.floor((value - serial_day) * 86400 + 0.5), 86399)
+    end
+    local moment = time.unix(seconds, 0):utc()
+    local day = moment:format("2006-01-02")
+    if not is_date(day) then return nil end
+    return kind == "date" and day or day .. "T" .. moment:format("15:04:05")
+end
+
+local function profile(values: any, formats: any): (any?, string?)
     if type(values) ~= "table" or type(values[1]) ~= "table" or #values[1] == 0 then
         return nil, "The range needs a header row"
     end
     local fields, names, rows = {}, {}, {}
+    local sheet = formats and formats.sheets and formats.sheets[1]
+    local grid = sheet and sheet.data and sheet.data[1]
+    local format_rows = grid and grid.rowData or {}
     for index, raw in ipairs(values[1]) do
         local label = trim(raw)
         if label == "" then return nil, "Header " .. tostring(index) .. " is empty" end
@@ -57,10 +84,18 @@ local function profile(values: any): (any?, string?)
         if type(source) ~= "table" then return nil, "Invalid row " .. tostring(index) end
         if #source > #fields then return nil, "Row " .. tostring(index) .. " has values without headers" end
         local row, populated = {}, false
+        local cells = format_rows[index] and format_rows[index].values or {}
         for column, field in ipairs(fields) do
             local value = source[column]
             local inferred = cell_type(value)
             if inferred == "invalid" then return nil, "Invalid cell in row " .. tostring(index) end
+            local format = cells[column] and cells[column].effectiveFormat
+            local kind = format and format.numberFormat and format.numberFormat.type
+            if type(value) == "number" and (kind == "DATE" or kind == "DATE_TIME") then
+                inferred = kind == "DATE" and "date" or "datetime"
+                value = serial_text(value, inferred)
+                if not value then return nil, "Invalid date in row " .. tostring(index) end
+            end
             if inferred then
                 populated = true
                 row[field.name] = value
@@ -140,25 +175,28 @@ local function handler(args: any): (any?, error?)
     local selected = ctx.get("connection_id")
     local conn, conn_err = transport.connect(type(selected) == "string" and selected ~= "" and selected or nil)
     if not conn then return nil, conn_err end
-    local range = args.range
+    local range, formats = args.range, nil
     if not range then
-        local title = args.sheet
-        if not title then
-            local response, err = sheets.get_spreadsheet(conn, id)
-            if not response then return nil, err end
-            if not response.success then return tool_result.domain_error(response.error) end
-            local tabs = response.data and response.data.sheets or {}
-            title = tabs[1] and tabs[1].properties and tabs[1].properties.title
-            if type(title) ~= "string" or title == "" then return tool_result.domain_error("The spreadsheet has no sheet") end
-        end
-        range = "'" .. title:gsub("'", "''") .. "'"
+        -- A sheetless A1 range selects the first visible sheet without a metadata call.
+        range = args.sheet and "'" .. args.sheet:gsub("'", "''") .. "'" or "A:ZZZ"
     end
     local response, read_err = sheets.read_range(conn, id, range, {
-        majorDimension = "ROWS", valueRenderOption = "UNFORMATTED_VALUE", dateTimeRenderOption = "FORMATTED_STRING",
+        majorDimension = "ROWS", valueRenderOption = "UNFORMATTED_VALUE", dateTimeRenderOption = "SERIAL_NUMBER",
     })
     if not response then return nil, read_err end
     if not response.success then return tool_result.domain_error(response.error) end
-    local data, profile_err = profile(response.data and response.data.values)
+    local values = response.data and response.data.values
+    local resolved, range_err = format_range(values, response.data and response.data.range)
+    if range_err then return tool_result.domain_error(range_err) end
+    if resolved then
+        local answer, format_err = sheets.get_spreadsheet(conn, id, {
+            ranges = resolved, fields = "sheets.data.rowData.values.effectiveFormat.numberFormat.type",
+        })
+        if not answer then return nil, format_err end
+        if not answer.success then return tool_result.domain_error(answer.error) end
+        formats = answer.data
+    end
+    local data, profile_err = profile(values, formats)
     if not data then return tool_result.domain_error(profile_err) end
     if args.mode == "replace" and #data.rows == 0 then
         return tool_result.domain_error("The range has no data rows; replace was refused and the existing rows were kept")
@@ -184,6 +222,20 @@ local function handler(args: any): (any?, error?)
     local vocabulary, types_err = administrator:types({})
     local types, types_problem = checked(vocabulary, types_err, "types")
     if not types then return failed(types_problem) end
+    local has_datetime = false
+    for _, candidate in ipairs(types.types or {}) do
+        if candidate.bulk_writable ~= false and candidate.coerces_to == "datetime" then has_datetime = true; break end
+    end
+    if not has_datetime then
+        for _, field in ipairs(data.fields) do
+            if field.type == "datetime" then
+                field.type = "date"
+                for _, row in ipairs(data.rows) do
+                    if row[field.name] ~= nil then row[field.name] = row[field.name]:sub(1, 10) end
+                end
+            end
+        end
+    end
     local columns = {}
     for _, field in ipairs(data.fields) do
         local held = existing[field.name]
