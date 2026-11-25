@@ -23,7 +23,6 @@ override:
       - { name: "kickside.mail:api_router", value: "app:api" }
       - { name: "kickside.mail.sendgrid.security:user_security_scope", value: "app:user" }
   app:sendgrid_gateway:addr: "127.0.0.1:${stub_port}"
-  kickside.mail.security:send_access:groups: [app:mail_senders]
 vars:
   stub_port: 0
   pg_host: localhost

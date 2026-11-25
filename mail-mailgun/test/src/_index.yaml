@@ -58,6 +58,13 @@ entries:
     kind: security.scope
   - name: mail_senders
     kind: security.scope
+  - name: mail_senders_composition
+    kind: registry.entry
+    meta: { type: kickside.security.group_composition }
+    group_id: app:mail_senders
+    policies: [kickside.mail.security:send_access, app:stub_private_ip]
+  - name: user_admins
+    kind: security.scope
   - name: uploaders
     kind: security.scope
   - name: uploaders_composition
@@ -147,7 +154,7 @@ entries:
       - { name: "kickside.users:api_router", value: "app:api" }
       - { name: "kickside.users:ui_server", value: "app:gateway" }
       - { name: "kickside.users:target_db", value: "app:db" }
-      - { name: "kickside.users:admin_security_scope", value: "app:user" }
+      - { name: "kickside.users:admin_security_scope", value: "app:user_admins" }
       - { name: "kickside.users:login_role_resource", value: "app:*" }
       - { name: "kickside.security:target_db", value: "app:db" }
       - { name: "kickside.security:process_host", value: "app:processes" }
@@ -229,7 +236,6 @@ entries:
       effect: allow
   - name: stub_private_ip
     kind: security.policy
-    groups: [app:user]
     policy:
       resources: ['127.0.0.1', '::1']
       actions: [http_client.private_ip]
@@ -279,3 +285,4 @@ entries:
     modules: [security, funcs, sql, uuid, time]
     imports:
       provision: kickside.core.threads:provision
+      identity: kickside.execution:execution_identity

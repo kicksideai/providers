@@ -7,6 +7,14 @@ local NAMESPACE = "kickside.mail.sendgrid"
 
 return {run = test.run_cases(function()
     test.describe("SendGrid settings in System Settings", function()
+        test.it("assigns Send mail through the harness role instead of changing its policy", function()
+            local policy = assert(registry.get("kickside.mail.security:send_access"))
+            test.eq(0, #(policy.data.groups or {}))
+            local role = assert(registry.get("app:mail_senders_composition"))
+            test.eq("app:mail_senders", role.data.group_id)
+            test.eq("kickside.mail.security:send_access", role.data.policies[1])
+        end)
+
         test.it("describes host requirements and their scalar values", function()
             for _, name in ipairs({"api_base_url"}) do
                 local requirement = assert(registry.get(NAMESPACE .. ":" .. name))

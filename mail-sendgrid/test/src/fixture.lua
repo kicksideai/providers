@@ -5,6 +5,7 @@ local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
 local provision = require("provision")
+local identity = require("identity")
 
 local M = {}
 
@@ -24,15 +25,8 @@ function M.user(id, can_send)
     assert(db:release())
     local actor = assert(security.new_actor(id, {security_groups = groups}))
     assert(provision.ensure_user(actor, assert(security.named_scope("wippy.security:process")), id))
-    local scope = assert(security.named_scope("app:user"))
-    if can_send ~= false then
-        local policies = scope:policies()
-        policies[#policies + 1] = assert(security.policy("kickside.mail.security:send_access"))
-        for _, policy in ipairs(assert(security.named_scope("app:uploaders")):policies()) do
-            policies[#policies + 1] = policy
-        end
-        scope = assert(security.new_scope(policies))
-    end
+    local authority = assert(funcs.call("kickside.security.runtime:resolve_groups", {groups = groups}))
+    local scope = assert(identity.scope_from_groups(authority.groups, authority.policy_ids))
     return assert(funcs.new():with_actor(actor):with_scope(scope))
 end
 

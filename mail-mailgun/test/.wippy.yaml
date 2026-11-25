@@ -28,7 +28,6 @@ override:
   kickside.mail.binding:library:meta.provision.grants:
     - {subject_id: "system:kickside.mail.retention", subject_type: user, access_mask: 1}
     - {subject_id: "wippy.test:runner", subject_type: user, access_mask: 3}
-  kickside.mail.security:send_access:groups: [app:mail_senders]
 vars:
   stub_port: 0
   pg_host: localhost
