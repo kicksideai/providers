@@ -22,10 +22,6 @@ local function transport(input)
     return fixture.probe(fixture.admin(), "transport", {message = input})
 end
 
-local function delivery_admin()
-    return fixture.scoped({"kickside.mail.security:module_runtime", "kickside.mail.security:log_admin"})
-end
-
 local function sendgrid_status(delivery)
     for _, status in ipairs(delivery.transports) do
         if status.id == BINDING then return status end
@@ -71,7 +67,7 @@ return {
     configure = configure,
     send = send,
     transport = transport,
-    delivery_admin = delivery_admin,
+    delivery_admin = fixture.delivery_admin,
     sendgrid_status = sendgrid_status,
     fixture_message = fixture_message,
     requests = requests,

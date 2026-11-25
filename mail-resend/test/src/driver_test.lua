@@ -25,10 +25,6 @@ local function transport(input)
     return fixture.probe(fixture.admin(), "transport", {message = input})
 end
 
-local function delivery_admin()
-    return fixture.scoped({"kickside.mail.security:module_runtime", "kickside.mail.security:log_admin"})
-end
-
 local function resend_status(delivery)
     for _, status in ipairs(delivery.transports) do
         if status.id == BINDING then return status end
@@ -58,7 +54,7 @@ end
 return { run = test.run_cases(function()
     test.describe("Resend transport via real Settings and Uploads", function()
         test.it("lists the Resend transport with display data and delivery limits", function()
-            local current = assert(fixture.probe(delivery_admin(), "delivery_status"))
+            local current = assert(fixture.probe(fixture.delivery_admin(), "delivery_status"))
             local status = assert(resend_status(current))
             test.eq("Resend", status.title)
             test.eq("simple-icons:resend", status.icon)
@@ -138,7 +134,7 @@ return { run = test.run_cases(function()
         end)
 
         test.it("reports credential availability and refuses unset credentials before egress", function()
-            local admin = delivery_admin()
+            local admin = fixture.delivery_admin()
             local available = assert(resend_status(assert(fixture.probe(admin, "delivery_status"))))
             test.is_true(available.ready)
             test.is_true(configure({["kickside.mail.resend"] = {api_key = ""}}).success)
@@ -169,7 +165,7 @@ return { run = test.run_cases(function()
         end)
 
         test.it("excludes the installed binding and refuses Mail sends when admission is removed", function()
-            local admin = delivery_admin()
+            local admin = fixture.delivery_admin()
             local policy = assert(registry.get(ADMISSION))
             local removal = assert(registry.snapshot()):changes()
             removal:delete({ADMISSION})

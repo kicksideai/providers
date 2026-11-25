@@ -9,6 +9,18 @@ local identity = require("identity")
 
 local M = {}
 
+local function member_executor(actor, groups)
+    local authority = assert(funcs.call("kickside.security.runtime:resolve_groups", {groups = groups}))
+    local scope = assert(identity.scope_from_groups(authority.groups, authority.policy_ids))
+    return assert(funcs.new():with_actor(actor):with_scope(scope))
+end
+
+function M.delivery_admin()
+    local groups = {"app:user", "kickside.mail_driver_fixture.testing:delivery_admins"}
+    local actor = assert(security.new_actor(uuid.v4(), {security_groups = groups}))
+    return member_executor(actor, groups)
+end
+
 function M.user(id, can_send)
     id = id or uuid.v4()
     local db = assert(sql.get("app:db"))
@@ -25,9 +37,7 @@ function M.user(id, can_send)
     assert(db:release())
     local actor = assert(security.new_actor(id, {security_groups = groups}))
     assert(provision.ensure_user(actor, assert(security.named_scope("wippy.security:process")), id))
-    local authority = assert(funcs.call("kickside.security.runtime:resolve_groups", {groups = groups}))
-    local scope = assert(identity.scope_from_groups(authority.groups, authority.policy_ids))
-    return assert(funcs.new():with_actor(actor):with_scope(scope))
+    return member_executor(actor, groups)
 end
 
 function M.admin(id)
