@@ -1,6 +1,10 @@
 version: '1.0'
 override:
   'app:token_retry_server:addr': ':${http_port}'
+  'kickside.google.client:transport:modules': [json]
+  'kickside.google.client:transport:imports.http_client': app.import_security:http_fixture
+  'kickside.google.traits:import_administrator:meta.binding': app.import_security:store
+  'kickside.google.traits:import_receiver:meta.binding': app.import_security:store
 vars:
   http_port: 19146
   pg_host: localhost

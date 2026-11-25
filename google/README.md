@@ -71,12 +71,80 @@ resource access determine which tools are available.
 | [`GoogleCalendarWrite`](src/traits/_index.yaml) | See the operation schema |
 | [`GoogleSheetsRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleSheetsWrite`](src/traits/_index.yaml) | See the operation schema |
+| [`GoogleSheetsImport`](src/traits/_index.yaml) | `spreadsheet`, optional `range` or `sheet`, `dataset {code, title}`, `mode` |
 | [`GoogleSlidesRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleSlidesWrite`](src/traits/_index.yaml) | See the operation schema |
 | [`GoogleDocsRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleDocsWrite`](src/traits/_index.yaml) | See the operation schema |
 | [`GoogleContactsRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleAnalyticsRead`](src/traits/_index.yaml) | `fields`, `limit`, `max_results`, `page_token`, `offset` |
+
+### Import a Sheets dataset
+
+Attach the `kickside.google.traits:sheets_importer` trait to the agent. Pair it
+with Google Sheets Reader or Google Drive Reader to find the spreadsheet. The
+Google connection needs `https://www.googleapis.com/auth/spreadsheets.readonly`
+and `https://www.googleapis.com/auth/drive.metadata.readonly`. If the account is
+not connected or a Google tool reports missing access, call `ConnectAccount`
+with provider `google` and both scopes before making or retrying Google calls.
+Wait for consent before continuing. Find a spreadsheet by name with
+`GoogleDriveRead` action `list_files` and a `name = 'Sheet name'` query, optionally
+filtered to `mimeType = 'application/vnd.google-apps.spreadsheet'`. The
+[Drive files.list API](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)
+accepts the metadata scope for this lookup. The import uses the connection
+selected by the trait, or the caller's default accessible Google connection.
+
+Bind `kickside.google:import_administrator_binding` to a
+`kickside.data:definable` implementation and
+`kickside.google:import_receiver_binding` to its `kickside.data:loadable`
+implementation. For Storage, the bindings are
+`spiralscout.storage.definable:administrator` and
+`spiralscout.storage.loadable:receiver`. The host owns installation and access
+grants. Google declares a Data Explorer source that maps these requirements to
+the contracts, without depending on Data Explorer or Storage modules.
+
+Call `GoogleSheetsImport` with, for example:
+
+```json
+{
+  "spreadsheet": "https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit",
+  "sheet": "Kickside demo sales",
+  "dataset": {"code": "demo_sales", "title": "Demo sales"},
+  "mode": "replace"
+}
+```
+
+The first row supplies field labels. Field names use lowercase Latin letters,
+digits and underscores. Empty headers and duplicate normalized names fail.
+Numbers, booleans and ISO dates retain their types. Mixed columns become text,
+and blank cells are nullable. Localized dates remain text. A missing range and
+sheet selects the first sheet. The values request uses unformatted numbers and
+formatted date strings, as described in the
+[Sheets values API](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/get).
+
+The tool reads the store's type vocabulary and existing fields before defining
+new fields. Compatible existing types stay unchanged, including float fields
+receiving integers and text fields receiving other values as strings. A type
+conflict returns an error naming the field before schema changes or staging.
+Columns with no nonblank values keep their existing type. An unchanged schema
+omits `columns` from the define request. Existing text fields increase their
+supported `max_length` before staging when a later import needs more space.
+The field type stays unchanged; an unsupported increase fails before staging.
+New string fields use the longest value to set the supported length option,
+or use long text when the value exceeds the short string limit.
+
+The tool loads batches under one load and commits once. Replace requests
+replacement of all dataset rows. A replacement with no data rows fails before
+schema changes or staging, so existing rows stay. Append adds rows, so a
+repeated call can add duplicates. A refused commit or a `noop` result returns
+a failure. A schema change can remain if a later load fails. The result
+contains `dataset {code, title, target}`, `rows`, `fields` and at most five
+`preview` rows. The full row set stays inside the import.
+
+On Windows, run `make.bat test` from this module. Set `WIPPY_BIN` to the selected
+Wippy executable and `WIPPY_TEST_PORT` to an isolated test port. The adapter
+mirrors the Makefile's install and test steps. `make.bat lint` checks this
+module's namespaces.
 
 ### Host requirements
 

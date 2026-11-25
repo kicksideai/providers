@@ -33,8 +33,8 @@ function sheets.get_spreadsheet(conn: google_types.Connection, spreadsheet_id: s
     return transport.get(conn, sheets_api() .. "/" .. spreadsheet_id)
 end
 
-function sheets.read_range(conn: google_types.Connection, spreadsheet_id: string, range: string): (google_types.Result?, error?)
-    return transport.get(conn, sheets_api() .. "/" .. spreadsheet_id .. "/values/" .. transport.encode_segment(range))
+function sheets.read_range(conn: google_types.Connection, spreadsheet_id: string, range: string, options: any?): (google_types.Result?, error?)
+    return transport.get(conn, sheets_api() .. "/" .. spreadsheet_id .. "/values/" .. transport.encode_segment(range), options)
 end
 
 function sheets.update_values(conn: google_types.Connection, spreadsheet_id: string, range: string, values: any): (google_types.Result?, error?)

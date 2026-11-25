@@ -1,0 +1,107 @@
+version: "1.0"
+namespace: app.import_security
+
+entries:
+  - name: http_fixture
+    kind: library.lua
+    source: file://http_fixture.lua
+    modules: [http_client, json]
+
+  - name: caller
+    kind: security.policy
+    policy:
+      resources: '*'
+      actions: [registry.get, registry.find, contract.get, contract.open, contract.call, contract.security, contract.implementations, funcs.call, funcs.security, funcs.context, db.get, env.get]
+      effect: allow
+
+  - name: writer
+    kind: security.policy
+    policy:
+      resources: ['test.store:demo_sales']
+      actions: [store.write]
+      effect: allow
+
+  - name: unsupported
+    kind: function.lua
+    source: file://store.lua
+    method: unsupported
+    modules: [security, sql]
+
+  - name: types
+    kind: function.lua
+    source: file://store.lua
+    method: types
+    modules: [security, sql]
+  - name: list
+    kind: function.lua
+    source: file://store.lua
+    method: list
+    modules: [security, sql]
+  - name: define
+    kind: function.lua
+    source: file://store.lua
+    method: define
+    modules: [security, sql]
+  - name: describe
+    kind: function.lua
+    source: file://store.lua
+    method: describe
+    modules: [security, sql]
+  - name: begin
+    kind: function.lua
+    source: file://store.lua
+    method: begin
+    modules: [security, sql]
+  - name: append
+    kind: function.lua
+    source: file://store.lua
+    method: append
+    modules: [security, sql]
+  - name: commit
+    kind: function.lua
+    source: file://store.lua
+    method: commit
+    modules: [security, sql]
+  - name: discard
+    kind: function.lua
+    source: file://store.lua
+    method: discard
+    modules: [security, sql]
+
+  - name: store
+    kind: contract.binding
+    contracts:
+      - contract: kickside.data:definable
+        methods:
+          types: app.import_security:types
+          define: app.import_security:define
+          remove: app.import_security:unsupported
+      - contract: kickside.data:loadable
+        methods:
+          list: app.import_security:list
+          describe: app.import_security:describe
+          describe_scope: app.import_security:unsupported
+          begin: app.import_security:begin
+          append: app.import_security:append
+          commit: app.import_security:commit
+          rehearse: app.import_security:unsupported
+          discard: app.import_security:discard
+
+  - name: test
+    kind: function.lua
+    source: file://test.lua
+    method: run
+    meta: {type: test, suite: google_import}
+    modules: [funcs, security, sql, uuid]
+    imports:
+      test: wippy.test:test
+      connection_manager: kickside.oauth:connection_manager
+
+  - name: seed
+    kind: function.lua
+    source: file://test.lua
+    method: seed
+    modules: [funcs, security, sql, uuid]
+    imports:
+      test: wippy.test:test
+      connection_manager: kickside.oauth:connection_manager

@@ -6,6 +6,18 @@ namespace: app.suites
 # exclude_meta and drops meta.type=test entries from its own tree.
 
 entries:
+  - name: sheets_import_test
+    kind: function.lua
+    meta: {type: test, suite: google_import}
+    source: file://sheets_import_test.lua
+    method: run
+    modules: [registry, json]
+    imports:
+      test: wippy.test:test
+      transport: kickside.google.client:transport
+      store: kickside.google.traits:sheets_import_store
+      importer: kickside.google.traits:sheets_import_implementation
+
   - name: transport_test
     kind: function.lua
     meta:

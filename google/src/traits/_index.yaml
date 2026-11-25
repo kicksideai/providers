@@ -716,6 +716,129 @@ entries:
       sheets: kickside.google.client:sheets
       implementation: kickside.google.traits:sheets_tool_implementation
 
+  - name: sheets_importer
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Google Sheets Importer
+      public: true
+      icon: tabler:table-import
+      comment: Imports Google Sheets into the configured data store.
+      tags: [google, sheets, dataset, import]
+      web_component: kickside-google-picker
+      context_schema:
+        type: object
+        properties:
+          connection_id:
+            type: string
+            description: Google connection selected by the trait picker.
+        additionalProperties: false
+    prompt: |
+      Use GoogleSheetsImport to import a spreadsheet into a dataset. When the
+      account is not connected, call ConnectAccount with provider "google" and
+      scopes ["https://www.googleapis.com/auth/spreadsheets.readonly",
+      "https://www.googleapis.com/auth/drive.metadata.readonly"] before the first Google call.
+      If a Google tool reports missing access, call ConnectAccount with the same
+      provider and scopes before retrying. Complete the user's consent first.
+      Find the spreadsheet by name with GoogleDriveRead action list_files and
+      query "name = 'Kickside demo sales' and mimeType = 'application/vnd.google-apps.spreadsheet'",
+      replacing the example name and escaping apostrophes with a backslash.
+      The metadata lookup uses drive.metadata.readonly; read rows with Sheets.
+      Pass the ID or URL to GoogleSheetsImport, along with optional
+      range or sheet name, dataset code and title, and mode replace or append.
+      The first row contains field names. Import the rows directly with the tool;
+      do not read all rows into the conversation. The answer contains the dataset
+      target, row count, field types and at most five preview rows. Replace asks
+      the store to replace all rows; append adds rows and can duplicate a repeated
+      import. A refused commit is a failed import. The caller's access applies.
+    tools:
+      - kickside.google.traits:sheets_import_tool
+
+  - name: import_administrator
+    kind: registry.entry
+    meta: {binding: "", comment: Configured kickside.data:definable binding.}
+
+  - name: import_receiver
+    kind: registry.entry
+    meta: {binding: "", comment: Configured kickside.data:loadable binding.}
+
+  - name: sheets_import_store
+    kind: library.lua
+    source: file://sheets_import_store.lua
+    modules: [contract, registry, security]
+
+  - name: sheets_import_implementation
+    kind: library.lua
+    source: file://sheets_import_tool.lua
+    modules: [ctx, uuid]
+    imports:
+      tool_result: kickside.contract:tool_result
+      transport: kickside.google.client:transport
+      sheets: kickside.google.client:sheets
+      store: kickside.google.traits:sheets_import_store
+
+  - name: sheets_import_tool
+    kind: function.lua
+    meta:
+      type: tool
+      mcp:
+        required_scopes: [state.read, state.write]
+      title: Google Sheets Import
+      llm_alias: GoogleSheetsImport
+      llm_description: Import Google Sheets rows directly into a dataset in the configured data store. Return the committed row count, field types and at most five preview rows. Replace replaces the dataset; append adds rows. No full row set is returned to the model.
+      input_schema: |
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["spreadsheet", "dataset", "mode"],
+          "properties": {
+            "spreadsheet": {"type": "string", "minLength": 1, "description": "Google spreadsheet ID or https://docs.google.com/spreadsheets/d/... URL."},
+            "range": {"type": "string", "minLength": 1, "description": "A1 range including the header row. Use range or sheet."},
+            "sheet": {"type": "string", "minLength": 1, "description": "Sheet name. Defaults to the first sheet when range is absent."},
+            "dataset": {
+              "type": "object", "additionalProperties": false, "required": ["code", "title"],
+              "properties": {
+                "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                "title": {"type": "string", "minLength": 1}
+              }
+            },
+            "mode": {"type": "string", "enum": ["replace", "append"]}
+          },
+          "not": {"required": ["range", "sheet"]}
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "required": ["success"],
+          "properties": {
+            "success": {"type": "boolean"},
+            "error": {"type": "string"},
+            "dataset": {
+              "type": "object", "required": ["code", "title", "target"],
+              "properties": {"code": {"type": "string"}, "title": {"type": "string"}, "target": {"type": "string"}}
+            },
+            "rows": {"type": "integer", "minimum": 0},
+            "fields": {
+              "type": "array", "items": {
+                "type": "object", "required": ["name", "label", "type", "nullable"],
+                "properties": {
+                  "name": {"type": "string"}, "label": {"type": "string"},
+                  "type": {"type": "string", "enum": ["string", "integer", "number", "boolean", "date"]},
+                  "nullable": {"type": "boolean"}
+                }
+              }
+            },
+            "preview": {"type": "array", "maxItems": 5, "items": {"type": "object", "additionalProperties": true}}
+          }
+        }
+    source: file://sheets_import_entry.lua
+    method: handler
+    imports:
+      implementation: kickside.google.traits:sheets_import_implementation
+    security:
+      policies:
+        - kickside.google.security:import_store_access
+
   # ─── Slides ──────────────────────────────────────────────────────────
   - name: slides_reader
     kind: registry.entry
