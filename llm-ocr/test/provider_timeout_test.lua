@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local json = require("json")
 local test = require("test")
 local ocr = require("ocr")
 local llm = require("llm")
@@ -36,6 +37,7 @@ local function check(driver, case)
     end
     local ok, err = pcall(function()
         local context, sent = {}, {}
+        local body
         replace(llm, "_providers", providers)
         replace(llm, "_usage_tracker", false)
         replace(llm, "_model_resolver", {resolve = function()
@@ -61,6 +63,7 @@ local function check(driver, case)
         local ctx = {all = function() return context end, get = function(key) return context[key] end}
         local env = {get = function() return nil end}
         local http = {post = function(_, options)
+            body = options.body
             sent[#sent + 1] = options.timeout
             return {status_code = 401, headers = {}, body = '{"error":{"message":"timeout probe"}}'}
         end}
@@ -89,11 +92,17 @@ local function check(driver, case)
                 return {access_key = "test-access", secret_key = "test-secret"}
             end})
         end
-        local text, generate_err = ocr.new().transcribe("image bytes", {model = "ocr-timeout-model", timeout = case.requested})
+        local text, generate_err = ocr.new().transcribe("image bytes", {model = "ocr-timeout-model", timeout = case.requested, mime = "image/jpeg"})
         test.is_nil(text)
         test.not_nil(generate_err)
         test.eq(#sent, 1, tostring(generate_err))
         test.eq(sent[1], case.expected)
+        if driver.name == "Bedrock" then
+            local request = json.decode(body)
+            test.is_nil(request.inferenceConfig.temperature)
+            test.eq(request.inferenceConfig.maxTokens, 4000)
+            test.eq(request.messages[1].content[2].image.format, "jpeg")
+        end
     end)
     for i = #restore, 1, -1 do restore[i]() end
     if not ok then error(err) end
