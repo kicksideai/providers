@@ -158,7 +158,6 @@ local function new(runtime: any): any
             end
             local response, gen_err = llm.generate({messages = {}}, {
                 model = model,
-                temperature = 0,
                 max_tokens = configured_limit or DEFAULT_MAX_TOKENS,
                 timeout = timeout,
                 prepare_request = prepare_request,
