@@ -12,10 +12,11 @@ entries:
   - name: fixture
     kind: library.lua
     source: file://fixture.lua
-    modules: [security, funcs, sql, uuid, time, channel, events, fs]
+    modules: [security, funcs, sql, uuid, time, channel, fs]
     imports:
       provision: kickside.core.threads:provision
       identity: kickside.execution:execution_identity
+      signal: test.mail_driver_fixture.testing:changes_signal
   - name: actor_probe
     kind: library.lua
     source: file://actor_probe.lua
@@ -28,19 +29,28 @@ entries:
     kind: function.lua
     source: file://realtime.lua
     method: broadcast
-    modules: [events, security, fs]
+    modules: [security, fs]
+    imports: { signal: test.mail_driver_fixture.testing:changes_signal }
     security:
       policies: [test.mail_driver_fixture.testing:signal, test.mail_driver_fixture.testing:signal_storage]
   - name: notify
     kind: function.lua
     source: file://realtime.lua
     method: notify
-    modules: [events, security, fs]
+    modules: [security, fs]
+    imports: { signal: test.mail_driver_fixture.testing:changes_signal }
+  - name: changes
+    kind: pg.scope
+    lifecycle: {auto_start: true}
+  - name: changes_signal
+    kind: library.lua
+    source: file://signal.lua
+    modules: [pg, process]
   - name: signal
     kind: security.policy
     policy:
-      resources: [mail.driver.fixture]
-      actions: [events.send]
+      resources: [test.mail_driver_fixture.testing:changes, mail.driver.fixture.waiters]
+      actions: [pg.open, pg.broadcast_local]
       effect: allow
   - name: signals
     kind: fs.directory

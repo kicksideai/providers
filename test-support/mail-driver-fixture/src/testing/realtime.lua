@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-local events = require("events")
+local signal = require("signal")
 local fs = require("fs")
 local security = require("security")
 
@@ -10,7 +10,7 @@ local function broadcast(input)
             local signals = assert(fs.get("test.mail_driver_fixture.testing:signals"))
             assert(signals:writefile("library", input.topic))
         end
-        assert(events.send("mail.driver.fixture", input.topic, input.topic))
+        signal.publish(input.topic)
     end
     return {success = true}
 end

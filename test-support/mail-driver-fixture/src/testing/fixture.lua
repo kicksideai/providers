@@ -5,7 +5,7 @@ local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
 local channel = require("channel")
-local events = require("events")
+local signal = require("signal")
 local fs = require("fs")
 local provision = require("provision")
 local identity = require("identity")
@@ -68,16 +68,17 @@ function M.probe(actor, action, args)
 end
 
 local function await_change(topic, read, pending)
-    local subscription = assert(events.subscribe("mail.driver.fixture", topic))
-    local changes = subscription:channel()
+    local changes, close = signal.subscribe()
     local deadline = assert(time.after("25s"))
     local result, err = read()
-    while pending(result, err) do
-        local wake = channel.select({changes:case_receive(), deadline:case_receive()})
-        result, err = read()
-        if wake.channel == deadline then break end
+    if pending(result, err) then
+        repeat
+            local wake = channel.select({changes:case_receive(), deadline:case_receive()})
+            if wake.channel == deadline then break end
+            if wake.value == topic then result, err = read() end
+        until not pending(result, err)
     end
-    subscription:close()
+    close()
     return result, err
 end
 
