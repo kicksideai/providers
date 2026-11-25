@@ -20,3 +20,20 @@ entries:
     source: file://validate.lua
     method: api_key
     imports: {config: kickside.mail.driver:config}
+  - name: settings_block
+    kind: registry.entry
+    meta:
+      type: kickside.settings:block
+      comment: The SendGrid entry in System Settings, beside Mail; the shared settings card edits this namespace.
+    key: mail-sendgrid
+    title: SendGrid
+    icon: simple-icons:sendgrid
+    group: Integrations
+    order: 33
+    component_tag: kickside-settings-provider
+    namespace: kickside.mail.sendgrid
+    config:
+      namespace: kickside.mail.sendgrid
+      title: SendGrid
+      icon: simple-icons:sendgrid
+      help: SendGrid API key for Mail delivery.

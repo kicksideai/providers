@@ -242,6 +242,14 @@ entries:
       uploads: kickside.uploads:uploads
     security:
       policies: [app:settings_probe_access]
+  - name: settings_block_test
+    kind: function.lua
+    meta: { type: test, suite: mail_sendgrid_settings }
+    source: file://settings_block_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      settings_blocks: kickside.settings:settings_blocks
   - name: driver_test
     kind: function.lua
     meta: { type: test, suite: mail_sendgrid }
