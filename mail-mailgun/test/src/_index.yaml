@@ -5,6 +5,14 @@ entries:
   - name: definition
     kind: ns.definition
     meta: { title: Example Workspace }
+  - name: site_title
+    kind: registry.entry
+    meta: {type: "kickside.settings:definition"}
+    namespace: kickside.ui
+    key: title
+    scope: global
+    value_type: string
+    default: Example Workspace
   - name: db
     kind: db.sql.sqlite
     file: ":memory:"
@@ -212,7 +220,7 @@ entries:
     modules: [security, contract, funcs, time]
     imports:
       client: kickside.mail:client
-      settings: kickside.mail:settings
+      settings: kickside.mail.driver:config
       uploads: kickside.uploads:uploads
     security:
       policies: [kickside.mail.security:settings_read]
@@ -221,11 +229,10 @@ entries:
     meta: { type: test, suite: mail_mailgun }
     source: file://driver_test.lua
     method: run
-    modules: [uuid, fs, json, registry, base64, sql, funcs, security]
+    modules: [uuid, fs, json, registry, base64, sql, funcs, security, contract]
     imports:
       test: wippy.test:test
       fixture: app:fixture
-      render: kickside.mail.views:render
       settings_writer: kickside.settings.persist:settings_writer
   - name: fixture
     kind: library.lua

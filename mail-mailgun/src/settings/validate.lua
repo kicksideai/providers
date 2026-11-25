@@ -1,11 +1,11 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local types = require("mail_types")
-local message = require("message")
+local config = require("config")
 
-local M = {}
+local M = {api_key = config.validate_api_key}
 
 function M.is_domain(value: unknown): boolean
-    return type(value) == "string" and message.address("x@" .. value)
+    return type(value) == "string" and config.address("x@" .. value)
 end
 
 function M.is_region(value: unknown): boolean

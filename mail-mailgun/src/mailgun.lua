@@ -3,7 +3,6 @@ local types = require("types")
 local mail = require("mail_types")
 local delivery = require("delivery")
 local uuid = require("uuid")
-local message = require("message")
 local validate = require("validate")
 local settings = require("settings")
 
@@ -21,7 +20,7 @@ local function response_error(response: mail.HttpResponse, key: string): error
 end
 
 local function configuration(): (types.Config?, error?)
-    local values, err = settings.read("kickside.mail.mailgun")
+    local values, err = settings.settings("kickside.mail.mailgun")
     if err then return nil, err end
     values = values :: types.Settings
     local key, key_err = settings.api_key(values, "Mailgun")
@@ -38,16 +37,20 @@ local function configuration(): (types.Config?, error?)
     return {key = key, domain = values.domain, region = values.region}, nil
 end
 
-function M.available(): (mail.Availability?, error?)
+function M.status(): (mail.TransportStatus?, error?)
     local _, err = configuration()
-    return settings.available(err)
+    local state, status_err = settings.status_error(err)
+    if status_err then return nil, status_err end
+    return {title = "Mailgun", icon = "simple-icons:mailgun", description = "Deliver mail through Mailgun.",
+        settings_ns = "kickside.mail.mailgun", max_recipients = 1000, max_message_bytes = 25000000, idempotent = false,
+        ready = state.ready, code = state.code, reason = state.reason}, nil
 end
 
-local function request(config: types.Config, body: string, content_type: string): (mail.HttpResponse?, error?)
+local function request(config: types.Config, body: string, content_type: string, deadline: string): (mail.HttpResponse?, error?)
     local url, url_err = settings.endpoint("kickside.mail.mailgun:endpoints", config.region)
     if url_err then return nil, url_err end
     local sent, err = delivery.post(url .. "/v3/" .. config.domain .. "/messages", body,
-        {["Content-Type"] = content_type}, {user = "api", pass = config.key})
+        {["Content-Type"] = content_type}, deadline, {user = "api", pass = config.key})
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code ~= 200 then
@@ -108,10 +111,10 @@ end
 function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
     local config, config_err = configuration()
     if config_err then return nil, config_err end
-    local body, content_type, body_err = multipart(input, message.mailbox(input.from))
+    local body, content_type, body_err = multipart(input, settings.mailbox(input.from))
     if body_err then return nil, body_err end
 
-    local response, err = request(config, body :: string, content_type :: string)
+    local response, err = request(config, body :: string, content_type :: string, input.deadline)
     if err then return nil, err end
     return delivery.message_id(response :: mail.HttpResponse)
 end

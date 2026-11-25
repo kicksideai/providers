@@ -18,19 +18,6 @@ entries:
     kind: library.lua
     source: file://types.lua
     imports: { mail_types: kickside.mail:types }
-  - name: driver
-    kind: registry.entry
-    meta: { type: "kickside.mail:driver" }
-    id: mailgun
-    max_recipients: 1000
-    max_message_bytes: 25000000
-    label: Mailgun
-    icon: simple-icons:mailgun
-    description: Deliver mail through Mailgun.
-    binding: kickside.mail.mailgun:transport
-    settings_ns: kickside.mail.mailgun
-    settings_view: kickside-mailgun-settings
-    available_func: kickside.mail.mailgun:available
   - name: endpoints
     kind: registry.entry
     endpoints: {}
@@ -48,7 +35,7 @@ entries:
     kind: contract.binding
     contracts:
       - contract: kickside.mail:transport
-        methods: { send: "kickside.mail.mailgun:send" }
+        methods: {send: kickside.mail.mailgun:send, status: kickside.mail.mailgun:status}
   - name: send
     kind: function.lua
     source: file://mailgun.lua
@@ -57,27 +44,25 @@ entries:
     imports:
       types: kickside.mail.mailgun:types
       mail_types: kickside.mail:types
-      settings: kickside.mail:settings
+      settings: kickside.mail.driver:config
       validate: kickside.mail.mailgun.settings:validate
-      message: kickside.mail:message
-      delivery: kickside.mail.service:delivery
+      delivery: kickside.mail.driver:http
     security:
       policies:
-        - kickside.mail.security:settings_read
-        - kickside.mail.security:settings_admin_read
+        - kickside.mail.mailgun.security:settings_read
+        - kickside.mail.mailgun.security:settings_admin_read
         - kickside.mail.mailgun.security:http_access
         - kickside.mail.mailgun.security:provider_reads
-  - name: available
+  - name: status
     kind: function.lua
     source: file://mailgun.lua
-    method: available
+    method: status
     modules: [uuid]
     imports:
       types: kickside.mail.mailgun:types
       mail_types: kickside.mail:types
-      settings: kickside.mail:settings
+      settings: kickside.mail.driver:config
       validate: kickside.mail.mailgun.settings:validate
-      message: kickside.mail:message
-      delivery: kickside.mail.service:delivery
+      delivery: kickside.mail.driver:http
     security:
-      policies: [kickside.mail.security:settings_read, kickside.mail.security:settings_admin_read]
+      policies: [kickside.mail.mailgun.security:settings_read, kickside.mail.mailgun.security:settings_admin_read]

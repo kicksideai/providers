@@ -3,7 +3,6 @@ local time = require("time")
 local security = require("security")
 local contract = require("contract")
 local client = require("client")
-local funcs = require("funcs")
 local settings = require("settings")
 local uploads = require("uploads")
 
@@ -21,11 +20,18 @@ local function run(input)
         end
         return {success = true}
     end
-    if input.action == "available" then
-        return funcs.call("kickside.mail.mailgun:available")
+    if input.action == "delivery_status" then
+        local mailer, err = client.mailer()
+        if err then return nil, err end
+        return mailer:delivery_status()
+    end
+    if input.action == "status" then
+        local transport, err = contract.open("kickside.mail.mailgun:transport")
+        if err then return nil, err end
+        return transport:status()
     end
     if input.action == "read_settings" then
-        return settings.read("kickside.mail.mailgun")
+        return settings.settings("kickside.mail.mailgun")
     end
     if input.action == "store" then
         local actor = assert(security.actor())
