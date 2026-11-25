@@ -13,7 +13,7 @@ In **Settings → Integrations → Mail**, select **SendGrid** and set `api_key`
 
 ## Contract and tools
 
-`kickside.mail.sendgrid:transport` implements the Mail `send` and `status` methods. `send` uses Mail’s delivery deadline and reads the provider’s message ID from the `X-Message-Id` header on HTTP 202. `status` reports display data, the settings namespace, limits of 1,000 recipients and 29,999,999 bytes, and `idempotent: false`. A missing or invalid API key returns `ready: false`, `code: invalid_config`, and a setup reason.
+`kickside.mail.sendgrid:transport` implements the Mail `send` and `status` methods. `send` uses Mail’s delivery deadline and reads the provider’s message ID from the `X-Message-Id` header on HTTP 202. `status` reports display data, the settings namespace, limits of 1,000 recipients and 29,999,999 bytes, and `idempotent: false`. A missing or invalid API key returns `ready: false`, `a setup code`, and a reason. An invalid delivery endpoint reports `ready: false` with `provider_endpoint_invalid`.
 
 Mail discovers and opens the binding through the transports group. SendGrid contributes this policy to the group.
 

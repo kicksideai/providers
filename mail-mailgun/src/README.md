@@ -13,7 +13,7 @@ In **Settings → Integrations → Mail**, select **Mailgun** and set `api_key` 
 
 ## Contract and tools
 
-`kickside.mail.mailgun:transport` implements the Mail `send` and `status` methods. `send` uses Mail’s delivery deadline and returns the provider’s message ID when Mailgun supplies one. `status` reports display data, the settings namespace, limits of 1,000 recipients and 25,000,000 bytes, and `idempotent: false`. A missing or invalid setting returns `ready: false`, `code: invalid_config`, and a setup reason.
+`kickside.mail.mailgun:transport` implements the Mail `send` and `status` methods. `send` uses Mail’s delivery deadline and returns the provider’s message ID when Mailgun supplies one. `status` reports display data, the settings namespace, limits of 1,000 recipients and 25,000,000 bytes, and `idempotent: false`. A missing or invalid setting returns `ready: false`, `a setup code`, and a reason. An invalid delivery endpoint reports `ready: false` with `provider_endpoint_invalid`.
 
 Mail discovers and opens the binding through the transports group. Mailgun contributes this policy to the group.
 

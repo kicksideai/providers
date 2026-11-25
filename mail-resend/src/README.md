@@ -13,7 +13,7 @@ In **Settings → Integrations → Mail**, select **Resend** and set `api_key`, 
 
 ## Contract and tools
 
-`kickside.mail.resend:transport` implements the Mail `send` and `status` methods. `send` uses Mail's delivery deadline and returns the provider’s message ID when Resend supplies one. `status` reports display data, the settings namespace, limits of 50 recipients and 40,000,000 bytes, and support for idempotency. A missing or invalid API key returns `ready: false`, `code: invalid_config`, and a setup reason.
+`kickside.mail.resend:transport` implements the Mail `send` and `status` methods. `send` uses Mail's delivery deadline and returns the provider’s message ID when Resend supplies one. `status` reports display data, the settings namespace, limits of 50 recipients and 40,000,000 bytes, and support for idempotency. A missing or invalid API key returns `ready: false`, `a setup code`, and a reason. An invalid delivery endpoint reports `ready: false` with `provider_endpoint_invalid`.
 
 Mail discovers and opens the binding through the transports group. Resend contributes this policy to the group.
 

@@ -46,17 +46,29 @@ local function response_error(response: mail.HttpResponse, api_key: string): err
     return delivery.status_error(status, 422, hint, detail)
 end
 
+local function endpoint(): (string?, error?)
+    return settings.endpoint("kickside.mail.resend:endpoints", "api", "exact")
+end
+
 function M.status(): (mail.TransportStatus?, error?)
     local _, err = settings.read_api_key(SETTINGS_NS, TITLE)
+    if not err then
+        local _, endpoint_err = endpoint()
+        err = endpoint_err
+    end
     local state, status_err = settings.status_error(err)
-    if status_err then return nil, status_err end
+    if status_err then
+        local details = status_err:details()
+        if not details or details.code ~= "provider_endpoint_invalid" then return nil, status_err end
+        state = {ready = false, code = "provider_endpoint_invalid", reason = status_err:message()}
+    end
     return {title = TITLE, icon = "simple-icons:resend", description = "Deliver mail through Resend.",
         settings_ns = SETTINGS_NS, max_recipients = 50, max_message_bytes = 40000000, idempotent = true,
-        ready = state.ready, code = not state.ready and "invalid_config" or nil, reason = state.reason}, nil
+        ready = state.ready, code = state.code, reason = state.reason}, nil
 end
 
 local function request(api_key: string, body: string, key: string?, deadline: string): (mail.HttpResponse?, error?)
-    local url, err = settings.endpoint("kickside.mail.resend:endpoints", "api", "exact")
+    local url, err = endpoint()
     if err then return nil, err end
     local headers = delivery.bearer_json(api_key)
     if key then headers["Idempotency-Key"] = key end

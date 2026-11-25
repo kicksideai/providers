@@ -51,10 +51,14 @@ end
 function M.status(): (mail.TransportStatus?, error?)
     local _, err = configuration()
     local state, status_err = settings.status_error(err)
-    if status_err then return nil, status_err end
+    if status_err then
+        local details = status_err:details()
+        if not details or details.code ~= "provider_endpoint_invalid" then return nil, status_err end
+        state = {ready = false, code = "provider_endpoint_invalid", reason = status_err:message()}
+    end
     return {title = TITLE, icon = "simple-icons:mailgun", description = "Deliver mail through Mailgun.",
         settings_ns = SETTINGS_NS, max_recipients = 1000, max_message_bytes = 25000000, idempotent = false,
-        ready = state.ready, code = not state.ready and "invalid_config" or nil, reason = state.reason}, nil
+        ready = state.ready, code = state.code, reason = state.reason}, nil
 end
 
 local function request(config: types.Config, body: string, content_type: string, deadline: string): (mail.HttpResponse?, error?)

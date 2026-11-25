@@ -8,17 +8,29 @@ local M = {}
 local SETTINGS_NS = "kickside.mail.sendgrid"
 local TITLE = "SendGrid"
 
+local function endpoint(): (string?, error?)
+    return settings.endpoint("kickside.mail.sendgrid:endpoints", "api", "exact")
+end
+
 function M.status(): (mail.TransportStatus?, error?)
     local _, err = settings.read_api_key(SETTINGS_NS, TITLE)
+    if not err then
+        local _, endpoint_err = endpoint()
+        err = endpoint_err
+    end
     local state, status_err = settings.status_error(err)
-    if status_err then return nil, status_err end
+    if status_err then
+        local details = status_err:details()
+        if not details or details.code ~= "provider_endpoint_invalid" then return nil, status_err end
+        state = {ready = false, code = "provider_endpoint_invalid", reason = status_err:message()}
+    end
     return {title = TITLE, icon = "simple-icons:sendgrid", description = "Deliver mail through SendGrid.",
         settings_ns = SETTINGS_NS, max_recipients = 1000, max_message_bytes = 29999999, idempotent = false,
-        ready = state.ready, code = not state.ready and "invalid_config" or nil, reason = state.reason}, nil
+        ready = state.ready, code = state.code, reason = state.reason}, nil
 end
 
 local function request(key: string, body: string, deadline: string): (mail.HttpResponse?, error?)
-    local url, err = settings.endpoint("kickside.mail.sendgrid:endpoints", "api", "exact")
+    local url, err = endpoint()
     if err then return nil, err end
     local sent, err = delivery.post(url :: string, body,
         delivery.bearer_json(key), deadline)
