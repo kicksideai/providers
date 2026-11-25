@@ -242,6 +242,7 @@ entries:
     meta: { type: test, suite: mail_mailgun_settings }
     source: file://settings_block_test.lua
     method: run
+    modules: [registry]
     imports:
       test: wippy.test:test
       settings_blocks: kickside.settings:settings_blocks

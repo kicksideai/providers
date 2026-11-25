@@ -19,6 +19,9 @@ entries:
     endpoints: {}
   - name: api_base_url
     kind: ns.requirement
+    meta:
+      value_type: string
+      description: Complete HTTPS URL for the Resend email delivery endpoint.
     default: https://api.resend.com/emails
     targets:
       - { entry: "kickside.mail.resend:endpoints", path: ".endpoints.api" }
