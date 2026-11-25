@@ -3,9 +3,9 @@
 
 This driver delivers messages from KickSide Mail through SendGrid. Set an API key with Mail Send permission and configure a verified sender in KickSide Mail. Delivery succeeds when SendGrid accepts the request with HTTP 202.
 
-## Requirements
+## Install
 
-Install KickSide Mail and Settings. `api_base_url` defaults to the SendGrid API origin. The driver declares outbound HTTP access to the provider’s delivery endpoint.
+Install `kickside/mail-sendgrid` alongside KickSide Mail and Settings. `api_base_url` defaults to `https://api.sendgrid.com`. The send function has outbound HTTP access to SendGrid’s `/v3/mail/send` endpoint.
 
 ## Settings
 
@@ -13,14 +13,32 @@ In **Settings → Integrations → Mail**, select **SendGrid** and set `api_key`
 
 ## Contract and tools
 
-`kickside.mail.sendgrid:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID when supplied in the acceptance response. Its `status` method reports display data, delivery limits and whether its settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
+`kickside.mail.sendgrid:transport` implements the Mail `send` and `status` methods. `send` uses Mail’s delivery deadline and reads the provider’s message ID from the `X-Message-Id` header on HTTP 202. `status` reports display data, the settings namespace, limits of 1,000 recipients and 29,999,999 bytes, and `idempotent: false`. A missing or invalid API key returns `ready: false`, `code: invalid_config`, and a setup reason.
+
+Mail discovers and opens the binding through the transports group. SendGrid contributes this policy to the group.
+
+```yaml
+- name: transport_open
+  kind: security.policy
+  meta: { private: true }
+  groups: [kickside.mail.security:transports]
+  policy:
+    resources: [kickside.mail.sendgrid:transport]
+    actions: [contract.open]
+    effect: allow
+```
+
+Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
 
 ## Error codes
 
 ```text
 Code                            Kind                Retryable
 attachment_encoding_failed      Source error        Source flag
+authorization_refused           PermissionDenied    No
 credentials_invalid             PermissionDenied    No
+delivery_deadline_exceeded       Unavailable         Yes
+delivery_deadline_invalid        Invalid             No
 invalid_config                  Invalid             No
 message_encoding_failed         Source error        Source flag
 message_rejected                Invalid             No
@@ -34,7 +52,7 @@ settings_read_failed            Internal            No
 
 ## Development
 
-Use Wippy v0.3.66a and Make.
+Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback SendGrid stub.
 
 ```sh
 make verify
@@ -42,4 +60,4 @@ make verify
 
 `make verify` refreshes the dependency graph and runs validation and the SQLite harness. For PostgreSQL, create a dedicated test database, then run the same target with
 `WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$PGDATABASE"`.
-Drop the database after the run. Tests use local delivery fixtures.
+Drop the database after the run.

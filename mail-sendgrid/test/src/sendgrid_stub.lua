@@ -11,17 +11,18 @@ local function handle()
     local method = req:method()
     local payload = method == "POST" and assert(req:body_json()) or nil
     local id = uuid.v4()
+    local authorized = req:header("Authorization") == "Bearer sg_fixture"
     local volume = assert(fs.get("app:sendgrid_requests"))
     assert(volume:writefile(id .. ".json", assert(json.encode({
         id = id,
         method = method,
-        authorization = req:header("Authorization"),
+        authorized = authorized,
         content_type = req:header("Content-Type"),
         idempotency_key = req:header("Idempotency-Key"),
         payload = payload,
     }))))
 
-    if req:header("Authorization") ~= "Bearer sg_fixture" then
+    if not authorized then
         res:set_status(401)
         res:write_json({errors = {{message = "Invalid API key"}}})
         return

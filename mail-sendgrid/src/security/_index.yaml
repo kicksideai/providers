@@ -20,7 +20,7 @@ entries:
     meta: { private: true }
     groups: []
     policy:
-      resources: [kickside.mail.sendgrid:transport, kickside.mail.sendgrid:send, kickside.mail.sendgrid:status]
+      resources: [kickside.mail.sendgrid:transport, kickside.mail.sendgrid.transport:send, kickside.mail.sendgrid.transport:status]
       actions: [registry.get, registry.find]
       effect: allow
   - name: driver_admin

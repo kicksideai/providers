@@ -6,7 +6,11 @@ local fs = require("fs")
 local base64 = require("base64")
 local json = require("json")
 local registry = require("registry")
+local contract = require("contract")
 local fixture = require("fixture")
+
+local BINDING = "kickside.mail.sendgrid:transport"
+local ADMISSION = "kickside.mail.sendgrid.security:transport_open"
 
 local function configure(settings)
     return assert(fixture.probe(fixture.admin(), "configure", {settings = settings}))
@@ -19,6 +23,17 @@ end
 local function transport(input)
     input.from = {address = "sender@example.org"}
     return fixture.probe(fixture.admin(), "transport", {message = input})
+end
+
+local function delivery_admin()
+    return fixture.scoped({"kickside.mail.security:module_runtime", "kickside.mail.security:log_admin"})
+end
+
+local function sendgrid_status(delivery)
+    for _, status in ipairs(delivery.transports) do
+        if status.id == BINDING then return status end
+    end
+    return nil
 end
 
 local function fixture_message(subject)
@@ -45,10 +60,11 @@ end
 return {run = test.run_cases(function()
     test.describe("SendGrid transport via real Settings and Uploads", function()
         test.it("lists the SendGrid transport with display data and delivery limits", function()
-            local current = assert(fixture.probe(fixture.admin(), "delivery_status"))
-            local status = assert(current.transports[1])
-            test.eq("kickside.mail.sendgrid:transport", status.id)
+            local current = assert(fixture.probe(delivery_admin(), "delivery_status"))
+            local status = assert(sendgrid_status(current))
             test.eq("SendGrid", status.title)
+            test.eq("simple-icons:sendgrid", status.icon)
+            test.eq("Deliver mail through SendGrid.", status.description)
             test.eq("kickside.mail.sendgrid", status.settings_ns)
             test.eq(1000, status.max_recipients)
             test.eq(29999999, status.max_message_bytes)
@@ -84,7 +100,7 @@ return {run = test.run_cases(function()
             local delivered = fixture.terminal(fixture.admin(), result.message_id)
             local captured = assert(json.decode(assert(volume:readfile(delivered.provider_message_id .. ".json"))))
             test.eq("POST", captured.method)
-            test.eq("Bearer sg_fixture", captured.authorization)
+            test.is_true(captured.authorized)
             test.eq("application/json", captured.content_type)
             test.is_true(captured.idempotency_key == nil or captured.idempotency_key == "")
             local body = captured.payload.content[#captured.payload.content].value
@@ -136,15 +152,13 @@ return {run = test.run_cases(function()
         end)
 
         test.it("reports credential availability and refuses unset credentials before egress", function()
-            local admin = fixture.admin()
-            local available = assert(fixture.probe(admin, "status"))
+            local admin = delivery_admin()
+            local available = assert(sendgrid_status(assert(fixture.probe(admin, "delivery_status"))))
             test.is_true(available.ready)
-            local values = assert(fixture.probe(owner, "read_settings"))
-            test.is_nil(values.api_key)
             test.is_true(configure({["kickside.mail.sendgrid"] = {api_key = ""}}).success)
-            local unavailable = assert(fixture.probe(admin, "status"))
+            local unavailable = assert(sendgrid_status(assert(fixture.probe(admin, "delivery_status"))))
             test.is_false(unavailable.ready)
-            test.eq("api_key_required", unavailable.code)
+            test.eq("invalid_config", unavailable.code)
             test.eq("Add a SendGrid API key to send mail.", unavailable.reason)
             local input = fixture_message("Unconfigured driver")
             local result, err = send(owner, input)
@@ -152,6 +166,65 @@ return {run = test.run_cases(function()
             test.eq(errors.INVALID, err:kind())
             test.eq("invalid_config", err:details().code)
             test.is_false(err:retryable())
+            test.eq(0, #requests("POST", input.subject))
+        end)
+
+        test.it("reads the SendGrid key without exposing credentials or borrowing another namespace's key", function()
+            local reader = fixture.scoped({"app:transport_status_access"})
+            local foreign = {namespace = "app.unrelated"}
+            local own = {namespace = "kickside.mail.sendgrid"}
+            test.is_true(configure({[foreign.namespace] = {api_key = "other_fixture"}}).success)
+            test.is_true(assert(fixture.probe(fixture.admin(), "read_settings", foreign)).has_api_key)
+            test.is_false(assert(fixture.probe(reader, "read_settings", foreign)).has_api_key)
+            test.is_false(assert(fixture.probe(reader, "read_settings", own)).has_api_key)
+            test.is_true(assert(fixture.probe(reader, "status")).ready)
+            test.is_true(configure({[own.namespace] = {api_key = ""}}).success)
+            test.is_false(assert(fixture.probe(reader, "status")).ready)
+        end)
+
+        test.it("excludes the installed binding and refuses Mail sends when admission is removed", function()
+            local admin = delivery_admin()
+            local policy = assert(registry.get(ADMISSION))
+            local removal = assert(registry.snapshot()):changes()
+            removal:delete({ADMISSION})
+            local _, remove_err = removal:apply()
+            assert(not remove_err, tostring(remove_err))
+
+            local implementations, discover_err = contract.find_implementations("kickside.mail:transport")
+            local current, status_err = fixture.probe(admin, "delivery_status")
+            local sent, send_err = send(owner, fixture_message("Revoked transport"))
+
+            local restore = assert(registry.snapshot()):changes()
+            restore:create({id = ADMISSION, kind = policy.kind, meta = policy.meta, data = policy.data})
+            local _, restore_err = restore:apply()
+            assert(not restore_err, tostring(restore_err))
+
+            test.is_nil(discover_err)
+            local installed = false
+            for _, id in ipairs(implementations) do
+                if id == BINDING then
+                    installed = true
+                    break
+                end
+            end
+            test.is_true(installed)
+            test.is_nil(status_err)
+            test.is_nil(sendgrid_status(current))
+            test.eq("driver_not_admitted", current.code)
+            test.is_nil(sent)
+            test.eq(errors.INVALID, send_err:kind())
+            test.eq("driver_not_admitted", send_err:details().code)
+            test.not_nil(sendgrid_status(assert(fixture.probe(admin, "delivery_status"))))
+        end)
+
+        test.it("refuses an expired delivery deadline before calling SendGrid", function()
+            local input = fixture_message("Expired delivery")
+            input.deadline = "2000-01-01T00:00:00Z"
+            local result, err = transport(input)
+            test.is_nil(result)
+            test.eq(errors.UNAVAILABLE, err:kind())
+            test.eq("delivery_deadline_exceeded", err:details().code)
+            test.is_true(err:retryable())
             test.eq(0, #requests("POST", input.subject))
         end)
 
@@ -334,7 +407,7 @@ return {run = test.run_cases(function()
             test.eq("at_least_once", binding.meta.delivery)
             local input = fixture_message("Automation")
             local request = {
-                config = {}, sink_op = "create", input = input,
+                config = {}, sink_op = "upsert", input = input,
                 identity_key = "record-1", idempotency_key = uuid.v4(), origin = "automation-1",
             }
             local result = assert(fixture.probe(owner, "write", {request = request}))

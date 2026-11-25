@@ -5,14 +5,16 @@ local delivery = require("delivery")
 local settings = require("settings")
 
 local M = {}
+local SETTINGS_NS = "kickside.mail.sendgrid"
+local TITLE = "SendGrid"
 
 function M.status(): (mail.TransportStatus?, error?)
-    local _, err = settings.read_api_key("kickside.mail.sendgrid", "SendGrid")
+    local _, err = settings.read_api_key(SETTINGS_NS, TITLE)
     local state, status_err = settings.status_error(err)
     if status_err then return nil, status_err end
-    return {title = "SendGrid", icon = "simple-icons:sendgrid", description = "Deliver mail through SendGrid.",
-        settings_ns = "kickside.mail.sendgrid", max_recipients = 1000, max_message_bytes = 29999999, idempotent = false,
-        ready = state.ready, code = state.code, reason = state.reason}, nil
+    return {title = TITLE, icon = "simple-icons:sendgrid", description = "Deliver mail through SendGrid.",
+        settings_ns = SETTINGS_NS, max_recipients = 1000, max_message_bytes = 29999999, idempotent = false,
+        ready = state.ready, code = not state.ready and "invalid_config" or nil, reason = state.reason}, nil
 end
 
 local function request(key: string, body: string, deadline: string): (mail.HttpResponse?, error?)
@@ -60,7 +62,7 @@ local function encode_attachments(attachments: {mail.Attachment}?): ({types.Atta
 end
 
 function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
-    local key, key_err = settings.read_api_key("kickside.mail.sendgrid", "SendGrid")
+    local key, key_err = settings.read_api_key(SETTINGS_NS, TITLE)
     if key_err then return nil, key_err end
 
     local content: {types.ContentPart} = {}

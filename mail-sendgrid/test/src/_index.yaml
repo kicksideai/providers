@@ -13,6 +13,15 @@ entries:
     scope: global
     value_type: string
     default: Example Workspace
+  - name: unrelated_api_key
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition" }
+    namespace: app.unrelated
+    key: api_key
+    scope: global
+    value_type: secret
+    read_access: admin
+    default: ""
   - name: db
     kind: db.sql.sqlite
     file: ":memory:"
@@ -174,6 +183,18 @@ entries:
       resources: ['app:actor_probe']
       actions: [funcs.call]
       effect: allow
+  - name: settings_probe_access
+    kind: security.policy
+    policy:
+      resources: [kickside.settings:settings, kickside.settings:settings_binding, get_namespace]
+      actions: [contract.get, contract.open, contract.call]
+      effect: allow
+  - name: transport_status_access
+    kind: security.policy
+    policy:
+      resources: [kickside.mail.sendgrid:transport, status]
+      actions: [contract.open, contract.call]
+      effect: allow
   - name: upload_data_access
     kind: security.policy
     groups: [app:user]
@@ -220,13 +241,13 @@ entries:
       settings: kickside.mail.driver:config
       uploads: kickside.uploads:uploads
     security:
-      policies: [kickside.mail.security:settings_read]
+      policies: [app:settings_probe_access]
   - name: driver_test
     kind: function.lua
     meta: { type: test, suite: mail_sendgrid }
     source: file://driver_test.lua
     method: run
-    modules: [base64, uuid, fs, json, registry, time]
+    modules: [base64, uuid, fs, json, registry, time, contract]
     imports:
       test: wippy.test:test
       fixture: app:fixture

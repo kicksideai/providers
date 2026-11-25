@@ -14,9 +14,6 @@ entries:
     kind: ns.dependency
     component: kickside/settings
     version: "*"
-  - name: types
-    kind: library.lua
-    source: file://types.lua
   - name: endpoints
     kind: registry.entry
     endpoints: {}
@@ -29,30 +26,6 @@ entries:
     kind: contract.binding
     contracts:
       - contract: kickside.mail:transport
-        methods: {send: kickside.mail.sendgrid:send, status: kickside.mail.sendgrid:status}
-  - name: send
-    kind: function.lua
-    source: file://sendgrid.lua
-    method: send
-    imports:
-      types: kickside.mail.sendgrid:types
-      mail_types: kickside.mail:types
-      settings: kickside.mail.driver:config
-      delivery: kickside.mail.driver:http
-    security:
-      policies:
-        - kickside.mail.sendgrid.security:settings_read
-        - kickside.mail.sendgrid.security:settings_admin_read
-        - kickside.mail.sendgrid.security:http_access
-        - kickside.mail.sendgrid.security:provider_reads
-  - name: status
-    kind: function.lua
-    source: file://sendgrid.lua
-    method: status
-    imports:
-      types: kickside.mail.sendgrid:types
-      mail_types: kickside.mail:types
-      settings: kickside.mail.driver:config
-      delivery: kickside.mail.driver:http
-    security:
-      policies: [kickside.mail.sendgrid.security:settings_read, kickside.mail.sendgrid.security:settings_admin_read]
+        methods:
+          send: kickside.mail.sendgrid.transport:send
+          status: kickside.mail.sendgrid.transport:status
