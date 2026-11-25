@@ -2,7 +2,6 @@
 local types = require("types")
 local mail = require("mail_types")
 local delivery = require("delivery")
-local registry = require("registry")
 local uuid = require("uuid")
 local validate = require("validate")
 local settings = require("settings")
@@ -24,19 +23,9 @@ local function response_error(response: mail.HttpResponse, key: string): error
 end
 
 local function delivery_url(domain: string, region: string): (string?, error?)
-    local entry, entry_err = registry.get(ENDPOINTS)
-    if entry_err then return nil, entry_err end
-
-    local prefix: unknown = entry.data.endpoints[region]
-    if type(prefix) == "string" then
-        local base, authority = prefix:match("^(https://([%w.:%-]+)/v3/)%*$")
-        local host = authority and (authority:match("^([%w.%-]+):%d+$") or authority:match("^[%w.%-]+$"))
-        if host then
-            return base .. domain .. "/messages", nil
-        end
-    end
-    return nil, errors.new({kind = errors.INVALID, message = "Mailgun API base URL prefix is invalid",
-        retryable = false, details = {code = "provider_endpoint_invalid"}})
+    local base, err = settings.endpoint(ENDPOINTS, region, "prefix")
+    if err then return nil, err end
+    return (base :: string) .. "/" .. domain .. "/messages", nil
 end
 
 local function configuration(): (types.Config?, error?)

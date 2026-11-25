@@ -23,7 +23,7 @@ def detail_codes(lua):
 shared_http = http[:http.index('function M.encode_message')]
 expected = failure_codes(source) | detail_codes(source)
 expected |= failure_codes(shared_http) | detail_codes(shared_http)
-expected |= detail_codes(config[:config.index('function M.endpoint')])
+expected |= detail_codes(config)
 expected.add('invalid_config')
 for helper in ('encode_message', 'encode_attachment'):
     if f'delivery.{helper}(' in source:

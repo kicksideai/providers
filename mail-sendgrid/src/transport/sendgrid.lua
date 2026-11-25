@@ -3,7 +3,6 @@ local types = require("types")
 local mail = require("mail_types")
 local delivery = require("delivery")
 local settings = require("settings")
-local registry = require("registry")
 
 local M = {}
 local SETTINGS_NS = "kickside.mail.sendgrid"
@@ -19,13 +18,9 @@ function M.status(): (mail.TransportStatus?, error?)
 end
 
 local function request(key: string, body: string, deadline: string): (mail.HttpResponse?, error?)
-    local entry, url_err = registry.get("kickside.mail.sendgrid:endpoints")
-    if url_err then return nil, url_err end
-    local url: unknown = entry.data.endpoints.api
-    if type(url) ~= "string" or url:find("[%c%s#@\\?*]") or not url:match("^https://[^/]+/.+$") then
-        return nil, delivery.failure(errors.INVALID, "provider_endpoint_invalid", "Mail driver delivery URL is invalid", false)
-    end
-    local sent, err = delivery.post(url, body,
+    local url, err = settings.endpoint("kickside.mail.sendgrid:endpoints", "api", "exact")
+    if err then return nil, err end
+    local sent, err = delivery.post(url :: string, body,
         delivery.bearer_json(key), deadline)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse

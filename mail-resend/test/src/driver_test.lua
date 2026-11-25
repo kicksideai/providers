@@ -203,27 +203,32 @@ return { run = test.run_cases(function()
             test.not_nil(resend_status(assert(fixture.probe(admin, "delivery_status"))))
         end)
 
-        test.it("refuses a plain HTTP delivery endpoint before attempting egress", function()
-            local endpoint_id = "kickside.mail.resend:endpoints"
-            local original = assert(registry.get(endpoint_id))
-            local insecure = assert(registry.get(endpoint_id))
-            insecure.data.endpoints.api = insecure.data.endpoints.api:gsub("^https:", "http:")
-            local change = assert(registry.snapshot()):changes()
-            assert(change:update(insecure))
-            local _, change_err = change:apply()
-            assert(not change_err, tostring(change_err))
-            local input = fixture_message("Insecure endpoint")
-            input.deadline = "2000-01-01T00:00:00Z"
-            local result, err = transport(input)
-            local restore = assert(registry.snapshot()):changes()
-            assert(restore:update(original))
-            local _, restore_err = restore:apply()
-            assert(not restore_err, tostring(restore_err))
+        for _, invalid in ipairs({
+            {name = "HTTP", apply = function(url) return url:gsub("^https:", "http:") end},
+            {name = "invalid port", apply = function(url) return url:gsub("^(https://[^:]+):%d+", "%1:65536") end},
+        }) do
+            test.it("refuses an invalid delivery endpoint before attempting egress (" .. invalid.name .. ")", function()
+                local endpoint_id = "kickside.mail.resend:endpoints"
+                local original = assert(registry.get(endpoint_id))
+                local insecure = assert(registry.get(endpoint_id))
+                insecure.data.endpoints.api = invalid.apply(insecure.data.endpoints.api)
+                local change = assert(registry.snapshot()):changes()
+                assert(change:update(insecure))
+                local _, change_err = change:apply()
+                assert(not change_err, tostring(change_err))
+                local input = fixture_message("Invalid endpoint")
+                input.deadline = "2000-01-01T00:00:00Z"
+                local result, err = transport(input)
+                local restore = assert(registry.snapshot()):changes()
+                assert(restore:update(original))
+                local _, restore_err = restore:apply()
+                assert(not restore_err, tostring(restore_err))
 
-            test.is_nil(result)
-            test.eq(errors.INVALID, err:kind())
-            test.eq("provider_endpoint_invalid", err:details().code)
-        end)
+                test.is_nil(result)
+                test.eq(errors.INVALID, err:kind())
+                test.eq("provider_endpoint_invalid", err:details().code)
+            end)
+        end
 
         test.it("refuses an expired delivery deadline before calling Resend", function()
             local input = fixture_message("Expired delivery")

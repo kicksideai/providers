@@ -2,7 +2,6 @@
 local config = require("config")
 local delivery = require("delivery")
 local mail = require("mail")
-local registry = require("registry")
 
 local SETTINGS = "kickside.mail.example"
 local TITLE = "Example Relay"
@@ -13,13 +12,15 @@ type Config = {key: string, url: string}
 local function configuration(): (Config?, error?)
     local key, key_err = config.read_api_key(SETTINGS, TITLE)
     if key_err then return nil, key_err end
-    local entry, read_err = registry.get(SETTINGS .. ":endpoints")
-    if read_err then return nil, read_err end
-    local url: unknown = entry.data.endpoints.api
-    if type(url) ~= "string" or url:find("[%c%s#@\\?*]") or not url:match("^https://[^/]+/.+$") then
-        return nil, config.missing("Configure an HTTPS delivery URL.", "provider_endpoint_invalid")
+    local url, url_err = config.endpoint(SETTINGS .. ":endpoints", "api", "exact")
+    if url_err then
+        local details = url_err:details()
+        if details and details.code == "provider_endpoint_invalid" then
+            return nil, config.missing(url_err:message(), details.code)
+        end
+        return nil, url_err
     end
-    return {key = key :: string, url = url}, nil
+    return {key = key :: string, url = url :: string}, nil
 end
 
 function M.status(): (mail.TransportStatus?, error?)

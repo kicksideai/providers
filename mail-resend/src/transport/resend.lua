@@ -4,7 +4,6 @@ local mail = require("mail_types")
 local delivery = require("delivery")
 local json = require("json")
 local settings = require("settings")
-local registry = require("registry")
 
 local SETTINGS_NS = "kickside.mail.resend"
 local TITLE = "Resend"
@@ -57,16 +56,12 @@ function M.status(): (mail.TransportStatus?, error?)
 end
 
 local function request(api_key: string, body: string, key: string?, deadline: string): (mail.HttpResponse?, error?)
-    local entry, url_err = registry.get("kickside.mail.resend:endpoints")
-    if url_err then return nil, url_err end
-    local url: unknown = entry.data.endpoints.api
-    if type(url) ~= "string" or url:find("[%c%s#@\\?*]") or not url:match("^https://[^/]+/.+$") then
-        return nil, delivery.failure(errors.INVALID, "provider_endpoint_invalid", "Mail driver delivery URL is invalid", false)
-    end
+    local url, err = settings.endpoint("kickside.mail.resend:endpoints", "api", "exact")
+    if err then return nil, err end
     local headers = delivery.bearer_json(api_key)
     if key then headers["Idempotency-Key"] = key end
 
-    local sent, err = delivery.post(url, body, headers, deadline)
+    local sent, err = delivery.post(url :: string, body, headers, deadline)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code < 200 or response.status_code >= 300 then
