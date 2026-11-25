@@ -23,7 +23,7 @@ check-dependencies:
 check-docs:
 	python3 -B ../test-support/check-mail-driver-docs.py .
 
-verify: lockrefresh
+verify:
 	$(MAKE) lint check-dependencies check-docs test
 
 publish:

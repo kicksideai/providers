@@ -61,6 +61,6 @@ Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `ki
 make verify
 ```
 
-`make verify` refreshes the dependency graph and runs validation and the SQLite harness. For PostgreSQL, create a dedicated test database, then run the same target with
-`WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$PGDATABASE"`.
+`make verify` uses the pinned harness lock and runs validation and the SQLite harness. Use `make lockrefresh` to update the lock explicitly. For PostgreSQL, create a dedicated test database and run
+`make test-pg WIPPY_ARGS="--set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$PGDATABASE"`.
 Drop the database after the run.
