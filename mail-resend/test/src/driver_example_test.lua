@@ -20,7 +20,7 @@ return {run = test.run_cases(function()
             end
             local unconfigured = assert(status(), "Example driver was not discovered")
             test.is_false(unconfigured.ready)
-            test.eq("invalid_config", unconfigured.code)
+            test.eq("api_key_required", unconfigured.code)
 
             local configured = assert(fixture.probe(admin, "configure", {settings = {
                 [SETTINGS] = {api_key = "re_fixture"},

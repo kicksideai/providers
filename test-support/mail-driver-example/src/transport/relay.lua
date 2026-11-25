@@ -29,7 +29,7 @@ function M.status(): (mail.TransportStatus?, error?)
     if status_err then return nil, status_err end
     return {title = TITLE, icon = "lucide:mail", description = "Deliver mail through Example Relay.",
         settings_ns = SETTINGS, max_recipients = 100, max_message_bytes = 10000000, idempotent = false,
-        ready = readiness.ready, code = not readiness.ready and "invalid_config" or nil, reason = readiness.reason}, nil
+        ready = readiness.ready, code = readiness.code, reason = readiness.reason}, nil
 end
 
 function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
