@@ -5,4 +5,4 @@ This driver delivers messages from KickSide Mail through Resend. Set an API key 
 
 [Module documentation](src/README.md) covers setup, contracts, error codes, and development commands.
 
-[Write a KickSide Mail driver](src/driver-authoring.md) to implement the same public transport contract.
+[Mail’s driver authoring guide](https://github.com/kicksideai/components/blob/main/mail/src/driver-authoring.md) covers the transport contract, policies, helpers, and runnable example.

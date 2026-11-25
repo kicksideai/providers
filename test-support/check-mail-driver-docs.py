@@ -74,13 +74,23 @@ def matches_declaration(snippet, declaration):
     return snippet == declaration
 
 
+def guide_link(guide, target):
+    published = 'https://github.com/kicksideai/components/blob/main/mail/'
+    if target.startswith(published):
+        return (guide.parent.parent / target.removeprefix(published)).resolve()
+    if '://' in target:
+        return None
+    return (guide.parent / target).resolve()
+
+
 def check_guide(guide):
     source = guide.read_text()
     manifest_link = re.search(r'\[wippy\.yaml\]\(([^)]+)\)', source)
-    if not manifest_link:
+    manifest = manifest_link and guide_link(guide, manifest_link[1])
+    if not manifest:
         sys.exit(f'{guide}: missing example manifest link')
-    example = (guide.parent / manifest_link[1]).resolve().parent
-    links = {(guide.parent / target).resolve() for target in re.findall(r'\]\(([^):\n]+)\)', source)}
+    example = manifest.parent
+    links = {guide_link(guide, target) for target in re.findall(r'\]\(([^)\n]+)\)', source)}
     required = ['wippy.yaml', 'src/_index.yaml', 'src/security/_index.yaml', 'src/settings/_index.yaml',
                 'src/settings/validate.lua', 'src/transport/_index.yaml', 'src/transport/relay.lua']
     for name in required:
@@ -121,8 +131,7 @@ def main():
     providers = module.parent
     mail = providers.parent / 'components/mail/src'
     check_error_table(module, mail)
-    legacy_guide = providers / 'mail-resend/src/driver-authoring.md'
-    check_guide(legacy_guide if legacy_guide.is_file() else mail / 'driver-authoring.md')
+    check_guide(mail / 'driver-authoring.md')
 
 
 if __name__ == '__main__':

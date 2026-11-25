@@ -51,11 +51,11 @@ rate_limited                       RateLimited        Yes
 settings_read_failed               Internal           No
 ```
 
-[Write a KickSide Mail driver](../../mail-resend/src/driver-authoring.md) for the contract, policies, helpers, and runnable example.
+[Mail’s driver authoring guide](https://github.com/kicksideai/components/blob/main/mail/src/driver-authoring.md) covers the transport contract, policies, helpers, and runnable example.
 
 ## Development
 
-Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback HTTPS Mailgun stub.
+Use Wippy v0.3.70a, Make, and Python 3 with PyYAML. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback HTTPS Mailgun stub.
 
 ```sh
 make verify

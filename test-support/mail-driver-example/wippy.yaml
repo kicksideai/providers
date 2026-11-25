@@ -1,4 +1,0 @@
-# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-organization: kickside
-module: mail-driver-example
-description: Local Example Relay transport for the driver authoring harness.
