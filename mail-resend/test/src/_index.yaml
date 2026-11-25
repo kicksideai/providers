@@ -140,7 +140,7 @@ entries:
     component: kickside/mail-resend
     version: "*"
     parameters:
-      - { name: "kickside.mail.resend:api_base_url", value: "http://127.0.0.1:24635" }
+      - { name: "kickside.mail.resend:api_base_url", value: "http://127.0.0.1:24635/emails" }
       - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
       - { name: "kickside.mail:target_db", value: "app:db" }
       - { name: "kickside.mail:api_router", value: "app:api" }
@@ -216,13 +216,6 @@ entries:
         - get_access_context
         - security
       actions: [registry.get, contract.get, contract.open, contract.call, contract.security, funcs.call, funcs.security, env.get]
-      effect: allow
-  - name: stub_request_access
-    kind: security.policy
-    groups: [app:user]
-    policy:
-      resources: [http://127.0.0.1:24635/emails]
-      actions: [http_client.request]
       effect: allow
   - name: stub_private_ip
     kind: security.policy

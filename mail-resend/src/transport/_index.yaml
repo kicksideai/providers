@@ -9,7 +9,7 @@ entries:
     kind: function.lua
     source: file://resend.lua
     method: send
-    modules: [json]
+    modules: [json, registry]
     imports: &transport_imports
       types: kickside.mail.resend.transport:types
       mail_types: kickside.mail:types
@@ -25,7 +25,7 @@ entries:
     kind: function.lua
     source: file://resend.lua
     method: status
-    modules: [json]
+    modules: [json, registry]
     imports: *transport_imports
     security:
       policies:

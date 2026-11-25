@@ -7,6 +7,9 @@ local settings = require("settings")
 local uploads = require("uploads")
 
 local function run(input)
+    if input.action == "may_request" then
+        return security.can("http_client.request", input.url)
+    end
     if input.action == "configure" then
         local service = assert(assert(contract.get("kickside.settings:settings")):open())
         for namespace, values in pairs(input.settings) do

@@ -5,7 +5,7 @@ This driver delivers messages from KickSide Mail through SendGrid. Set an API ke
 
 ## Install
 
-Install `kickside/mail-sendgrid` alongside KickSide Mail and Settings. `api_base_url` defaults to `https://api.sendgrid.com`. The send function has outbound HTTP access to SendGrid’s `/v3/mail/send` endpoint.
+Install `kickside/mail-sendgrid` alongside KickSide Mail and Settings. `api_base_url` defaults to `https://api.sendgrid.com/v3/mail/send`. The send function has outbound HTTP access to SendGrid’s `/v3/mail/send` endpoint. To override it, pass the complete delivery URL, including the path. The same value sets the destination and its outbound HTTP grant.
 
 ## Settings
 

@@ -9,6 +9,7 @@ entries:
     kind: function.lua
     source: file://sendgrid.lua
     method: send
+    modules: [registry]
     imports: &transport_imports
       types: kickside.mail.sendgrid.transport:types
       mail_types: kickside.mail:types
@@ -24,6 +25,7 @@ entries:
     kind: function.lua
     source: file://sendgrid.lua
     method: status
+    modules: [registry]
     imports: *transport_imports
     security:
       policies:

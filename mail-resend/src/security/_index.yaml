@@ -70,8 +70,7 @@ entries:
     kind: security.policy
     meta: { private: true }
     policy:
-      resources:
-        - https://api.resend.com/emails
+      resources: []
       actions: [http_client.request]
       effect: allow
   - name: provider_reads

@@ -19,9 +19,10 @@ entries:
     endpoints: {}
   - name: api_base_url
     kind: ns.requirement
-    default: https://api.resend.com
+    default: https://api.resend.com/emails
     targets:
       - { entry: "kickside.mail.resend:endpoints", path: ".endpoints.api" }
+      - { entry: kickside.mail.resend.security:http_access, path: ".policy.resources +=" }
   - name: transport
     kind: contract.binding
     contracts:

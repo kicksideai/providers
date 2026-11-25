@@ -19,9 +19,10 @@ entries:
     endpoints: {}
   - name: api_base_url
     kind: ns.requirement
-    default: https://api.sendgrid.com
+    default: https://api.sendgrid.com/v3/mail/send
     targets:
       - { entry: "kickside.mail.sendgrid:endpoints", path: ".endpoints.api" }
+      - { entry: kickside.mail.sendgrid.security:http_access, path: ".policy.resources +=" }
   - name: transport
     kind: contract.binding
     contracts:

@@ -69,6 +69,14 @@ return { run = test.run_cases(function()
             test.eq(true, status.idempotent)
         end)
 
+        test.it("grants only the overridden delivery URL to the driver", function()
+            local caller = fixture.scoped({"kickside.mail.resend.security:http_access"})
+            local fixture_addr = assert(registry.get("app:resend_gateway")).data.addr
+            local fixture_url = "http://" .. fixture_addr .. "/emails"
+            test.is_true(assert(fixture.probe(caller, "may_request", {url = fixture_url})))
+            test.is_false(fixture.probe(caller, "may_request", {url = fixture_url .. "/other"}))
+        end)
+
         local owner
         test.before_each(function()
             owner = fixture.user()

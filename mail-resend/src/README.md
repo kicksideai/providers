@@ -5,7 +5,7 @@ This driver delivers messages from KickSide Mail through Resend. Set an API key 
 
 ## Install
 
-Install `kickside/mail-resend` alongside KickSide Mail and Settings. `api_base_url` defaults to `https://api.resend.com`. The send function has outbound HTTP access to the Resend `/emails` endpoint.
+Install `kickside/mail-resend` alongside KickSide Mail and Settings. `api_base_url` defaults to `https://api.resend.com/emails`. The send function has outbound HTTP access to the Resend `/emails` endpoint. To override it, pass the complete delivery URL, including the path. The same value sets the destination and its outbound HTTP grant.
 
 ## Settings
 
