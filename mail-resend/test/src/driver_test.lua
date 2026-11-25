@@ -77,6 +77,14 @@ return { run = test.run_cases(function()
             test.is_false(fixture.probe(caller, "may_request", {url = fixture_url .. "/other"}))
         end)
 
+        test.it("keeps database and upload internals away from an ordinary member", function()
+            local member = fixture.user(nil, false)
+            local permissions = assert(fixture.probe(member, "member_permissions"))
+            test.is_false(permissions.database)
+            test.is_false(permissions.storage)
+            test.is_false(permissions.component_env)
+        end)
+
         local owner
         test.before_each(function()
             owner = fixture.user()

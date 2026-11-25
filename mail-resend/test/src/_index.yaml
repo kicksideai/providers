@@ -58,6 +58,43 @@ entries:
     kind: security.scope
   - name: mail_senders
     kind: security.scope
+  - name: uploaders
+    kind: security.scope
+  - name: uploaders_composition
+    kind: registry.entry
+    meta: { type: kickside.security.group_composition }
+    group_id: app:uploaders
+    policies:
+      - kickside.contract.security:module_access
+      - kickside.component.security:module_access
+      - kickside.uploads.security:module_access
+      - app:uploads_database_access
+      - app:content_provider_methods
+      - app:content_provider_security
+  - name: uploads_storage_access
+    kind: security.policy
+    policy:
+      resources: [app:uploads]
+      actions: [fs.get, fs.read, fs.stat]
+      effect: allow
+  - name: uploads_database_access
+    kind: security.policy
+    policy:
+      resources: [app:db]
+      actions: [db.get]
+      effect: allow
+  - name: content_provider_methods
+    kind: security.policy
+    policy:
+      resources: [get_info, get_content, get_access_context]
+      actions: [contract.call]
+      effect: allow
+  - name: content_provider_security
+    kind: security.policy
+    policy:
+      resources: [security]
+      actions: [contract.security, funcs.security]
+      effect: allow
   - name: dep.test
     kind: ns.dependency
     component: wippy/test
@@ -85,7 +122,8 @@ entries:
       - { name: "kickside.uploads:env_storage", value: "app:env_storage" }
       - { name: "kickside.uploads:api_router", value: "app:api" }
       - { name: "kickside.uploads:ui_server", value: "app:gateway" }
-      - { name: "kickside.uploads.security:user_security_scope", value: "app:user" }
+      - { name: "kickside.uploads.security:user_security_scope", value: "app:uploaders" }
+      - { name: "kickside.uploads:storage_runtime_policy", value: "app:uploads_storage_access" }
       - { name: "kickside.component:target_db", value: "app:db" }
       - { name: "kickside.component:api_router", value: "app:api" }
       - { name: "kickside.core:target_db", value: "app:db" }
@@ -194,28 +232,6 @@ entries:
     policy:
       resources: [kickside.mail.resend:transport, status]
       actions: [contract.open, contract.call]
-      effect: allow
-  - name: upload_data_access
-    kind: security.policy
-    groups: [app:user]
-    policy:
-      resources: [app:db, app:uploads]
-      actions: [db.get, fs.get, registry.get]
-      effect: allow
-  - name: upload_contract_access
-    kind: security.policy
-    groups: [app:user]
-    policy:
-      resources:
-        - kickside.contract:content_provider
-        - kickside.component:*
-        - kickside.component.binding:*
-        - kickside.component.env:*
-        - get_info
-        - get_content
-        - get_access_context
-        - security
-      actions: [registry.get, contract.get, contract.open, contract.call, contract.security, funcs.call, funcs.security, env.get]
       effect: allow
   - name: stub_private_ip
     kind: security.policy

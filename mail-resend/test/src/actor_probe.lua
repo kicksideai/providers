@@ -7,6 +7,13 @@ local settings = require("settings")
 local uploads = require("uploads")
 
 local function run(input)
+    if input.action == "member_permissions" then
+        return {
+            database = security.can("db.get", "app:db"),
+            storage = security.can("fs.get", "app:uploads"),
+            component_env = security.can("env.get", "kickside.component.env:target_db"),
+        }
+    end
     if input.action == "may_request" then
         return security.can("http_client.request", input.url)
     end

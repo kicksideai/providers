@@ -14,7 +14,10 @@ function M.user(id, can_send)
     assert(db:execute([[INSERT INTO app_users (user_id,email,full_name,password_hash,status)
         VALUES ($1,$2,$1,'test-only','active')]], {id, id .. "@example.org"}))
     local groups = {"app:user"}
-    if can_send ~= false then groups[#groups + 1] = "app:mail_senders" end
+    if can_send ~= false then
+        groups[#groups + 1] = "app:mail_senders"
+        groups[#groups + 1] = "app:uploaders"
+    end
     for _, group in ipairs(groups) do
         assert(db:execute("INSERT INTO app_user_groups (user_id,group_id) VALUES ($1,$2)", {id, group}))
     end
@@ -25,6 +28,9 @@ function M.user(id, can_send)
     if can_send ~= false then
         local policies = scope:policies()
         policies[#policies + 1] = assert(security.policy("kickside.mail.security:send_access"))
+        for _, policy in ipairs(assert(security.named_scope("app:uploaders")):policies()) do
+            policies[#policies + 1] = policy
+        end
         scope = assert(security.new_scope(policies))
     end
     return assert(funcs.new():with_actor(actor):with_scope(scope))
