@@ -25,6 +25,7 @@ entries:
     kind: registry.entry
     meta: { type: "kickside.mail:driver" }
     id: resend
+    idempotent: true
     max_recipients: 50
     max_message_bytes: 40000000
     label: Resend
