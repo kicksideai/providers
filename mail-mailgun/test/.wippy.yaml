@@ -45,6 +45,7 @@ profiles:
         - { name: "kickside.mail.mailgun.security:user_security_scope", value: "app:user" }
       app:defaults_test:meta.type: test
       app:driver_test:meta.type: test_fixture
+      app:delivery_test:meta.type: test_fixture
       app:mailgun_gateway:addr: "127.0.0.1:0"
   postgres:
     override:

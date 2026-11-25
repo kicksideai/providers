@@ -266,7 +266,25 @@ entries:
     meta: { type: test, suite: mail_mailgun }
     source: file://driver_test.lua
     method: run
-    modules: [uuid, fs, json, registry, base64, time, contract]
+    modules: [uuid, json, registry, contract, base64]
+    imports:
+      test: wippy.test:test
+      cases: app:driver_cases
+      fixture: kickside.mail_driver_fixture.testing:fixture
+  - name: delivery_test
+    kind: function.lua
+    meta: { type: test, suite: mail_mailgun }
+    source: file://delivery_test.lua
+    method: run
+    modules: [uuid, registry]
+    imports:
+      test: wippy.test:test
+      cases: app:driver_cases
+      fixture: kickside.mail_driver_fixture.testing:fixture
+  - name: driver_cases
+    kind: library.lua
+    source: file://driver_cases.lua
+    modules: [uuid, fs, json, registry, time, base64]
     imports:
       test: wippy.test:test
       fixture: kickside.mail_driver_fixture.testing:fixture
