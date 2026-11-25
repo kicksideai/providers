@@ -4,9 +4,11 @@ namespace: kickside.mail.resend.transport
 entries:
   - name: types
     kind: library.lua
+    meta: { comment: Declares the Resend transport types. }
     source: file://types.lua
   - name: send
     kind: function.lua
+    meta: { comment: Encodes and submits a Mail message to Resend. }
     source: file://resend.lua
     method: send
     modules: [json, registry]
@@ -23,6 +25,7 @@ entries:
         - kickside.mail.resend.security:settings_admin_read
   - name: status
     kind: function.lua
+    meta: { comment: Reports Resend configuration readiness and delivery limits. }
     source: file://resend.lua
     method: status
     modules: [json, registry]

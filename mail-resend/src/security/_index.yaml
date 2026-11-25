@@ -5,6 +5,7 @@ entries:
   - name: module_access
     kind: security.policy
     meta:
+      comment: Makes the driver discoverable to application members.
       title: Resend Mail
       surface: kickside.mail.resend
       intent: module_access
@@ -17,7 +18,7 @@ entries:
       effect: allow
   - name: module_runtime
     kind: security.policy
-    meta: { private: true }
+    meta: { private: true, comment: Lets application members discover this driver’s transport entries. }
     groups: []
     policy:
       resources: [kickside.mail.resend:transport, kickside.mail.resend.transport:send, kickside.mail.resend.transport:status]
@@ -26,6 +27,7 @@ entries:
   - name: driver_admin
     kind: security.policy
     meta:
+      comment: Exposes this driver’s Settings declarations to delivery administrators.
       title: Administer Resend mail delivery
       surface: kickside.mail.resend
       intent: module_management
@@ -71,14 +73,14 @@ entries:
       effect: allow
   - name: http_access
     kind: security.policy
-    meta: { private: true }
+    meta: { private: true, comment: Restricts sends to the linked outbound HTTPS destinations. }
     policy:
       resources: []
       actions: [http_client.request]
       effect: allow
   - name: provider_reads
     kind: security.policy
-    meta: { private: true }
+    meta: { private: true, comment: Reads the linked delivery destinations. }
     policy:
       resources: [kickside.mail.resend:endpoints]
       actions: [registry.get]

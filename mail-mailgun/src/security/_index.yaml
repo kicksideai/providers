@@ -5,6 +5,7 @@ entries:
   - name: module_access
     kind: security.policy
     meta:
+      comment: Makes the driver discoverable to application members.
       title: Mailgun Mail
       surface: kickside.mail.mailgun
       intent: module_access
@@ -17,7 +18,7 @@ entries:
       effect: allow
   - name: module_runtime
     kind: security.policy
-    meta: { private: true }
+    meta: { private: true, comment: Lets application members discover this driver’s transport entries. }
     groups: []
     policy:
       resources: [kickside.mail.mailgun:transport, kickside.mail.mailgun.transport:send, kickside.mail.mailgun.transport:status]
@@ -26,6 +27,7 @@ entries:
   - name: driver_admin
     kind: security.policy
     meta:
+      comment: Exposes this driver’s Settings declarations to delivery administrators.
       title: Administer Mailgun mail delivery
       surface: kickside.mail.mailgun
       intent: module_management
@@ -53,7 +55,7 @@ entries:
       - { entry: kickside.mail.mailgun.security:module_runtime, path: ".groups +=" }
   - name: transport_open
     kind: security.policy
-    meta: {private: true}
+    meta: {private: true, comment: Admits this driver to the Mail transports group. }
     groups: [kickside.mail.security:transports]
     policy:
       resources: [kickside.mail.mailgun:transport]
@@ -61,28 +63,28 @@ entries:
       effect: allow
   - name: settings_read
     kind: security.policy
-    meta: {private: true}
+    meta: {private: true, comment: Opens the Settings contract for the driver namespace. }
     policy:
       resources: [kickside.settings:settings, kickside.settings:settings_binding, get_namespace]
       actions: [contract.get, contract.open, contract.call]
       effect: allow
   - name: settings_admin_read
     kind: security.policy
-    meta: {private: true}
+    meta: {private: true, comment: Allows the driver to read its protected configuration. }
     policy:
       resources: [kickside.settings.api:list_settings.endpoint]
       actions: [access]
       effect: allow
   - name: http_access
     kind: security.policy
-    meta: { private: true }
+    meta: { private: true, comment: Restricts sends to the linked outbound HTTPS destinations. }
     policy:
       resources: []
       actions: [http_client.request]
       effect: allow
   - name: provider_reads
     kind: security.policy
-    meta: { private: true }
+    meta: { private: true, comment: Reads the linked delivery destinations. }
     policy:
       resources: [kickside.mail.mailgun:endpoints]
       actions: [registry.get]

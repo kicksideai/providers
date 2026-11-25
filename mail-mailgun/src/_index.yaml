@@ -5,17 +5,20 @@ entries:
   - name: definition
     kind: ns.definition
     readme: file://README.md
-    meta: { title: Mailgun Mail }
+    meta: { title: Mailgun Mail, comment: Declares the Mailgun Mail delivery module. }
   - name: dep.mail
     kind: ns.dependency
+    meta: { comment: Imports the Mail transport contract and driver helpers. }
     component: kickside/mail
     version: "*"
   - name: dep.settings
     kind: ns.dependency
+    meta: { comment: Imports Settings for provider configuration. }
     component: kickside/settings
     version: "*"
   - name: endpoints
     kind: registry.entry
+    meta: { comment: Holds the linked HTTPS delivery destinations. }
     endpoints: {}
   - name: us_api_base_url
     kind: ns.requirement
@@ -48,6 +51,7 @@ entries:
       - { entry: kickside.mail.mailgun.settings:setting_domain, path: ".default" }
   - name: transport
     kind: contract.binding
+    meta: { comment: Binds the Mailgun implementation to the Mail transport contract. }
     contracts:
       - contract: kickside.mail:transport
         methods:

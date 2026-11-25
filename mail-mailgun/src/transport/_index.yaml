@@ -4,10 +4,12 @@ namespace: kickside.mail.mailgun.transport
 entries:
   - name: types
     kind: library.lua
+    meta: { comment: Declares the Mailgun transport types. }
     source: file://types.lua
     imports: { mail_types: kickside.mail:types }
   - name: send
     kind: function.lua
+    meta: { comment: Encodes and submits a Mail message to Mailgun. }
     source: file://mailgun.lua
     method: send
     modules: [registry, uuid]
@@ -25,6 +27,7 @@ entries:
         - kickside.mail.mailgun.security:settings_admin_read
   - name: status
     kind: function.lua
+    meta: { comment: Reports Mailgun configuration readiness and delivery limits. }
     source: file://mailgun.lua
     method: status
     modules: [registry, uuid]
