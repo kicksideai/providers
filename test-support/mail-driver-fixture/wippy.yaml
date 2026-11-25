@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+organization: kickside
+module: mail-driver-fixture
+description: Local fixture libraries for the Mail driver harnesses.

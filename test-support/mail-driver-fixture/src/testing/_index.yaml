@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail_driver_fixture.testing
+entries:
+  - name: fixture
+    kind: library.lua
+    source: file://fixture.lua
+    modules: [security, funcs, sql, uuid, time]
+    imports:
+      provision: kickside.core.threads:provision
+      identity: kickside.execution:execution_identity
+  - name: actor_probe
+    kind: library.lua
+    source: file://actor_probe.lua
+    modules: [security, contract, time]
+    imports:
+      client: kickside.mail:client
+      settings: kickside.mail.driver:config
+      uploads: kickside.uploads:uploads

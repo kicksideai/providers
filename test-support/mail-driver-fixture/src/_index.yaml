@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail_driver_fixture
+entries:
+  - name: definition
+    kind: ns.definition
+    meta: { title: Mail Driver Test Fixture, private: true }

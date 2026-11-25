@@ -180,6 +180,10 @@ entries:
       - { name: default_host, value: "app:processes" }
       - { name: env_storage, value: "app:env_storage" }
       - { name: delegation_func_id, value: "userspace.dataflow.session:delegate" }
+  - name: dep.fixture
+    kind: ns.dependency
+    component: kickside/mail-driver-fixture
+    version: "*"
   - name: dep.driver
     kind: ns.dependency
     component: kickside/mail-mailgun
@@ -244,11 +248,8 @@ entries:
     kind: function.lua
     source: file://actor_probe.lua
     method: run
-    modules: [security, contract, funcs, time]
     imports:
-      client: kickside.mail:client
-      settings: kickside.mail.driver:config
-      uploads: kickside.uploads:uploads
+      actor_probe: kickside.mail_driver_fixture.testing:actor_probe
     security:
       policies: [app:settings_probe_access]
   - name: settings_block_test
@@ -268,7 +269,7 @@ entries:
     modules: [uuid, fs, json, registry, base64, time, contract]
     imports:
       test: wippy.test:test
-      fixture: app:fixture
+      fixture: kickside.mail_driver_fixture.testing:fixture
   - name: defaults_test
     kind: function.lua
     meta: { type: test_fixture, suite: mail_mailgun_defaults }
@@ -277,11 +278,4 @@ entries:
     modules: [registry]
     imports:
       test: wippy.test:test
-      fixture: app:fixture
-  - name: fixture
-    kind: library.lua
-    source: file://fixture.lua
-    modules: [security, funcs, sql, uuid, time]
-    imports:
-      provision: kickside.core.threads:provision
-      identity: kickside.execution:execution_identity
+      fixture: kickside.mail_driver_fixture.testing:fixture

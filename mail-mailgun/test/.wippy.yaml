@@ -2,6 +2,7 @@
 version: "1.0"
 workspace:
   replacements:
+    kickside/mail-driver-fixture: ../../test-support/mail-driver-fixture
     kickside/mail: ../../../components/mail
     kickside/mail-mailgun: ..
     kickside/component: ../../../kickside/core/component
