@@ -31,7 +31,23 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
   -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' \
   -keyout "$tls/key.pem" -out "$tls/cert.pem" 2>"$tls/openssl.log" || { cat "$tls/openssl.log" >&2; exit 1; }
 {
-  printf 'version: "1.0"\noverride:\n  app:%s_gateway:tls:\n    mode: manual\n    cert: |\n' "$driver"
+  printf 'version: "1.0"\noverride:\n'
+  python3 - "$PWD/.wippy" <<'PYTHON'
+import json
+import sys
+from pathlib import Path
+
+state = Path(sys.argv[1])
+paths = {
+    "host:db:file": "driver-test.sqlite",
+    "host:env_storage:file_path": "test.env",
+    "host:uploads:directory": "uploads",
+    "testing:signals:directory": "driver-signals",
+}
+for field, name in paths.items():
+    print(f"  test.mail_driver_fixture.{field}: {json.dumps(str(state / name))}")
+PYTHON
+  printf '  app:%s_gateway:tls:\n    mode: manual\n    cert: |\n' "$driver"
   sed 's/^/      /' "$tls/cert.pem"
   printf '    key: |\n'
   sed 's/^/      /' "$tls/key.pem"
