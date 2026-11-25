@@ -21,6 +21,7 @@ entries:
     kind: ns.requirement
     meta:
       value_type: string
+      comment: Sets the delivery URL and its outbound HTTP grant.
       description: Complete HTTPS URL for the SendGrid mail delivery endpoint.
     default: https://api.sendgrid.com/v3/mail/send
     targets:

@@ -21,6 +21,7 @@ entries:
     kind: ns.requirement
     meta:
       value_type: string
+      comment: Sets the US delivery prefix and its outbound HTTP grant.
       description: HTTPS URL prefix for the US Mailgun API.
     default: https://api.mailgun.net/v3/*
     targets:
@@ -30,6 +31,7 @@ entries:
     kind: ns.requirement
     meta:
       value_type: string
+      comment: Sets the EU delivery prefix and its outbound HTTP grant.
       description: HTTPS URL prefix for the EU Mailgun API.
     default: https://api.eu.mailgun.net/v3/*
     targets:
@@ -39,6 +41,7 @@ entries:
     kind: ns.requirement
     meta:
       value_type: string
+      comment: Sets the default domain until an administrator chooses one.
       description: Default verified Mailgun sending domain.
     default: ""
     targets:

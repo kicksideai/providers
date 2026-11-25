@@ -21,6 +21,7 @@ entries:
     kind: ns.requirement
     meta:
       value_type: string
+      comment: Sets the delivery URL and its outbound HTTP grant.
       description: Complete HTTPS URL for the Resend email delivery endpoint.
     default: https://api.resend.com/emails
     targets:

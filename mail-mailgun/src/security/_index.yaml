@@ -47,6 +47,7 @@ entries:
     meta:
       value_kind: security.scope
       description: Application member scope with access to the driver module.
+      comment: Grants member discovery of the driver.
     targets:
       - { entry: kickside.mail.mailgun.security:module_access, path: ".groups +=" }
       - { entry: kickside.mail.mailgun.security:module_runtime, path: ".groups +=" }
