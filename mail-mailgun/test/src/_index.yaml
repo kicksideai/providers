@@ -265,11 +265,10 @@ entries:
     meta: { type: test, suite: mail_mailgun }
     source: file://driver_test.lua
     method: run
-    modules: [uuid, fs, json, registry, base64, sql, time, contract]
+    modules: [uuid, fs, json, registry, base64, time, contract]
     imports:
       test: wippy.test:test
       fixture: app:fixture
-      settings_writer: kickside.settings.persist:settings_writer
   - name: defaults_test
     kind: function.lua
     meta: { type: test_fixture, suite: mail_mailgun_defaults }

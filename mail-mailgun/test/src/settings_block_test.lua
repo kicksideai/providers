@@ -15,6 +15,18 @@ return {run = test.run_cases(function()
             test.eq("kickside.mail.security:send_access", role.data.policies[1])
         end)
 
+        test.it("binds the library editor grant through Mail's install requirement", function()
+            local dependency = assert(registry.get("app:dep.driver"))
+            local grant
+            for _, parameter in ipairs(dependency.data.parameters) do
+                if parameter.name == "kickside.mail:library_editor_grant" then grant = parameter.value end
+            end
+            test.not_nil(grant)
+            test.eq("wippy.test:runner", grant.subject_id)
+            test.eq("user", grant.subject_type)
+            test.eq(3, grant.access_mask)
+        end)
+
         test.it("describes host requirements and their scalar values", function()
             for _, name in ipairs({"us_api_base_url", "eu_api_base_url", "sending_domain"}) do
                 local requirement = assert(registry.get(NAMESPACE .. ":" .. name))
