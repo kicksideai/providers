@@ -16,8 +16,16 @@ workspace:
     kickside/users: ../../../kickside/platform/users
     kickside/doc2md: ../../../converters/doc2md
 override:
+  app:dep.driver:parameters:
+      - { name: "kickside.mail.sendgrid:api_base_url", value: "http://127.0.0.1:${stub_port}/v3/mail/send" }
+      - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
+      - { name: "kickside.mail:target_db", value: "app:db" }
+      - { name: "kickside.mail:api_router", value: "app:api" }
+      - { name: "kickside.mail.sendgrid.security:user_security_scope", value: "app:user" }
+  app:sendgrid_gateway:addr: "127.0.0.1:${stub_port}"
   kickside.mail.security:send_access:groups: [app:mail_senders]
 vars:
+  stub_port: 0
   pg_host: localhost
   pg_port: 5433
   pg_database: kickside_test_mail_sendgrid

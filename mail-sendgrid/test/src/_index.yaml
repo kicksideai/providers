@@ -24,7 +24,7 @@ entries:
     default: ""
   - name: db
     kind: db.sql.sqlite
-    file: ":memory:"
+    file: ./.wippy/driver-test.sqlite
     foreign_keys: true
     pool: { max_open: 1, max_idle: 1 }
   - name: env_storage
@@ -177,15 +177,9 @@ entries:
     kind: ns.dependency
     component: kickside/mail-sendgrid
     version: "*"
-    parameters:
-      - { name: "kickside.mail.sendgrid:api_base_url", value: "http://127.0.0.1:24636/v3/mail/send" }
-      - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
-      - { name: "kickside.mail:target_db", value: "app:db" }
-      - { name: "kickside.mail:api_router", value: "app:api" }
-      - { name: "kickside.mail.sendgrid.security:user_security_scope", value: "app:user" }
   - name: sendgrid_gateway
     kind: http.service
-    addr: "127.0.0.1:24636"
+    addr: "127.0.0.1:0"
     lifecycle: { auto_start: true }
   - name: sendgrid_router
     kind: http.router

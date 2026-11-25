@@ -24,7 +24,7 @@ entries:
     default: ""
   - name: db
     kind: db.sql.sqlite
-    file: ":memory:"
+    file: ./.wippy/driver-test.sqlite
     foreign_keys: true
     pool: { max_open: 1, max_idle: 1 }
   - name: env_storage
@@ -177,17 +177,9 @@ entries:
     kind: ns.dependency
     component: kickside/mail-mailgun
     version: "*"
-    parameters:
-      - { name: "kickside.mail.mailgun:us_api_base_url", value: "http://127.0.0.1:24637/v3/*" }
-      - { name: "kickside.mail.mailgun:eu_api_base_url", value: "http://localhost:24637/v3/*" }
-      - { name: "kickside.mail.mailgun:sending_domain", value: "mail.example.org" }
-      - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
-      - { name: "kickside.mail:target_db", value: "app:db" }
-      - { name: "kickside.mail:api_router", value: "app:api" }
-      - { name: "kickside.mail.mailgun.security:user_security_scope", value: "app:user" }
   - name: mailgun_gateway
     kind: http.service
-    addr: "127.0.0.1:24637"
+    addr: "127.0.0.1:0"
     lifecycle: { auto_start: true }
   - name: mailgun_router
     kind: http.router
