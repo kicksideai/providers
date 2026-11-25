@@ -5,6 +5,14 @@ entries:
   - name: definition
     kind: ns.definition
     meta: { title: Example Workspace }
+  - name: site_title
+    kind: registry.entry
+    meta: {type: "kickside.settings:definition"}
+    namespace: kickside.ui
+    key: title
+    scope: global
+    value_type: string
+    default: Example Workspace
   - name: db
     kind: db.sql.sqlite
     file: ":memory:"
@@ -209,7 +217,7 @@ entries:
     modules: [security, contract, funcs, time]
     imports:
       client: kickside.mail:client
-      settings: kickside.mail:settings
+      settings: kickside.mail.driver:config
       uploads: kickside.uploads:uploads
     security:
       policies: [kickside.mail.security:settings_read]

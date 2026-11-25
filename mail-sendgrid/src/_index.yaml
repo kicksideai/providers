@@ -17,18 +17,6 @@ entries:
   - name: types
     kind: library.lua
     source: file://types.lua
-  - name: driver
-    kind: registry.entry
-    meta: { type: "kickside.mail:driver" }
-    id: sendgrid
-    max_recipients: 1000
-    max_message_bytes: 29999999
-    label: SendGrid
-    icon: simple-icons:sendgrid
-    description: Deliver mail through SendGrid.
-    binding: kickside.mail.sendgrid:transport
-    settings_ns: kickside.mail.sendgrid
-    available_func: kickside.mail.sendgrid:available
   - name: endpoints
     kind: registry.entry
     endpoints: {}
@@ -41,7 +29,7 @@ entries:
     kind: contract.binding
     contracts:
       - contract: kickside.mail:transport
-        methods: { send: "kickside.mail.sendgrid:send" }
+        methods: {send: kickside.mail.sendgrid:send, status: kickside.mail.sendgrid:status}
   - name: send
     kind: function.lua
     source: file://sendgrid.lua
@@ -49,22 +37,22 @@ entries:
     imports:
       types: kickside.mail.sendgrid:types
       mail_types: kickside.mail:types
-      settings: kickside.mail:settings
-      delivery: kickside.mail.service:delivery
+      settings: kickside.mail.driver:config
+      delivery: kickside.mail.driver:http
     security:
       policies:
-        - kickside.mail.security:settings_read
-        - kickside.mail.security:settings_admin_read
+        - kickside.mail.sendgrid.security:settings_read
+        - kickside.mail.sendgrid.security:settings_admin_read
         - kickside.mail.sendgrid.security:http_access
         - kickside.mail.sendgrid.security:provider_reads
-  - name: available
+  - name: status
     kind: function.lua
     source: file://sendgrid.lua
-    method: available
+    method: status
     imports:
       types: kickside.mail.sendgrid:types
       mail_types: kickside.mail:types
-      settings: kickside.mail:settings
-      delivery: kickside.mail.service:delivery
+      settings: kickside.mail.driver:config
+      delivery: kickside.mail.driver:http
     security:
-      policies: [kickside.mail.security:settings_read, kickside.mail.security:settings_admin_read]
+      policies: [kickside.mail.sendgrid.security:settings_read, kickside.mail.sendgrid.security:settings_admin_read]

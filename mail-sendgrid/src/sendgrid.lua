@@ -6,16 +6,20 @@ local settings = require("settings")
 
 local M = {}
 
-function M.available(): (mail.Availability?, error?)
+function M.status(): (mail.TransportStatus?, error?)
     local _, err = settings.read_api_key("kickside.mail.sendgrid", "SendGrid")
-    return settings.available(err)
+    local state, status_err = settings.status_error(err)
+    if status_err then return nil, status_err end
+    return {title = "SendGrid", icon = "simple-icons:sendgrid", description = "Deliver mail through SendGrid.",
+        settings_ns = "kickside.mail.sendgrid", max_recipients = 1000, max_message_bytes = 29999999, idempotent = false,
+        ready = state.ready, code = state.code, reason = state.reason}, nil
 end
 
-local function request(key: string, body: string): (mail.HttpResponse?, error?)
+local function request(key: string, body: string, deadline: string): (mail.HttpResponse?, error?)
     local url, url_err = settings.endpoint("kickside.mail.sendgrid:endpoints", "api")
     if url_err then return nil, url_err end
     local sent, err = delivery.post(url .. "/v3/mail/send", body,
-        {Authorization = "Bearer " .. key, ["Content-Type"] = "application/json"})
+        delivery.bearer_json(key), deadline)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code ~= 202 then
@@ -81,7 +85,7 @@ function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
         return nil, body_err
     end
 
-    local response, err = request(key :: string, body :: string)
+    local response, err = request(key :: string, body :: string, input.deadline)
     if err then return nil, err end
     for name, value in pairs(response.headers) do
         if name:lower() == "x-message-id" and type(value) == "string" and value:find("%S") then

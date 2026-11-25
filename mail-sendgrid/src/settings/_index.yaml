@@ -10,9 +10,13 @@ entries:
     title: API key
     description: API key authorized to send mail through SendGrid.
     scope: global
-    visible: false
     value_type: secret
     read_access: admin
     default: ""
     order: 10
-    validate_func: kickside.mail.settings:validate_api_key
+    validate_func: kickside.mail.sendgrid.settings:validate_api_key
+  - name: validate_api_key
+    kind: function.lua
+    source: file://validate.lua
+    method: api_key
+    imports: {config: kickside.mail.driver:config}
