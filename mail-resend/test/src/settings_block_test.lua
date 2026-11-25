@@ -15,21 +15,13 @@ return {run = test.run_cases(function()
             end
         end)
 
-        test.it("appear as one Resend entry in Integrations, rendered by the shared settings card", function()
-            local catalog = blocks.build(blocks.declared(), {[NAMESPACE] = true})
-            local found = {}
-            for _, block in ipairs(catalog) do
-                local claims = block.namespace == NAMESPACE
-                for _, ns in ipairs(block.namespaces or {}) do claims = claims or ns == NAMESPACE end
-                if claims then found[#found + 1] = block end
+        test.it("leaves its settings namespace for the composite Mail block", function()
+            for _, block in ipairs(blocks.declared()) do
+                test.neq(NAMESPACE, block.namespace)
+                for _, namespace in ipairs(block.namespaces or {}) do
+                    test.neq(NAMESPACE, namespace)
+                end
             end
-            test.eq(1, #found, "no generated entry beside the declared one")
-            local block = found[1]
-            test.eq("Resend", block.title)
-            test.eq("Integrations", block.group)
-            test.eq("simple-icons:resend", block.icon)
-            test.eq("kickside-settings-provider", block.component_tag)
-            test.eq(NAMESPACE, (block.config :: {[string]: unknown}).namespace)
         end)
     end)
 end)}
