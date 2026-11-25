@@ -17,7 +17,7 @@ workspace:
     kickside/doc2md: ../../../converters/doc2md
 override:
   app:dep.driver:parameters:
-      - { name: "kickside.mail.sendgrid:api_base_url", value: "http://127.0.0.1:${stub_port}/v3/mail/send" }
+      - { name: "kickside.mail.sendgrid:api_base_url", value: "https://127.0.0.1:${stub_port}/v3/mail/send" }
       - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
       - { name: "kickside.mail:target_db", value: "app:db" }
       - { name: "kickside.mail:api_router", value: "app:api" }

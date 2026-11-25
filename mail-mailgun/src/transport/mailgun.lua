@@ -29,9 +29,9 @@ local function delivery_url(domain: string, region: string): (string?, error?)
 
     local prefix: unknown = entry.data.endpoints[region]
     if type(prefix) == "string" then
-        local base, scheme, authority = prefix:match("^((https?)://([%w.:%-]+)/v3/)%*$")
+        local base, authority = prefix:match("^(https://([%w.:%-]+)/v3/)%*$")
         local host = authority and (authority:match("^([%w.%-]+):%d+$") or authority:match("^[%w.%-]+$"))
-        if host and (scheme == "https" or host == "127.0.0.1" or host == "localhost") then
+        if host then
             return base .. domain .. "/messages", nil
         end
     end

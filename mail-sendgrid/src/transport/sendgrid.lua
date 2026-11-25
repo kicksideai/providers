@@ -22,15 +22,10 @@ local function request(key: string, body: string, deadline: string): (mail.HttpR
     local entry, url_err = registry.get("kickside.mail.sendgrid:endpoints")
     if url_err then return nil, url_err end
     local url: unknown = entry.data.endpoints.api
-    local scheme, authority
-    if type(url) == "string" and not url:find("[%c%s#@\\?*]") then
-        scheme, authority = url:match("^(https?)://([^/]+)/.+$")
-    end
-    local host = authority and authority:match("^[^:]+")
-    if scheme ~= "https" and not (scheme == "http" and (host == "127.0.0.1" or host == "localhost")) then
+    if type(url) ~= "string" or url:find("[%c%s#@\\?*]") or not url:match("^https://[^/]+/.+$") then
         return nil, delivery.failure(errors.INVALID, "provider_endpoint_invalid", "Mail driver delivery URL is invalid", false)
     end
-    local sent, err = delivery.post(url :: string, body,
+    local sent, err = delivery.post(url, body,
         delivery.bearer_json(key), deadline)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse

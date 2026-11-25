@@ -29,6 +29,5 @@ entries:
     imports: *transport_imports
     security:
       policies:
-        - kickside.mail.sendgrid.security:provider_reads
         - kickside.mail.sendgrid.security:settings_read
         - kickside.mail.sendgrid.security:settings_admin_read

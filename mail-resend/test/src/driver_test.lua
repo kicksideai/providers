@@ -72,7 +72,7 @@ return { run = test.run_cases(function()
         test.it("grants only the overridden delivery URL to the driver", function()
             local caller = fixture.scoped({"kickside.mail.resend.security:http_access"})
             local fixture_addr = assert(registry.get("app:resend_gateway")).data.addr
-            local fixture_url = "http://" .. fixture_addr .. "/emails"
+            local fixture_url = "https://" .. fixture_addr .. "/emails"
             test.is_true(assert(fixture.probe(caller, "may_request", {url = fixture_url})))
             test.is_false(fixture.probe(caller, "may_request", {url = fixture_url .. "/other"}))
         end)
@@ -201,6 +201,28 @@ return { run = test.run_cases(function()
             test.eq(errors.INVALID, send_err:kind())
             test.eq("driver_not_admitted", send_err:details().code)
             test.not_nil(resend_status(assert(fixture.probe(admin, "delivery_status"))))
+        end)
+
+        test.it("refuses a plain HTTP delivery endpoint before attempting egress", function()
+            local endpoint_id = "kickside.mail.resend:endpoints"
+            local original = assert(registry.get(endpoint_id))
+            local insecure = assert(registry.get(endpoint_id))
+            insecure.data.endpoints.api = insecure.data.endpoints.api:gsub("^https:", "http:")
+            local change = assert(registry.snapshot()):changes()
+            assert(change:update(insecure))
+            local _, change_err = change:apply()
+            assert(not change_err, tostring(change_err))
+            local input = fixture_message("Insecure endpoint")
+            input.deadline = "2000-01-01T00:00:00Z"
+            local result, err = transport(input)
+            local restore = assert(registry.snapshot()):changes()
+            assert(restore:update(original))
+            local _, restore_err = restore:apply()
+            assert(not restore_err, tostring(restore_err))
+
+            test.is_nil(result)
+            test.eq(errors.INVALID, err:kind())
+            test.eq("provider_endpoint_invalid", err:details().code)
         end)
 
         test.it("refuses an expired delivery deadline before calling Resend", function()

@@ -17,8 +17,8 @@ workspace:
     kickside/doc2md: ../../../converters/doc2md
 override:
   app:dep.driver:parameters:
-      - { name: "kickside.mail.mailgun:us_api_base_url", value: "http://127.0.0.1:${stub_port}/v3/*" }
-      - { name: "kickside.mail.mailgun:eu_api_base_url", value: "http://localhost:${stub_port}/v3/*" }
+      - { name: "kickside.mail.mailgun:us_api_base_url", value: "https://127.0.0.1:${stub_port}/v3/*" }
+      - { name: "kickside.mail.mailgun:eu_api_base_url", value: "https://localhost:${stub_port}/v3/*" }
       - { name: "kickside.mail.mailgun:sending_domain", value: "mail.example.org" }
       - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
       - { name: "kickside.mail:target_db", value: "app:db" }
