@@ -40,7 +40,9 @@ entries:
   - name: user_security_scope
     kind: ns.requirement
     default: kickside.security.groups:members
-    meta: { value_kind: security.scope }
+    meta:
+      value_kind: security.scope
+      description: Application member scope with access to the driver module.
     targets:
       - { entry: kickside.mail.resend.security:module_access, path: ".groups +=" }
       - { entry: kickside.mail.resend.security:module_runtime, path: ".groups +=" }
