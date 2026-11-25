@@ -74,6 +74,7 @@ local function configured_sender()
         ["kickside.mail.mailgun"] = {api_key = "mg_fixture", domain = "mail.example.org", region = "us"},
     })
     test.is_true(configured.success, configured.error)
+    await_live(0)
     return owner
 end
 
