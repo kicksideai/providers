@@ -1,21 +1,11 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 # KickSide Mail for Mailgun
 
-This driver delivers messages from KickSide Mail through Mailgun. Set a Mailgun API key, verified sending domain, and matching API region. Delivery uses multipart requests with regular and inline attachments.
+This driver delivers messages from KickSide Mail through Mailgun. Delivery uses multipart requests with regular and inline attachments.
 
 ## Install
 
-Install `kickside/mail-mailgun` alongside KickSide Mail and Settings. `us_api_base_url` and `eu_api_base_url` default to the corresponding Mailgun API origins. Set the installation's `sending_domain` and supply each permitted delivery URL as `<base URL>/v3/<sending domain>/messages` in `delivery_urls`. For example, a US installation can set these dependency parameters.
-
-```yaml
-parameters:
-  - name: kickside.mail.mailgun:sending_domain
-    value: mg.example.org
-  - name: kickside.mail.mailgun:delivery_urls
-    value: [https://api.mailgun.net/v3/mg.example.org/messages]
-```
-
-Set the region in Settings to match the authorized URL. Update the installation parameters when authorizing a different region or sending domain.
+Install `kickside/mail-mailgun` alongside KickSide Mail and Settings. The US and EU API prefixes default to `https://api.mailgun.net/v3/*` and `https://api.eu.mailgun.net/v3/*`. An installation can override them through `us_api_base_url` and `eu_api_base_url` using the same `https://<host>/v3/*` form. Each requirement supplies both the regional endpoint and its HTTP policy grant. The driver builds the delivery URL from the selected region and the current sending domain.
 
 ## Settings
 
@@ -23,7 +13,7 @@ In **Settings → Integrations → Mail**, select **Mailgun** and set `api_key` 
 
 ## Contract and tools
 
-`kickside.mail.mailgun:transport` implements the Mail `send` and `status` methods. `send` uses Mail’s delivery deadline and returns the provider’s message ID when Mailgun supplies one. `status` reports display data, the settings namespace, limits of 1,000 recipients and 25,000,000 bytes, and `idempotent: false`. A missing or invalid setting or an unauthorized delivery URL returns `ready: false`, `code: invalid_config`, and a setup reason.
+`kickside.mail.mailgun:transport` implements the Mail `send` and `status` methods. `send` uses Mail’s delivery deadline and returns the provider’s message ID when Mailgun supplies one. `status` reports display data, the settings namespace, limits of 1,000 recipients and 25,000,000 bytes, and `idempotent: false`. A missing or invalid setting returns `ready: false`, `code: invalid_config`, and a setup reason.
 
 Mail discovers and opens the binding through the transports group. Mailgun contributes this policy to the group.
 
@@ -68,6 +58,6 @@ Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `ki
 make verify
 ```
 
-`make verify` refreshes the dependency graph and runs validation and the in-memory SQLite harness. For PostgreSQL, create a dedicated test database, then run the same target with
+`make verify` refreshes the dependency graph and runs validation and both SQLite harness profiles. The default-install profile checks readiness and policy admission without making HTTP requests. For PostgreSQL, create a dedicated test database, then run the same target with
 `WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$PGDATABASE"`.
 Drop the database after the run.

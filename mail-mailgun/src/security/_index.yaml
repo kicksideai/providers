@@ -73,7 +73,7 @@ entries:
     kind: security.policy
     meta: { private: true }
     policy:
-      resources: [kickside.mail.mailgun:endpoints]
+      resources: []
       actions: [http_client.request]
       effect: allow
   - name: provider_reads

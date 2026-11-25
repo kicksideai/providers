@@ -140,13 +140,9 @@ entries:
     component: kickside/mail-mailgun
     version: "*"
     parameters:
-      - { name: "kickside.mail.mailgun:us_api_base_url", value: "http://127.0.0.1:24637" }
-      - { name: "kickside.mail.mailgun:eu_api_base_url", value: "http://localhost:24637" }
+      - { name: "kickside.mail.mailgun:us_api_base_url", value: "http://127.0.0.1:24637/v3/*" }
+      - { name: "kickside.mail.mailgun:eu_api_base_url", value: "http://localhost:24637/v3/*" }
       - { name: "kickside.mail.mailgun:sending_domain", value: "mail.example.org" }
-      - name: kickside.mail.mailgun:delivery_urls
-        value:
-          - http://127.0.0.1:24637/v3/mail.example.org/messages
-          - http://localhost:24637/v3/mail.example.org/messages
       - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
       - { name: "kickside.mail:target_db", value: "app:db" }
       - { name: "kickside.mail:api_router", value: "app:api" }
@@ -163,7 +159,7 @@ entries:
     kind: http.endpoint
     meta: { router: "app:mailgun_router" }
     method: POST
-    path: /v3/mail.example.org/messages
+    path: /v3/{domain}/messages
     func: app:mailgun_stub
   - name: mailgun_requests
     kind: fs.directory
@@ -251,6 +247,15 @@ entries:
       test: wippy.test:test
       fixture: app:fixture
       settings_writer: kickside.settings.persist:settings_writer
+  - name: defaults_test
+    kind: function.lua
+    meta: { type: test_fixture, suite: mail_mailgun_defaults }
+    source: file://defaults_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      fixture: app:fixture
   - name: fixture
     kind: library.lua
     source: file://fixture.lua

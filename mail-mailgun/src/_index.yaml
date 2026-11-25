@@ -17,30 +17,24 @@ entries:
   - name: endpoints
     kind: registry.entry
     endpoints: {}
-    delivery_urls: []
   - name: us_api_base_url
     kind: ns.requirement
-    default: https://api.mailgun.net
+    default: https://api.mailgun.net/v3/*
     targets:
-      - { entry: "kickside.mail.mailgun:endpoints", path: ".endpoints.us" }
+      - { entry: kickside.mail.mailgun:endpoints, path: ".endpoints.us" }
+      - { entry: kickside.mail.mailgun.security:http_access, path: ".policy.resources +=" }
   - name: eu_api_base_url
     kind: ns.requirement
-    default: https://api.eu.mailgun.net
+    default: https://api.eu.mailgun.net/v3/*
     targets:
-      - { entry: "kickside.mail.mailgun:endpoints", path: ".endpoints.eu" }
+      - { entry: kickside.mail.mailgun:endpoints, path: ".endpoints.eu" }
+      - { entry: kickside.mail.mailgun.security:http_access, path: ".policy.resources +=" }
   - name: sending_domain
     kind: ns.requirement
     meta: { description: Default verified Mailgun sending domain. }
     default: ""
     targets:
       - { entry: kickside.mail.mailgun.settings:setting_domain, path: ".default" }
-  - name: delivery_urls
-    kind: ns.requirement
-    meta: { description: Exact Mailgun delivery URLs for the installed domain and regions. }
-    default: [kickside.mail.mailgun:endpoints]
-    targets:
-      - { entry: kickside.mail.mailgun:endpoints, path: ".delivery_urls" }
-      - { entry: kickside.mail.mailgun.security:http_access, path: ".policy.resources" }
   - name: transport
     kind: contract.binding
     contracts:

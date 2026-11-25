@@ -27,6 +27,16 @@ vars:
   pg_username: kickside
   pg_password: kickside
 profiles:
+  defaults:
+    override:
+      app:dep.driver:parameters:
+        - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
+        - { name: "kickside.mail:target_db", value: "app:db" }
+        - { name: "kickside.mail:api_router", value: "app:api" }
+        - { name: "kickside.mail.mailgun.security:user_security_scope", value: "app:user" }
+      app:defaults_test:meta.type: test
+      app:driver_test:meta.type: test_fixture
+      app:mailgun_gateway:addr: "127.0.0.1:0"
   postgres:
     override:
       app:db:kind: db.sql.postgres

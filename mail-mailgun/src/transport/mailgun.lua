@@ -24,16 +24,19 @@ local function response_error(response: mail.HttpResponse, key: string): error
 end
 
 local function delivery_url(domain: string, region: string): (string?, error?)
-    local base_url, url_err = settings.endpoint(ENDPOINTS, region)
-    if url_err then return nil, url_err end
     local entry, entry_err = registry.get(ENDPOINTS)
     if entry_err then return nil, entry_err end
 
-    local url = base_url .. "/v3/" .. domain .. "/messages"
-    for _, allowed in ipairs(entry.data.delivery_urls) do
-        if url == allowed then return url, nil end
+    local prefix: unknown = entry.data.endpoints[region]
+    if type(prefix) == "string" then
+        local base, scheme, authority = prefix:match("^((https?)://([%w.:%-]+)/v3/)%*$")
+        local host = authority and (authority:match("^([%w.%-]+):%d+$") or authority:match("^[%w.%-]+$"))
+        if host and (scheme == "https" or host == "127.0.0.1" or host == "localhost") then
+            return base .. domain .. "/messages", nil
+        end
     end
-    return nil, settings.missing("Authorize the Mailgun delivery URL for this sending domain and region.", "delivery_url_required")
+    return nil, errors.new({kind = errors.INVALID, message = "Mailgun API base URL prefix is invalid",
+        retryable = false, details = {code = "provider_endpoint_invalid"}})
 end
 
 local function configuration(): (types.Config?, error?)
