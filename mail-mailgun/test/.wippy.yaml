@@ -21,11 +21,11 @@ override:
       - { name: "kickside.mail.mailgun:us_api_base_url", value: "https://127.0.0.1:${stub_port}/v3/*" }
       - { name: "kickside.mail.mailgun:eu_api_base_url", value: "https://localhost:${stub_port}/v3/*" }
       - { name: "kickside.mail.mailgun:sending_domain", value: "mail.example.org" }
-      - { name: "kickside.mail.security:user_security_scope", value: "kickside.mail_driver_fixture.host:user" }
-      - { name: "kickside.mail:target_db", value: "kickside.mail_driver_fixture.host:db" }
+      - { name: "kickside.mail.security:user_security_scope", value: "test.mail_driver_fixture.host:user" }
+      - { name: "kickside.mail:target_db", value: "test.mail_driver_fixture.host:db" }
       - { name: "kickside.mail:library_editor_grant", value: {subject_id: "app:mail_editors", subject_type: group, access_mask: 3} }
-      - { name: "kickside.mail:api_router", value: "kickside.mail_driver_fixture.host:api" }
-      - { name: "kickside.mail.mailgun.security:user_security_scope", value: "kickside.mail_driver_fixture.host:user" }
+      - { name: "kickside.mail:api_router", value: "test.mail_driver_fixture.host:api" }
+      - { name: "kickside.mail.mailgun.security:user_security_scope", value: "test.mail_driver_fixture.host:user" }
   app:mailgun_gateway:addr: "127.0.0.1:${stub_port}"
 vars:
   stub_port: 0
@@ -38,26 +38,26 @@ profiles:
   defaults:
     override:
       app:dep.driver:parameters:
-        - { name: "kickside.mail.security:user_security_scope", value: "kickside.mail_driver_fixture.host:user" }
-        - { name: "kickside.mail:target_db", value: "kickside.mail_driver_fixture.host:db" }
+        - { name: "kickside.mail.security:user_security_scope", value: "test.mail_driver_fixture.host:user" }
+        - { name: "kickside.mail:target_db", value: "test.mail_driver_fixture.host:db" }
         - { name: "kickside.mail:library_editor_grant", value: {subject_id: "app:mail_editors", subject_type: group, access_mask: 3} }
-        - { name: "kickside.mail:api_router", value: "kickside.mail_driver_fixture.host:api" }
-        - { name: "kickside.mail.mailgun.security:user_security_scope", value: "kickside.mail_driver_fixture.host:user" }
+        - { name: "kickside.mail:api_router", value: "test.mail_driver_fixture.host:api" }
+        - { name: "kickside.mail.mailgun.security:user_security_scope", value: "test.mail_driver_fixture.host:user" }
       app:defaults_test:meta.type: test
       app:driver_test:meta.type: test_fixture
       app:delivery_test:meta.type: test_fixture
       app:mailgun_gateway:addr: "127.0.0.1:0"
   postgres:
     override:
-      kickside.mail_driver_fixture.host:db:kind: db.sql.postgres
-      kickside.mail_driver_fixture.host:db:host: ${pg_host}
-      kickside.mail_driver_fixture.host:db:port: ${pg_port}
-      kickside.mail_driver_fixture.host:db:database: ${pg_database}
-      kickside.mail_driver_fixture.host:db:username: ${pg_username}
-      kickside.mail_driver_fixture.host:db:password: ${pg_password}
-      kickside.mail_driver_fixture.host:db:options.sslmode: disable
-      kickside.mail_driver_fixture.host:db:pool.max_open: 16
-      kickside.mail_driver_fixture.host:db:pool.max_idle: 8
+      test.mail_driver_fixture.host:db:kind: db.sql.postgres
+      test.mail_driver_fixture.host:db:host: ${pg_host}
+      test.mail_driver_fixture.host:db:port: ${pg_port}
+      test.mail_driver_fixture.host:db:database: ${pg_database}
+      test.mail_driver_fixture.host:db:username: ${pg_username}
+      test.mail_driver_fixture.host:db:password: ${pg_password}
+      test.mail_driver_fixture.host:db:options.sslmode: disable
+      test.mail_driver_fixture.host:db:pool.max_open: 16
+      test.mail_driver_fixture.host:db:pool.max_idle: 8
 registry:
   dispatch_internal_kinds:
     - registry.entry

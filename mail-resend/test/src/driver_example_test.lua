@@ -5,7 +5,7 @@ local uuid = require("uuid")
 local fs = require("fs")
 local json = require("json")
 
-local SETTINGS = "kickside.mail.example"
+local SETTINGS = "example.mail.relay"
 local BINDING = SETTINGS .. ":transport"
 
 return {run = test.run_cases(function()

@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 version: "1.0"
-namespace: kickside.mail_driver_fixture.testing
+namespace: test.mail_driver_fixture.testing
 entries:
   - name: delivery_admins
     kind: security.scope
   - name: delivery_admins_composition
     kind: registry.entry
     meta: { type: kickside.security.group_composition }
-    group_id: kickside.mail_driver_fixture.testing:delivery_admins
+    group_id: test.mail_driver_fixture.testing:delivery_admins
     policies: [kickside.mail.security:module_access, kickside.mail.security:driver_admin]
   - name: fixture
     kind: library.lua
@@ -30,7 +30,7 @@ entries:
     method: broadcast
     modules: [events, security, fs]
     security:
-      policies: [kickside.mail_driver_fixture.testing:signal, kickside.mail_driver_fixture.testing:signal_storage]
+      policies: [test.mail_driver_fixture.testing:signal, test.mail_driver_fixture.testing:signal_storage]
   - name: notify
     kind: function.lua
     source: file://realtime.lua
@@ -49,6 +49,6 @@ entries:
   - name: signal_storage
     kind: security.policy
     policy:
-      resources: [kickside.mail_driver_fixture.testing:signals]
+      resources: [test.mail_driver_fixture.testing:signals]
       actions: [fs.get]
       effect: allow

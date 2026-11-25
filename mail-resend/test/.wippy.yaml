@@ -20,12 +20,12 @@ workspace:
 override:
   app:dep.driver:parameters:
       - { name: "kickside.mail.resend:api_base_url", value: "https://127.0.0.1:${stub_port}/emails" }
-      - { name: "kickside.mail.security:user_security_scope", value: "kickside.mail_driver_fixture.host:user" }
-      - { name: "kickside.mail:target_db", value: "kickside.mail_driver_fixture.host:db" }
-      - { name: "kickside.mail:api_router", value: "kickside.mail_driver_fixture.host:api" }
-      - { name: "kickside.mail.resend.security:user_security_scope", value: "kickside.mail_driver_fixture.host:user" }
+      - { name: "kickside.mail.security:user_security_scope", value: "test.mail_driver_fixture.host:user" }
+      - { name: "kickside.mail:target_db", value: "test.mail_driver_fixture.host:db" }
+      - { name: "kickside.mail:api_router", value: "test.mail_driver_fixture.host:api" }
+      - { name: "kickside.mail.resend.security:user_security_scope", value: "test.mail_driver_fixture.host:user" }
   app:dep.driver_example:parameters:
-      - { name: "kickside.mail.example:api_base_url", value: "https://127.0.0.1:${stub_port}/emails" }
+      - { name: "example.mail.relay:api_base_url", value: "https://127.0.0.1:${stub_port}/emails" }
   app:resend_gateway:addr: "127.0.0.1:${stub_port}"
 vars:
   stub_port: 0
@@ -37,15 +37,15 @@ vars:
 profiles:
   postgres:
     override:
-      kickside.mail_driver_fixture.host:db:kind: db.sql.postgres
-      kickside.mail_driver_fixture.host:db:host: ${pg_host}
-      kickside.mail_driver_fixture.host:db:port: ${pg_port}
-      kickside.mail_driver_fixture.host:db:database: ${pg_database}
-      kickside.mail_driver_fixture.host:db:username: ${pg_username}
-      kickside.mail_driver_fixture.host:db:password: ${pg_password}
-      kickside.mail_driver_fixture.host:db:options.sslmode: disable
-      kickside.mail_driver_fixture.host:db:pool.max_open: 16
-      kickside.mail_driver_fixture.host:db:pool.max_idle: 8
+      test.mail_driver_fixture.host:db:kind: db.sql.postgres
+      test.mail_driver_fixture.host:db:host: ${pg_host}
+      test.mail_driver_fixture.host:db:port: ${pg_port}
+      test.mail_driver_fixture.host:db:database: ${pg_database}
+      test.mail_driver_fixture.host:db:username: ${pg_username}
+      test.mail_driver_fixture.host:db:password: ${pg_password}
+      test.mail_driver_fixture.host:db:options.sslmode: disable
+      test.mail_driver_fixture.host:db:pool.max_open: 16
+      test.mail_driver_fixture.host:db:pool.max_idle: 8
 registry:
   dispatch_internal_kinds:
     - registry.entry

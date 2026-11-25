@@ -68,9 +68,9 @@ entries:
     source: file://actor_probe.lua
     method: run
     imports:
-      actor_probe: kickside.mail_driver_fixture.testing:actor_probe
+      actor_probe: test.mail_driver_fixture.testing:actor_probe
     security:
-      policies: [kickside.mail_driver_fixture.host:settings_probe_access]
+      policies: [test.mail_driver_fixture.host:settings_probe_access]
   - name: settings_block_test
     kind: function.lua
     meta: { type: test, suite: mail_mailgun_settings }
@@ -89,7 +89,7 @@ entries:
     imports:
       test: wippy.test:test
       cases: app:driver_cases
-      fixture: kickside.mail_driver_fixture.testing:fixture
+      fixture: test.mail_driver_fixture.testing:fixture
   - name: delivery_test
     kind: function.lua
     meta: { type: test, suite: mail_mailgun }
@@ -98,14 +98,14 @@ entries:
     imports:
       test: wippy.test:test
       cases: app:driver_cases
-      fixture: kickside.mail_driver_fixture.testing:fixture
+      fixture: test.mail_driver_fixture.testing:fixture
   - name: driver_cases
     kind: library.lua
     source: file://driver_cases.lua
     modules: [uuid, fs, json, base64]
     imports:
       test: wippy.test:test
-      fixture: kickside.mail_driver_fixture.testing:fixture
+      fixture: test.mail_driver_fixture.testing:fixture
   - name: defaults_test
     kind: function.lua
     meta: { type: test_fixture, suite: mail_mailgun_defaults }
@@ -114,4 +114,4 @@ entries:
     modules: [registry]
     imports:
       test: wippy.test:test
-      fixture: kickside.mail_driver_fixture.testing:fixture
+      fixture: test.mail_driver_fixture.testing:fixture

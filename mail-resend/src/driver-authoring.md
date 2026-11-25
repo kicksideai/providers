@@ -9,7 +9,7 @@ Start with this complete Example Relay package. Copy it into a new module, repla
 
 | File | Purpose |
 |---|---|
-| [wippy.yaml](../../test-support/mail-driver-example/wippy.yaml) | Plugin manifest and publication exclusions |
+| [wippy.yaml](../../test-support/mail-driver-example/wippy.yaml) | Local example package manifest |
 | [src/_index.yaml](../../test-support/mail-driver-example/src/_index.yaml) | Module definition, Mail and Settings dependencies, endpoint requirement, and transport binding |
 | [src/security/_index.yaml](../../test-support/mail-driver-example/src/security/_index.yaml) | Discovery, member and admin access, Settings reads, and exact egress permission |
 | [src/settings/_index.yaml](../../test-support/mail-driver-example/src/settings/_index.yaml) and [validate.lua](../../test-support/mail-driver-example/src/settings/validate.lua) | Settings definitions, validation, and the provider's Integrations block |
@@ -25,7 +25,7 @@ Create one `contract.binding` for `kickside.mail:transport` in the module root. 
   meta: { private: true, comment: Admits this driver to the Mail transports group. }
   groups: [kickside.mail.security:transports]
   policy:
-    resources: [kickside.mail.example:transport]
+    resources: [example.mail.relay:transport]
     actions: [contract.open]
     effect: allow
 ```
@@ -74,8 +74,8 @@ Keep the destination and egress permission linked to a single scalar requirement
     description: Complete HTTPS URL for the relay delivery endpoint.
   default: https://delivery.example.invalid/messages
   targets:
-    - { entry: kickside.mail.example:endpoints, path: ".endpoints.api" }
-    - { entry: kickside.mail.example.security:http_access, path: ".policy.resources +=" }
+    - { entry: example.mail.relay:endpoints, path: ".endpoints.api" }
+    - { entry: example.mail.relay.security:http_access, path: ".policy.resources +=" }
 ```
 
 The `provider_reads` policy grants `registry.get` on your `endpoints` entry. Start `http_access.policy.resources` as `[]`, restrict its action to `http_client.request`, and attach it only to `send`. Resolve the linked endpoint through `config.endpoint` in both methods. When a provider requires a runtime segment in the URL, use a narrowly scoped HTTPS prefix and validate the segment before assembling the exact path. Mailgun's two regional URL prefixes illustrate this case. Keep the permissions off Mail's own entries.

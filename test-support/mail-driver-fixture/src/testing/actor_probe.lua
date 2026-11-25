@@ -9,8 +9,8 @@ local uploads = require("uploads")
 local function run(binding, input)
     if input.action == "member_permissions" then
         return {
-            database = security.can("db.get", "kickside.mail_driver_fixture.host:db"),
-            storage = security.can("fs.get", "kickside.mail_driver_fixture.host:uploads"),
+            database = security.can("db.get", "test.mail_driver_fixture.host:db"),
+            storage = security.can("fs.get", "test.mail_driver_fixture.host:uploads"),
             component_env = security.can("env.get", "kickside.component.env:target_db"),
         }
     end

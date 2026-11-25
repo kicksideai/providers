@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 version: "1.0"
-namespace: kickside.mail.example.security
+namespace: example.mail.relay.security
 entries:
   - name: module_access
     kind: security.policy
     meta:
       title: Example Relay
-      surface: kickside.mail.example
+      surface: example.mail.relay
       intent: module_access
       includes:
-        - kickside.mail.example.security:module_runtime
+        - example.mail.relay.security:module_runtime
     groups: []
     policy:
-      resources: [kickside.mail.example:definition]
+      resources: [example.mail.relay:definition]
       actions: [registry.get, registry.find]
       effect: allow
   - name: module_runtime
@@ -20,21 +20,21 @@ entries:
     meta: { private: true }
     groups: []
     policy:
-      resources: [kickside.mail.example:transport, kickside.mail.example.transport:send, kickside.mail.example.transport:status]
+      resources: [example.mail.relay:transport, example.mail.relay.transport:send, example.mail.relay.transport:status]
       actions: [registry.get, registry.find]
       effect: allow
   - name: driver_admin
     kind: security.policy
     meta:
       title: Administer Example Relay mail delivery
-      surface: kickside.mail.example
+      surface: example.mail.relay
       intent: module_management
     groups: []
     policy:
       resources:
-        - kickside.mail.example.settings:settings_block
-        - kickside.mail.example.settings:setting_api_key
-        - kickside.mail.example.settings:validate_api_key
+        - example.mail.relay.settings:settings_block
+        - example.mail.relay.settings:setting_api_key
+        - example.mail.relay.settings:validate_api_key
       actions: [registry.get, registry.find, funcs.call]
       effect: allow
   - name: user_security_scope
@@ -45,14 +45,14 @@ entries:
       description: Application member scope with access to the driver module.
       comment: Grants member discovery of the driver.
     targets:
-      - { entry: kickside.mail.example.security:module_access, path: ".groups +=" }
-      - { entry: kickside.mail.example.security:module_runtime, path: ".groups +=" }
+      - { entry: example.mail.relay.security:module_access, path: ".groups +=" }
+      - { entry: example.mail.relay.security:module_runtime, path: ".groups +=" }
   - name: transport_open
     kind: security.policy
     meta: { private: true, comment: Admits this driver to the Mail transports group. }
     groups: [kickside.mail.security:transports]
     policy:
-      resources: [kickside.mail.example:transport]
+      resources: [example.mail.relay:transport]
       actions: [contract.open]
       effect: allow
   - name: settings_read
@@ -80,6 +80,6 @@ entries:
     kind: security.policy
     meta: { private: true }
     policy:
-      resources: [kickside.mail.example:endpoints]
+      resources: [example.mail.relay:endpoints]
       actions: [registry.get]
       effect: allow

@@ -19,24 +19,24 @@ local function member_executor(actor, groups)
 end
 
 function M.member(group)
-    local groups = {"kickside.mail_driver_fixture.host:user", group}
+    local groups = {"test.mail_driver_fixture.host:user", group}
     local actor = assert(security.new_actor(uuid.v4(), {security_groups = groups}))
     return member_executor(actor, groups)
 end
 
 function M.delivery_admin()
-    return M.member("kickside.mail_driver_fixture.testing:delivery_admins")
+    return M.member("test.mail_driver_fixture.testing:delivery_admins")
 end
 
 function M.user(id, can_send)
     id = id or uuid.v4()
-    local db = assert(sql.get("kickside.mail_driver_fixture.host:db"))
+    local db = assert(sql.get("test.mail_driver_fixture.host:db"))
     assert(db:execute([[INSERT INTO app_users (user_id,email,full_name,password_hash,status)
         VALUES ($1,$2,$1,'test-only','active')]], {id, id .. "@example.org"}))
-    local groups = {"kickside.mail_driver_fixture.host:user"}
+    local groups = {"test.mail_driver_fixture.host:user"}
     if can_send ~= false then
-        groups[#groups + 1] = "kickside.mail_driver_fixture.host:mail_senders"
-        groups[#groups + 1] = "kickside.mail_driver_fixture.host:uploaders"
+        groups[#groups + 1] = "test.mail_driver_fixture.host:mail_senders"
+        groups[#groups + 1] = "test.mail_driver_fixture.host:uploaders"
     end
     for _, group in ipairs(groups) do
         assert(db:execute("INSERT INTO app_user_groups (user_id,group_id) VALUES ($1,$2)", {id, group}))
@@ -54,7 +54,7 @@ end
 
 function M.scoped(policy_ids)
     local actor = assert(security.new_actor(uuid.v4()))
-    local policies = {assert(security.policy("kickside.mail_driver_fixture.host:test_scope"))}
+    local policies = {assert(security.policy("test.mail_driver_fixture.host:test_scope"))}
     for _, id in ipairs(policy_ids) do
         policies[#policies + 1] = assert(security.policy(id))
     end
@@ -82,7 +82,7 @@ local function await_change(topic, read, pending)
 end
 
 function M.await_initial_publication()
-    local signals = assert(fs.get("kickside.mail_driver_fixture.testing:signals"))
+    local signals = assert(fs.get("test.mail_driver_fixture.testing:signals"))
     local published, err = await_change("mail.library", function()
         return signals:exists("library")
     end, function(result, read_err)

@@ -7,7 +7,7 @@ local function broadcast(input)
     if input.topic == "mail.library" or input.topic == "mail.activity" then
         assert(security.can("realtime.broadcast", "kickside.realtime:" .. input.topic))
         if input.topic == "mail.library" then
-            local signals = assert(fs.get("kickside.mail_driver_fixture.testing:signals"))
+            local signals = assert(fs.get("test.mail_driver_fixture.testing:signals"))
             assert(signals:writefile("library", input.topic))
         end
         assert(events.send("mail.driver.fixture", input.topic, input.topic))

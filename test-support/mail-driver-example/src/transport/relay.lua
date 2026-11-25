@@ -3,7 +3,7 @@ local config = require("config")
 local delivery = require("delivery")
 local mail = require("mail")
 
-local SETTINGS = "kickside.mail.example"
+local SETTINGS = "example.mail.relay"
 local TITLE = "Example Relay"
 local M = {}
 

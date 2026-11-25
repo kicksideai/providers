@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 version: "1.0"
-namespace: kickside.mail.example
+namespace: example.mail.relay
 entries:
   - name: definition
     kind: ns.definition
@@ -25,12 +25,12 @@ entries:
       description: Complete HTTPS URL for the Example Relay email delivery endpoint.
     default: https://delivery.example.invalid/messages
     targets:
-      - { entry: "kickside.mail.example:endpoints", path: ".endpoints.api" }
-      - { entry: kickside.mail.example.security:http_access, path: ".policy.resources +=" }
+      - { entry: "example.mail.relay:endpoints", path: ".endpoints.api" }
+      - { entry: example.mail.relay.security:http_access, path: ".policy.resources +=" }
   - name: transport
     kind: contract.binding
     contracts:
       - contract: kickside.mail:transport
         methods:
-          send: kickside.mail.example.transport:send
-          status: kickside.mail.example.transport:status
+          send: example.mail.relay.transport:send
+          status: example.mail.relay.transport:status

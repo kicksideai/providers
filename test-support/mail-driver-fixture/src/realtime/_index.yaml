@@ -8,5 +8,5 @@ entries:
       - contract: kickside.contract:realtime
         default: true
         methods:
-          broadcast: kickside.mail_driver_fixture.testing:broadcast
-          notify: kickside.mail_driver_fixture.testing:notify
+          broadcast: test.mail_driver_fixture.testing:broadcast
+          notify: test.mail_driver_fixture.testing:notify
