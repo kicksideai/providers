@@ -11,7 +11,7 @@ return {run = test.run_cases(function()
         test.it("is ready with only an API key and a sending domain", function()
             local domain = assert(registry.get(SETTINGS .. ".settings:setting_domain"))
             test.eq("", domain.data.default)
-            local admin = fixture.admin()
+            local admin = fixture.member("app:fixture_admins")
             local saved = assert(fixture.probe(admin, "configure", {
                 settings = {[SETTINGS] = {api_key = "mg_fixture", domain = "fresh.example.org"}},
             }))

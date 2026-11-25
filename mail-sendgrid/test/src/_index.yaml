@@ -56,6 +56,47 @@ entries:
       resources: ['127.0.0.1']
       actions: [http_client.private_ip]
       effect: allow
+  - name: fixture_admins
+    kind: security.scope
+    meta: {comment: Administers mail delivery and Settings in this harness.}
+  - name: fixture_admins_composition
+    kind: registry.entry
+    meta: {type: kickside.security.group_composition}
+    group_id: app:fixture_admins
+    policies:
+      - kickside.mail.security:driver_admin
+      - kickside.mail.security:log_admin
+      - kickside.mail.sendgrid.security:driver_admin
+      - kickside.settings.security:module_access
+      - app:fixture_admin_settings
+      - app:fixture_settings_definition
+      - app:fixture_admin_db
+      - app:fixture_admin_transport
+      - app:stub_private_ip
+  - name: fixture_admin_settings
+    kind: security.policy
+    policy:
+      resources: [kickside.settings.api:list_settings.endpoint, kickside.settings.api:put_settings.endpoint]
+      actions: [access]
+      effect: allow
+  - name: fixture_settings_definition
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.host:unrelated_api_key]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: fixture_admin_db
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.host:db]
+      actions: [db.get]
+      effect: allow
+  - name: fixture_admin_transport
+    kind: security.policy
+    policy:
+      resources: [kickside.mail:transport, kickside.mail.sendgrid:transport, status, send, set]
+      actions: [contract.get, contract.open, contract.call]
+      effect: allow
   - name: actor_probe
     kind: function.lua
     source: file://actor_probe.lua

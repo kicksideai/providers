@@ -10,7 +10,7 @@ local BINDING = "kickside.mail.sendgrid:transport"
 local ADMISSION = "kickside.mail.sendgrid.security:transport_open"
 
 local function configure(settings)
-    return assert(fixture.probe(fixture.admin(), "configure", {settings = settings}))
+    return assert(fixture.probe(fixture.member("app:fixture_admins"), "configure", {settings = settings}))
 end
 
 local function send(actor, message)
@@ -19,7 +19,7 @@ end
 
 local function transport(input)
     input.from = {address = "sender@example.org"}
-    return fixture.probe(fixture.admin(), "transport", {message = input})
+    return fixture.probe(fixture.member("app:fixture_admins"), "transport", {message = input})
 end
 
 local function sendgrid_status(delivery)

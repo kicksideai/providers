@@ -17,6 +17,16 @@ workspace:
     kickside/users: ../../../kickside/platform/users
     kickside/doc2md: ../../../converters/doc2md
 override:
+  kickside.core.lifecycle:system_lifecycle:meta.provision.grants:
+    - {subject_id: "test.mail_driver_fixture.host:user", subject_type: group, access_mask: 2}
+    - {subject_id: "test.mail_driver_fixture.host:user_admins", subject_type: group, access_mask: 3}
+  kickside.users.security:login_role_resolve:policy.resources:
+    - test.mail_driver_fixture.host:user
+    - test.mail_driver_fixture.host:mail_senders
+    - test.mail_driver_fixture.host:uploaders
+    - test.mail_driver_fixture.host:user_admins
+    - test.mail_driver_fixture.testing:delivery_admins
+    - app:fixture_admins
   app:dep.driver:parameters:
       - { name: "kickside.mail.mailgun:us_api_base_url", value: "https://127.0.0.1:${stub_port}/v3/*" }
       - { name: "kickside.mail.mailgun:eu_api_base_url", value: "https://localhost:${stub_port}/v3/*" }

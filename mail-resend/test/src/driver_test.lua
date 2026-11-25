@@ -13,7 +13,7 @@ local BINDING = "kickside.mail.resend:transport"
 local ADMISSION = "kickside.mail.resend.security:transport_open"
 
 local function configure(settings)
-    return assert(fixture.probe(fixture.admin(), "configure", {settings = settings}))
+    return assert(fixture.probe(fixture.member("app:fixture_admins"), "configure", {settings = settings}))
 end
 
 local function send(actor, message)
@@ -22,7 +22,7 @@ end
 
 local function transport(input)
     input.from = {address = "sender@example.org"}
-    return fixture.probe(fixture.admin(), "transport", {message = input})
+    return fixture.probe(fixture.member("app:fixture_admins"), "transport", {message = input})
 end
 
 local function resend_status(delivery)
@@ -107,7 +107,7 @@ return { run = test.run_cases(function()
             }))
             local volume = assert(fs.get("app:resend_requests"))
             test.eq("queued", result.status)
-            local delivered = fixture.terminal(fixture.admin(), result.message_id)
+            local delivered = fixture.terminal(fixture.member("app:fixture_admins"), result.message_id)
             local captured = assert(json.decode(assert(volume:readfile(delivered.provider_message_id .. ".json"))))
             test.is_true(captured.authorized)
             test.eq("application/json", captured.content_type)
@@ -156,7 +156,7 @@ return { run = test.run_cases(function()
             local foreign = {namespace = "app.unrelated"}
             local own = {namespace = "kickside.mail.resend"}
             test.is_true(configure({[foreign.namespace] = {api_key = "other_fixture"}}).success)
-            test.is_true(assert(fixture.probe(fixture.admin(), "read_settings", foreign)).has_api_key)
+            test.is_true(assert(fixture.probe(fixture.member("app:fixture_admins"), "read_settings", foreign)).has_api_key)
             test.is_false(assert(fixture.probe(reader, "read_settings", foreign)).has_api_key)
             test.is_false(assert(fixture.probe(reader, "read_settings", own)).has_api_key)
             test.is_true(assert(fixture.probe(reader, "status")).ready)
@@ -215,7 +215,7 @@ return { run = test.run_cases(function()
                 local input = fixture_message("Invalid endpoint")
                 input.deadline = "2000-01-01T00:00:00Z"
                 local result, err = transport(input)
-                local status, status_err = fixture.probe(fixture.admin(), "status")
+                local status, status_err = fixture.probe(fixture.member("app:fixture_admins"), "status")
                 local restore = assert(registry.snapshot()):changes()
                 assert(restore:update(original))
                 local _, restore_err = restore:apply()
@@ -245,7 +245,7 @@ return { run = test.run_cases(function()
                 local result = configure({["kickside.mail.resend"] = {api_key = key}})
                 test.is_false(result.success)
             end
-            test.is_true(assert(fixture.probe(fixture.admin(), "status")).ready)
+            test.is_true(assert(fixture.probe(fixture.member("app:fixture_admins"), "status")).ready)
         end)
 
         test.it("carries the provider retry hint on rate limiting", function()
@@ -301,7 +301,7 @@ return { run = test.run_cases(function()
 
         test.it("marks an accepted 200 without a provider ID as sent", function()
             local queued = assert(send(owner, fixture_message("Accepted without ID")))
-            local delivered = fixture.terminal(fixture.admin(), queued.message_id)
+            local delivered = fixture.terminal(fixture.member("app:fixture_admins"), queued.message_id)
             test.eq("sent", delivered.status)
             test.not_nil(delivered.sent_at)
             test.is_nil(delivered.provider_message_id)
@@ -331,7 +331,6 @@ return { run = test.run_cases(function()
             local source_id, reader_id = uuid.v4(), uuid.v4()
             local source = fixture.user(source_id)
             local reader = fixture.user(reader_id)
-            local acl = fixture.admin(source_id)
             local upload = assert(fixture.probe(source, "store", {
                 bytes = "shared bytes", filename = "notes.txt", content_type = "text/plain",
             }))
@@ -339,9 +338,9 @@ return { run = test.run_cases(function()
                 root_component_id = uploads_types.component_id_for_owner(source_id),
                 subject = {subject_id = reader_id, subject_type = "user"},
             }
-            local granted = assert(acl:call("kickside.component.binding:grant_subtree_func", {
+            local granted = assert(fixture.probe(source, "grant_upload", {target = {
                 root_component_id = target.root_component_id, subject = target.subject, access_mask = 1,
-            }))
+            }}))
             test.is_true(granted.success, granted.error)
             local input = fixture_message("HTTP 429")
             input.attachments = {{upload_id = upload.uuid}}
@@ -354,7 +353,7 @@ return { run = test.run_cases(function()
             test.eq(2, #captured[1].payload.attachments)
             test.eq("mail-library-logo", captured[1].payload.attachments[2].content_id)
             test.eq("c2hhcmVkIGJ5dGVz", captured[1].payload.attachments[1].content)
-            local revoked = assert(acl:call("kickside.component.binding:revoke_subtree_func", target))
+            local revoked = assert(fixture.probe(source, "revoke_upload", {target = target}))
             test.is_true(revoked.success, revoked.error)
             local failed = fixture.await_message(reader, queued.message_id, function(message) return message.status == "failed" end)
             test.eq(2, failed.attempts)
