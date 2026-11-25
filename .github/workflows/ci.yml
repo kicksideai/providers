@@ -1432,6 +1432,9 @@ jobs:
     - name: Record KickSide integration revision
       run: git rev-parse HEAD
       working-directory: kickside
+    - name: Check Resend module structure
+      if: ${{ matrix.module == 'mail-resend' && matrix.engine == 'sqlite' }}
+      run: python3 -B ../components/scripts/check_structure.py mail-resend --peer ../components/mail
     - name: Build, lint and Lua module tests
       run: ${{ matrix.commands }}
     defaults:
