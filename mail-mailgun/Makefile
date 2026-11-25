@@ -5,7 +5,7 @@ SHELL := bash
 ENCRYPTION_KEY ?= 0000000000000000000000000000000000000000000000000000000000000000
 export ENCRYPTION_KEY
 
-.PHONY: lockrefresh lint check-dependencies test test-pg test-defaults verify publish
+.PHONY: lockrefresh lint check-dependencies check-docs test test-pg test-defaults verify publish
 lockrefresh:
 	cd test && $(WIPPY) update
 
@@ -21,8 +21,11 @@ test test-pg test-defaults:
 check-dependencies:
 	bash ../scripts/verify_provider_dependencies.sh
 
+check-docs:
+	python3 -B ../test-support/check-mail-driver-docs.py .
+
 verify: lockrefresh
-	$(MAKE) lint check-dependencies test test-defaults
+	$(MAKE) lint check-dependencies check-docs test test-defaults
 
 publish:
 	@echo "Releases use GitHub Release Please (.github/workflows/release.yml)." >&2

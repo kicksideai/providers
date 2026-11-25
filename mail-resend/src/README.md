@@ -34,33 +34,37 @@ Use KickSide Mail’s contract, tools, and automation destination to send messag
 
 ```text
 Code                            Kind                Retryable
-attachment_encoding_failed      Source error        Source flag
-credentials_invalid             PermissionDenied    No
-delivery_deadline_exceeded       Unavailable         Yes
-delivery_deadline_invalid        Invalid             No
-idempotency_conflict            Conflict            No
-invalid_config                  Invalid             No
-message_encoding_failed         Source error        Source flag
-message_rejected                Invalid             No
-provider_endpoint_invalid       Invalid             No
-provider_rejected               Internal            No
-provider_request_failed         Source error        Source flag
-provider_response_invalid       Internal            No
-provider_unavailable            Unavailable         Yes
-quota_exhausted                 RateLimited         No
-rate_limited                    RateLimited         Yes
-send_in_progress                Conflict            Yes
-settings_read_failed            Internal            No
+attachment_encoding_failed         Source error       Source flag
+authorization_refused              PermissionDenied   No
+credentials_invalid                PermissionDenied   No
+delivery_deadline_exceeded         Unavailable        Yes
+delivery_deadline_invalid          Invalid            No
+idempotency_conflict               Conflict           No
+invalid_config                     Invalid            No
+message_encoding_failed            Source error       Source flag
+message_rejected                   Invalid            No
+provider_endpoint_invalid          Invalid            No
+provider_rejected                  Internal           No
+provider_request_failed            Source error       Source flag
+provider_response_invalid          Internal           No
+provider_transport_failed          Unavailable        Yes
+provider_unavailable               Unavailable        Yes
+quota_exhausted                    RateLimited        No
+rate_limited                       RateLimited        Yes
+request_rejected                   Invalid            No
+send_in_progress                   Conflict           Yes
+sender_or_recipient_not_allowed    PermissionDenied   No
+settings_read_failed               Internal           No
 ```
 
 ## Development
 
-Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback Resend stub.
+Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback HTTPS Resend stub.
 
 ```sh
 make verify
 ```
 
-`make verify` refreshes the dependency graph and runs validation and the in-memory SQLite harness. For PostgreSQL, create a dedicated test database, then run the same target with
+`make verify` refreshes the dependency graph and runs validation and the fresh SQLite harness. For PostgreSQL, create a dedicated test database, then run the same target with
 `WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$PGDATABASE"`.
 Drop the database after the run.

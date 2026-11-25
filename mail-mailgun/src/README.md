@@ -34,25 +34,26 @@ Use KickSide Mail’s contract, tools, and automation destination to send messag
 
 ```text
 Code                            Kind                Retryable
-credentials_invalid             PermissionDenied    No
-delivery_deadline_exceeded       Unavailable         Yes
-delivery_deadline_invalid        Invalid             No
-invalid_attachment              Invalid             No
-invalid_config                  Invalid             No
-invalid_content_id              Invalid             No
-message_rejected                Invalid             No
-provider_endpoint_invalid       Invalid             No
-provider_rejected               Internal            No
-provider_request_failed         Source error        Source flag
-provider_unavailable            Unavailable         Yes
-rate_limited                    RateLimited         Yes
-sender_or_recipient_not_allowed PermissionDenied    No
-settings_read_failed            Internal            No
+authorization_refused              PermissionDenied   No
+credentials_invalid                PermissionDenied   No
+delivery_deadline_exceeded         Unavailable        Yes
+delivery_deadline_invalid          Invalid            No
+invalid_attachment                 Invalid            No
+invalid_config                     Invalid            No
+invalid_content_id                 Invalid            No
+message_rejected                   Invalid            No
+provider_endpoint_invalid          Invalid            No
+provider_rejected                  Internal           No
+provider_request_failed            Source error       Source flag
+provider_transport_failed          Unavailable        Yes
+provider_unavailable               Unavailable        Yes
+rate_limited                       RateLimited        Yes
+settings_read_failed               Internal           No
 ```
 
 ## Development
 
-Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback Mailgun stub.
+Use Wippy v0.3.70a and Make. The harness uses the sibling `components/mail`, `kickside`, and `converters` checkouts. Delivery goes to a loopback HTTPS Mailgun stub.
 
 ```sh
 make verify
