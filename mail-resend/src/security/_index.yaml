@@ -28,7 +28,7 @@ entries:
     meta:
       title: Administer Resend mail delivery
       surface: kickside.mail.resend
-      intent: settings_access
+      intent: module_management
     groups: []
     policy:
       resources:

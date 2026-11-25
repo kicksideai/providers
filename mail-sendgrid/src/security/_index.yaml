@@ -28,7 +28,7 @@ entries:
     meta:
       title: Administer SendGrid mail delivery
       surface: kickside.mail.sendgrid
-      intent: settings_access
+      intent: module_management
     groups: []
     policy:
       resources:

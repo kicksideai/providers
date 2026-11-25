@@ -28,7 +28,7 @@ entries:
     meta:
       title: Administer Mailgun mail delivery
       surface: kickside.mail.mailgun
-      intent: settings_access
+      intent: module_management
     groups: []
     policy:
       resources:
