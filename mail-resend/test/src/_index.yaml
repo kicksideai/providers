@@ -5,6 +5,14 @@ entries:
   - name: definition
     kind: ns.definition
     meta: { title: Example Workspace }
+  - name: realtime_binding
+    kind: contract.binding
+    contracts:
+      - contract: kickside.contract:realtime
+        default: true
+        methods:
+          broadcast: test.mail_driver_fixture.testing:broadcast
+          notify: test.mail_driver_fixture.testing:notify
   - name: dep.fixture
     kind: ns.dependency
     component: kickside/mail-driver-fixture

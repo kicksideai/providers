@@ -16,6 +16,8 @@ workspace:
     kickside/uploads: ../../../kickside/platform/uploads
     kickside/users: ../../../kickside/platform/users
     kickside/doc2md: ../../../converters/doc2md
+disable:
+  entries: [kickside.realtime:realtime_binding]
 override:
   kickside.core.lifecycle:system_lifecycle:meta.provision.grants:
     - {subject_id: "test.mail_driver_fixture.host:user", subject_type: group, access_mask: 2}
@@ -32,6 +34,7 @@ override:
       - { name: "kickside.mail.mailgun:eu_api_base_url", value: "https://localhost:${stub_port}/v3/*" }
       - { name: "kickside.mail.mailgun:sending_domain", value: "mail.example.org" }
       - { name: "kickside.mail.security:user_security_scope", value: "test.mail_driver_fixture.host:user" }
+      - { name: "kickside.mail:realtime_binding", value: "app:realtime_binding" }
       - { name: "kickside.mail:target_db", value: "test.mail_driver_fixture.host:db" }
       - { name: "kickside.mail:library_editor_grant", value: {subject_id: "app:mail_editors", subject_type: group, access_mask: 3} }
       - { name: "kickside.mail:api_router", value: "test.mail_driver_fixture.host:api" }

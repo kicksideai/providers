@@ -12,6 +12,14 @@ entries:
     meta: { type: kickside.security.group_composition }
     group_id: app:mail_editors
     policies: [kickside.mail.security:module_access, kickside.mail.security:library_access]
+  - name: realtime_binding
+    kind: contract.binding
+    contracts:
+      - contract: kickside.contract:realtime
+        default: true
+        methods:
+          broadcast: test.mail_driver_fixture.testing:broadcast
+          notify: test.mail_driver_fixture.testing:notify
   - name: dep.fixture
     kind: ns.dependency
     component: kickside/mail-driver-fixture
