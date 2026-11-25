@@ -823,7 +823,7 @@ entries:
                 "type": "object", "required": ["name", "label", "type", "nullable"],
                 "properties": {
                   "name": {"type": "string"}, "label": {"type": "string"},
-                  "type": {"type": "string", "enum": ["string", "integer", "number", "boolean", "date"]},
+                  "type": {"type": "string", "enum": ["string", "integer", "number", "boolean", "date", "datetime"]},
                   "nullable": {"type": "boolean"}
                 }
               }

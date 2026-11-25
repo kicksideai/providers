@@ -24,10 +24,26 @@ end
 
 local function define_tests()
     test.describe("Google Sheets import", function()
-        local old_connect, old_get, old_open
+        local old_connect, old_get, old_open, old_handler
         local state: any
         test.before_each(function()
             old_connect, old_get, old_open = transport.connect, transport.get, store.open
+            old_handler = importer.handler
+            importer.handler = function(input: any): (any?, error?)
+                local result, err = old_handler(input)
+                if result ~= nil then
+                    local entry, registry_err = registry.get("kickside.google.traits:sheets_import_tool")
+                    test.is_nil(registry_err)
+                    test.not_nil(entry)
+                    test.not_nil(entry.meta.output_schema)
+                    local encoded, encode_err = json.encode(result)
+                    test.is_nil(encode_err)
+                    local valid, schema_err = json.validate_string(entry.meta.output_schema, encoded)
+                    test.is_nil(schema_err, tostring(schema_err))
+                    test.is_true(valid)
+                end
+                return result, err
+            end
             state = {values = {{"Month", "Revenue", "Orders", "Paid"}, {"2026-01", 12.5, 2, true}, {"2026-02", 9, 1, false}},
                 calls = {}, requests = {}, batches = {}, limit = 2, target = "test.store:demo_sales", commits = 0, discarded = 0,
                 definitions = {}, schema = {}, stored_rows = {}, formats = {}, resolved_range = "Sales!A1:D20"}
@@ -154,6 +170,7 @@ local function define_tests()
         end)
         test.after_each(function()
             transport.connect, transport.get, store.open = old_connect, old_get, old_open
+            importer.handler = old_handler
         end)
 
         test.it("loads typed rows through one load and commits a replacement", function()
@@ -271,6 +288,16 @@ local function define_tests()
             test.eq(state.schema.moment.type, "datetime")
             test.eq(state.stored_rows[1].moment, "2026-01-15T12:00:00")
             test.eq(state.stored_rows[2].moment, "2026-01-15T13:04:05")
+        end)
+
+        test.it("validates a DATE_TIME answer against the registered output schema", function()
+            state.values = {{"Moment"}, {46037.5}}
+            state.formats = {{values = {format_cell("DATE_TIME")}}}
+            local result, err = importer.handler(args())
+            test.is_nil(err)
+            test.is_true(result.success)
+            test.eq(result.fields[1].type, "datetime")
+            test.eq(result.preview[1].moment, "2026-01-15T12:00:00")
         end)
 
         test.it("rounds DATE_TIME fractions near whole seconds", function()
