@@ -57,11 +57,7 @@ function M.status(): (mail.TransportStatus?, error?)
         err = endpoint_err
     end
     local state, status_err = settings.status_error(err)
-    if status_err then
-        local details = status_err:details()
-        if not details or details.code ~= "provider_endpoint_invalid" then return nil, status_err end
-        state = {ready = false, code = "provider_endpoint_invalid", reason = status_err:message()}
-    end
+    if status_err then return nil, status_err end
     return {title = TITLE, icon = "simple-icons:resend", description = "Deliver mail through Resend.",
         settings_ns = SETTINGS_NS, max_recipients = 50, max_message_bytes = 40000000, idempotent = true,
         ready = state.ready, code = state.code, reason = state.reason}, nil
