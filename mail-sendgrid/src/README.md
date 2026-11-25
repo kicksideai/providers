@@ -32,11 +32,12 @@ Use KickSide Mail’s contract, tools, and automation destination to send messag
 
 ## Error codes
 
+HTTP 401 and 403 map to `authorization_refused`. A 401 can also mean that the account has exhausted its plan allowance.
+
 ```text
 Code                            Kind                Retryable
 attachment_encoding_failed         Source error       Source flag
 authorization_refused              PermissionDenied   No
-credentials_invalid                PermissionDenied   No
 delivery_deadline_exceeded         Unavailable        Yes
 delivery_deadline_invalid          Invalid            No
 invalid_config                     Invalid            No

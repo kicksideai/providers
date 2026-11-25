@@ -23,6 +23,8 @@ def detail_codes(lua):
 shared_http = http[:http.index('function M.encode_message')]
 expected = failure_codes(source) | detail_codes(source)
 expected |= failure_codes(shared_http) | detail_codes(shared_http)
+if 'delivery.authorization_refused(401,' in source:
+    expected.discard('credentials_invalid')
 expected |= detail_codes(config)
 expected.add('invalid_config')
 for helper in ('encode_message', 'encode_attachment'):
