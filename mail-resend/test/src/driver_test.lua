@@ -249,7 +249,7 @@ return { run = test.run_cases(function()
         end)
 
         test.it("declares no picker and uses the committed message ID for provider idempotency", function()
-            local port = assert(registry.get("kickside.mail.ports:send_email"))
+            local port = assert(registry.get("kickside.mail.sink:send_email"))
             test.is_nil(port.data.config_schema and port.data.config_schema.connection_id)
             local request = {
                 config = {}, sink_op = "create", input = fixture_message("Automation"),
