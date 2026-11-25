@@ -5,6 +5,9 @@ local delivery = require("delivery")
 local json = require("json")
 local settings = require("settings")
 
+local SETTINGS_NS = "kickside.mail.resend"
+local TITLE = "Resend"
+
 local M = {}
 
 local function response_error(response: mail.HttpResponse, api_key: string): error
@@ -44,12 +47,12 @@ local function response_error(response: mail.HttpResponse, api_key: string): err
 end
 
 function M.status(): (mail.TransportStatus?, error?)
-    local _, err = settings.read_api_key("kickside.mail.resend", "Resend")
+    local _, err = settings.read_api_key(SETTINGS_NS, TITLE)
     local state, status_err = settings.status_error(err)
     if status_err then return nil, status_err end
-    return {title = "Resend", icon = "simple-icons:resend", description = "Deliver mail through Resend.",
-        settings_ns = "kickside.mail.resend", max_recipients = 50, max_message_bytes = 40000000, idempotent = true,
-        ready = state.ready, code = state.code, reason = state.reason}, nil
+    return {title = TITLE, icon = "simple-icons:resend", description = "Deliver mail through Resend.",
+        settings_ns = SETTINGS_NS, max_recipients = 50, max_message_bytes = 40000000, idempotent = true,
+        ready = state.ready, code = not state.ready and "invalid_config" or nil, reason = state.reason}, nil
 end
 
 local function request(api_key: string, body: string, key: string?, deadline: string): (mail.HttpResponse?, error?)
@@ -68,7 +71,7 @@ local function request(api_key: string, body: string, key: string?, deadline: st
 end
 
 function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
-    local key, key_err = settings.read_api_key("kickside.mail.resend", "Resend")
+    local key, key_err = settings.read_api_key(SETTINGS_NS, TITLE)
     if key_err then return nil, key_err end
 
     local attachments: {types.Attachment}?

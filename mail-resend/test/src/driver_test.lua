@@ -5,8 +5,12 @@ local fs = require("fs")
 local base64 = require("base64")
 local json = require("json")
 local registry = require("registry")
+local contract = require("contract")
 local fixture = require("fixture")
 local uploads_types = require("uploads_types")
+
+local BINDING = "kickside.mail.resend:transport"
+local ADMISSION = "kickside.mail.resend.security:transport_open"
 
 local function configure(settings)
     return assert(fixture.probe(fixture.admin(), "configure", {settings = settings}))
@@ -19,6 +23,17 @@ end
 local function transport(input)
     input.from = {address = "sender@example.org"}
     return fixture.probe(fixture.admin(), "transport", {message = input})
+end
+
+local function delivery_admin()
+    return fixture.scoped({"kickside.mail.security:module_runtime", "kickside.mail.security:log_admin"})
+end
+
+local function resend_status(delivery)
+    for _, status in ipairs(delivery.transports) do
+        if status.id == BINDING then return status end
+    end
+    return nil
 end
 
 local function fixture_message(subject)
@@ -43,10 +58,11 @@ end
 return { run = test.run_cases(function()
     test.describe("Resend transport via real Settings and Uploads", function()
         test.it("lists the Resend transport with display data and delivery limits", function()
-            local current = assert(fixture.probe(fixture.admin(), "delivery_status"))
-            local status = assert(current.transports[1])
-            test.eq("kickside.mail.resend:transport", status.id)
+            local current = assert(fixture.probe(delivery_admin(), "delivery_status"))
+            local status = assert(resend_status(current))
             test.eq("Resend", status.title)
+            test.eq("simple-icons:resend", status.icon)
+            test.eq("Deliver mail through Resend.", status.description)
             test.eq("kickside.mail.resend", status.settings_ns)
             test.eq(50, status.max_recipients)
             test.eq(40000000, status.max_message_bytes)
@@ -57,7 +73,7 @@ return { run = test.run_cases(function()
         test.before_each(function()
             owner = fixture.user()
             local configured = configure({
-                ["kickside.mail"] = {driver = "kickside.mail.resend:transport", from_address = "sender@example.org",
+                ["kickside.mail"] = {driver = BINDING, from_address = "sender@example.org",
                     from_name = 'Support, "North"', reply_to = "default@example.org"},
                 ["kickside.mail.resend"] = {api_key = "re_fixture"},
             })
@@ -81,7 +97,7 @@ return { run = test.run_cases(function()
             test.eq("queued", result.status)
             local delivered = fixture.terminal(fixture.admin(), result.message_id)
             local captured = assert(json.decode(assert(volume:readfile(delivered.provider_message_id .. ".json"))))
-            test.eq("Bearer re_fixture", captured.authorization)
+            test.is_true(captured.authorized)
             test.eq("application/json", captured.content_type)
             test.eq(result.message_id, captured.idempotency_key)
             local body = captured.payload.html
@@ -106,15 +122,13 @@ return { run = test.run_cases(function()
         end)
 
         test.it("reports credential availability and refuses unset credentials before egress", function()
-            local admin = fixture.admin()
-            local available = assert(fixture.probe(admin, "status"))
+            local admin = delivery_admin()
+            local available = assert(resend_status(assert(fixture.probe(admin, "delivery_status"))))
             test.is_true(available.ready)
-            local values = assert(fixture.probe(owner, "read_settings"))
-            test.is_nil(values.api_key)
             test.is_true(configure({["kickside.mail.resend"] = {api_key = ""}}).success)
-            local unavailable = assert(fixture.probe(admin, "status"))
+            local unavailable = assert(resend_status(assert(fixture.probe(admin, "delivery_status"))))
             test.is_false(unavailable.ready)
-            test.eq("api_key_required", unavailable.code)
+            test.eq("invalid_config", unavailable.code)
             test.eq("Add a Resend API key to send mail.", unavailable.reason)
             local input = fixture_message("Unconfigured driver")
             local result, err = send(owner, input)
@@ -122,6 +136,65 @@ return { run = test.run_cases(function()
             test.eq(errors.INVALID, err:kind())
             test.eq("invalid_config", err:details().code)
             test.is_false(err:retryable())
+            test.eq(0, #requests(input.idempotency_key))
+        end)
+
+        test.it("reads the Resend key without exposing credentials or borrowing another namespace's key", function()
+            local reader = fixture.scoped({"app:transport_status_access"})
+            local foreign = {namespace = "app.unrelated"}
+            local own = {namespace = "kickside.mail.resend"}
+            test.is_true(configure({[foreign.namespace] = {api_key = "other_fixture"}}).success)
+            test.is_true(assert(fixture.probe(fixture.admin(), "read_settings", foreign)).has_api_key)
+            test.is_false(assert(fixture.probe(reader, "read_settings", foreign)).has_api_key)
+            test.is_false(assert(fixture.probe(reader, "read_settings", own)).has_api_key)
+            test.is_true(assert(fixture.probe(reader, "status")).ready)
+            test.is_true(configure({[own.namespace] = {api_key = ""}}).success)
+            test.is_false(assert(fixture.probe(reader, "status")).ready)
+        end)
+
+        test.it("excludes the installed binding and refuses Mail sends when admission is removed", function()
+            local admin = delivery_admin()
+            local policy = assert(registry.get(ADMISSION))
+            local removal = assert(registry.snapshot()):changes()
+            removal:delete({ADMISSION})
+            local _, remove_err = removal:apply()
+            assert(not remove_err, tostring(remove_err))
+
+            local implementations, discover_err = contract.find_implementations("kickside.mail:transport")
+            local current, status_err = fixture.probe(admin, "delivery_status")
+            local sent, send_err = send(owner, fixture_message("Revoked transport"))
+
+            local restore = assert(registry.snapshot()):changes()
+            restore:create({id = ADMISSION, kind = policy.kind, meta = policy.meta, data = policy.data})
+            local _, restore_err = restore:apply()
+            assert(not restore_err, tostring(restore_err))
+
+            test.is_nil(discover_err)
+            local installed = false
+            for _, id in ipairs(implementations) do
+                if id == BINDING then
+                    installed = true
+                    break
+                end
+            end
+            test.is_true(installed)
+            test.is_nil(status_err)
+            test.is_nil(resend_status(current))
+            test.eq("driver_not_admitted", current.code)
+            test.is_nil(sent)
+            test.eq(errors.INVALID, send_err:kind())
+            test.eq("driver_not_admitted", send_err:details().code)
+            test.not_nil(resend_status(assert(fixture.probe(admin, "delivery_status"))))
+        end)
+
+        test.it("refuses an expired delivery deadline before calling Resend", function()
+            local input = fixture_message("Expired delivery")
+            input.deadline = "2000-01-01T00:00:00Z"
+            local result, err = transport(input)
+            test.is_nil(result)
+            test.eq(errors.UNAVAILABLE, err:kind())
+            test.eq("delivery_deadline_exceeded", err:details().code)
+            test.is_true(err:retryable())
             test.eq(0, #requests(input.idempotency_key))
         end)
 
@@ -253,7 +326,7 @@ return { run = test.run_cases(function()
             local port = assert(registry.get("kickside.mail.sink:send_email"))
             test.is_nil(port.data.config_schema and port.data.config_schema.connection_id)
             local request = {
-                config = {}, sink_op = "create", input = fixture_message("Automation"),
+                config = {}, sink_op = "upsert", input = fixture_message("Automation"),
                 identity_key = "record-1", idempotency_key = uuid.v4(), origin = "automation-1",
             }
             local result = assert(fixture.probe(owner, "write", {request = request}))
@@ -269,7 +342,7 @@ return { run = test.run_cases(function()
 
         test.it("rejects a writable origin that differs from its automation reference", function()
             local request = {
-                config = {}, sink_op = "create", input = fixture_message("Invalid origin"),
+                config = {}, sink_op = "upsert", input = fixture_message("Invalid origin"),
                 idempotency_key = uuid.v4(), origin = "automation-1",
                 automation_ref = {kind = "automation", id = "automation-2", revision = 1},
             }

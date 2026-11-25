@@ -20,7 +20,7 @@ entries:
     meta: { private: true }
     groups: []
     policy:
-      resources: [kickside.mail.resend:transport, kickside.mail.resend:send, kickside.mail.resend:status]
+      resources: [kickside.mail.resend:transport, kickside.mail.resend.transport:send, kickside.mail.resend.transport:status]
       actions: [registry.get, registry.find]
       effect: allow
   - name: driver_admin
@@ -45,7 +45,7 @@ entries:
       - { entry: kickside.mail.resend.security:module_runtime, path: ".groups +=" }
   - name: transport_open
     kind: security.policy
-    meta: {private: true}
+    meta: { private: true, comment: Admits this driver to the Mail transports group. }
     groups: [kickside.mail.security:transports]
     policy:
       resources: [kickside.mail.resend:transport]
@@ -53,14 +53,14 @@ entries:
       effect: allow
   - name: settings_read
     kind: security.policy
-    meta: {private: true}
+    meta: { private: true, comment: Opens the Settings contract for the driver namespace. }
     policy:
       resources: [kickside.settings:settings, kickside.settings:settings_binding, get_namespace]
       actions: [contract.get, contract.open, contract.call]
       effect: allow
   - name: settings_admin_read
     kind: security.policy
-    meta: {private: true}
+    meta: { private: true, comment: Allows the driver to read its protected API key. }
     policy:
       resources: [kickside.settings.api:list_settings.endpoint]
       actions: [access]

@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.resend.transport
+entries:
+  - name: types
+    kind: library.lua
+    source: file://types.lua
+  - name: send
+    kind: function.lua
+    source: file://resend.lua
+    method: send
+    modules: [json]
+    imports: &transport_imports
+      types: kickside.mail.resend.transport:types
+      mail_types: kickside.mail:types
+      settings: kickside.mail.driver:config
+      delivery: kickside.mail.driver:http
+    security:
+      policies:
+        - kickside.mail.resend.security:http_access
+        - kickside.mail.resend.security:provider_reads
+        - kickside.mail.resend.security:settings_read
+        - kickside.mail.resend.security:settings_admin_read
+  - name: status
+    kind: function.lua
+    source: file://resend.lua
+    method: status
+    modules: [json]
+    imports: *transport_imports
+    security:
+      policies:
+        - kickside.mail.resend.security:provider_reads
+        - kickside.mail.resend.security:settings_read
+        - kickside.mail.resend.security:settings_admin_read

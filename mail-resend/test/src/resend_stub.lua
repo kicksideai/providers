@@ -7,13 +7,11 @@ local uuid = require("uuid")
 local function handle()
     local req = http.request()
     local res = http.response()
-    local auth = req:header("Authorization")
-
     local payload = assert(req:body_json())
     local id = uuid.v4()
     local volume = assert(fs.get("app:resend_requests"))
     assert(volume:writefile(id .. ".json", assert(json.encode({
-        authorization = auth,
+        authorized = req:header("Authorization") == "Bearer re_fixture",
         content_type = req:header("Content-Type"),
         idempotency_key = req:header("Idempotency-Key"),
         payload = payload,

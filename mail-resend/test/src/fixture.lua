@@ -35,6 +35,15 @@ function M.admin(id)
     return assert(funcs.new():with_actor(actor):with_scope(assert(security.named_scope("wippy.security:process"))))
 end
 
+function M.scoped(policy_ids)
+    local actor = assert(security.new_actor(uuid.v4()))
+    local policies = {assert(security.policy("app:test_scope"))}
+    for _, id in ipairs(policy_ids) do
+        policies[#policies + 1] = assert(security.policy(id))
+    end
+    return assert(funcs.new():with_actor(actor):with_scope(assert(security.new_scope(policies))))
+end
+
 function M.probe(actor, action, args)
     local request = args or {}
     request.action = action

@@ -89,7 +89,7 @@ verify_module sso-github kickside/sso kickside/settings
 verify_module sso-google kickside/sso kickside/settings
 verify_module sso-microsoft kickside/sso kickside/settings
 verify_module sso-oidc kickside/sso kickside/settings
-verify_module mail-resend kickside/mail kickside/contract kickside/settings
+verify_module mail-resend kickside/mail kickside/settings
 verify_module mail-sendgrid kickside/mail kickside/settings
 verify_module mail-mailgun kickside/mail kickside/settings
 

@@ -28,7 +28,9 @@ local function run(input)
         return transport:status()
     end
     if input.action == "read_settings" then
-        return settings.settings("kickside.mail.resend")
+        local values, err = settings.settings(input.namespace)
+        if err then return nil, err end
+        return {has_api_key = type(values.api_key) == "string" and values.api_key ~= ""}
     end
     if input.action == "store" then
         local actor = assert(security.actor())
@@ -40,7 +42,7 @@ local function run(input)
     if input.action == "transport" then
         local definition = assert(contract.get("kickside.mail:transport"))
         local transport = assert(definition:open("kickside.mail.resend:transport"))
-        input.message.deadline = time.now():add("30s"):utc():format(time.RFC3339)
+        input.message.deadline = input.message.deadline or time.now():add("30s"):utc():format(time.RFC3339)
         return transport:send(input.message)
     end
     if input.action == "write" then
