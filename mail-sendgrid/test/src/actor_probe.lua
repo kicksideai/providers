@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local time = require("time")
 local security = require("security")
 local contract = require("contract")
 local client = require("client")
@@ -33,6 +34,7 @@ local function run(input)
     if input.action == "transport" then
         local definition = assert(contract.get("kickside.mail:transport"))
         local transport = assert(definition:open("kickside.mail.sendgrid:transport"))
+        input.message.deadline = time.now():add("30s"):utc():format(time.RFC3339)
         return transport:send(input.message)
     end
     if input.action == "write" then

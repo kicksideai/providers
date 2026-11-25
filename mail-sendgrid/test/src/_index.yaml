@@ -206,7 +206,7 @@ entries:
     kind: function.lua
     source: file://actor_probe.lua
     method: run
-    modules: [security, contract, funcs]
+    modules: [security, contract, funcs, time]
     imports:
       client: kickside.mail:client
       settings: kickside.mail:settings
