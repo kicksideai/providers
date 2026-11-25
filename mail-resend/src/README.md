@@ -9,11 +9,11 @@ Install KickSide Mail and Settings. `api_base_url` defaults to the Resend API or
 
 ## Settings
 
-In **Settings → Integrations → Mail**, select **Resend** and set `api_key`, an encrypted secret. The **Administer Resend mail delivery** capability grants access to the driver’s registry declarations and availability check. Platform Settings controls authorization to edit settings.
+In **Settings → Integrations → Mail**, select **Resend** and set `api_key`, an encrypted secret. The **Administer Resend mail delivery** capability grants access to the driver’s registry declarations for its settings. Platform Settings controls authorization to edit settings.
 
 ## Contract and tools
 
-`kickside.mail.resend:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID when supplied in the acceptance response. `kickside.mail.resend:available` reports whether the driver settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
+`kickside.mail.resend:transport` implements `kickside.mail:transport.send` and returns the provider’s message ID when supplied in the acceptance response. Its `status` method reports display data, delivery limits and whether its settings are configured. Use KickSide Mail’s contract, tools, and automation destination to send messages under the installation’s sender policy.
 
 ## Error codes
 

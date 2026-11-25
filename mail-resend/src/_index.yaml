@@ -21,19 +21,6 @@ entries:
   - name: types
     kind: library.lua
     source: file://types.lua
-  - name: driver
-    kind: registry.entry
-    meta: { type: "kickside.mail:driver" }
-    id: resend
-    idempotent: true
-    max_recipients: 50
-    max_message_bytes: 40000000
-    label: Resend
-    icon: simple-icons:resend
-    description: Deliver mail through Resend.
-    binding: kickside.mail.resend:transport
-    settings_ns: kickside.mail.resend
-    available_func: kickside.mail.resend:available
   - name: endpoints
     kind: registry.entry
     endpoints: {}
@@ -46,7 +33,7 @@ entries:
     kind: contract.binding
     contracts:
       - contract: kickside.mail:transport
-        methods: { send: "kickside.mail.resend:send" }
+        methods: {send: kickside.mail.resend:send, status: kickside.mail.resend:status}
   - name: send
     kind: function.lua
     source: file://resend.lua
@@ -55,25 +42,23 @@ entries:
     imports:
       types: kickside.mail.resend:types
       mail_types: kickside.mail:types
-      settings: kickside.mail:settings
-      message: kickside.mail:message
-      delivery: kickside.mail.service:delivery
+      settings: kickside.mail.driver:config
+      delivery: kickside.mail.driver:http
     security:
       policies:
-        - kickside.mail.security:settings_read
-        - kickside.mail.security:settings_admin_read
+        - kickside.mail.resend.security:settings_read
+        - kickside.mail.resend.security:settings_admin_read
         - kickside.mail.resend.security:http_access
         - kickside.mail.resend.security:provider_reads
-  - name: available
+  - name: status
     kind: function.lua
     source: file://resend.lua
-    method: available
+    method: status
     modules: [json]
     imports:
       types: kickside.mail.resend:types
       mail_types: kickside.mail:types
-      settings: kickside.mail:settings
-      message: kickside.mail:message
-      delivery: kickside.mail.service:delivery
+      settings: kickside.mail.driver:config
+      delivery: kickside.mail.driver:http
     security:
-      policies: [kickside.mail.security:settings_read, kickside.mail.security:settings_admin_read]
+      policies: [kickside.mail.resend.security:settings_read, kickside.mail.resend.security:settings_admin_read]

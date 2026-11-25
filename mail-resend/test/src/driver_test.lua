@@ -42,21 +42,22 @@ end
 
 return { run = test.run_cases(function()
     test.describe("Resend transport via real Settings and Uploads", function()
-        test.it("publishes the resend settings-backed driver descriptor", function()
-            local entry = assert(registry.get("kickside.mail.resend:driver"))
-            test.eq("kickside.mail:driver", entry.meta.type)
-            test.eq("resend", entry.data.id)
-            test.eq(50, entry.data.max_recipients)
-            test.eq(40000000, entry.data.max_message_bytes)
-            test.eq("kickside.mail.resend:transport", entry.data.binding)
-            test.eq("kickside.mail.resend", entry.data.settings_ns)
+        test.it("lists the Resend transport with display data and delivery limits", function()
+            local current = assert(fixture.probe(fixture.admin(), "delivery_status"))
+            local status = assert(current.transports[1])
+            test.eq("kickside.mail.resend:transport", status.id)
+            test.eq("Resend", status.title)
+            test.eq("kickside.mail.resend", status.settings_ns)
+            test.eq(50, status.max_recipients)
+            test.eq(40000000, status.max_message_bytes)
+            test.eq(true, status.idempotent)
         end)
 
         local owner
         test.before_each(function()
             owner = fixture.user()
             local configured = configure({
-                ["kickside.mail"] = {driver = "resend", from_address = "sender@example.org",
+                ["kickside.mail"] = {driver = "kickside.mail.resend:transport", from_address = "sender@example.org",
                     from_name = 'Support, "North"', reply_to = "default@example.org"},
                 ["kickside.mail.resend"] = {api_key = "re_fixture"},
             })
@@ -106,13 +107,13 @@ return { run = test.run_cases(function()
 
         test.it("reports credential availability and refuses unset credentials before egress", function()
             local admin = fixture.admin()
-            local available = assert(fixture.probe(admin, "available"))
-            test.is_true(available.available)
+            local available = assert(fixture.probe(admin, "status"))
+            test.is_true(available.ready)
             local values = assert(fixture.probe(owner, "read_settings"))
             test.is_nil(values.api_key)
             test.is_true(configure({["kickside.mail.resend"] = {api_key = ""}}).success)
-            local unavailable = assert(fixture.probe(admin, "available"))
-            test.is_false(unavailable.available)
+            local unavailable = assert(fixture.probe(admin, "status"))
+            test.is_false(unavailable.ready)
             test.eq("api_key_required", unavailable.code)
             test.eq("Add a Resend API key to send mail.", unavailable.reason)
             local input = fixture_message("Unconfigured driver")
@@ -129,7 +130,7 @@ return { run = test.run_cases(function()
                 local result = configure({["kickside.mail.resend"] = {api_key = key}})
                 test.is_false(result.success)
             end
-            test.is_true(assert(fixture.probe(fixture.admin(), "available")).available)
+            test.is_true(assert(fixture.probe(fixture.admin(), "status")).ready)
         end)
 
         test.it("carries the provider retry hint on rate limiting", function()

@@ -3,7 +3,6 @@ local types = require("types")
 local mail = require("mail_types")
 local delivery = require("delivery")
 local json = require("json")
-local message = require("message")
 local settings = require("settings")
 
 local M = {}
@@ -44,18 +43,22 @@ local function response_error(response: mail.HttpResponse, api_key: string): err
     return delivery.status_error(status, 422, hint, detail)
 end
 
-function M.available(): (mail.Availability?, error?)
+function M.status(): (mail.TransportStatus?, error?)
     local _, err = settings.read_api_key("kickside.mail.resend", "Resend")
-    return settings.available(err)
+    local state, status_err = settings.status_error(err)
+    if status_err then return nil, status_err end
+    return {title = "Resend", icon = "simple-icons:resend", description = "Deliver mail through Resend.",
+        settings_ns = "kickside.mail.resend", max_recipients = 50, max_message_bytes = 40000000, idempotent = true,
+        ready = state.ready, code = state.code, reason = state.reason}, nil
 end
 
-local function request(api_key: string, body: string, key: string?): (mail.HttpResponse?, error?)
+local function request(api_key: string, body: string, key: string?, deadline: string): (mail.HttpResponse?, error?)
     local url, url_err = settings.endpoint("kickside.mail.resend:endpoints", "api")
     if url_err then return nil, url_err end
-    local headers = {Authorization = "Bearer " .. api_key, ["Content-Type"] = "application/json"}
+    local headers = delivery.bearer_json(api_key)
     if key then headers["Idempotency-Key"] = key end
 
-    local sent, err = delivery.post(url .. "/emails", body, headers)
+    local sent, err = delivery.post(url .. "/emails", body, headers, deadline)
     if err then return nil, err end
     local response = sent :: mail.HttpResponse
     if response.status_code < 200 or response.status_code >= 300 then
@@ -85,7 +88,7 @@ function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
         end
     end
     local body, body_err = delivery.encode_message({
-        from = message.mailbox(input.from),
+        from = settings.mailbox(input.from),
         to = input.to,
         cc = input.cc,
         bcc = input.bcc,
@@ -97,7 +100,7 @@ function M.send(input: mail.TransportRequest): (mail.TransportResult?, error?)
     })
     if body_err then return nil, body_err end
 
-    local response, err = request(key :: string, body :: string, input.idempotency_key)
+    local response, err = request(key :: string, body :: string, input.idempotency_key, input.deadline)
     if err then return nil, err end
     return delivery.message_id(response :: mail.HttpResponse)
 end
