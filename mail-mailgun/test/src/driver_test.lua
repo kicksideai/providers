@@ -6,11 +6,13 @@ local json = require("json")
 local registry = require("registry")
 local base64 = require("base64")
 local sql = require("sql")
-local funcs = require("funcs")
-local security = require("security")
+local time = require("time")
 local settings_writer = require("settings_writer")
 local fixture = require("fixture")
 local contract = require("contract")
+
+local BINDING = "kickside.mail.mailgun:transport"
+local ADMISSION = "kickside.mail.mailgun.security:transport_open"
 
 local function configure(settings)
     return assert(fixture.probe(fixture.admin(), "configure", {settings = settings}))
@@ -23,6 +25,27 @@ end
 local function transport(input)
     input.from = {address = "sender@example.org"}
     return fixture.probe(fixture.admin(), "transport", {message = input})
+end
+
+local function delivery_admin()
+    return fixture.scoped({"kickside.mail.security:module_runtime", "kickside.mail.security:log_admin"})
+end
+
+local function mailgun_status(delivery)
+    for _, status in ipairs(delivery.transports) do
+        if status.id == BINDING then return status end
+    end
+    return nil
+end
+
+local function await_live(seq)
+    local deadline = time.now():add("8s"):unix_nano()
+    repeat
+        local marker = registry.get("kickside.mail.projection:marker")
+        if marker and marker.data.seq >= seq then return end
+        time.sleep("15ms")
+    until time.now():unix_nano() >= deadline
+    error("Mailgun fixture template did not publish at sequence " .. seq)
 end
 
 local function fixture_message(subject)
@@ -49,41 +72,44 @@ end
 return {run = test.run_cases(function()
     test.describe("Mailgun transport via real Settings and Uploads", function()
         test.it("lists the Mailgun transport with display data and delivery limits", function()
-            local current = assert(fixture.probe(fixture.admin(), "delivery_status"))
-            local status = assert(current.transports[1])
-            test.eq("kickside.mail.mailgun:transport", status.id)
+            local current = assert(fixture.probe(delivery_admin(), "delivery_status"))
+            local status = assert(mailgun_status(current))
             test.eq("Mailgun", status.title)
+            test.eq("simple-icons:mailgun", status.icon)
+            test.eq("Deliver mail through Mailgun.", status.description)
             test.eq("kickside.mail.mailgun", status.settings_ns)
             test.eq(1000, status.max_recipients)
             test.eq(25000000, status.max_message_bytes)
             test.eq(false, status.idempotent)
         end)
 
-        test.it("serves the standalone settings panel bundle", function()
-            local view = assert(registry.get("kickside.mail.mailgun.ui:settings_view"))
-            test.eq(view.meta.type, "view.component")
-            test.eq("kickside-mailgun-settings", view.meta.tag_name)
-            test.eq(view.meta.base_path, "kickside-mail-mailgun")
-            local static = assert(registry.get("kickside.mail.mailgun.ui:ui_static"))
-            test.eq(static.data.path, "/" .. view.meta.base_path)
+        test.it("exposes API key, domain and region through generic Settings", function()
+            for _, key in ipairs({"api_key", "domain", "region"}) do
+                local definition = assert(registry.get("kickside.mail.mailgun.settings:setting_" .. key))
+                test.eq("kickside.settings:definition", definition.meta.type)
+                test.eq("kickside.mail.mailgun", definition.data.namespace)
+                test.eq(key, definition.data.key)
+                test.is_true(definition.data.visible ~= false)
+            end
+            local domain = assert(registry.get("kickside.mail.mailgun.settings:setting_domain"))
+            test.eq("mail.example.org", domain.data.default)
+            local view = registry.get("kickside.mail.mailgun.ui:settings_view")
+            test.is_nil(view)
         end)
 
-        test.it("permits delivery to configured domains on the US and EU API origins", function()
-            local scope = assert(security.new_scope({
-                assert(security.policy("app:test_scope")),
-                assert(security.policy("kickside.mail.mailgun.security:http_access")),
-            }))
-            local actor = assert(security.new_actor(uuid.v4(), {}))
-            local caller = assert(funcs.new():with_actor(actor):with_scope(scope))
+        test.it("permits only the exact installation delivery URLs", function()
+            local caller = fixture.scoped({"kickside.mail.mailgun.security:http_access"})
             local function allowed(url)
                 local permitted, err = fixture.probe(caller, "may_request", {url = url})
                 test.is_nil(err, tostring(err))
                 return permitted
             end
-            test.is_true(allowed("https://api.mailgun.net/v3/mail.example.org/messages"))
-            test.is_true(allowed("https://api.eu.mailgun.net/v3/mail.example.org/messages"))
-            test.is_false(allowed("https://api.mailgun.net/v4/mail.example.org/messages"))
-            test.is_false(allowed("https://mx.example.org/v3/mail.example.org/messages"))
+            test.is_false(allowed("https://api.mailgun.net/v3/mail.example.org/messages"))
+            test.is_false(allowed("https://api.eu.mailgun.net/v3/mail.example.org/messages"))
+            test.is_false(allowed("http://127.0.0.1:24637/v3/other.example.org/messages"))
+            test.is_false(allowed("http://localhost:24637/v3/mail.example.org/events"))
+            test.is_true(allowed("http://127.0.0.1:24637/v3/mail.example.org/messages"))
+            test.is_true(allowed("http://localhost:24637/v3/mail.example.org/messages"))
         end)
 
         local owner
@@ -124,7 +150,7 @@ return {run = test.run_cases(function()
             test.eq(request.id, delivered.provider_message_id)
             test.eq("/v3/mail.example.org/messages", request.path)
             test.eq("127.0.0.1:24637", request.host)
-            test.eq("Basic YXBpOm1nX2ZpeHR1cmU=", request.authorization)
+            test.is_true(request.authorized)
             test.not_nil(request.content_type:match("^multipart/form%-data; boundary=[%w%-]+$"))
             test.is_true(request.idempotency_key == nil or request.idempotency_key == "")
             local fields = {
@@ -168,6 +194,7 @@ return {run = test.run_cases(function()
             local review = assert(editor:preview({message = name, create = create}))
             create.preview_id = assert(review.preview_id)
             local message = assert(editor:create(create))
+            await_live(message.seq)
             local queued, err = send(owner, {to = input.to, template = name, vars = {}})
             assert(editor:delete({
                 kind = "message", name = name, expected_revision = message.revision,
@@ -204,15 +231,13 @@ return {run = test.run_cases(function()
         end)
 
         test.it("reports credential availability and refuses unset credentials before egress", function()
-            local admin = fixture.admin()
-            local available = assert(fixture.probe(admin, "status"))
+            local admin = delivery_admin()
+            local available = assert(mailgun_status(assert(fixture.probe(admin, "delivery_status"))))
             test.is_true(available.ready)
-            local values = assert(fixture.probe(owner, "read_settings"))
-            test.is_nil(values.api_key)
             test.is_true(configure({["kickside.mail.mailgun"] = {api_key = ""}}).success)
-            local unavailable = assert(fixture.probe(admin, "status"))
+            local unavailable = assert(mailgun_status(assert(fixture.probe(admin, "delivery_status"))))
             test.is_false(unavailable.ready)
-            test.eq("api_key_required", unavailable.code)
+            test.eq("invalid_config", unavailable.code)
             test.eq("Add a Mailgun API key to send mail.", unavailable.reason)
             local input = fixture_message("Unconfigured driver")
             local result, err = send(owner, input)
@@ -221,13 +246,72 @@ return {run = test.run_cases(function()
             test.eq("invalid_config", err:details().code)
             test.is_false(err:retryable())
             local destination = assert(fixture.probe(owner, "write", {request = {
-                config = {}, sink_op = "create", input = input, identity_key = "record",
+                config = {}, sink_op = "upsert", input = input, identity_key = "record",
                 idempotency_key = uuid.v4(), origin = "automation",
             }}))
             test.is_false(destination.success)
             test.eq(err:details().code, destination.error.code)
             test.eq(err:message(), destination.error.message)
             test.is_false(destination.error.retriable)
+            test.eq(0, #requests("POST", input.subject))
+        end)
+
+        test.it("reads the Mailgun key without exposing credentials or borrowing another namespace's key", function()
+            local reader = fixture.scoped({"app:transport_status_access"})
+            local foreign = {namespace = "app.unrelated"}
+            local own = {namespace = "kickside.mail.mailgun"}
+            test.is_true(configure({[foreign.namespace] = {api_key = "other_fixture"}}).success)
+            test.is_true(assert(fixture.probe(fixture.admin(), "read_settings", foreign)).has_api_key)
+            test.is_false(assert(fixture.probe(reader, "read_settings", foreign)).has_api_key)
+            test.is_false(assert(fixture.probe(reader, "read_settings", own)).has_api_key)
+            test.is_true(assert(fixture.probe(reader, "status")).ready)
+            test.is_true(configure({[own.namespace] = {api_key = ""}}).success)
+            test.is_false(assert(fixture.probe(reader, "status")).ready)
+        end)
+
+        test.it("excludes the installed binding and refuses Mail sends when admission is removed", function()
+            local admin = delivery_admin()
+            local policy = assert(registry.get(ADMISSION))
+            local removal = assert(registry.snapshot()):changes()
+            removal:delete({ADMISSION})
+            local _, remove_err = removal:apply()
+            assert(not remove_err, tostring(remove_err))
+
+            local implementations, discover_err = contract.find_implementations("kickside.mail:transport")
+            local current, status_err = fixture.probe(admin, "delivery_status")
+            local sent, send_err = send(owner, fixture_message("Revoked transport"))
+
+            local restore = assert(registry.snapshot()):changes()
+            restore:create({id = ADMISSION, kind = policy.kind, meta = policy.meta, data = policy.data})
+            local _, restore_err = restore:apply()
+            assert(not restore_err, tostring(restore_err))
+
+            test.is_nil(discover_err)
+            local installed = false
+            for _, id in ipairs(implementations) do
+                if id == BINDING then
+                    installed = true
+                    break
+                end
+            end
+            test.is_true(installed)
+            test.is_nil(status_err)
+            test.is_nil(mailgun_status(current))
+            test.eq("driver_not_admitted", current.code)
+            test.is_nil(sent)
+            test.eq(errors.INVALID, send_err:kind())
+            test.eq("driver_not_admitted", send_err:details().code)
+            test.not_nil(mailgun_status(assert(fixture.probe(admin, "delivery_status"))))
+        end)
+
+        test.it("refuses an expired delivery deadline before calling Mailgun", function()
+            local input = fixture_message("Expired delivery")
+            input.deadline = "2000-01-01T00:00:00Z"
+            local result, err = transport(input)
+            test.is_nil(result)
+            test.eq(errors.UNAVAILABLE, err:kind())
+            test.eq("delivery_deadline_exceeded", err:details().code)
+            test.is_true(err:retryable())
             test.eq(0, #requests("POST", input.subject))
         end)
 
@@ -315,6 +399,34 @@ return {run = test.run_cases(function()
             test.eq(0, #requests("POST", input.subject))
         end)
 
+        test.it("requires a sending domain before egress", function()
+            test.is_true(configure({["kickside.mail.mailgun"] = {domain = ""}}).success)
+            local status = assert(mailgun_status(assert(fixture.probe(delivery_admin(), "delivery_status"))))
+            test.is_false(status.ready)
+            test.eq("invalid_config", status.code)
+            test.eq("Enter your Mailgun sending domain.", status.reason)
+            local input = fixture_message("Missing sending domain")
+            local result, err = send(owner, input)
+            test.is_nil(result)
+            test.eq(errors.INVALID, err:kind())
+            test.eq("invalid_config", err:details().code)
+            test.eq(0, #requests("POST", input.subject))
+        end)
+
+        test.it("refuses a valid domain outside the installation delivery policy", function()
+            test.is_true(configure({["kickside.mail.mailgun"] = {domain = "other.example.org"}}).success)
+            local status = assert(mailgun_status(assert(fixture.probe(delivery_admin(), "delivery_status"))))
+            test.is_false(status.ready)
+            test.eq("invalid_config", status.code)
+            test.eq("Authorize the Mailgun delivery URL for this sending domain and region.", status.reason)
+            local input = fixture_message("Unauthorized sending domain")
+            local result, err = send(owner, input)
+            test.is_nil(result)
+            test.eq(errors.INVALID, err:kind())
+            test.eq("invalid_config", err:details().code)
+            test.eq(0, #requests("POST", input.subject))
+        end)
+
         test.it("validates the sending domain and region before egress", function()
             local input = fixture_message("Invalid sender settings")
             local invalid_domain = configure({["kickside.mail.mailgun"] = {domain = "mail.example.org/../test"}})
@@ -329,7 +441,7 @@ return {run = test.run_cases(function()
             test.is_nil(result)
             test.eq("invalid_config", err:details().code)
             local unavailable = assert(fixture.probe(fixture.admin(), "status"))
-            test.eq("sending_domain_invalid", unavailable.code)
+            test.eq("invalid_config", unavailable.code)
             test.eq("Enter a valid Mailgun sending domain.", unavailable.reason)
             local invalid = configure({["kickside.mail.mailgun"] = {region = "other"}})
             test.is_false(invalid.success)
@@ -387,7 +499,7 @@ return {run = test.run_cases(function()
             test.eq("at_least_once", binding.meta.delivery)
             local input = fixture_message("Automation")
             local request = {
-                config = {}, sink_op = "create", input = input,
+                config = {}, sink_op = "upsert", input = input,
                 identity_key = "record-1", idempotency_key = uuid.v4(), origin = "automation-1",
             }
             local result = assert(fixture.probe(owner, "write", {request = request}))

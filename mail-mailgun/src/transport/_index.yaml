@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.mailgun.transport
+entries:
+  - name: types
+    kind: library.lua
+    source: file://types.lua
+    imports: { mail_types: kickside.mail:types }
+  - name: send
+    kind: function.lua
+    source: file://mailgun.lua
+    method: send
+    modules: [registry, uuid]
+    imports: &transport_imports
+      types: kickside.mail.mailgun.transport:types
+      mail_types: kickside.mail:types
+      settings: kickside.mail.driver:config
+      validate: kickside.mail.mailgun.settings:validate
+      delivery: kickside.mail.driver:http
+    security:
+      policies:
+        - kickside.mail.mailgun.security:http_access
+        - kickside.mail.mailgun.security:provider_reads
+        - kickside.mail.mailgun.security:settings_read
+        - kickside.mail.mailgun.security:settings_admin_read
+  - name: status
+    kind: function.lua
+    source: file://mailgun.lua
+    method: status
+    modules: [registry, uuid]
+    imports: *transport_imports
+    security:
+      policies:
+        - kickside.mail.mailgun.security:provider_reads
+        - kickside.mail.mailgun.security:settings_read
+        - kickside.mail.mailgun.security:settings_admin_read

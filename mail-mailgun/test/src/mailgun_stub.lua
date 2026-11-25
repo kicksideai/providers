@@ -32,21 +32,21 @@ local function handle()
     local values, files
     if method == "POST" then values, files = multipart(req) end
     local id = uuid.v4() .. "@mail.example.org"
-    local authorization = req:header("Authorization")
+    local authorized = req:header("Authorization") == "Basic YXBpOm1nX2ZpeHR1cmU="
     local volume = assert(fs.get("app:mailgun_requests"))
     assert(volume:writefile(id .. ".json", assert(json.encode({
         id = "<" .. id .. ">",
         method = method,
         path = req:path(),
         host = req:host(),
-        authorization = authorization,
+        authorized = authorized,
         content_type = req:header("Content-Type"),
         idempotency_key = req:header("Idempotency-Key"),
         values = values,
         files = files,
     }))))
 
-    if authorization ~= "Basic YXBpOm1nX2ZpeHR1cmU=" then
+    if not authorized then
         res:set_status(401)
         res:write_json({message = "Forbidden"})
         return

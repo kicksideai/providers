@@ -2,6 +2,6 @@
 local mail = require("mail_types")
 
 type Settings = mail.ApiSettings & {domain: string, region: string}
-type Config = {key: string, domain: string, region: string}
+type Config = {key: string, url: string}
 
 return {Settings = Settings, Config = Config}

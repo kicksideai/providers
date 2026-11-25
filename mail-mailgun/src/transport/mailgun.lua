@@ -2,11 +2,15 @@
 local types = require("types")
 local mail = require("mail_types")
 local delivery = require("delivery")
+local registry = require("registry")
 local uuid = require("uuid")
 local validate = require("validate")
 local settings = require("settings")
 
 local M = {}
+local SETTINGS_NS = "kickside.mail.mailgun"
+local ENDPOINTS = "kickside.mail.mailgun:endpoints"
+local TITLE = "Mailgun"
 local MIME_TOKEN = "[%w!#$%%&'*+.^_`|~%-]+"
 
 local function response_error(response: mail.HttpResponse, key: string): error
@@ -19,11 +23,24 @@ local function response_error(response: mail.HttpResponse, key: string): error
     return delivery.status_error(status, 413, hint, detail)
 end
 
+local function delivery_url(domain: string, region: string): (string?, error?)
+    local base_url, url_err = settings.endpoint(ENDPOINTS, region)
+    if url_err then return nil, url_err end
+    local entry, entry_err = registry.get(ENDPOINTS)
+    if entry_err then return nil, entry_err end
+
+    local url = base_url .. "/v3/" .. domain .. "/messages"
+    for _, allowed in ipairs(entry.data.delivery_urls) do
+        if url == allowed then return url, nil end
+    end
+    return nil, settings.missing("Authorize the Mailgun delivery URL for this sending domain and region.", "delivery_url_required")
+end
+
 local function configuration(): (types.Config?, error?)
-    local values, err = settings.settings("kickside.mail.mailgun")
+    local values, err = settings.settings(SETTINGS_NS)
     if err then return nil, err end
     values = values :: types.Settings
-    local key, key_err = settings.api_key(values, "Mailgun")
+    local key, key_err = settings.api_key(values, TITLE)
     if key_err then return nil, key_err end
     if not values.domain or not values.domain:find("%S") then
         return nil, settings.missing("Enter your Mailgun sending domain.", "sending_domain_required")
@@ -34,22 +51,22 @@ local function configuration(): (types.Config?, error?)
     if not validate.is_region(values.region) then
         return nil, settings.missing("Choose the region that hosts your Mailgun sending domain.", "sending_region_invalid")
     end
-    return {key = key, domain = values.domain, region = values.region}, nil
+    local url, url_err = delivery_url(values.domain, values.region)
+    if url_err then return nil, url_err end
+    return {key = key, url = url}, nil
 end
 
 function M.status(): (mail.TransportStatus?, error?)
     local _, err = configuration()
     local state, status_err = settings.status_error(err)
     if status_err then return nil, status_err end
-    return {title = "Mailgun", icon = "simple-icons:mailgun", description = "Deliver mail through Mailgun.",
-        settings_ns = "kickside.mail.mailgun", max_recipients = 1000, max_message_bytes = 25000000, idempotent = false,
-        ready = state.ready, code = state.code, reason = state.reason}, nil
+    return {title = TITLE, icon = "simple-icons:mailgun", description = "Deliver mail through Mailgun.",
+        settings_ns = SETTINGS_NS, max_recipients = 1000, max_message_bytes = 25000000, idempotent = false,
+        ready = state.ready, code = not state.ready and "invalid_config" or nil, reason = state.reason}, nil
 end
 
 local function request(config: types.Config, body: string, content_type: string, deadline: string): (mail.HttpResponse?, error?)
-    local url, url_err = settings.endpoint("kickside.mail.mailgun:endpoints", config.region)
-    if url_err then return nil, url_err end
-    local sent, err = delivery.post(url .. "/v3/" .. config.domain .. "/messages", body,
+    local sent, err = delivery.post(config.url, body,
         {["Content-Type"] = content_type}, deadline, {user = "api", pass = config.key})
     if err then return nil, err end
     local response = sent :: mail.HttpResponse

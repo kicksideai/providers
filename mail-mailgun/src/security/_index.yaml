@@ -20,7 +20,7 @@ entries:
     meta: { private: true }
     groups: []
     policy:
-      resources: [kickside.mail.mailgun:transport, kickside.mail.mailgun:send, kickside.mail.mailgun:status]
+      resources: [kickside.mail.mailgun:transport, kickside.mail.mailgun.transport:send, kickside.mail.mailgun.transport:status]
       actions: [registry.get, registry.find]
       effect: allow
   - name: driver_admin
@@ -38,20 +38,7 @@ entries:
         - kickside.mail.mailgun.settings:setting_region
         - kickside.mail.mailgun.settings:validate_domain
         - kickside.mail.mailgun.settings:validate_region
-        - kickside.mail.mailgun.ui:settings_view
       actions: [registry.get, registry.find, funcs.call]
-      effect: allow
-  - name: settings_view_access
-    kind: security.policy
-    meta:
-      title: Mailgun settings panel
-      surface: kickside.mail.mailgun
-      intent: settings_access
-      comment: Lets delivery administrators load the panel the Mail settings block mounts.
-    groups: []
-    policy:
-      resources: [kickside.mail.mailgun.ui:settings_view, kickside.mail.mailgun.ui:ui_static]
-      actions: [access, registry.get, registry.find]
       effect: allow
   - name: user_security_scope
     kind: ns.requirement
@@ -86,9 +73,7 @@ entries:
     kind: security.policy
     meta: { private: true }
     policy:
-      resources:
-        - https://api.mailgun.net/v3/*
-        - https://api.eu.mailgun.net/v3/*
+      resources: [kickside.mail.mailgun:endpoints]
       actions: [http_client.request]
       effect: allow
   - name: provider_reads

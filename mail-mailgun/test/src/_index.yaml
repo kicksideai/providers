@@ -13,6 +13,15 @@ entries:
     scope: global
     value_type: string
     default: Example Workspace
+  - name: unrelated_api_key
+    kind: registry.entry
+    meta: { type: "kickside.settings:definition" }
+    namespace: app.unrelated
+    key: api_key
+    scope: global
+    value_type: secret
+    read_access: admin
+    default: ""
   - name: db
     kind: db.sql.sqlite
     file: ":memory:"
@@ -133,6 +142,11 @@ entries:
     parameters:
       - { name: "kickside.mail.mailgun:us_api_base_url", value: "http://127.0.0.1:24637" }
       - { name: "kickside.mail.mailgun:eu_api_base_url", value: "http://localhost:24637" }
+      - { name: "kickside.mail.mailgun:sending_domain", value: "mail.example.org" }
+      - name: kickside.mail.mailgun:delivery_urls
+        value:
+          - http://127.0.0.1:24637/v3/mail.example.org/messages
+          - http://localhost:24637/v3/mail.example.org/messages
       - { name: "kickside.mail.security:user_security_scope", value: "app:user" }
       - { name: "kickside.mail:target_db", value: "app:db" }
       - { name: "kickside.mail:api_router", value: "app:api" }
@@ -175,6 +189,18 @@ entries:
       resources: ['app:actor_probe']
       actions: [funcs.call]
       effect: allow
+  - name: settings_probe_access
+    kind: security.policy
+    policy:
+      resources: [kickside.settings:settings, kickside.settings:settings_binding, get_namespace]
+      actions: [contract.get, contract.open, contract.call]
+      effect: allow
+  - name: transport_status_access
+    kind: security.policy
+    policy:
+      resources: [kickside.mail.mailgun:transport, status]
+      actions: [contract.open, contract.call]
+      effect: allow
   - name: upload_data_access
     kind: security.policy
     groups: [app:user]
@@ -197,15 +223,6 @@ entries:
         - security
       actions: [registry.get, contract.get, contract.open, contract.call, contract.security, funcs.call, funcs.security, env.get]
       effect: allow
-  - name: stub_request_access
-    kind: security.policy
-    groups: [app:user]
-    policy:
-      resources:
-        - http://127.0.0.1:24637/v3/mail.example.org/messages
-        - http://localhost:24637/v3/mail.example.org/messages
-      actions: [http_client.request]
-      effect: allow
   - name: stub_private_ip
     kind: security.policy
     groups: [app:user]
@@ -223,13 +240,13 @@ entries:
       settings: kickside.mail.driver:config
       uploads: kickside.uploads:uploads
     security:
-      policies: [kickside.mail.security:settings_read]
+      policies: [app:settings_probe_access]
   - name: driver_test
     kind: function.lua
     meta: { type: test, suite: mail_mailgun }
     source: file://driver_test.lua
     method: run
-    modules: [uuid, fs, json, registry, base64, sql, funcs, security, contract]
+    modules: [uuid, fs, json, registry, base64, sql, time, contract]
     imports:
       test: wippy.test:test
       fixture: app:fixture
