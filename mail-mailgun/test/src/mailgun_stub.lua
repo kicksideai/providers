@@ -52,23 +52,25 @@ local function handle()
         return
     end
 
-    if values.subject:match("^Retry hint") then
+    local subject: unknown = values and values.subject
+    assert(type(subject) == "string", "Expected a single Mailgun subject")
+    if subject:match("^Retry hint") then
         res:set_status(420)
         res:set_header("X-RateLimit-Reset", tostring(time.now():unix_nano() // 1000000 + 120000))
         res:write_json({message = "Retry later"})
         return
     end
 
-    if values.subject:match("^Unsafe provider detail") then
+    if subject:match("^Unsafe provider detail") then
         res:set_status(400)
         local detail = "Fixture refusal\nmg_fixture YXBpOm1nX2ZpeHR1cmU= " .. string.rep("é", 512)
         res:write_json({message = detail})
         return
     end
 
-    local requested_status = values.subject:match("^HTTP (%d+) ")
+    local requested_status = subject:match("^HTTP (%d+) ")
     if requested_status then
-        local status = tonumber(requested_status)
+        local status = assert(tonumber(requested_status), "Invalid fixture HTTP status")
         res:set_status(status)
         local message = status == 403 and "Please add the address to your authorized recipients." or "Fixture rejection"
         res:write_json({message = message})
