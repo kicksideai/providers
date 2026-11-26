@@ -32,7 +32,8 @@ local function handle()
 
     local status, error_name = payload.subject:match("^HTTP (%d+) ?([%w_]*)$")
     if status then
-        res:set_status(tonumber(status))
+        local http_status = assert(tonumber(status), "Invalid fixture HTTP status")
+        res:set_status(http_status)
         res:write_json({name = error_name})
         return
     end
