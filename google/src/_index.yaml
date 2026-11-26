@@ -54,6 +54,15 @@ entries:
     meta:
       comment: Supplies Google credential settings and the settings block.
 
+  - name: sheets_importer_public
+    kind: ns.requirement
+    default: false
+    meta:
+      comment: Show the Sheets importer trait after the host binds a data store.
+    targets:
+      - entry: kickside.google.traits:sheets_importer
+        path: .meta.public
+
   - name: import_administrator_binding
     kind: ns.requirement
     default: ""

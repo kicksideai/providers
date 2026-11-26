@@ -19,7 +19,8 @@ try {
     if ($Target -eq 'test') {
         & $wippyBin install
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        & $wippyBin test --set "vars.http_port=$testPort" @WippyArgs
+        # Match Makefile test: omitted, boolean true and boolean false.
+        & node (Join-Path $PSScriptRoot 'test/run-visibility-tests.mjs') $wippyBin --set "vars.http_port=$testPort" @WippyArgs
     } else {
         & $wippyBin lint --ns 'kickside.google' --ns 'kickside.google.*' @WippyArgs
     }

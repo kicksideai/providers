@@ -94,14 +94,30 @@ filtered to `mimeType = 'application/vnd.google-apps.spreadsheet'`. The
 accepts the metadata scope for this lookup. The import uses the connection
 selected by the trait, or the caller's default accessible Google connection.
 
-Bind `kickside.google:import_administrator_binding` to a
+The importer trait is hidden from the agent editor by default. Bind
+`kickside.google:import_administrator_binding` to a
 `kickside.data:definable` implementation and
 `kickside.google:import_receiver_binding` to its `kickside.data:loadable`
 implementation. For Storage, the bindings are
 `spiralscout.storage.definable:administrator` and
-`spiralscout.storage.loadable:receiver`. The host owns installation and access
-grants. Google declares a Data Explorer source that maps these requirements to
-the contracts, without depending on Data Explorer or Storage modules.
+`spiralscout.storage.loadable:receiver`. Set
+`kickside.google:sheets_importer_public` to the YAML boolean `true` after binding
+the store. Use these parameters in the host's `kickside/google` dependency:
+
+```yaml
+parameters:
+  - name: kickside.google:import_administrator_binding
+    value: spiralscout.storage.definable:administrator
+  - name: kickside.google:import_receiver_binding
+    value: spiralscout.storage.loadable:receiver
+  - name: kickside.google:sheets_importer_public
+    value: true
+```
+
+Use unquoted `true` and `false`, since the string `"false"` is truthy in Lua.
+The host owns installation and access grants. Google declares a Data Explorer
+source that maps the binding requirements to the contracts, without depending
+on Data Explorer or Storage modules.
 
 Call `GoogleSheetsImport` with, for example:
 
@@ -160,6 +176,9 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 | --- | --- |
 | [`kickside.google:ui_server`](src/_index.yaml) | Host supplies the value |
 | [`kickside.google:env_storage`](src/_index.yaml) | Host supplies the value |
+| [`kickside.google:import_administrator_binding`](src/_index.yaml) | `""` |
+| [`kickside.google:import_receiver_binding`](src/_index.yaml) | `""` |
+| [`kickside.google:sheets_importer_public`](src/_index.yaml) | `false` (boolean) |
 | [`kickside.google:endpoint_drive`](src/_index.yaml) | `https://www.googleapis.com/drive/v3` |
 | [`kickside.google:endpoint_sheets`](src/_index.yaml) | `https://sheets.googleapis.com/v4/spreadsheets` |
 | [`kickside.google:endpoint_analytics_admin`](src/_index.yaml) | `https://analyticsadmin.googleapis.com/v1beta` |

@@ -721,7 +721,7 @@ entries:
     meta:
       type: agent.trait
       title: Google Sheets Importer
-      public: true
+      public: false
       icon: tabler:table-import
       comment: Imports Google Sheets into the configured data store.
       tags: [google, sheets, dataset, import]
