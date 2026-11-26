@@ -56,7 +56,8 @@ local function handle()
 
     local status = payload.subject and payload.subject:match("^HTTP (%d+) ")
     if status then
-        res:set_status(tonumber(status))
+        local http_status = assert(tonumber(status), "Invalid fixture HTTP status")
+        res:set_status(http_status)
         if status ~= "202" then
             res:write_json({errors = {{message = "Fixture rejection"}}})
         end
