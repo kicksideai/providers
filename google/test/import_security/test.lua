@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local funcs = require("funcs")
 local security = require("security")
@@ -19,7 +20,7 @@ end
 
 local function rows(): any
     local db = assert(sql.get("app:db"))
-    local result, err = db:query("SELECT actor_id, step, can_write, can_unrelated FROM google_import_identity ORDER BY rowid", {})
+    local result, err = db:query("SELECT actor_id, step, can_write, can_unrelated FROM google_import_identity ORDER BY seq", {})
     db:release()
     test.is_nil(err, tostring(err))
     return result
@@ -29,7 +30,7 @@ local run = test.run_cases(function()
         test.describe("Registered Google Sheets import identity", function()
             test.it("passes the restricted caller to store contracts and refuses writes without permission", function()
                 local db = assert(sql.get("app:db"))
-                test.is_nil(select(2, db:execute("CREATE TABLE IF NOT EXISTS google_import_identity (actor_id TEXT, step TEXT, can_write INTEGER, can_unrelated INTEGER)", {})))
+                test.is_nil(select(2, db:execute("CREATE TABLE IF NOT EXISTS google_import_identity (seq INTEGER, actor_id TEXT, step TEXT, can_write INTEGER, can_unrelated INTEGER)", {})))
                 test.is_nil(select(2, db:execute("DELETE FROM google_import_identity", {})))
                 db:release()
                 local actor = security.new_actor("sheets-import-" .. uuid.v7(), {})

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local transport = require("transport")
 local sheets = require("sheets")
 local store = require("store")

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local store = {
     _contract = require("contract"),
     _registry = require("registry"),

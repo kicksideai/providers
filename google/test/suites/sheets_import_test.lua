@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local transport = require("transport")
 local store = require("store")
