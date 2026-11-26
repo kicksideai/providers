@@ -26,5 +26,6 @@ publish:
 	@exit 1
 
 .PHONY: lockrefresh
-lockrefresh:
+# The harness reads fixture copies that prepare-test makes, so the update loads them too.
+lockrefresh: prepare-test
 	cd test && wippy update $(WIPPY_UPDATE_ARGS)

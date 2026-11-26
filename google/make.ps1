@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 param(
     [ValidateSet('test', 'lint')][string]$Target = 'lint',
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$WippyArgs
