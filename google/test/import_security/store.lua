@@ -17,7 +17,7 @@ local function write(step: string): error?
         return count_err
     end
     local _, err = db:execute("INSERT INTO google_import_identity (seq, actor_id, step, can_write, can_unrelated) VALUES ($1,$2,$3,$4,$5)",
-        {tonumber(counted[1].n) + 1, actor:id(), step, 1, scope:evaluate(actor, "unrelated.write", "unrelated:store") == "allow" and 1 or 0})
+        {assert(tonumber(counted[1].n)) + 1, actor:id(), step, 1, scope:evaluate(actor, "unrelated.write", "unrelated:store") == "allow" and 1 or 0})
     db:release()
     return err
 end
