@@ -337,6 +337,7 @@ entries:
     kind: function.lua
     meta: {type: test, suite: llm_ocr}
     source: file://provider_timeout_test.lua
+    modules: [json]
     method: run
     imports:
       test: wippy.test:test
