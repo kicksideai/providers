@@ -1417,7 +1417,8 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: kicksideai/components
-        ref: main
+        # The mail driver fixtures exercise the Mail contract from components#460.
+        ref: ${{ startsWith(matrix.module, 'mail-') && 'e0663975d0dfcee035a38ea58a12e86fe01d37f0' || 'main' }}
         path: components
         token: ${{ secrets.SOURCE_READ_TOKEN || github.token }}
         persist-credentials: false
