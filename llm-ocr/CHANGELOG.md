@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.29](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.28...llm-ocr-v0.1.29) (2026-11-26)
+
+
+### Bug Fixes
+
+* **llm-ocr:** preserve page image errors and avoid resending invalid PDFs ([#250](https://github.com/kicksideai/providers/issues/250)) ([77e0df9](https://github.com/kicksideai/providers/commit/77e0df943d3aff2dfdbee9fefdf44f58c548cda8))
+
 ## [0.1.28](https://github.com/kicksideai/providers/compare/llm-ocr-v0.1.26...llm-ocr-v0.1.28) (2026-11-25)
 
 
