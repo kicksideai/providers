@@ -50,6 +50,25 @@ local function define_tests()
             test.eq(history.events[3].author.kind, "unknown")
         end)
 
+        test.it("derives dataflow input authors behind the run-context unknown placeholder", function()
+            local user = fixture.user()
+            local flow = "f-" .. user
+            fixture.history.record(flow .. ":node", {
+                {id = "placeholder", role = "user", event_author = {kind = "unknown"}, content = "Inspect document 42."},
+                {id = "stored", role = "user", author = {kind = "unknown"}, content = "Inspect document 43."},
+            })
+            local host = {kind = "dataflow", dataflow_id = flow, node_id = "node", iteration = 1}
+            local payload = {phase = "before_step", host = host, agent = {id = "agent-a"},
+                run_context = {contract = "wippy.agent:run_context", binding = "app.suites:history_binding", host = host}}
+            local history, err = fixture.op(user, "read_history", {payload = payload, selector = {mode = "all"}},
+                {from_agent_id = "agent:parent"})
+            test.is_nil(err, tostring(err))
+            test.eq(history.events[1].author.kind, "agent")
+            test.eq(history.events[1].author.id, "agent:parent")
+            test.eq(history.events[2].author.kind, "unknown")
+            test.is_nil(history.events[2].author.id)
+        end)
+
         test.it("requires an explicit author for each admitted message", function()
             local user = fixture.user()
             local ok, err = pcall(fixture.record_chat, user, "s-" .. user, {

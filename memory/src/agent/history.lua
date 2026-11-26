@@ -22,6 +22,19 @@ function M.open(ref: any): (any?, error?)
     return inst, nil
 end
 
+-- An author stored in the event metadata always stands, and so does an author the
+-- run context reports, including an explicit unknown. One exception: since 0.7.39,
+-- wippy/dataflow reports {kind = "unknown"} for every event whose stored metadata
+-- names no author. In a dataflow host that placeholder means "not recorded", so the
+-- author is derived below as it was before.
+local function reported_author(event: any, metadata: any, host_kind: any): any?
+    if metadata.author ~= nil then return metadata.author end
+    local author = event.author
+    if type(author) ~= "table" then return nil end
+    if host_kind == "dataflow" and author.kind == "unknown" and author.id == nil then return nil end
+    return author
+end
+
 function M.read(payload: any, selector: any): (any?, error?)
     local inst, err = M.open(payload.run_context)
     if err then return nil, err end
@@ -48,8 +61,7 @@ function M.read(payload: any, selector: any): (any?, error?)
             metadata.result = event.content
         end
         event.role, event.metadata = role, metadata
-        local author = metadata.author
-        if author == nil and type(event.author) == "table" then author = event.author end
+        local author = reported_author(event, metadata, type(payload.host) == "table" and payload.host.kind or nil)
         if author == nil then
             if role == "function" then author = {kind = "system"}
             elseif role == "assistant" and types.trim(metadata.agent_id) ~= "" then
