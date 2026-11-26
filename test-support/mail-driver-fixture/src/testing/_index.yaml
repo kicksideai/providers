@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: test.mail_driver_fixture.testing
+entries:
+  - name: delivery_admins
+    kind: security.scope
+  - name: delivery_admins_composition
+    kind: registry.entry
+    meta: { type: kickside.security.group_composition }
+    group_id: test.mail_driver_fixture.testing:delivery_admins
+    policies: [kickside.mail.security:module_access, kickside.mail.security:driver_admin]
+  - name: fixture
+    kind: library.lua
+    source: file://fixture.lua
+    modules: [security, funcs, sql, uuid, time, channel, fs]
+    imports:
+      provision: kickside.core.threads:provision
+      identity: kickside.execution:execution_identity
+      signal: test.mail_driver_fixture.testing:changes_signal
+  - name: actor_probe
+    kind: library.lua
+    source: file://actor_probe.lua
+    modules: [security, contract, time]
+    imports:
+      client: kickside.mail:client
+      settings: kickside.mail.driver:config
+      uploads: kickside.uploads:uploads
+  - name: broadcast
+    kind: function.lua
+    source: file://realtime.lua
+    method: broadcast
+    modules: [security, fs]
+    imports: { signal: test.mail_driver_fixture.testing:changes_signal }
+    security:
+      policies: [test.mail_driver_fixture.testing:signal, test.mail_driver_fixture.testing:signal_storage]
+  - name: notify
+    kind: function.lua
+    source: file://realtime.lua
+    method: notify
+    modules: [security, fs]
+    imports: { signal: test.mail_driver_fixture.testing:changes_signal }
+  - name: changes
+    kind: pg.scope
+    lifecycle: {auto_start: true}
+  - name: changes_signal
+    kind: library.lua
+    source: file://signal.lua
+    modules: [pg, process]
+  - name: signal
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.testing:changes, mail.driver.fixture.waiters]
+      actions: [pg.open, pg.broadcast_local]
+      effect: allow
+  - name: signals
+    kind: fs.directory
+    directory: ./.wippy/driver-signals
+    auto_init: true
+  - name: signal_storage
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.testing:signals]
+      actions: [fs.get]
+      effect: allow

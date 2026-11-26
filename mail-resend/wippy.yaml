@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+organization: kickside
+module: mail-resend
+type: plugin
+description: Resend HTTP transport for KickSide Mail.
+license: LicenseRef-KickSide-Community-1.0
+repository: https://github.com/kicksideai/providers
+homepage: https://wippy.ai
+keywords: [email, mail, resend]
+exclude_meta:
+  type: [test, test_helper, test_support]
+exclude:
+  - wippy.lock
+  - 'app:**'
+  - 'app.env:**'
+  - 'app.fixtures:**'
+  - 'app.**:**'
+  - 'test/**'
+  - 'tests/**'
+  - 'test-support/**'
+  - 'test:**'
+  - '.wippy/**'
+  - '.wippy:**'
+  - 'run/**'
+  - 'ui/node_modules/**'
+  - 'ui/dist/**'
+  - 'static/*.map'
+  - 'static/**/*.map'

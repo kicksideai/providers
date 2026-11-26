@@ -34,7 +34,8 @@ local function same_revision_retry()
         assert(models.upsert_card({name = model, provider_id = "app:checkpoint_model_provider", provider_model = model,
             capabilities = {"embed"}, dimensions = 512, max_tokens = 4096}))
         assert(store.create_store(id, model, config))
-        owner.create(user_id, id, "kickside.kb10:embeddable", "kickside.kb10:embeddable")
+        owner.create(user_id, id, "kickside.kb10:embeddable", "kickside.kb10:embeddable",
+            {class = "knowledge_base"})
         assert(uploads.create(upload_id, user_id, #content, "text/plain", "app:uploads", "fixture.txt",
             "document", {filename = "Drive fixture.txt", source_url = source_url}, "completed", hash.sha256(content)))
         assert(artifacts.create_artifact({upload_id = upload_id, kind = "markdown", role = "primary",

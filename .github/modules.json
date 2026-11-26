@@ -2,6 +2,72 @@
   "repository": "providers",
   "checks": [],
   "modules": {
+    "mail-mailgun": {
+      "path": "mail-mailgun",
+      "organization": "kickside",
+      "module": "mail-mailgun",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lockrefresh",
+        "lint",
+        "check-dependencies",
+        "test",
+        "verify",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_mail_mailgun",
+      "extra_tests": []
+    },
+    "mail-sendgrid": {
+      "path": "mail-sendgrid",
+      "organization": "kickside",
+      "module": "mail-sendgrid",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lockrefresh",
+        "lint",
+        "check-dependencies",
+        "test",
+        "verify",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_mail_sendgrid",
+      "extra_tests": []
+    },
+    "mail-resend": {
+      "path": "mail-resend",
+      "organization": "kickside",
+      "module": "mail-resend",
+      "type": "plugin",
+      "visibility": "public",
+      "embed": [],
+      "targets": [
+        "lockrefresh",
+        "lint",
+        "check-dependencies",
+        "test",
+        "verify",
+        "publish"
+      ],
+      "harness": "test",
+      "profiles": [
+        "postgres"
+      ],
+      "pg_database": "kickside_test_mail_resend",
+      "extra_tests": []
+    },
     "airtable": {
       "path": "airtable",
       "organization": "kickside",

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+organization: kickside
+module: mail-resend-harness
+description: Standalone harness that runs the kickside/mail-resend test suites.

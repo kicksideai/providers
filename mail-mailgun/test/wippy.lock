@@ -1,0 +1,59 @@
+directories:
+    modules: .wippy
+    src: .
+modules:
+    - name: kickside/component
+      version: 0.3.35
+    - name: kickside/contract
+      version: 0.3.13
+    - name: kickside/core
+      version: 0.3.54
+    - name: kickside/doc2md
+      version: 0.8.28
+    - name: kickside/execution
+      version: 0.2.10
+    - name: kickside/jobs
+      version: 0.1.101
+    - name: kickside/mail
+      version: 0.0.0
+    - name: kickside/mail-driver-fixture
+      version: 0.0.0
+    - name: kickside/mail-mailgun
+      version: 0.0.0
+    - name: kickside/realtime-dispatch
+      version: 0.0.0
+    - name: kickside/security
+      version: 0.2.31
+    - name: kickside/settings
+      version: 0.0.0
+    - name: kickside/uploads
+      version: 0.0.0
+    - name: kickside/users
+      version: 0.0.0
+    - name: wippy/agent
+      version: 0.5.15
+      hash: 6e0ffbd1911188f628b9b8dbb4b4b0cb2c0497a8d989c97f086ca0a9ea4ef30f
+    - name: wippy/bootloader
+      version: 0.3.18
+      hash: c7e71b358539b450b49b55e725f60f2dac8218e1c596cf3a473ce71e36b10a9b
+    - name: wippy/llm
+      version: 0.5.27
+      hash: 81558bc8b6bf5cad7a30457df5a2ed21fdfe532a629b4157c73344f69e34dee8
+    - name: wippy/migration
+      version: 0.3.26
+      hash: cf4848ad3f8ba8d31d944b2f3a7274bc2b7cf2888dd80f0db63b2c71a85f89c1
+    - name: wippy/security
+      version: 0.4.3
+      hash: f636859979e88b23647a78fb9aa8a553799de18750b0fb5fb085cbe21542c86c
+    - name: wippy/session
+      version: 0.7.2
+      hash: b76352f3ce633bc8e1a2953084a9002959cf15dd1d5192881aef68f5e3b0734c
+    - name: wippy/terminal
+      version: 0.4.6
+      hash: aa0c92b85c0dc2c96f00119a7eaa1ced569a2ac8899514d432aef0c910e73e63
+    - name: wippy/test
+      version: 0.4.24
+      hash: b118903b3a239b3cd423169c64f17d89b8b920b5fefbf79f94789cf49f9341b5
+    - name: wippy/views
+      version: 0.5.15
+      hash: 9f7a7aa550786bc1f2b2f7a4de14c0c6f88421ca8663b7be2cd180845ed57b2d

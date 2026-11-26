@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.sendgrid.transport
+entries:
+  - name: types
+    kind: library.lua
+    meta: { comment: Declares the SendGrid transport types. }
+    source: file://types.lua
+  - name: send
+    kind: function.lua
+    meta: { comment: Encodes and submits a Mail message to SendGrid. }
+    source: file://sendgrid.lua
+    method: send
+    modules: [registry]
+    imports: &transport_imports
+      types: kickside.mail.sendgrid.transport:types
+      mail_types: kickside.mail:types
+      settings: kickside.mail.driver:config
+      delivery: kickside.mail.driver:http
+    security:
+      policies:
+        - kickside.mail.sendgrid.security:http_access
+        - kickside.mail.sendgrid.security:provider_reads
+        - kickside.mail.sendgrid.security:settings_read
+        - kickside.mail.sendgrid.security:settings_admin_read
+  - name: status
+    kind: function.lua
+    meta: { comment: Reports SendGrid configuration readiness and delivery limits. }
+    source: file://sendgrid.lua
+    method: status
+    modules: [registry]
+    imports: *transport_imports
+    security:
+      policies:
+        - kickside.mail.sendgrid.security:provider_reads
+        - kickside.mail.sendgrid.security:settings_read
+        - kickside.mail.sendgrid.security:settings_admin_read

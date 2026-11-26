@@ -72,6 +72,69 @@ jobs:
       fail-fast: false
       matrix:
         include:
+        - module: mail-mailgun
+          wippy_version: 0.3.70a
+          engine: sqlite
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-mailgun/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            make -C mail-mailgun verify
+            version=$(jq -er '.["mail-mailgun"] // "0.1.0"' .release-please-manifest.json)
+            wippy publish --config mail-mailgun --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: mail-mailgun
+          wippy_version: 0.3.70a
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-mailgun/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_mail_mailgun"
+            createdb "$database"
+            trap 'dropdb "$database"' EXIT
+            make -C mail-mailgun verify WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$database"
+        - module: mail-sendgrid
+          wippy_version: 0.3.70a
+          engine: sqlite
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-sendgrid/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            make -C mail-sendgrid verify
+            version=$(jq -er '.["mail-sendgrid"] // "0.1.0"' .release-please-manifest.json)
+            wippy publish --config mail-sendgrid --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: mail-sendgrid
+          wippy_version: 0.3.70a
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-sendgrid/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_mail_sendgrid"
+            createdb "$database"
+            trap 'dropdb "$database"' EXIT
+            make -C mail-sendgrid verify WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$database"
+        - module: mail-resend
+          wippy_version: 0.3.70a
+          engine: sqlite
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-resend/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            make -C mail-resend verify
+            version=$(jq -er '.["mail-resend"] // "0.1.0"' .release-please-manifest.json)
+            wippy publish --config mail-resend --version "$version" --dry-run --create --module-visibility public --module-type plugin
+        - module: mail-resend
+          wippy_version: 0.3.70a
+          engine: postgres
+          commands: |
+            set -euo pipefail
+            export TMPDIR="$PWD/mail-resend/test/.wippy/tmp"
+            mkdir -p "$TMPDIR"
+            database="ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_mail_resend"
+            createdb "$database"
+            trap 'dropdb "$database"' EXIT
+            make -C mail-resend verify WIPPY_ARGS="--profile postgres --set vars.pg_host=$PGHOST --set vars.pg_port=$PGPORT --set vars.pg_database=$database"
         - module: asr
           engine: sqlite
           commands: |
@@ -1340,7 +1403,7 @@ jobs:
         node-version: '22'
     - uses: kicksideai/.github/actions/setup-wippy@5401fa65bed7d8648125957520e94206ed1ffd0b
       with:
-        version: 0.3.66a
+        version: ${{ matrix.wippy_version || '0.3.66a' }}
         hub-url: https://hub.wippy.ai
     - name: Check out converters module sources
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -1354,7 +1417,8 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: kicksideai/components
-        ref: main
+        # The mail driver fixtures exercise the Mail contract from components#460.
+        ref: ${{ startsWith(matrix.module, 'mail-') && 'e0663975d0dfcee035a38ea58a12e86fe01d37f0' || 'main' }}
         path: components
         token: ${{ secrets.SOURCE_READ_TOKEN || github.token }}
         persist-credentials: false
@@ -1369,6 +1433,9 @@ jobs:
     - name: Record KickSide integration revision
       run: git rev-parse HEAD
       working-directory: kickside
+    - name: Check Mail driver structure
+      if: ${{ contains(fromJSON('["mail-resend","mail-sendgrid","mail-mailgun"]'), matrix.module) && matrix.engine == 'sqlite' }}
+      run: python3 -B ../components/scripts/check_structure.py ${{ matrix.module }} --peer ../components/mail
     - name: Build, lint and Lua module tests
       run: ${{ matrix.commands }}
     defaults:

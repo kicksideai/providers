@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.resend
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta: { title: Resend Mail, comment: Declares the Resend Mail delivery module. }
+  - name: dep.mail
+    kind: ns.dependency
+    meta: { comment: Imports the Mail transport contract and driver helpers. }
+    component: kickside/mail
+    version: "*"
+  - name: dep.settings
+    kind: ns.dependency
+    meta: { comment: Imports Settings for provider configuration. }
+    component: kickside/settings
+    version: "*"
+  - name: endpoints
+    kind: registry.entry
+    meta: { comment: Holds the linked HTTPS delivery destinations. }
+    endpoints: {}
+  - name: api_base_url
+    kind: ns.requirement
+    meta:
+      value_type: string
+      comment: Sets the delivery URL and its outbound HTTP grant.
+      description: Complete HTTPS URL for the Resend email delivery endpoint.
+    default: https://api.resend.com/emails
+    targets:
+      - { entry: "kickside.mail.resend:endpoints", path: ".endpoints.api" }
+      - { entry: kickside.mail.resend.security:http_access, path: ".policy.resources +=" }
+  - name: transport
+    kind: contract.binding
+    meta: { comment: Binds the Resend implementation to the Mail transport contract. }
+    contracts:
+      - contract: kickside.mail:transport
+        methods:
+          send: kickside.mail.resend.transport:send
+          status: kickside.mail.resend.transport:status

@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.mail.mailgun
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta: { title: Mailgun Mail, comment: Declares the Mailgun Mail delivery module. }
+  - name: dep.mail
+    kind: ns.dependency
+    meta: { comment: Imports the Mail transport contract and driver helpers. }
+    component: kickside/mail
+    version: "*"
+  - name: dep.settings
+    kind: ns.dependency
+    meta: { comment: Imports Settings for provider configuration. }
+    component: kickside/settings
+    version: "*"
+  - name: endpoints
+    kind: registry.entry
+    meta: { comment: Holds the linked HTTPS delivery destinations. }
+    endpoints: {}
+  - name: us_api_base_url
+    kind: ns.requirement
+    meta:
+      value_type: string
+      comment: Sets the US delivery prefix and its outbound HTTP grant.
+      description: HTTPS URL prefix for the US Mailgun API.
+    default: https://api.mailgun.net/v3/*
+    targets:
+      - { entry: kickside.mail.mailgun:endpoints, path: ".endpoints.us" }
+      - { entry: kickside.mail.mailgun.security:http_access, path: ".policy.resources +=" }
+  - name: eu_api_base_url
+    kind: ns.requirement
+    meta:
+      value_type: string
+      comment: Sets the EU delivery prefix and its outbound HTTP grant.
+      description: HTTPS URL prefix for the EU Mailgun API.
+    default: https://api.eu.mailgun.net/v3/*
+    targets:
+      - { entry: kickside.mail.mailgun:endpoints, path: ".endpoints.eu" }
+      - { entry: kickside.mail.mailgun.security:http_access, path: ".policy.resources +=" }
+  - name: sending_domain
+    kind: ns.requirement
+    meta:
+      value_type: string
+      comment: Sets the default domain until an administrator chooses one.
+      description: Default verified Mailgun sending domain.
+    default: ""
+    targets:
+      - { entry: kickside.mail.mailgun.settings:setting_domain, path: ".default" }
+  - name: transport
+    kind: contract.binding
+    meta: { comment: Binds the Mailgun implementation to the Mail transport contract. }
+    contracts:
+      - contract: kickside.mail:transport
+        methods:
+          send: kickside.mail.mailgun.transport:send
+          status: kickside.mail.mailgun.transport:status

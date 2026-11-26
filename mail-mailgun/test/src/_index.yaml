@@ -1,0 +1,166 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: definition
+    kind: ns.definition
+    meta: { title: Example Workspace }
+  - name: mail_editors
+    kind: security.scope
+  - name: mail_editors_composition
+    kind: registry.entry
+    meta: { type: kickside.security.group_composition }
+    group_id: app:mail_editors
+    policies: [kickside.mail.security:module_access, kickside.mail.security:library_access]
+  - name: realtime_binding
+    kind: contract.binding
+    contracts:
+      - contract: kickside.contract:realtime
+        default: true
+        methods:
+          broadcast: test.mail_driver_fixture.testing:broadcast
+          notify: test.mail_driver_fixture.testing:notify
+  - name: dep.fixture
+    kind: ns.dependency
+    component: kickside/mail-driver-fixture
+    version: "*"
+  - name: dep.driver
+    kind: ns.dependency
+    component: kickside/mail-mailgun
+    version: "*"
+  - name: mailgun_gateway
+    kind: http.service
+    addr: "127.0.0.1:0"
+    lifecycle: { auto_start: true }
+  - name: mailgun_router
+    kind: http.router
+    meta: { server: "app:mailgun_gateway" }
+    prefix: /
+  - name: mailgun_messages
+    kind: http.endpoint
+    meta: { router: "app:mailgun_router" }
+    method: POST
+    path: /v3/{domain}/messages
+    func: app:mailgun_stub
+  - name: mailgun_requests
+    kind: fs.directory
+    directory: ./.wippy/mailgun-requests
+    auto_init: true
+  - name: mailgun_stub
+    kind: function.lua
+    source: file://mailgun_stub.lua
+    method: handle
+    modules: [http, fs, json, uuid, time, base64]
+    security:
+      policies: [app:stub_capture_access]
+  - name: stub_capture_access
+    kind: security.policy
+    policy:
+      resources: ['app:mailgun_requests']
+      actions: [fs.get]
+      effect: allow
+  - name: transport_status_access
+    kind: security.policy
+    policy:
+      resources: [kickside.mail.mailgun:transport, status]
+      actions: [contract.open, contract.call]
+      effect: allow
+  - name: stub_private_ip
+    kind: security.policy
+    policy:
+      resources: ['127.0.0.1', '::1']
+      actions: [http_client.private_ip]
+      effect: allow
+  - name: fixture_admins
+    kind: security.scope
+    meta: {comment: Administers mail delivery and Settings in this harness.}
+  - name: fixture_admins_composition
+    kind: registry.entry
+    meta: {type: kickside.security.group_composition}
+    group_id: app:fixture_admins
+    policies:
+      - kickside.mail.security:driver_admin
+      - kickside.mail.security:log_admin
+      - kickside.mail.mailgun.security:driver_admin
+      - kickside.settings.security:module_access
+      - app:fixture_admin_settings
+      - app:fixture_settings_definition
+      - app:fixture_admin_db
+      - app:fixture_admin_transport
+      - app:stub_private_ip
+  - name: fixture_admin_settings
+    kind: security.policy
+    policy:
+      resources: [kickside.settings.api:list_settings.endpoint, kickside.settings.api:put_settings.endpoint]
+      actions: [access]
+      effect: allow
+  - name: fixture_settings_definition
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.host:unrelated_api_key]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: fixture_admin_db
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.host:db]
+      actions: [db.get]
+      effect: allow
+  - name: fixture_admin_transport
+    kind: security.policy
+    policy:
+      resources: [kickside.mail:transport, kickside.mail.mailgun:transport, status, send, set]
+      actions: [contract.get, contract.open, contract.call]
+      effect: allow
+  - name: actor_probe
+    kind: function.lua
+    source: file://actor_probe.lua
+    method: run
+    imports:
+      actor_probe: test.mail_driver_fixture.testing:actor_probe
+    security:
+      policies: [test.mail_driver_fixture.host:settings_probe_access]
+  - name: settings_block_test
+    kind: function.lua
+    meta: { type: test, suite: mail_mailgun_settings }
+    source: file://settings_block_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      settings_blocks: kickside.settings:settings_blocks
+  - name: driver_test
+    kind: function.lua
+    meta: { type: test, suite: mail_mailgun }
+    source: file://driver_test.lua
+    method: run
+    modules: [uuid, json, registry, contract, base64]
+    imports:
+      test: wippy.test:test
+      cases: app:driver_cases
+      fixture: test.mail_driver_fixture.testing:fixture
+  - name: delivery_test
+    kind: function.lua
+    meta: { type: test, suite: mail_mailgun }
+    source: file://delivery_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      cases: app:driver_cases
+      fixture: test.mail_driver_fixture.testing:fixture
+  - name: driver_cases
+    kind: library.lua
+    source: file://driver_cases.lua
+    modules: [uuid, fs, json, base64]
+    imports:
+      test: wippy.test:test
+      fixture: test.mail_driver_fixture.testing:fixture
+  - name: defaults_test
+    kind: function.lua
+    meta: { type: test_fixture, suite: mail_mailgun_defaults }
+    source: file://defaults_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      fixture: test.mail_driver_fixture.testing:fixture

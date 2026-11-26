@@ -1,0 +1,141 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: definition
+    kind: ns.definition
+    meta: { title: Example Workspace }
+  - name: realtime_binding
+    kind: contract.binding
+    contracts:
+      - contract: kickside.contract:realtime
+        default: true
+        methods:
+          broadcast: test.mail_driver_fixture.testing:broadcast
+          notify: test.mail_driver_fixture.testing:notify
+  - name: dep.fixture
+    kind: ns.dependency
+    component: kickside/mail-driver-fixture
+    version: "*"
+  - name: dep.driver
+    kind: ns.dependency
+    component: kickside/mail-resend
+    version: "*"
+  - name: resend_gateway
+    kind: http.service
+    addr: "127.0.0.1:0"
+    lifecycle: { auto_start: true }
+  - name: resend_router
+    kind: http.router
+    meta: { server: "app:resend_gateway" }
+    prefix: /
+  - name: resend_emails
+    kind: http.endpoint
+    meta: { router: "app:resend_router" }
+    method: POST
+    path: /emails
+    func: app:resend_stub
+  - name: resend_requests
+    kind: fs.directory
+    directory: ./.wippy/resend-requests
+    auto_init: true
+  - name: resend_stub
+    kind: function.lua
+    source: file://resend_stub.lua
+    method: handle
+    modules: [http, fs, json, uuid]
+    security:
+      policies: [app:stub_capture_access]
+  - name: stub_capture_access
+    kind: security.policy
+    policy:
+      resources: ['app:resend_requests']
+      actions: [fs.get]
+      effect: allow
+  - name: transport_status_access
+    kind: security.policy
+    policy:
+      resources: [kickside.mail.resend:transport, status]
+      actions: [contract.open, contract.call]
+      effect: allow
+  - name: stub_private_ip
+    kind: security.policy
+    policy:
+      resources: ['127.0.0.1']
+      actions: [http_client.private_ip]
+      effect: allow
+  - name: fixture_admins
+    kind: security.scope
+    meta: {comment: Administers mail delivery and Settings in this harness.}
+  - name: fixture_admins_composition
+    kind: registry.entry
+    meta: {type: kickside.security.group_composition}
+    group_id: app:fixture_admins
+    policies:
+      - kickside.mail.security:driver_admin
+      - kickside.mail.security:log_admin
+      - kickside.mail.resend.security:driver_admin
+      - kickside.settings.security:module_access
+      - app:fixture_admin_settings
+      - app:fixture_settings_definition
+      - app:fixture_admin_db
+      - app:fixture_admin_transport
+      - app:stub_private_ip
+  - name: fixture_admin_settings
+    kind: security.policy
+    policy:
+      resources: [kickside.settings.api:list_settings.endpoint, kickside.settings.api:put_settings.endpoint]
+      actions: [access]
+      effect: allow
+  - name: fixture_settings_definition
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.host:unrelated_api_key]
+      actions: [registry.get, registry.find]
+      effect: allow
+  - name: fixture_admin_db
+    kind: security.policy
+    policy:
+      resources: [test.mail_driver_fixture.host:db]
+      actions: [db.get]
+      effect: allow
+  - name: fixture_admin_transport
+    kind: security.policy
+    policy:
+      resources: [kickside.mail:transport, kickside.mail.resend:transport, status, send, set]
+      actions: [contract.get, contract.open, contract.call]
+      effect: allow
+  - name: actor_probe
+    kind: function.lua
+    source: file://actor_probe.lua
+    method: run
+    modules: [contract]
+    imports:
+      actor_probe: test.mail_driver_fixture.testing:actor_probe
+    security:
+      policies: [test.mail_driver_fixture.host:settings_probe_access, app:fixture_upload_acl]
+  - name: fixture_upload_acl
+    kind: security.policy
+    policy:
+      resources: [grant_subtree, revoke_subtree]
+      actions: [contract.call]
+      effect: allow
+  - name: settings_block_test
+    kind: function.lua
+    meta: { type: test, suite: mail_resend_settings }
+    source: file://settings_block_test.lua
+    method: run
+    modules: [registry]
+    imports:
+      test: wippy.test:test
+      settings_blocks: kickside.settings:settings_blocks
+  - name: driver_test
+    kind: function.lua
+    meta: { type: test, suite: mail_resend }
+    source: file://driver_test.lua
+    method: run
+    modules: [base64, uuid, fs, json, registry, contract]
+    imports:
+      test: wippy.test:test
+      fixture: test.mail_driver_fixture.testing:fixture
+      uploads_types: kickside.uploads:types
