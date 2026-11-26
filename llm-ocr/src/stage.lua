@@ -330,7 +330,9 @@ local function run(params: any, deps: any): any
     local render_failures = params.metadata and params.metadata.rasterize_failures
     if type(render_failures) == "table" then
         for _, failure in ipairs(render_failures) do
-            if failure.page and failure.code == "image_too_large" then fit_failures[failure.page] = failure end
+            if type(failure) == "table" and type(failure.page) == "number" and failure.code == "image_too_large" then
+                fit_failures[failure.page] = failure
+            end
         end
     end
     local function fail_page(item: any, err: any, image: any?): boolean
