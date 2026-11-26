@@ -352,6 +352,13 @@ local function run(params: any, deps: any): any
         local failure = fit_failures[item.index]
         if failure then return {image_error = failure} end
         if not page.artifact_id then return nil, "page image is unavailable" end
+        if mime == "application/pdf" then
+            local meta = page.metadata or {}
+            local size, width, height = tonumber(page.size), tonumber(meta.width), tonumber(meta.height)
+            local code = page_images.ocr_image_error(page.mime_type, size or 0, math.max(width or 0, height or 0),
+                page_images.MAX_OCR_BYTES, 8000)
+            if code then return {image_error = {code = code, size = size, width = width, height = height}} end
+        end
         local bytes, read_err = artifact_content_repo.read_artifact_content(upload_id, page.artifact_id)
         if read_err or type(bytes) ~= "string" then return nil, tostring(read_err or "page image content is unavailable") end
         if mime == "application/pdf" then
