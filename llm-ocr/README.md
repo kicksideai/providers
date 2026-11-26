@@ -59,6 +59,8 @@ variables in the harness configuration for your test server.
 
 Install the OCR processor and PDF rasterizer requirements, configure the generation model, and upload a scanned or image-only document through Uploads. OCR processes selected pages; original content and derived artifacts stay owned by Uploads.
 
+For a PDF page rejected before transcription, inspect its entry in `ocr_page_outcomes`. `unsupported_image_format` identifies an incompatible attachment. `image_too_large` includes the binary size and available pixel dimensions. A retry checks the current artifact before submitting it to the model.
+
 For processing jobs, OCR reports progress through Jobs 0.1.83 or later before
 each page batch. Each report uses the active execution's lease, and OCR stops
 before the next batch if that lease has been revoked.
