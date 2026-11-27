@@ -34,19 +34,25 @@ local function define_tests()
             local _, insert_err = db:execute(
                 "INSERT INTO kb10_stores(id,component_id,embedding_model) VALUES ($1,$2,$3)",
                 {store_id, store_id, "class:embed"})
-            db:release()
             test.is_nil(insert_err, tostring(insert_err))
+            local _, node_err = db:execute(
+                "INSERT INTO kb10_nodes(id,store_id,node_type,content) VALUES ($1,$2,'document',$3)",
+                {"348eab76-adfb-4213-b4cd-4bdd0bdb8033", store_id, "Durable document"})
+            db:release()
+            test.is_nil(node_err, tostring(node_err))
 
             for i = #ids, checkpoint, -1 do migrate(ids[i], "down") end
             for i = checkpoint, #ids do migrate(ids[i], "up") end
             db = assert(sql.get(DATABASE))
             local rows, read_err = db:query(
-                "SELECT embedding_model, document_count, failed_count FROM kb10_stores WHERE id=$1", {store_id})
+                [[SELECT s.embedding_model, s.document_count, s.failed_count, n.content
+                    FROM kb10_stores s JOIN kb10_nodes n ON n.store_id=s.id WHERE s.id=$1]], {store_id})
             db:release()
             test.is_nil(read_err, tostring(read_err))
             test.eq(#rows, 1)
             test.eq(rows[1].embedding_model, "class:embed")
-            test.eq(tonumber(rows[1].document_count), 0)
+            test.eq(rows[1].content, "Durable document")
+            test.eq(tonumber(rows[1].document_count), 1)
             test.eq(tonumber(rows[1].failed_count), 0)
 
             for i = #ids, 1, -1 do migrate(ids[i], "down") end
