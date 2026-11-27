@@ -15,6 +15,21 @@ end
 local function define_tests()
     test.describe("KB10 migration rollback", function()
         test.it("preserves a store across schema rollback and permits a full reinstall", function()
+            local app_db = assert(sql.get("app:db"))
+            local rollback_db = assert(sql.get(DATABASE))
+            local dialect = app_db:type()
+            test.eq(rollback_db:type(), dialect)
+            if dialect == sql.type.POSTGRES then
+                local function database_name(db)
+                    local rows = assert(db:query("SELECT current_database() AS name"))
+                    return rows[1].name
+                end
+                test.is_true(database_name(app_db) ~= database_name(rollback_db),
+                    "rollback requires a separate PostgreSQL database")
+            end
+            rollback_db:release()
+            app_db:release()
+
             local entries, err = registry.find({ ["meta.type"] = "migration" })
             test.is_nil(err, tostring(err))
             local ids = {}
