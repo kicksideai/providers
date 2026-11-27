@@ -1,15 +1,11 @@
-import { WippyVueElement, define, useEvents } from '@wippy-fe/webcomponent-vue'
+import { WippyVueElement, define, lazyVueConfig } from '@wippy-fe/webcomponent-vue'
 import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponent-vue'
 import type { ComponentProps, ConnectionSaved } from './types.ts'
-import { lazyControl } from './lazy'
+
 import stylesText from './styles.css?inline'
 import pkg from '../package.json'
 
-const ConnectView = lazyControl(
-  () => import('./app/Connect.vue'),
-  { loading: 'Loading SimpleFIN connection…', failed: 'Could not load the SimpleFIN connection form. Reload the page to try again.' },
-  useEvents,
-)
+
 
 class KicksideSimplefinConnectElement extends WippyVueElement<ComponentProps, { 'connection-saved': ConnectionSaved }> {
   static get wippyConfig(): WippyElementConfig<ComponentProps> {
@@ -21,7 +17,7 @@ class KicksideSimplefinConnectElement extends WippyVueElement<ComponentProps, { 
   }
 
   static get vueConfig() {
-    return { rootComponent: ConnectView }
+    return lazyVueConfig(() => (() => import('./app/Connect.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading SimpleFIN connection…', failed: 'Could not load the SimpleFIN connection form. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

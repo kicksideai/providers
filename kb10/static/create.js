@@ -1,33 +1,28 @@
-import { W as t, u as o } from "./wc-runtime-f54Bo-yJ.js";
-import { l as n, b as i } from "./styles-BZEPWEwd.js";
-import "@iconify/vue";
-import { define as s } from "@wippy-fe/proxy";
-const r = n(
-  () => import("./KbCreateConfig-CqSvkmSg.js"),
-  { loading: "Loading the knowledge base settings…", failed: "Could not load the knowledge base settings. Reload the page to try again." },
-  o
-), a = {
+import { W as o, l as n } from "./wc-runtime-CuuaQDIp.js";
+import { b as i } from "./styles-48TYyLEK.js";
+import { define as a } from "@wippy-fe/proxy";
+const s = {
   type: "object",
   properties: {
     config: { type: "object", description: "Configuration context: { kb_type, id?, embedding_model?, config?, edit? }" }
   }
 };
-class e extends t {
+class e extends o {
   static get wippyConfig() {
     return {
-      propsSchema: a,
+      propsSchema: s,
       hostCssKeys: ["themeConfigUrl"],
       inlineCss: i
     };
   }
   static get vueConfig() {
-    return { rootComponent: r };
+    return n(() => import("./KbCreateConfig-BhQl0o6H.js").then((t) => ({ rootComponent: t.default })), { surface: "compact", loading: "Loading the knowledge base settings…", failed: "Could not load the knowledge base settings. Reload the page to try again.", delay: 200, timeout: 3e4 });
   }
 }
-async function c() {
+async function g() {
   return e;
 }
-s(import.meta.url, e);
+a(import.meta.url, e);
 export {
-  c as webComponent
+  g as webComponent
 };

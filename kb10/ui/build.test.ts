@@ -10,10 +10,13 @@ it('builds all published KB10 entry points without source maps', () => {
   const output = mkdtempSync(join(tmpdir(), 'kb10-release-'))
   try {
     writeFileSync(join(output, 'previous.js.map'), '{}')
-    execFileSync('npm', ['run', 'build', '--', '--outDir', output], {
+    const npmCli = process.env.npm_execpath
+    const buildArgs = ['run', 'build', '--', '--outDir', output]
+    execFileSync(npmCli ? process.execPath : 'npm', npmCli ? [npmCli, ...buildArgs] : buildArgs, {
       cwd: new URL('.', import.meta.url),
       env: { ...process.env, NODE_ENV: 'production' },
       timeout: 30_000,
+      windowsHide: true,
     })
     const files = readdirSync(output, { recursive: true })
     expect(files).toEqual(expect.arrayContaining(['document.js', 'wiki.js', 'create.js', 'wippy-meta.json']))

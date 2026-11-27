@@ -1,13 +1,12 @@
-import { u as c, a as p, W as m } from "./wc-runtime-C70m2Vvt.js";
-import { defineComponent as a, computed as f, openBlock as u, createBlock as l } from "vue";
+import { u as c, a as p, W as a } from "./wc-runtime-CuuaQDIp.js";
+import { defineComponent as m, computed as f, openBlock as u, createBlock as l } from "vue";
 import { _ as g } from "./PickerBody.vue_vue_type_script_setup_true_lang-DhxSgt-1.js";
 import { s as _ } from "./styles-CV5852_Q.js";
-import "@iconify/vue";
 import { define as C } from "@wippy-fe/proxy";
-const y = /* @__PURE__ */ a({
+const y = /* @__PURE__ */ m({
   __name: "JiraPicker",
-  setup(t) {
-    const n = c(), r = p(), i = f(() => n.value.config || null);
+  setup(n) {
+    const t = c(), r = p(), i = f(() => t.value.config || null);
     function s(e) {
       r("config-changed", e);
     }
@@ -18,7 +17,7 @@ const y = /* @__PURE__ */ a({
     }, null, 8, ["config"]));
   }
 });
-class o extends m {
+class o extends a {
   static get wippyConfig() {
     return {
       propsSchema: { type: "object", properties: { config: { type: "object" } } },
@@ -30,11 +29,11 @@ class o extends m {
     return { rootComponent: y };
   }
 }
-async function E() {
+async function j() {
   return o;
 }
 C(import.meta.url, o);
 export {
-  E as webComponent
+  j as webComponent
 };
 //# sourceMappingURL=jira_picker.js.map
