@@ -17,6 +17,13 @@ profiles:
       app:db:options.sslmode: disable
       app:db:pool.max_open: 16
       app:db:pool.max_idle: 8
+      app:kb10_rollback_db:kind: db.sql.postgres
+      app:kb10_rollback_db:host: ${pg_host}
+      app:kb10_rollback_db:port: ${pg_port}
+      app:kb10_rollback_db:database: ${pg_database}_rollback
+      app:kb10_rollback_db:username: ${pg_username}
+      app:kb10_rollback_db:password: ${pg_password}
+      app:kb10_rollback_db:options.sslmode: disable
 workspace:
   replacements:
     kickside/kb10: ..
