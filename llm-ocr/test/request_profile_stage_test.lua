@@ -82,7 +82,7 @@ return {run = test.run_cases(function()
             baseline:add_system(ocr.system_prompt)
             baseline:add_message(prompt.ROLE.USER, {prompt.text("Transcribe the text in this page."),
                 prompt.image_base64("image/png", base64.encode(PNG))})
-            local _, err = llm.generate(baseline, {model = "profile-model", temperature = 0, max_tokens = 4000})
+            local _, err = llm.generate(baseline, {model = "profile-model", max_tokens = 4000})
             test.is_nil(err, tostring(err))
             test.eq(json.encode(requests[2]), observed)
         end)

@@ -326,18 +326,49 @@ local function run(params: any, deps: any): any
     local call_timeout: integer? = configured_timeout > 0 and configured_timeout or nil
     local should_continue = build_should_continue(deps, params)
     local sections, page_errors = {}, {}
-    local function fail_page(item: any, err: any): boolean
+    local fit_failures = {}
+    local render_failures = params.metadata and params.metadata.rasterize_failures
+    if type(render_failures) == "table" then
+        for _, failure in ipairs(render_failures) do
+            if type(failure) == "table" and type(failure.page) == "number" and failure.code == "image_too_large" then
+                fit_failures[failure.page] = failure
+            end
+        end
+    end
+    local function fail_page(item: any, err: any, image: any?): boolean
         local outcome = by_page[item.index]
-        local changed = outcome.status ~= "failed" or outcome.error ~= "transcription_failed"
-        outcome.status, outcome.error = "failed", "transcription_failed"
+        local code = image and image.code or "transcription_failed"
+        local size, width, height
+        if image then
+            size, width, height = tonumber(image.size), tonumber(image.width), tonumber(image.height)
+        end
+        local changed = outcome.status ~= "failed" or outcome.error ~= code or outcome.size ~= size
+            or outcome.width ~= width or outcome.height ~= height
+        outcome.status, outcome.error = "failed", code
+        outcome.size, outcome.width, outcome.height = size, width, height
         page_errors[#page_errors + 1] = "Page " .. item.index .. ": " .. page_error_text(err)
         return changed
     end
     local function transcribe_page(item: any): any
         local page = item.page
+        local failure = fit_failures[item.index]
+        if failure then return {image_error = failure} end
         if not page.artifact_id then return nil, "page image is unavailable" end
+        if mime == "application/pdf" then
+            local meta = page.metadata or {}
+            local size, width, height = tonumber(page.size), tonumber(meta.width), tonumber(meta.height)
+            local code = page_images.ocr_image_error(page.mime_type, size or 0, math.max(width or 0, height or 0),
+                page_images.MAX_OCR_BYTES, 8000)
+            if code then return {image_error = {code = code, size = size, width = width, height = height}} end
+        end
         local bytes, read_err = artifact_content_repo.read_artifact_content(upload_id, page.artifact_id)
         if read_err or type(bytes) ~= "string" then return nil, tostring(read_err or "page image content is unavailable") end
+        if mime == "application/pdf" then
+            local width, height = page_images.pixel_size(bytes)
+            local code = page_images.ocr_image_error(page.mime_type, #bytes, math.max(width or 0, height or 0),
+                page_images.MAX_OCR_BYTES, 8000)
+            if code then return {image_error = {code = code, size = #bytes, width = width, height = height}} end
+        end
         local text, ocr_err = transcribe(bytes, {mime = page.mime_type, model = model, prompt = user_prompt, timeout = call_timeout})
         if ocr_err then return nil, ocr_err end
         if type(text) ~= "string" then return nil, "OCR returned invalid text" end
@@ -401,10 +432,14 @@ local function run(params: any, deps: any): any
                 backend_error = result.error
             elseif result.error ~= nil then
                 if fail_page(item, result.error) then changed = true end
+            elseif result.value.image_error then
+                local image = result.value.image_error
+                if fail_page(item, image.code, image) then changed = true end
             else
                 changed = true
                 local text = result.value.text
                 outcome.status, outcome.error = text:match("%S") and "readable" or "blank", nil
+                outcome.width, outcome.height, outcome.size = nil, nil, nil
                 sections[#sections + 1] = result.value
             end
         end

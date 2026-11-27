@@ -63,6 +63,30 @@ end
 
 local function define_tests()
     test.describe("OCR over an image upload", function()
+        test.it("records a page's transport failure and avoids sending the same image on retry", function()
+            for _, spec in ipairs({
+                {mime = "application/octet-stream", size = 60000, code = "unsupported_image_format"},
+                {mime = "image/jpeg", size = 3932161, code = "image_too_large"},
+            }) do
+                local id = uuid_v4()
+                local _, err = upload_record_repo.create(id, "ocr-test-user", 20, "application/pdf",
+                    STORAGE_ID, id .. ".pdf", "documents", {}, "processing")
+                test.is_nil(err)
+                local _, create_err = artifact_content_repo.create_artifact({upload_id = id, kind = "image",
+                    role = "rendered-page", mime_type = spec.mime, content = string.rep("x", spec.size),
+                    storage_id = STORAGE_ID, metadata = {page = 1}})
+                test.is_nil(create_err)
+                local calls = 0
+                for _ = 1, 2 do
+                    local result = stage.run({upload_id = id, mime_type = "application/pdf", storage_id = STORAGE_ID},
+                        {transcribe = function() calls = calls + 1; return "unexpected" end})
+                    test.eq(result.metadata.ocr_page_outcomes[1].error, spec.code)
+                    test.eq(result.metadata.ocr_page_outcomes[1].size, spec.size)
+                end
+                test.eq(calls, 0)
+            end
+        end)
+
         test.it("keeps later page text when a page inside the batch is blank or fails", function()
             for _, fail_page in ipairs({ false, true }) do
                 set_setting("ocr_enabled", true)

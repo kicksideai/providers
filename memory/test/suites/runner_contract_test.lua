@@ -33,10 +33,10 @@ local function define_tests()
             execute("INSERT INTO dataflow_nodes (node_id, dataflow_id, type, status, config, metadata, created_at, updated_at) VALUES ($1, $2, 'userspace.dataflow.node.agent:node', 'completed', '{}', '{}', $3, $3)", {node, flow, now})
             local ids = {}
             for _, row in ipairs({
-                {type = "node.input", content = "Inspect document 42.", metadata = {}, content_type = "text/plain"},
-                {type = "agent.action", content = {tool_calls = {{id = "inspect-call", name = "inspect", registry_id = "app:inspect", arguments = {document = "42"}}}}, metadata = {agent_id = "agent-a"}, content_type = "application/json"},
-                {type = "agent.observation", content = "format is required; inspect the declared format before parsing", metadata = {tool_call_id = "inspect-call", tool_name = "inspect", is_error = true}, content_type = "text/plain"},
-                {type = "agent.action", content = {result = "Inspect the declared format before parsing."}, metadata = {agent_id = "agent-a"}, content_type = "application/json"},
+                {type = "node.input", content = "Inspect document 42.", metadata = {author = {kind = "agent", id = "agent:parent"}}, content_type = "text/plain"},
+                {type = "agent.action", content = {tool_calls = {{id = "inspect-call", name = "inspect", registry_id = "app:inspect", arguments = {document = "42"}}}}, metadata = {agent_id = "agent-a", author = {kind = "agent", id = "agent-a"}}, content_type = "application/json"},
+                {type = "agent.observation", content = "format is required; inspect the declared format before parsing", metadata = {author = {kind = "system"}, tool_call_id = "inspect-call", tool_name = "inspect", is_error = true}, content_type = "text/plain"},
+                {type = "agent.action", content = {result = "Inspect the declared format before parsing."}, metadata = {agent_id = "agent-a", author = {kind = "agent", id = "agent-a"}}, content_type = "application/json"},
             }) do
                 local id = uuid.v7()
                 ids[#ids + 1] = id
@@ -48,7 +48,7 @@ local function define_tests()
             local host = {kind = "dataflow", dataflow_id = flow, node_id = node, iteration = 1}
             local payload = {phase = "before_step", host = host, agent = {id = "agent-a"},
                 run_context = {contract = "wippy.agent:run_context", binding = "userspace.dataflow.node.agent.run_context:binding", host = host}}
-            local context = {memory_id = memory, thread_id = memory, learn_in_isolation = true, from_agent_id = "agent:parent"}
+            local context = {memory_id = memory, thread_id = memory, learn_in_isolation = true, from_agent_id = "agent:current"}
             fixture.extraction(memory, {fixture.candidate("lesson", "document_format", "Inspect the declared format before parsing.", "Inspect the declared format before parsing.", ids[3])})
             local captured, err = fixture.op(user, "apply", {payload = payload}, context)
             test.is_nil(err, tostring(err))
@@ -56,14 +56,14 @@ local function define_tests()
             local run = fixture.wait_runs(user, memory, "derive", 1)[1]
             test.eq(run.status, "succeeded", tostring(run.last_error))
             test.eq(run.host_id, flow .. ":" .. node)
+            local input, outcome
             for _, entry in ipairs(run.input.span) do
-                if entry.id == ids[1] then
-                    test.eq(entry.author.kind, "agent")
-                    test.eq(entry.author.id, "agent:parent")
-                end
+                if entry.id == ids[1] then input = entry end
+                if entry.id == ids[3] then outcome = entry end
             end
-            local outcome
-            for _, entry in ipairs(run.input.span) do if entry.id == ids[3] then outcome = entry end end
+            test.not_nil(input)
+            test.eq(input.author.kind, "agent")
+            test.eq(input.author.id, "agent:parent")
             test.not_nil(outcome)
             test.eq(outcome.role, "tool")
             test.contains(outcome.text, "format is required")
