@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.11](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.10...mcp-client-v0.2.11) (2026-11-28)
+
+
+### Bug Fixes
+
+* **kb10:** restore schema on explicit migration rollback ([#254](https://github.com/kicksideai/providers/issues/254)) ([fc165c2](https://github.com/kicksideai/providers/commit/fc165c2bb1668784ecbfb7a2c0894af2ba42b687))
+
 ## [0.2.10](https://github.com/kicksideai/providers/compare/mcp-client-v0.2.9...mcp-client-v0.2.10) (2026-11-19)
 
 
