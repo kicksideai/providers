@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/kicksideai/providers/compare/memory-v0.1.24...memory-v0.1.25) (2026-11-28)
+
+
+### Bug Fixes
+
+* **llm-ocr:** preserve page image errors and avoid resending invalid PDFs ([#250](https://github.com/kicksideai/providers/issues/250)) ([77e0df9](https://github.com/kicksideai/providers/commit/77e0df943d3aff2dfdbee9fefdf44f58c548cda8))
+
 ## [0.1.24](https://github.com/kicksideai/providers/compare/memory-v0.1.23...memory-v0.1.24) (2026-11-19)
 
 

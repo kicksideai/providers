@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.57](https://github.com/kicksideai/providers/compare/kb10-v0.2.56...kb10-v0.2.57) (2026-11-28)
+
+
+### Bug Fixes
+
+* **kb10:** restore schema on explicit migration rollback ([#254](https://github.com/kicksideai/providers/issues/254)) ([fc165c2](https://github.com/kicksideai/providers/commit/fc165c2bb1668784ecbfb7a2c0894af2ba42b687))
+* **llm-ocr:** preserve page image errors and avoid resending invalid PDFs ([#250](https://github.com/kicksideai/providers/issues/250)) ([77e0df9](https://github.com/kicksideai/providers/commit/77e0df943d3aff2dfdbee9fefdf44f58c548cda8))
+
 ## [0.2.56](https://github.com/kicksideai/providers/compare/kb10-v0.2.55...kb10-v0.2.56) (2026-11-23)
 
 
