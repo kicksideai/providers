@@ -1,6 +1,21 @@
 version: '1.0'
 namespace: kickside.google.security
 entries:
+- name: import_store_access
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.data:definable
+    - kickside.data:loadable
+    actions:
+    - contract.get
+    - contract.open
+    - contract.call
+    - contract.security
+    effect: allow
 - name: module_access
   kind: security.policy
   meta:

@@ -407,7 +407,7 @@ jobs:
             make -C google lockrefresh
             cd google/test
             wippy lint
-            wippy test  2>&1 | tee .wippy-test.log
+            make -C .. test 2>&1 | tee .wippy-test.log
             LC_ALL=C sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"
@@ -432,7 +432,7 @@ jobs:
             createdb "$database"
             databases+=("$database")
             wippy lint --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433
-            wippy test --profile postgres --set "vars.pg_database=${databases[0]}" --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433 2>&1 | tee .wippy-test.log
+            make -C .. test WIPPY_TEST_ARGS="--profile postgres --set vars.pg_database=${databases[0]} --set vars.pg_host=127.0.0.1 --set vars.pg_port=5433" 2>&1 | tee .wippy-test.log
             LC_ALL=C sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g' .wippy-test.log > .wippy-test.clean.log
             awk '/No tests found/ { empty=1 } /^[[:space:]]*FAILED([[:space:]]|$)/ { failed=1 } /^[[:space:]]*PASSED([[:space:]]|$)/ { passed=1 } END { exit(empty || failed || !passed) }' .wippy-test.clean.log
             cd "$source_root"

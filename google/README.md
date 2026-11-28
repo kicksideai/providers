@@ -71,12 +71,101 @@ resource access determine which tools are available.
 | [`GoogleCalendarWrite`](src/traits/_index.yaml) | See the operation schema |
 | [`GoogleSheetsRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleSheetsWrite`](src/traits/_index.yaml) | See the operation schema |
+| [`GoogleSheetsImport`](src/traits/_index.yaml) | `spreadsheet`, optional `range` or `sheet`, `dataset {code, title}`, `mode` |
 | [`GoogleSlidesRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleSlidesWrite`](src/traits/_index.yaml) | See the operation schema |
 | [`GoogleDocsRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleDocsWrite`](src/traits/_index.yaml) | See the operation schema |
 | [`GoogleContactsRead`](src/traits/_index.yaml) | `fields`, `max_results`, `page_token` |
 | [`GoogleAnalyticsRead`](src/traits/_index.yaml) | `fields`, `limit`, `max_results`, `page_token`, `offset` |
+
+### Import a Sheets dataset
+
+Attach the `kickside.google.traits:sheets_importer` trait to the agent. Pair it
+with Google Sheets Reader or Google Drive Reader to find the spreadsheet. The
+Google connection needs `https://www.googleapis.com/auth/spreadsheets.readonly`
+and `https://www.googleapis.com/auth/drive.metadata.readonly`. If the account is
+not connected or a Google tool reports missing access, call `ConnectAccount`
+with provider `google` and both scopes before making or retrying Google calls.
+Wait for consent before continuing. Find a spreadsheet by name with
+`GoogleDriveRead` action `list_files` and a `name = 'Sheet name'` query, optionally
+filtered to `mimeType = 'application/vnd.google-apps.spreadsheet'`. The
+[Drive files.list API](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list)
+accepts the metadata scope for this lookup. The import uses the connection
+selected by the trait, or the caller's default accessible Google connection.
+
+The importer trait is hidden from the agent editor by default. Bind
+`kickside.google:import_administrator_binding` to a
+`kickside.data:definable` implementation and
+`kickside.google:import_receiver_binding` to its `kickside.data:loadable`
+implementation. For Storage, the bindings are
+`spiralscout.storage.definable:administrator` and
+`spiralscout.storage.loadable:receiver`. Set
+`kickside.google:sheets_importer_public` to the YAML boolean `true` after binding
+the store. Use these parameters in the host's `kickside/google` dependency:
+
+```yaml
+parameters:
+  - name: kickside.google:import_administrator_binding
+    value: spiralscout.storage.definable:administrator
+  - name: kickside.google:import_receiver_binding
+    value: spiralscout.storage.loadable:receiver
+  - name: kickside.google:sheets_importer_public
+    value: true
+```
+
+Use unquoted `true` and `false`, since the string `"false"` is truthy in Lua.
+The host owns installation and access grants. Google declares a Data Explorer
+source that maps the binding requirements to the contracts, without depending
+on Data Explorer or Storage modules.
+
+Call `GoogleSheetsImport` with, for example:
+
+```json
+{
+  "spreadsheet": "https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit",
+  "sheet": "Kickside demo sales",
+  "dataset": {"code": "demo_sales", "title": "Demo sales"},
+  "mode": "replace"
+}
+```
+
+The first row supplies field labels. Field names use lowercase Latin letters,
+digits and underscores. Empty headers and duplicate normalized names fail.
+Numbers, booleans and ISO dates retain their types. Mixed columns become text,
+and blank cells are nullable. A missing range and sheet selects the first visible
+sheet. One values request reads unformatted values and date serials. One
+[formats request](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get)
+reads only each cell's number format type over the same resolved range.
+DATE cells become ISO dates, and DATE_TIME cells become ISO datetimes before
+column inference. Other cells keep their values. Mixed date and number columns
+become text with ISO dates. Dates use the original serial's whole day, and
+datetimes round fractional seconds and clamp the time to 23:59:59. If the store
+has no writable datetime type, datetime columns use dates.
+
+The tool reads the store's type vocabulary and existing fields before defining
+new fields. Compatible existing types stay unchanged, including float fields
+receiving integers and text fields receiving other values as strings. A type
+conflict returns an error naming the field before schema changes or staging.
+Columns with no nonblank values keep their existing type. An unchanged schema
+omits `columns` from the define request. Existing text fields increase their
+supported `max_length` before staging when a later import needs more space.
+The field type stays unchanged; an unsupported increase fails before staging.
+New string fields use the longest value to set the supported length option,
+or use long text when the value exceeds the short string limit.
+
+The tool loads batches under one load and commits once. Replace requests
+replacement of all dataset rows. A replacement with no data rows fails before
+schema changes or staging, so existing rows stay. Append adds rows, so a
+repeated call can add duplicates. A refused commit or a `noop` result returns
+a failure. A schema change can remain if a later load fails. The result
+contains `dataset {code, title, target}`, `rows`, `fields` and at most five
+`preview` rows. The full row set stays inside the import.
+
+On Windows, run `make.bat test` from this module. Set `WIPPY_BIN` to the selected
+Wippy executable and `WIPPY_TEST_PORT` to an isolated test port. The adapter
+mirrors the Makefile's install and test steps. `make.bat lint` checks this
+module's namespaces.
 
 ### Host requirements
 
@@ -87,6 +176,9 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 | --- | --- |
 | [`kickside.google:ui_server`](src/_index.yaml) | Host supplies the value |
 | [`kickside.google:env_storage`](src/_index.yaml) | Host supplies the value |
+| [`kickside.google:import_administrator_binding`](src/_index.yaml) | `""` |
+| [`kickside.google:import_receiver_binding`](src/_index.yaml) | `""` |
+| [`kickside.google:sheets_importer_public`](src/_index.yaml) | `false` (boolean) |
 | [`kickside.google:endpoint_drive`](src/_index.yaml) | `https://www.googleapis.com/drive/v3` |
 | [`kickside.google:endpoint_sheets`](src/_index.yaml) | `https://sheets.googleapis.com/v4/spreadsheets` |
 | [`kickside.google:endpoint_analytics_admin`](src/_index.yaml) | `https://analyticsadmin.googleapis.com/v1beta` |

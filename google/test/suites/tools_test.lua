@@ -136,6 +136,24 @@ local function define_tests()
             transport.get = get
         end)
 
+        test.it("finds a spreadsheet by name through the Drive metadata listing", function()
+            local seen_url, seen_query
+            local get = stub(transport, "get", function(_, url, query)
+                seen_url, seen_query = url, query
+                return {success = true, data = {files = {{id = "sales-id", name = "Kickside demo sales",
+                    mimeType = "application/vnd.google-apps.spreadsheet"}}}}
+            end)
+            local query = "name = 'Kickside demo sales' and mimeType = 'application/vnd.google-apps.spreadsheet'"
+            local result, err = drive_tool.handler({action = "list_files", query = query})
+            transport.get = get
+            test.is_nil(err)
+            test.eq(seen_url:sub(-6), "/files")
+            test.eq(seen_query.q, "trashed=false and " .. query)
+            test.is_nil(seen_query.alt)
+            test.is_nil(seen_query.q:find("fullText", 1, true))
+            test.eq(result.files[1].id, "sales-id")
+        end)
+
         test.it("finds and reads shared-drive files through the Drive tool", function()
             local folder_id, file_id = "shared-folder", "shared-file"
             local file = { id = file_id, name = "Notes", mimeType = "text/plain" }

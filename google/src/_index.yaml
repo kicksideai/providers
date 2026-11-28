@@ -54,6 +54,55 @@ entries:
     meta:
       comment: Supplies Google credential settings and the settings block.
 
+  - name: sheets_importer_public
+    kind: ns.requirement
+    default: false
+    meta:
+      comment: Show the Sheets importer trait after the host binds a data store.
+    targets:
+      - entry: kickside.google.traits:sheets_importer
+        path: .meta.public
+
+  - name: import_administrator_binding
+    kind: ns.requirement
+    default: ""
+    meta:
+      comment: Data store binding used to define imported datasets.
+      value_kind: contract.binding
+    targets:
+      - entry: kickside.google.traits:import_administrator
+        path: .meta.binding
+      - entry: kickside.google.security:import_store_access
+        path: .policy.resources +=
+
+  - name: import_receiver_binding
+    kind: ns.requirement
+    default: ""
+    meta:
+      comment: Data store binding used to load imported datasets.
+      value_kind: contract.binding
+    targets:
+      - entry: kickside.google.traits:import_receiver
+        path: .meta.binding
+      - entry: kickside.google.security:import_store_access
+        path: .policy.resources +=
+
+  - name: data_explorer_source
+    kind: registry.entry
+    meta:
+      type: spiralscout.data_explorer:source
+      version: "1"
+      comment: Offers Google Sheets imports through the host's data store.
+    title: Google Sheets
+    description: Import a Google Sheet into a dataset through the Google Sheets Importer agent trait.
+    icon: tabler:brand-google
+    order: 30
+    store:
+      use: required
+      bind:
+        kickside.google:import_administrator_binding: kickside.data:definable
+        kickside.google:import_receiver_binding: kickside.data:loadable
+
   # ─── Shared types ──────────────────────────────────────────────────
   - name: types
     kind: library.lua

@@ -273,7 +273,7 @@ entries:
 
   - name: capacity_client
     kind: library.lua
-    source: file://capacity_client.lua
+    source: file://.local/tmp/tmp-fixtures/capacity_client.lua
     modules:
     - json
     imports:
@@ -285,10 +285,10 @@ entries:
       http_client: app:capacity_http_fixture
   - name: capacity_http_fixture
     kind: library.lua
-    source: file://capacity_http_fixture.lua
+    source: file://.local/tmp/tmp-fixtures/capacity_http_fixture.lua
   - name: capacity_transport_guard
     kind: library.lua
-    source: file://capacity_transport_guard.lua
+    source: file://.local/tmp/tmp-fixtures/capacity_transport_guard.lua
     modules:
     - funcs
     - sql
