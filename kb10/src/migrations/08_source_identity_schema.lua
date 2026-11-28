@@ -51,6 +51,27 @@ return require("migration").define(function()
                     key = postgres and "USING hash ((" .. key .. "))" or key
                     execute(tx, "CREATE INDEX kb10_nodes_source_members ON kb10_nodes " .. key .. " WHERE " .. predicate)
                 end)
+                down(function(tx)
+                    execute(tx, "DROP INDEX kb10_nodes_source_members")
+                    if dialect == "postgres" then
+                        execute(tx, "ALTER TABLE kb10_nodes DROP CONSTRAINT kb10_nodes_source_root")
+                        execute(tx, "DROP TYPE kb10_source_key")
+                        execute(tx, "DROP TYPE kb10_source_pair")
+                    else
+                        execute(tx, "DROP INDEX kb10_nodes_source_root")
+                    end
+                    for _, idx in ipairs({
+                        {"idx_kb10_nodes_parent", "kb10_nodes", "parent_id"},
+                        {"idx_kb10_edges_from", "kb10_edges", "from_node_id"},
+                        {"idx_kb10_edges_to", "kb10_edges", "to_node_id"},
+                    }) do
+                        execute(tx, "DROP INDEX " .. idx[1])
+                        execute(tx, "CREATE INDEX " .. idx[1] .. " ON " .. idx[2] .. " (store_id, " .. idx[3] .. ")")
+                    end
+                    for _, column in ipairs({"source_scope", "external_id", "external_source"}) do
+                        execute(tx, "ALTER TABLE kb10_nodes DROP COLUMN " .. column)
+                    end
+                end)
             end)
         end
     end)

@@ -56,6 +56,8 @@ return require("migration").define(function()
                     end
                     return phase .. tostring(page[#page].id)
                 end, "batch")
+                -- Existing identities remain valid in schema 08.
+                down(function(_db) end)
             end)
         end
     end)

@@ -18,9 +18,22 @@ return require("migration").define(function()
                 local _, index_err = db:execute("CREATE INDEX idx_kb10_nodes_fts ON kb10_nodes USING gin (search_vector)")
                 if index_err then error(tostring(index_err)) end
             end)
+            down(function(db)
+                for _, statement in ipairs({
+                    "ALTER TABLE kb10_nodes DROP COLUMN search_vector",
+                    [=[ALTER TABLE kb10_nodes ADD COLUMN search_vector tsvector GENERATED ALWAYS AS (
+                        to_tsvector('simple'::regconfig, regexp_replace(COALESCE(content, ''::text),
+                            '[^[:alnum:]]+'::text, ' '::text, 'g'::text))) STORED]=],
+                    "CREATE INDEX idx_kb10_nodes_fts ON kb10_nodes USING gin (search_vector)",
+                }) do
+                    local _, err = db:execute(statement)
+                    if err then error(err) end
+                end
+            end)
         end)
         database("sqlite", function()
             up(function(_db) end)
+            down(function(_db) end)
         end)
     end)
 end)

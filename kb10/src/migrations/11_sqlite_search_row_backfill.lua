@@ -85,6 +85,8 @@ return require("migration").define(function()
     migration("11 SQLite search row backfill", function()
         database("postgres", function()
             up(postgres_embedding_page, "batch")
+            -- Orphan cleanup leaves all owned embeddings intact.
+            down(function(_db) end)
         end)
         database("sqlite", function()
             up(function(tx, checkpoint)
@@ -97,6 +99,8 @@ return require("migration").define(function()
                 if fts then return "e0" end
                 return nil
             end, "batch")
+            -- The earlier schema accepts populated lookup keys.
+            down(function(_db) end)
         end)
     end)
 end)

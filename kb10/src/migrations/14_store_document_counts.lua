@@ -117,6 +117,17 @@ local function sqlite_triggers(db: any)
         END]])
 end
 
+local function remove_counts(tx, postgres)
+    for _, event in ipairs({"update", "delete", "insert"}) do
+        local name = "kb10_count_document_" .. event
+        execute(tx, "DROP TRIGGER " .. name .. (postgres and " ON kb10_nodes" or ""))
+        if postgres then execute(tx, "DROP FUNCTION " .. name .. "()") end
+    end
+    execute(tx, "DROP INDEX idx_kb10_document_roots_by_status")
+    execute(tx, "ALTER TABLE kb10_stores DROP COLUMN failed_count")
+    execute(tx, "ALTER TABLE kb10_stores DROP COLUMN document_count")
+end
+
 return require("migration").define(function()
     migration("14 store document counts", function()
         database("postgres", function()
@@ -127,6 +138,7 @@ return require("migration").define(function()
                 postgres_triggers(tx)
                 open_counts(tx, sql.type.POSTGRES)
             end)
+            down(function(tx) remove_counts(tx, true) end)
         end)
         database("sqlite", function()
             up(function(tx)
@@ -134,6 +146,7 @@ return require("migration").define(function()
                 sqlite_triggers(tx)
                 open_counts(tx, sql.type.SQLITE)
             end)
+            down(function(tx) remove_counts(tx, false) end)
         end)
     end)
 end)

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: '1.0'
+namespace: app
+entries:
+  - name: kb10_rollback_db
+    kind: db.sql.sqlite
+    file: ':memory:'
+    foreign_keys: true
+    pool: {max_open: 1, max_idle: 1}
+  - name: migration_rollback_test
+    kind: function.lua
+    source: file://migration_rollback_test.lua
+    method: run
+    meta: {type: test, suite: kb10_migrations}
+    modules: [funcs, registry, sql]
+    imports: {test: 'wippy.test:test'}

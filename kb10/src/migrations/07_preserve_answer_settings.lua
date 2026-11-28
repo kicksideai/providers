@@ -11,6 +11,8 @@ return require("migration").define(function()
                         OR (jsonb_typeof(config) = 'object' AND config->>'analysis_model' IS NULL)]])
                 if err then error(tostring(err)) end
             end)
+            -- Keep explicit answer settings, including edits made since upgrade.
+            down(function(_db) end)
         end)
         database("sqlite", function()
             up(function(db)
@@ -21,6 +23,8 @@ return require("migration").define(function()
                         OR (json_type(config) = 'object' AND json_extract(config, '$.analysis_model') IS NULL)]])
                 if err then error(tostring(err)) end
             end)
+            -- Keep explicit answer settings, including edits made since upgrade.
+            down(function(_db) end)
         end)
     end)
 end)
