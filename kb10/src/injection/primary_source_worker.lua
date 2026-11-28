@@ -12,6 +12,7 @@ local materializer = require("materializer")
 local store = require("materializer_store")
 local planner = require("planner")
 local slots = require("slots")
+local model_checkpoint = require("model_checkpoint")
 local apply = require("apply")
 local core_db = require("core_db")
 local jobs = require("job_types")
@@ -135,6 +136,21 @@ local function publish(input)
         local page = planner.new(row.id, id)
         local receipt_bytes, request_count = 0, 0
         local target = {store = page.store, store_row = row, engine = engine, source_thread_id = id}
+        local prepared
+        if shared and proof.first_input and model_checkpoint.shared() then
+            local first = input.events[1]
+            if cursor.continuation ~= "" or model_checkpoint.eligible(first) then
+                local opts = materializer.materialization_options(target, cursor.body.worker_config)
+                if not opts and cursor.continuation ~= "" then return nil, conflict("knowledge preparation settings changed") end
+                local prepare_err
+                if opts then prepared, prepare_err = model_checkpoint.open(input, row, opts, owner) end
+                if prepare_err then return nil, prepare_err end
+                if prepared then
+                    input.events = {first}
+                    input.range.to_seq = first.seq
+                end
+            end
+        end
         requests = {}
         local seen = {}
         local selected = false
@@ -156,7 +172,8 @@ local function publish(input)
         local events = input.events
         local previous_fields = {}
         for key, value in pairs(prior) do previous_fields[key] = value end
-        local out, reduce_err = ordinary.run(input, {single_source = true, resolve_materialized_store = function() return target end,
+        local out, reduce_err = ordinary.run(input, {single_source = true,
+            model_checkpoint = prepared, resolve_materialized_store = function() return target end,
             close_before = next_source,
             after_source = function(result, event)
                 -- Sum complete per-input contributions, including diagnostics,
@@ -177,6 +194,13 @@ local function publish(input)
                 requests[#requests + 1] = {document_node_id = message.document_node_id, user_id = message.user_id}
                 return true, nil
             end})
+        if prepared and prepared.failure then
+            if prepared.yielded and prepared.progressed then return {checkpointed = true}, nil end
+            return nil, prepared.failure
+        end
+        if prepared and prepared.ordinal < prepared.step then
+            return nil, conflict("knowledge preparation request sequence ended early")
+        end
         if not out then return nil, reduce_err end
         out.last_seq = out.last_seq or input.range.to_seq
         manifest = {}

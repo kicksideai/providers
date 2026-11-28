@@ -86,6 +86,29 @@ execution timeout it returns the first eligible input alone before resuming
 ordinary grouping.
 One input still has to complete within one claim.
 
+### Opt-in model response preparation
+
+Once the Core and KB10 preparation migrations are installed, a host can select
+`proc://kickside.kb10.injection:resumable_primary_source_worker` in the
+installed source projection declaration. Core's declaration converger performs
+the same retained-slot transition described above. The default source
+declarations continue to select the primary worker.
+
+Preparation applies to the first eligible Markdown, plain-text, or CSV input
+of at least 128 KiB on a shared Core, Jobs, and KB10 database resource. The
+input must use concrete model names with one configured provider route and
+carry no image artifacts. A converted workbook uses its Markdown input. Other
+inputs and split storage use the ordinary publication path.
+
+A new claim rebuilds the existing parser plan and verifies the rendered model
+requests before reusing saved responses. This retains spreadsheet headers,
+row windows, contextual decisions, and the final checked publication. A
+response costs at most 1 MiB per saved batch, with bounds of 1,024 calls and
+128 MiB for one preparation. Once a bound is reached, remaining calls in
+that claim use the ordinary model path. Large parser work and final native
+publication must still fit in one claim. A provider response lost before its
+checkpoint may need to be requested again.
+
 ## Browse document populations
 
 `GET /api/v1/kb10/{id}/browse?scope=documents` lists accepted top-level

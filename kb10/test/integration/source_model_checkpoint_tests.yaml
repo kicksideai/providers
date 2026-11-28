@@ -1,0 +1,11 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: source_model_checkpoint_test
+    kind: function.lua
+    meta: {type: test, suite: kb10_source_checkpoint_models}
+    source: file://source_model_checkpoint_test.lua
+    method: run
+    imports:
+      checkpoint: kickside.kb10.injection:source_model_checkpoint
+      test: wippy.test:test
